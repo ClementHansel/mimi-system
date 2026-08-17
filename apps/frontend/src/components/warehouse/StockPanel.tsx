@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Boxes, History } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Card, CardContent, CardHeader, CardTitle, Badge, Input, EmptyState, Modal, toast, Button } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Badge, Input, EmptyState, Modal, Button } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/dates';
+import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import { getBalances, getMovements } from './lib/warehouse-api';
 import type { Balance, Movement } from './lib/types';
@@ -21,23 +22,27 @@ export function StockPanel() {
   const { locationId } = useWarehouseLocation();
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
   const [q, setQ] = useState('');
   const [historyFor, setHistoryFor] = useState<Balance | null>(null);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | undefined>(undefined);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!locationId) return;
     let cancelled = false;
     setLoading(true);
+    setError(undefined);
     getBalances({ locationId })
       .then((res) => !cancelled && setBalances(res.rows))
-      .catch(() => toast({ title: t('table.error'), variant: 'danger' }))
+      .catch((err: unknown) => !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [locationId, t]);
+  }, [locationId, t, reloadToken]);
 
   const byArea = useMemo(() => {
     const filtered = q.trim()
@@ -52,9 +57,10 @@ export function StockPanel() {
     if (!locationId) return;
     setHistoryFor(b);
     setHistoryLoading(true);
+    setHistoryError(undefined);
     getMovements({ locationId, itemId: b.itemId, storageAreaId: b.storageAreaId })
       .then((res) => setMovements(res.rows))
-      .catch(() => toast({ title: t('table.error'), variant: 'danger' }))
+      .catch((err: unknown) => setHistoryError(err instanceof ApiError ? err.message : t('table.error')))
       .finally(() => setHistoryLoading(false));
   }
 
@@ -65,9 +71,17 @@ export function StockPanel() {
       <Input placeholder={t('common.filter')} value={q} onChange={(e) => setQ(e.target.value)} wrapperClassName="max-w-sm" />
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
-      {!loading && byArea.length === 0 && <EmptyState title={t('table.empty')} size="lg" />}
+      {!loading && error && (
+        <EmptyState
+          title={error}
+          size="lg"
+          action={<Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>{t('common.retry')}</Button>}
+        />
+      )}
+      {!loading && !error && byArea.length === 0 && <EmptyState title={t('table.empty')} size="lg" />}
 
       {!loading &&
+        !error &&
         byArea.map(([areaName, items]) => (
           <Card key={areaName}>
             <CardHeader className="flex-row items-center justify-between">
@@ -109,8 +123,15 @@ export function StockPanel() {
 
       <Modal open={!!historyFor} onClose={() => setHistoryFor(null)} title={historyFor?.itemName ?? ''} size="lg">
         {historyLoading && <EmptyState title={t('table.loading')} size="sm" />}
-        {!historyLoading && movements.length === 0 && <EmptyState title={t('table.empty')} size="sm" />}
-        {!historyLoading && movements.length > 0 && (
+        {!historyLoading && historyError && (
+          <EmptyState
+            title={historyError}
+            size="sm"
+            action={<Button variant="outline" size="sm" onClick={() => historyFor && openHistory(historyFor)}>{t('common.retry')}</Button>}
+          />
+        )}
+        {!historyLoading && !historyError && movements.length === 0 && <EmptyState title={t('table.empty')} size="sm" />}
+        {!historyLoading && !historyError && movements.length > 0 && (
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-sunken text-left text-text-secondary">

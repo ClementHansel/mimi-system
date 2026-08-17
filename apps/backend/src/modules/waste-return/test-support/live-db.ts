@@ -151,3 +151,31 @@ export async function ensureStock(locationId: string, storageAreaId: string, ite
     [locationId, storageAreaId, itemId, qty],
   );
 }
+
+/**
+ * QA-ISOLATION finding: `ensureStock` above writes `stock_balances` DIRECTLY (D-07's own
+ * "never write stock_balances directly" rule, knowingly broken here as a test bootstrap) with
+ * NO matching `stock_movements` row — so the moment it runs, `stock-ledger.integration.spec
+ * .ts`'s G1 "balance == fold-of-movements" invariant is already violated for that key, and
+ * nothing in this file ever undid it. Same root problem as `cleanupWasteBatch`/`cleanupReturn`
+ * below (which deleted a ref's `stock_movements` rows without ever reconciling the balance
+ * those movements had contributed to) — both leave `stock_balances` permanently out of sync
+ * with `stock_movements`, which is exactly what a LATER file's G1 check (running against the
+ * same live DB) catches. Fix: recompute the balance from the fold of whatever movements
+ * actually exist for the key, never leave/blind-delete it.
+ */
+export async function reconcileStockBalance(locationId: string, storageAreaId: string, itemId: string): Promise<void> {
+  await getOwnerPool().query(
+    `UPDATE stock_balances
+        SET qty_on_hand = COALESCE(
+          (SELECT SUM(CASE WHEN m.movement_type LIKE '%_out' THEN -m.qty ELSE m.qty END)
+             FROM stock_movements m
+            WHERE m.location_id = stock_balances.location_id
+              AND m.storage_area_id = stock_balances.storage_area_id
+              AND m.item_id = stock_balances.item_id),
+          0
+        )
+      WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+    [locationId, storageAreaId, itemId],
+  );
+}

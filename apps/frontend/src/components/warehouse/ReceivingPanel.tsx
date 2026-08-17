@@ -5,10 +5,11 @@ import { useI18n } from '@/lib/i18n';
 import { Modal, DataTable, StatusBadge, PhotoCapture, Select, QtyInput, Textarea, toast, Button, EmptyState } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatMoney, formatQty } from '@/lib/formatters';
+import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import { getStorageAreas, listPurchaseOrders, getPurchaseOrder, receivePurchaseOrder } from './lib/warehouse-api';
 import { uploadAttachment } from './lib/attachments';
-import type { PurchaseOrder, StorageArea } from './lib/types';
+import type { PurchaseOrder, PurchaseOrderListRow, StorageArea } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
 
 const OPEN_PO_STATUSES = ['issued', 'partially_received'];
@@ -32,8 +33,9 @@ interface ReceiptLineDraft {
 export function ReceivingPanel() {
   const { t } = useI18n();
   const { locationId } = useWarehouseLocation();
-  const [rows, setRows] = useState<PurchaseOrder[]>([]);
+  const [rows, setRows] = useState<PurchaseOrderListRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
   const [areas, setAreas] = useState<StorageArea[]>([]);
   const [active, setActive] = useState<PurchaseOrder | null>(null);
   const [lines, setLines] = useState<Record<string, ReceiptLineDraft>>({});
@@ -43,9 +45,10 @@ export function ReceivingPanel() {
 
   function reload() {
     setLoading(true);
+    setError(undefined);
     Promise.all(OPEN_PO_STATUSES.map((status) => listPurchaseOrders({ status })))
       .then((results) => setRows(results.flatMap((r) => r.rows)))
-      .catch(() => toast({ title: t('table.error'), variant: 'danger' }))
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')))
       .finally(() => setLoading(false));
   }
 
@@ -54,7 +57,7 @@ export function ReceivingPanel() {
     if (locationId) getStorageAreas(locationId).then(setAreas);
   }, [locationId]);
 
-  async function openReceive(row: PurchaseOrder) {
+  async function openReceive(row: PurchaseOrderListRow) {
     const full = await getPurchaseOrder(row.id);
     setActive(full);
     setLines(
@@ -97,7 +100,7 @@ export function ReceivingPanel() {
     }
   }
 
-  const columns: DataTableColumn<PurchaseOrder>[] = [
+  const columns: DataTableColumn<PurchaseOrderListRow>[] = [
     { key: 'poNumber', header: t('warehouse.receiving.poNumber') },
     { key: 'supplierName', header: t('warehouse.receiving.supplier') },
     { key: 'total', header: t('warehouse.receiving.total'), align: 'right', render: (r) => formatMoney(r.total) },
@@ -108,11 +111,17 @@ export function ReceivingPanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      {error && (
+        <div className="flex items-center justify-end">
+          <Button variant="outline" size="sm" onClick={reload}>{t('common.retry')}</Button>
+        </div>
+      )}
       <DataTable
         columns={columns}
         data={{ rows, total: rows.length, page: 1, pageSize: Math.max(rows.length, 1) }}
         keyField={(r) => r.id}
         loading={loading}
+        error={error}
         onRowClick={openReceive}
         emptyDescription={t('warehouse.receiving.empty')}
       />

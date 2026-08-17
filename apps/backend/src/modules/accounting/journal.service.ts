@@ -12,10 +12,11 @@ import {
   type Paginated,
   type UUID,
 } from '@mimi/shared';
+import { formatDateOnly } from '../../common/date-only.util';
 import { ChartOfAccountsService } from './chart-of-accounts.service';
 import { FiscalPeriodsService } from './fiscal-periods.service';
 import type { CreateJournalEntryDto, ListJournalQueryDto } from './dto/accounting.dto';
-import { formatDateOnly, type DraftLine, type JournalEntryRow, type JournalLineRow } from './accounting.types';
+import type { DraftLine, JournalEntryRow, JournalLineRow } from './accounting.types';
 
 const ENTRY_SELECT = `
   SELECT je.id, je.entry_number, je.entry_date, je.fiscal_period_id, je.event_type, je.source, je.ref_type,

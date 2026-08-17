@@ -93,7 +93,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!isHydrated) return;
     const publicRoute = isPublicRoute(pathname);
     if (!accessToken && !publicRoute) router.replace('/login');
-    if (accessToken && publicRoute) router.replace('/dashboard');
+    // F-BRAND: an already-authenticated visitor who lands on /login (e.g. a
+    // stale tab, a bookmarked link) bounces to the home hub, not /dashboard —
+    // the hub is the one role-agnostic "already signed in" destination.
+    if (accessToken && publicRoute) router.replace('/');
   }, [isHydrated, accessToken, pathname, router]);
 
   if (isPublicRoute(pathname)) {

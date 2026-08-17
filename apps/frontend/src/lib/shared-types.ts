@@ -26,13 +26,43 @@ export {
   ApprovalDocumentType,
   ReverificationStatus,
 } from '@mimi/shared';
+// CONTRACTS §4.0 kernel shape — the canonical `ApprovalDetail`/`ApprovalStepDetail`
+// (carries `currentStep`, the documented "chain finished once null" signal).
+// Import THIS re-export rather than forking a module-local copy — several
+// `components/*\/lib/types.ts` files forked their own before `currentStep`
+// existed and lost the field as a result (see `components/approvals/lib/types.ts`).
+export type { ApprovalDetail, ApprovalStepDetail } from '@mimi/shared';
+
+// FR-ACCT-03 payment verification status — used wherever a document surfaces
+// its linked `payment_verifications.status` (e.g. `PurchaseOrder.paymentStatus`).
+export { PaymentStatus } from '@mimi/shared';
 
 // Device / topology (CONTRACTS §2.9, D-13) — used by OfflineBanner / SyncStatusPill / F12
 export { DeviceStatus } from '@mimi/shared';
 
+// Purchasing (CONTRACTS §2.3/§4.11, W5-04) — PR/PO status ladders, used by
+// `components/purchasing/**` for status-driven action gating.
+export { PurchaseRequestStatus, PurchaseOrderStatus } from '@mimi/shared';
+
 // CONTRACTS §4.1 M01 auth shapes — the frontend's session store and login
 // form use these directly rather than hand-rolling an equivalent shape.
 export type { Me, LoginRes, OfflineCredentialRes } from '@mimi/shared';
+
+// M10 `delivery` (CONTRACTS §4.10, F-DELIVERY) — Surat Jalan / drop / cold
+// chain status enums and the full wire interfaces. Used by
+// `components/delivery/**`; imported here rather than redeclared, per this
+// file's own header contract ("do not redeclare").
+export { SuratJalanStatus, DropStatus, ShipmentType, SealStatus, TempLogStage } from '@mimi/shared';
+export type { SuratJalan, Drop, DropLine, Seal, TempLog } from '@mimi/shared';
+
+// M08 `stock-opname` (CONTRACTS §4.8, F-WAREHOUSE) — verified field-for-field
+// against `stock-opname.service.ts`'s `toOpname`/`toOpnameLine` mappers
+// (unlike `PurchaseOrder` below, these two are NOT known to drift from the
+// live response), so they're imported here rather than redeclared, per this
+// file's own header contract. Used by both `components/outlet` and
+// `components/warehouse` (each runs its own opname against its own location).
+export { OpnameStatus } from '@mimi/shared';
+export type { Opname, OpnameLine } from '@mimi/shared';
 
 // Stable machine error codes (CONTRACTS §0 `code` field) actually branched on
 // in `lib/api.ts`/`lib/auth.ts`. The rest of the ~60-code vocabulary lives in

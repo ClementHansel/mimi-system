@@ -213,6 +213,38 @@ describe('M10 delivery — live DB integration', () => {
       });
     });
 
+    it('plannedDate round-trips exactly as submitted (DATE column, D-11 WITA day-shift regression)', async () => {
+      // Fixed, non-today date — a day-shift regression can't hide behind "today happens not to expose it".
+      const plannedDate = '2026-06-30';
+      // `create()` self-commits (`db-tx.ts`'s `withWrite`), which drops the transaction-scoped `SET LOCAL
+      // ROLE` on this connection — a follow-up read needs its OWN fresh context, exactly like the
+      // full-flow describe block above (`withCommit` for the mutation, a separate `withRollback` for the
+      // read), never the same `withRollback` block for both.
+      const sj = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'frozen' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.frozenVehicleId,
+            plannedDate,
+            drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.frozenItemId, qty: '3.000', unitId: fixtures.frozenItemUnitId }] }],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      try {
+        // Exact round-trip, not a loose date-shaped regex — a one-day-shifted value ("2026-06-29") would
+        // still match `/^\d{4}-\d{2}-\d{2}$/` just as happily.
+        expect(sj.plannedDate).toBe(plannedDate);
+
+        const fetched = await withRollback((client) => sjService.getById(client, sj.id));
+        expect(fetched.plannedDate).toBe(plannedDate);
+      } finally {
+        await deleteSuratJalan(sj.id);
+      }
+    });
+
     it('rejects a "frozen" SJ whose vehicle has no freezer', async () => {
       await withRollback(async (client) => {
         await expect(

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { addMoney, ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION, isZeroQty, MovementType, PettyCashStatus, SyncEntity, type Money, type Paginated, type Qty, type UUID } from '@mimi/shared';
+import { formatDateOnly } from '../../common/date-only.util';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { PaymentVerificationsService } from '../accounting/payment-verifications.service';
@@ -212,7 +213,7 @@ export class PettyCashService {
       pcNumber: header.pc_number,
       locationId: header.location_id,
       purchasedBy: header.purchased_by_name ?? header.purchased_by,
-      purchaseDate: header.purchase_date.toISOString().slice(0, 10),
+      purchaseDate: formatDateOnly(header.purchase_date),
       storeName: header.store_name,
       totalAmount: header.total_amount,
       status: header.status,

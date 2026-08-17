@@ -202,26 +202,30 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
     if (signatureAttachmentId) await deleteAttachment(signatureAttachmentId);
     for (const id of notificationIds) await owner.query(`DELETE FROM notifications WHERE id = $1`, [id]);
     for (const id of outboxIds) await owner.query(`DELETE FROM notification_outbox WHERE id = $1`, [id]);
-    await owner.query(`DELETE FROM stock_movements WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [
-      fx.warehouseId,
-      fx.freezerAreaWarehouse,
-      fx.frozenItemId,
-    ]);
-    await owner.query(`DELETE FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [
-      fx.warehouseId,
-      fx.freezerAreaWarehouse,
-      fx.frozenItemId,
-    ]);
-    await owner.query(`DELETE FROM stock_movements WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [
-      fx.outletId,
-      fx.freezerAreaOutlet,
-      fx.frozenItemId,
-    ]);
-    await owner.query(`DELETE FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [
-      fx.outletId,
-      fx.freezerAreaOutlet,
-      fx.frozenItemId,
-    ]);
+    // QA-ISOLATION finding: this used to blind-DELETE both `stock_movements` and the
+    // `stock_balances` row for these two keys, assuming zero seed history at a warehouse/
+    // outlet freezer area for a frozen item. That assumption is false often enough to
+    // matter (the seed carries opening balances for 30 core items across all locations) —
+    // measured empirically: a fresh-reset 630-row baseline dropped to 628 after exactly one
+    // run through this cleanup. Reconcile the balance to the fold of whatever movements
+    // remain instead of deleting rows this test didn't necessarily create.
+    const reconcile = async (locationId: string, storageAreaId: string, itemId: string): Promise<void> => {
+      await owner.query(
+        `UPDATE stock_balances
+            SET qty_on_hand = COALESCE(
+              (SELECT SUM(CASE WHEN m.movement_type LIKE '%_out' THEN -m.qty ELSE m.qty END)
+                 FROM stock_movements m
+                WHERE m.location_id = stock_balances.location_id
+                  AND m.storage_area_id = stock_balances.storage_area_id
+                  AND m.item_id = stock_balances.item_id),
+              0
+            )
+          WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+        [locationId, storageAreaId, itemId],
+      );
+    };
+    await reconcile(fx.warehouseId, fx.freezerAreaWarehouse, fx.frozenItemId);
+    await reconcile(fx.outletId, fx.freezerAreaOutlet, fx.frozenItemId);
   });
 
   it(
@@ -312,25 +316,24 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
       // Independently verify the SAME thing directly against `approvals`/`approval_steps` —
       // not just trusting the service's own DTO mapping.
       //
-      // FINDING (discovered by driving this against the real DB, not by reading the diff):
-      // `ApprovalService.decide()` returns `currentStep: null` in its IN-MEMORY `DecisionResult`
-      // once a chain finalises (`approvals.service.ts`'s two `finalizeApproval` branches both
-      // hardcode `currentStep: null` in the return value), but `ApprovalsRepository.finalizeApproval`
-      // (line ~231) only ever does
-      // `UPDATE approvals SET state = $1, decided_at = NOW(), updated_at = NOW() WHERE id = $2` —
-      // it NEVER writes `current_step = NULL`. So the PERSISTED `approvals.current_step` column
-      // is left at the last-decided step number (here, `2`) forever after finalisation; only the
-      // in-memory return value the caller sees is actually null. Nothing in this scenario's own
-      // behaviour is broken by it (every caller in this codebase reads `state`, not the stale
-      // `current_step` column, to decide finality) — but any future direct read of `approvals.
-      // current_step` (a report, a migration backfill, a dashboard) would wrongly read a fully
-      // approved chain as still awaiting step 2 forever. Reported for kernel/approvals to fix
-      // (`finalizeApproval` should set `current_step = NULL` alongside `state`).
+      // RESOLVED (2026-08-17). This assertion used to expect `current_step: 2` and carried a
+      // long note explaining why: `ApprovalsRepository.finalizeApproval` wrote only
+      // `state`/`decided_at`, never `current_step = NULL`, so the persisted column stayed at
+      // the last-decided step forever while the in-memory `DecisionResult` correctly said null.
+      //
+      // That has since been fixed — `finalizeApproval` now writes `current_step = NULL`
+      // alongside `state` — so the persisted value agrees with `ApprovalDetail`'s documented
+      // contract that **`currentStep === null` is the completion signal**.
+      //
+      // Worth remembering how this surfaced: the test had encoded the BUG as its expectation,
+      // so fixing the bug is what made it fail. A test written that way cannot distinguish
+      // "someone fixed it" from "someone broke it", and it would have stayed green if the
+      // stale-column behaviour had regressed. Assert the contract, not the current defect.
       const approvalRow = await getOwnerPool().query<{ state: string; current_step: number | null }>(
         `SELECT state, current_step FROM approvals WHERE document_type = $1 AND document_id = $2`,
         [ApprovalDocumentType.REPLENISHMENT_REQUEST, requestId],
       );
-      expect(approvalRow.rows[0]).toMatchObject({ state: 'approved', current_step: 2 }); // see finding above — NOT null, a real DB-level staleness bug
+      expect(approvalRow.rows[0]).toMatchObject({ state: 'approved', current_step: null }); // null === chain complete (see note above)
       const stepRows = await getOwnerPool().query<{ step_no: number; approver_role: string; state: string; acted_by: string }>(
         `SELECT step_no, approver_role, state, acted_by FROM approval_steps
            WHERE approval_id = (SELECT id FROM approvals WHERE document_type = $1 AND document_id = $2)
@@ -437,7 +440,10 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
       );
       const beforeOutletQty = Number(beforeOutlet.rows[0]?.qty_on_hand ?? 0);
 
-      // ═══ MAJOR FINDING, discovered by driving this exact step under the real leader_outlet RLS
+      // ═══ MAJOR FINDING — SINCE FIXED (migration 216, 2026-08-17). The account below is kept
+      // because it is the reason that migration exists, but the assertions that follow now prove
+      // the WORKING path, not the defect. Discovered by driving this exact step under the real
+      // leader_outlet RLS
       // session rather than 'owner' (which is what `delivery.integration.spec.ts`'s OWN "full flow"
       // test does for this same call — its `withCommit()` defaults to `CENTRAL_CTX`/'owner' there,
       // masking this): receiving the LAST (here, only) drop of a shipment makes `DropService.
@@ -455,44 +461,63 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
       // last remaining one) delivery. This is not an edge case: it is the direct completion of the
       // primary receiving flow this entire scenario exists to prove.
       //
-      // REPRODUCED HERE AS A REAL, LIVE-POSTGRES ASSERTION (not "should fail" — an actual caught
-      // rejection with the actual Postgres RLS error), and reported for senior-db to fix:
-      // `surat_jalan_scope`'s `WITH CHECK` needs the same `EXISTS (sj_drops ... app_has_location(d.location_id))`
-      // clause its own `USING` already has.
+      // `database/migrations/216_w1c_fix_surat_jalan_with_check_asymmetry.sql` adds the missing
+      // `EXISTS (sj_drops ... app_has_location(d.location_id))` arm to `WITH CHECK`, so the
+      // receiving outlet can now complete its own shipment. This step asserts that WORKING path.
+      //
+      // NOTE ON WHY THIS ASSERTION CHANGED: it previously expected a rejection, and was written
+      // that way deliberately to pin the live defect. Once 216 landed, the fix is what made the
+      // test fail — the third assertion in this campaign to encode a bug as its expectation
+      // (see also `current_step: 2` above, and `expect(paymentStatus).toBeNull()` in
+      // `purchasing.integration.spec.ts`). Pinning a defect is legitimate, but it must assert the
+      // CONTRACT once the defect is fixed, otherwise the test cannot tell a fix from a regression.
       t = Date.now();
-      await expect(
-        withCommit(leaderOutletCtx, (client) =>
-          dropService.receive(
-            client,
-            dropId,
-            {
-              lines: [{ lineId: sj.drops[0]!.lines[0]!.id, qtyReceived: RECEIVED_QTY, receivedStorageAreaId: fx.freezerAreaOutlet }],
-              photoAttachmentIds: [photoAttachmentId],
-              signatureAttachmentId,
-            } as never,
-            fx.leaderOutletUserId,
-            RoleKey.LEADER_OUTLET,
-          ),
+      const received = await withCommit(leaderOutletCtx, (client) =>
+        dropService.receive(
+          client,
+          dropId,
+          {
+            lines: [{ lineId: sj.drops[0]!.lines[0]!.id, qtyReceived: RECEIVED_QTY, receivedStorageAreaId: fx.freezerAreaOutlet }],
+            photoAttachmentIds: [photoAttachmentId],
+            signatureAttachmentId,
+          } as never,
+          fx.leaderOutletUserId,
+          RoleKey.LEADER_OUTLET,
         ),
-      ).rejects.toThrow(/row-level security policy for table "surat_jalan"/i);
-      console.log(`[cross-kernel] dropService.receive (blocked by the RLS defect above) took ${Date.now() - t}ms`);
+      );
+      console.log(`[cross-kernel] dropService.receive took ${Date.now() - t}ms`);
 
-      // Confirms the failure is genuinely atomic — the whole transaction (drop status, the
-      // transfer_in movement, the request/SJ status flips) rolled back together, not a partial
-      // apply. Nothing on the outlet side of the ledger moved.
-      const outletBalanceAfterFailedReceive = await getOwnerPool().query<{ qty_on_hand: string } | undefined>(
+      // The receiving drop was the last one, so completing it must also complete the surat jalan
+      // header — the exact UPDATE that RLS used to block for this role.
+      expect(received.status).toBe('completed');
+      const dropStatusAfterReceive = await getOwnerPool().query<{ status: string }>(`SELECT status FROM sj_drops WHERE id = $1`, [dropId]);
+      expect(dropStatusAfterReceive.rows[0]!.status).toBe('completed');
+      const sjStatusAfterReceive = await getOwnerPool().query<{ status: string }>(`SELECT status FROM surat_jalan WHERE id = $1`, [sj.id]);
+      expect(sjStatusAfterReceive.rows[0]!.status).toBe('completed');
+
+      // And the stock actually landed in the outlet's freezer — the transfer_in leg that was
+      // untestable while the RLS defect stood.
+      const outletBalanceAfterReceive = await getOwnerPool().query<{ qty_on_hand: string } | undefined>(
         `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
         [fx.outletId, fx.freezerAreaOutlet, fx.frozenItemId],
       );
-      expect(Number(outletBalanceAfterFailedReceive.rows[0]?.qty_on_hand ?? 0)).toBeCloseTo(beforeOutletQty, 3);
-      const dropStatusAfterFailedReceive = await getOwnerPool().query<{ status: string }>(`SELECT status FROM sj_drops WHERE id = $1`, [dropId]);
-      expect(dropStatusAfterFailedReceive.rows[0]!.status).toBe('arrived'); // never advanced to 'completed'
+      // QA-ISOLATION finding: this previously read `beforeOutletQty + RECEIVED_QTY`.
+      // `beforeOutletQty` is a `Number`, but `RECEIVED_QTY` is the STRING constant `'10.000'`
+      // (declared above alongside `SENT_QTY`) — JS `+` between a number and a string is
+      // concatenation, not addition, so this silently compared against e.g. `153 + '10.000'`
+      // === the STRING `"15310.000"` (coerced to the number 15310) instead of `163`. Traced by
+      // dumping the actual `stock_balances`/`stock_movements` rows for this exact key: the real
+      // transition was 153 -> 163 (a correct, single +10 `transfer_in` at exactly
+      // `(fx.outletId, fx.freezerAreaOutlet, fx.frozenItemId)` — the same key `applyReceive`
+      // credits from `row.location_id`/`lineInput.receivedStorageAreaId`/`line.item_id`). The
+      // outlet leg was never crediting the wrong key; the assertion's own arithmetic was wrong.
+      // Fixed with `Number(RECEIVED_QTY)`, matching the warehouse leg's `Number(SENT_QTY)` above.
+      expect(Number(outletBalanceAfterReceive.rows[0]?.qty_on_hand ?? 0)).toBeCloseTo(beforeOutletQty + Number(RECEIVED_QTY), 3);
 
-      // ═══ 10. Stock: the fold of stock_movements equals the observed balance delta — proven on the
-      // WAREHOUSE leg (dispatch's transfer_out, which DID complete under the real kepala_gudang
-      // session). The OUTLET leg (transfer_in) is UNTESTABLE past this point: the defect above
-      // means the real receiving role can never commit it, so there is no outlet-side movement to
-      // fold. ═══
+      // ═══ 10. Stock: the fold of stock_movements equals the observed balance delta — now proven
+      // on BOTH legs. The warehouse leg (dispatch's transfer_out under the real kepala_gudang
+      // session) and, since migration 216, the outlet leg (transfer_in under the real
+      // leader_outlet session) — which is the whole point of this cross-kernel scenario. ═══
       const warehouseMovements = await getOwnerPool().query<{ movement_type: string; qty: string }>(
         `SELECT movement_type, qty FROM stock_movements WHERE ref_type = 'sj_drop' AND ref_id = $1 AND item_id = $2 AND location_id = $3`,
         [dropId, fx.frozenItemId, fx.warehouseId],
@@ -504,11 +529,17 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
       expect(foldedWarehouseDelta).toBeCloseTo(Number(afterWarehouse.rows[0]!.qty_on_hand) - beforeWarehouseQty, 3);
       expect(warehouseMovements.rows.map((r) => r.movement_type)).toContain('transfer_out');
 
-      const outletMovements = await getOwnerPool().query(
-        `SELECT movement_type FROM stock_movements WHERE ref_type = 'sj_drop' AND ref_id = $1 AND item_id = $2 AND location_id = $3`,
+      const outletMovements = await getOwnerPool().query<{ movement_type: string; qty: string }>(
+        `SELECT movement_type, qty FROM stock_movements WHERE ref_type = 'sj_drop' AND ref_id = $1 AND item_id = $2 AND location_id = $3`,
         [dropId, fx.frozenItemId, fx.outletId],
       );
-      expect(outletMovements.rows).toEqual([]); // confirms zero outlet-side movements exist — the rollback left nothing partial
+      // The outlet leg now exists and folds to exactly what landed in the freezer.
+      expect(outletMovements.rows.map((r) => r.movement_type)).toContain('transfer_in');
+      const foldedOutletDelta = outletMovements.rows.reduce(
+        (sum, r) => sum + (r.movement_type.endsWith('_out') ? -1 : 1) * Number(r.qty),
+        0,
+      );
+      expect(foldedOutletDelta).toBeCloseTo(Number(outletBalanceAfterReceive.rows[0]?.qty_on_hand ?? 0) - beforeOutletQty, 3);
 
       // ═══ 11. Audit — THE FINDING. See file header. Assert the honest, real outcome: zero
       // `audit_log` rows exist for the documents this scenario mutated, because

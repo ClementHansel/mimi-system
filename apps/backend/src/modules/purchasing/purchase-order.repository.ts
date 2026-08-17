@@ -18,6 +18,8 @@ export interface PoHeaderRow {
   total: Money;
   approval_id: string | null;
   payment_verification_id: string | null;
+  /** `payment_verifications.status` for `header.payment_verification_id` (LEFT JOIN — `null` until receiving creates one). CONTRACTS.md §4.11's `paymentStatus`. */
+  payment_status: string | null;
   created_by: string;
   cancel_reason: string | null;
   notes: string | null;
@@ -39,9 +41,11 @@ export interface PoLineRow {
 const HEADER_SELECT = `
   SELECT po.id, po.po_number, po.supplier_id, s.name AS supplier_name, po.location_id, po.pr_id, po.status,
          po.order_date, po.expected_date, po.payment_terms_days, po.subtotal, po.tax, po.total,
-         po.approval_id, po.payment_verification_id, po.created_by, po.cancel_reason, po.notes
+         po.approval_id, po.payment_verification_id, pv.status AS payment_status,
+         po.created_by, po.cancel_reason, po.notes
     FROM purchase_orders po
     JOIN suppliers s ON s.id = po.supplier_id
+    LEFT JOIN payment_verifications pv ON pv.id = po.payment_verification_id
 `;
 
 export class PurchaseOrderRepository {

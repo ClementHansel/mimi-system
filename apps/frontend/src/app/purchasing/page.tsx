@@ -1,6 +1,5 @@
-import { ClipboardList } from 'lucide-react';
-import { RoutePlaceholder } from '@/components/layout/RoutePlaceholder';
+import { PurchasingShell } from '@/components/purchasing/PurchasingShell';
 
 export default function PurchasingPage() {
-  return <RoutePlaceholder routeKey="purchasing" icon={<ClipboardList className="size-8" />} />;
+  return <PurchasingShell />;
 }

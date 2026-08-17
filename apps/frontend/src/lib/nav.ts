@@ -1,6 +1,6 @@
 import {
   ShoppingCart, LayoutDashboard, Store, Warehouse, ClipboardList, Landmark,
-  Users, Wrench, ShieldCheck, UserCircle, Waypoints, Truck, ClipboardCheck, type LucideIcon,
+  Users, Wrench, ShieldCheck, UserCircle, Waypoints, Truck, Route, ClipboardCheck, type LucideIcon,
 } from 'lucide-react';
 import type { PermissionKeyOrKeys } from './permissions';
 
@@ -100,6 +100,12 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     labelKey: 'nav.section.logistik',
     items: [
       { id: 'warehouse', labelKey: 'nav.warehouse', href: '/warehouse', icon: Warehouse, permission: 'delivery.read' },
+      // F-DELIVERY — the dispatcher's own surface for M10 delivery (CONTRACTS
+      // §4.10): Surat Jalan list/create/status walk + live per-drop/cold-chain
+      // tracking for the central-warehouse dispatcher. Distinct from `driver`
+      // above (the driver's own mobile job list, `Truck` icon) — `Route` reads
+      // as "the dispatch/route view" rather than duplicating that icon.
+      { id: 'delivery', labelKey: 'nav.delivery', href: '/delivery', icon: Route, permission: 'delivery.read' },
       { id: 'purchasing', labelKey: 'nav.purchasing', href: '/purchasing', icon: ClipboardList, permission: 'purchasing.read' },
     ],
   },

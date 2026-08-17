@@ -8,11 +8,13 @@ import {
   ERR_VALIDATION,
   PurchaseRequestStatus,
   RoleKey,
+  type ApprovalDetail,
   type Money,
   type Paginated,
   type Qty,
   type UUID,
 } from '@mimi/shared';
+import { formatDateOnly } from '../../common/date-only.util';
 import { ApprovalService } from '../../kernel/approvals/approvals.service';
 import { withWrite } from './db-tx';
 import type { ApprovePurchaseRequestDto, CreatePurchaseRequestDto, ListPurchaseRequestQueryDto, RejectPurchaseRequestDto } from './dto/purchase-request.dto';
@@ -44,6 +46,15 @@ export interface PurchaseRequestDetail {
   neededBy: string | null;
   rejectionReason: string | null;
   notes: string | null;
+  /**
+   * CONTRACTS.md §4.11: `GET /api/purchasing/requests/:id` → "PR with lines
+   * + `ApprovalDetail`" — DETAIL only (the list row's documented shape,
+   * `{id; prNumber; locationName; status; requestedBy; neededBy;
+   * lineCount}`, has no such field, so `PurchaseRequestListRow` above
+   * intentionally omits it). Populated via `loadApprovalDetail` below,
+   * mirroring `PurchaseOrderService`'s identical fix in this same ticket.
+   */
+  approval: ApprovalDetail | null;
   lines: { id: UUID; itemId: UUID; itemName: string; unitId: UUID; unitCode: string; qty: string; estPrice: string; suggestedSupplierId: UUID | null }[];
 }
 
@@ -80,7 +91,7 @@ export class PurchaseRequestService {
         locationName: row.location_name,
         status: row.status,
         requestedBy: row.requested_by_name ?? row.requested_by,
-        neededBy: row.needed_by,
+        neededBy: row.needed_by ? formatDateOnly(row.needed_by) : null,
         lineCount,
       });
     }
@@ -90,7 +101,7 @@ export class PurchaseRequestService {
   async getDetail(client: PoolClient, id: UUID): Promise<PurchaseRequestDetail> {
     const header = await this.requireHeader(client, id);
     const lines = await this.repo.findLines(client, id);
-    return this.toDetail(header, lines);
+    return this.toDetail(client, header, lines);
   }
 
   async create(client: PoolClient, actor: ActorContext, dto: CreatePurchaseRequestDto): Promise<PurchaseRequestDetail> {
@@ -201,8 +212,13 @@ export class PurchaseRequestService {
     }
   }
 
-  private toDetail(header: Awaited<ReturnType<PurchaseRequestRepository['findHeader']>>, lines: Awaited<ReturnType<PurchaseRequestRepository['findLines']>>): PurchaseRequestDetail {
+  private async toDetail(
+    client: PoolClient,
+    header: Awaited<ReturnType<PurchaseRequestRepository['findHeader']>>,
+    lines: Awaited<ReturnType<PurchaseRequestRepository['findLines']>>,
+  ): Promise<PurchaseRequestDetail> {
     const h = header!;
+    const approval = await this.loadApprovalDetail(client, h);
     return {
       id: h.id,
       prNumber: h.pr_number,
@@ -210,9 +226,10 @@ export class PurchaseRequestService {
       locationName: h.location_name,
       status: h.status,
       requestedBy: h.requested_by_name ?? h.requested_by,
-      neededBy: h.needed_by,
+      neededBy: h.needed_by ? formatDateOnly(h.needed_by) : null,
       rejectionReason: h.rejection_reason,
       notes: h.notes,
+      approval,
       lines: lines.map((l) => ({
         id: l.id,
         itemId: l.item_id,
@@ -224,5 +241,31 @@ export class PurchaseRequestService {
         suggestedSupplierId: l.suggested_supplier_id,
       })),
     };
+  }
+
+  /** CONTRACTS.md §4.11's PR-detail `ApprovalDetail` — see `PurchaseOrderService.loadApprovalDetail`'s doc comment for the shared reasoning (identical pattern, one-step chain here per this module's header doc). */
+  private async loadApprovalDetail(client: PoolClient, header: NonNullable<Awaited<ReturnType<PurchaseRequestRepository['findHeader']>>>): Promise<ApprovalDetail | null> {
+    if (!header.approval_id) return null;
+    try {
+      const detail = await this.approvals.getDetail(client, ApprovalDocumentType.PURCHASE_REQUEST, header.id);
+      return {
+        approvalId: detail.approvalId,
+        state: detail.state,
+        amount: detail.amount,
+        currentStep: detail.currentStep,
+        steps: detail.steps.map((s) => ({
+          stepNo: s.stepNo,
+          approverRole: s.approverRole,
+          state: s.state,
+          actedBy: s.actedBy,
+          actedAt: s.actedAt,
+          reason: s.reason,
+          offlineAuthorized: s.offlineAuthorized,
+          reverificationStatus: s.reverificationStatus,
+        })),
+      };
+    } catch {
+      return null;
+    }
   }
 }

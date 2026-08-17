@@ -2,6 +2,7 @@
 
 import { Store } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { Button } from '@/components/ui/Button';
 import { SyncStatusPill } from '@/components/ui/SyncStatusPill';
 import { useConnectivityStore } from '@/stores/connectivity-store';
 
@@ -18,8 +19,21 @@ import { useConnectivityStore } from '@/stores/connectivity-store';
  * not fully online, an explicit "sales visible on other tablets only after
  * reconnect" caveat (SYNC-PROTOCOL §8 row 1) so a cashier never assumes a
  * sale rung up here is already visible elsewhere.
+ *
+ * `onChangeLocation` (F02-FIX) is only passed when the active outlet came
+ * from a picker rather than a single device-assigned location (D-05
+ * head-office roles, or a supervisor with several assigned outlets) — a
+ * single-outlet cashier device keeps today's fixed display, but anyone who
+ * chose their outlet must always be able to see and change that choice so
+ * they're never confused about which outlet they're ringing sales into.
  */
-export function PosStatusBar({ locationName }: { locationName: string | null }) {
+export function PosStatusBar({
+  locationName,
+  onChangeLocation,
+}: {
+  locationName: string | null;
+  onChangeLocation?: () => void;
+}) {
   const { t } = useI18n();
   const tier = useConnectivityStore((s) => s.tier);
 
@@ -28,6 +42,11 @@ export function PosStatusBar({ locationName }: { locationName: string | null }) 
       <span className="flex items-center gap-2 text-sm font-medium text-text-primary">
         <Store className="size-4 text-text-muted" aria-hidden />
         {locationName ?? t('pos.noLocation')}
+        {onChangeLocation && (
+          <Button variant="ghost" size="sm" onClick={onChangeLocation}>
+            {t('pos.changeOutlet')}
+          </Button>
+        )}
       </span>
       <div className="flex items-center gap-3">
         {tier !== 'online' && <span className="text-xs text-warning-700">{t('pos.notCrossVisible')}</span>}

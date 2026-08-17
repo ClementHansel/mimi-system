@@ -94,9 +94,51 @@ async function cleanupPr(id: string): Promise<void> {
   await cleanupPool.query(`DELETE FROM purchase_requests WHERE id = $1`, [id]);
 }
 
+/**
+ * QA-ISOLATION finding: this suite's stock-touching mutations (`poService.receive()`,
+ * `pcService.*`) go through the REAL `StockLedgerService`, which durably updates
+ * `stock_balances.qty_on_hand` in the same commit as the `stock_movements` row (every
+ * mutating method here self-commits — see file header). The two cleanup functions below
+ * used to `DELETE FROM stock_movements ...` for the ref but NEVER touched the balance
+ * that movement had already added to — leaving `stock_balances` permanently out of sync
+ * with the (now smaller) fold of `stock_movements` for that key. `stock-ledger.integration
+ * .spec.ts`'s G1 "whole-table balance == fold-of-movements" check (run in a LATER file in
+ * the same live DB) is exactly what caught this: it failed with N>0 mismatched keys after
+ * a full suite run, on a database that was 0/0 clean immediately post-reset.
+ *
+ * Fix: capture the (location, storage_area, item) keys a ref's movements actually touched
+ * BEFORE deleting them, then reconcile `stock_balances.qty_on_hand` to the fold of
+ * whatever movements remain for that key (never a blind delete of the balance row itself —
+ * the key may carry real seed history this suite never touched).
+ */
+async function reconcileStockBalance(locationId: string, storageAreaId: string, itemId: string): Promise<void> {
+  await cleanupPool.query(
+    `UPDATE stock_balances
+        SET qty_on_hand = COALESCE(
+          (SELECT SUM(CASE WHEN m.movement_type LIKE '%_out' THEN -m.qty ELSE m.qty END)
+             FROM stock_movements m
+            WHERE m.location_id = stock_balances.location_id
+              AND m.storage_area_id = stock_balances.storage_area_id
+              AND m.item_id = stock_balances.item_id),
+          0
+        )
+      WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+    [locationId, storageAreaId, itemId],
+  );
+}
+
+async function deleteMovementsAndReconcile(refType: string, refIdCondition: string, params: unknown[]): Promise<void> {
+  const keys = await cleanupPool.query<{ location_id: string; storage_area_id: string; item_id: string }>(
+    `SELECT DISTINCT location_id, storage_area_id, item_id FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`,
+    params,
+  );
+  await cleanupPool.query(`DELETE FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`, params);
+  for (const key of keys.rows) await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
+}
+
 async function cleanupPo(id: string): Promise<void> {
   await cleanupPool.query(`UPDATE purchase_orders SET approval_id = NULL, payment_verification_id = NULL WHERE id = $1`, [id]);
-  await cleanupPool.query(`DELETE FROM stock_movements WHERE ref_type = 'po_receipt' AND ref_id IN (SELECT id FROM po_receipts WHERE po_id = $1)`, [id]);
+  await deleteMovementsAndReconcile('po_receipt', `ref_id IN (SELECT id FROM po_receipts WHERE po_id = $1)`, [id]);
   await cleanupPool.query(`DELETE FROM po_receipt_lines WHERE po_receipt_id IN (SELECT id FROM po_receipts WHERE po_id = $1)`, [id]);
   await cleanupPool.query(`DELETE FROM po_receipts WHERE po_id = $1`, [id]);
   await cleanupPool.query(`DELETE FROM payment_verifications WHERE ref_type = 'purchase_order' AND ref_id = $1`, [id]);
@@ -107,7 +149,7 @@ async function cleanupPo(id: string): Promise<void> {
 
 async function cleanupPc(id: string): Promise<void> {
   await cleanupPool.query(`UPDATE petty_cash SET payment_verification_id = NULL WHERE id = $1`, [id]);
-  await cleanupPool.query(`DELETE FROM stock_movements WHERE ref_type = 'petty_cash' AND ref_id = $1`, [id]);
+  await deleteMovementsAndReconcile('petty_cash', `ref_id = $1`, [id]);
   await cleanupPool.query(`DELETE FROM payment_verifications WHERE ref_type = 'petty_cash' AND ref_id = $1`, [id]);
   await cleanupPool.query(`DELETE FROM petty_cash WHERE id = $1`, [id]);
 }
@@ -138,25 +180,35 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
   it('PR create -> submit -> approve (Manager) reaches approved', async () => {
     const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
     const mgr = actorFor(fx, RoleKey.MANAGER, null);
+    // Fixed date — same day-shift regression rationale as the PO test below.
+    const neededBy = '2026-12-31';
 
     const created = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
       const { prService } = buildKit();
-      return prService.create(client, kgd, { locationId: fx.warehouseId, lines: [{ itemId: fx.itemId, qty: '10.000', unitId: fx.unitId, estPrice: '5000.00' }] });
+      return prService.create(client, kgd, { locationId: fx.warehouseId, neededBy, lines: [{ itemId: fx.itemId, qty: '10.000', unitId: fx.unitId, estPrice: '5000.00' }] });
     });
     prIds.push(created.id);
     expect(created.status).toBe('draft');
+    // Exact round-trip, not a loose date-shaped regex — a one-day-shifted value would still match a regex.
+    expect(created.neededBy).toBe(neededBy);
+    // CONTRACTS.md §4.11: PR detail is "PR with lines + `ApprovalDetail`" — absent pre-submit.
+    expect(created.approval).toBeNull();
 
     const submitted = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
       const { prService } = buildKit();
       return prService.submit(client, kgd, created.id);
     });
     expect(submitted.status).toBe('submitted');
+    expect(submitted.approval).not.toBeNull();
+    expect(submitted.approval!.currentStep).not.toBeNull();
 
     const approved = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
       const { prService } = buildKit();
       return prService.approve(client, mgr, created.id, {});
     });
     expect(approved.status).toBe('approved');
+    expect(approved.approval).not.toBeNull();
+    expect(approved.approval!.currentStep).toBeNull(); // finalized — the documented completion signal.
   });
 
   it('PO create -> submit -> approve -> issue -> receive posts purchase_in and updates items.avg_cost (FR-PO-02/03/04)', async () => {
@@ -168,27 +220,48 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
       return res.rows[0]!.avg_cost;
     });
 
+    // Fixed, non-today dates (rather than `new Date()`) so a day-shift regression can't hide behind
+    // "today happens to fall on a date the bug doesn't visibly break" — BE-PURCH-FIX regression for the
+    // `pg` local-`Date`/`.toISOString()` WITA (UTC+8) calendar-day shift (`common/date-only.util.ts`).
+    const orderDate = '2026-06-30';
+    const expectedDate = '2026-07-15';
+
     const created = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
       const { poService } = buildKit();
       return poService.create(client, mgr, {
-        supplierId: fx.supplierId, locationId: fx.warehouseId, orderDate: new Date().toISOString().slice(0, 10),
+        supplierId: fx.supplierId, locationId: fx.warehouseId, orderDate, expectedDate,
         lines: [{ itemId: fx.itemId, qtyOrdered: '20.000', unitId: fx.unitId, unitPrice: '8000.00' }],
       });
     });
     poIds.push(created.id);
     expect(created.status).toBe('draft');
     expect(created.total).toBe('160000.00');
+    // Exact round-trip — NOT merely `expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)`, which a
+    // one-day-shifted value would pass just as happily.
+    expect(created.orderDate).toBe(orderDate);
+    expect(created.expectedDate).toBe(expectedDate);
+    // CONTRACTS.md §4.11 `PurchaseOrder.approval`/`paymentStatus` — both absent on a fresh draft.
+    expect(created.approval).toBeNull();
+    expect(created.paymentStatus).toBeNull();
 
-    await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
+    const submitted = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
       const { poService } = buildKit();
       return poService.submit(client, mgr, created.id);
     });
+    // Once submitted, the approval chain is real — `approval` must carry it (never null past 'draft').
+    expect(submitted.approval).not.toBeNull();
+    expect(submitted.approval!.steps.length).toBeGreaterThan(0);
+    expect(submitted.approval!.currentStep).not.toBeNull();
 
     const approved = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
       const { poService } = buildKit();
       return poService.approve(client, mgr, created.id, undefined);
     });
     expect(approved.status).toBe('approved');
+    // `currentStep === null` is the documented finalization signal (@mimi/shared ApprovalDetail) — this
+    // single-manager-step chain should be finalized by now.
+    expect(approved.approval).not.toBeNull();
+    expect(approved.approval!.currentStep).toBeNull();
 
     const issued = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
       const { poService } = buildKit();
@@ -209,6 +282,27 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     expect(received.status).toBe('received');
     expect(received.lines[0]!.qtyReceived).toBe('20.000');
     expect(received.lines[0]!.qtyDifference).toBe('0.000');
+    // `received.paymentStatus` is `'pending'` here — ticket DB-PV-RLS. Migration 095's
+    // `payment_verifications_role` RLS policy was `FOR ALL USING (role IN owner,manager,finance)`, a
+    // BLANKET restriction with no SELECT carve-out, so `kepala_gudang`'s own session (the role that
+    // actually performs receiving, per `purchasing.po.receive`) could never see ANY
+    // `payment_verifications` row via the `LEFT JOIN` `PurchaseOrderRepository` now does, even though
+    // `createSystemVerification` just inserted one moments ago (that INSERT only ever succeeded
+    // because it escalates around itself — `PaymentVerificationsService`'s own "CARRIED ITEM #3" doc
+    // comment flags the identical gap on the INSERT `WITH CHECK` side; this was the SELECT-side twin).
+    // Fixed by `220_dbpvrls_payment_verifications_fulfilment_select.sql`: a new, command-scoped
+    // `FOR SELECT` policy lets fulfilment roles (`app_is_fulfilment_role()`, currently just
+    // `kepala_gudang`) read `purchase_order`-linked rows within their own location scope, without
+    // touching INSERT/UPDATE/DELETE on this table (still owner/manager/finance-only — see
+    // `payment-verifications-fulfilment-rls.spec.ts` for the write-side regression gates). The very
+    // next block re-reads the SAME PO as 'owner' and confirms the field matches exactly.
+    expect(received.paymentStatus).toBe('pending');
+
+    const asOwner = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) => {
+      const { poService } = buildKit();
+      return poService.getDetail(client, created.id);
+    });
+    expect(asOwner.paymentStatus).toBe('pending');
 
     const afterAvgCost = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, async (client) => {
       const res = await client.query<{ avg_cost: string }>(`SELECT avg_cost FROM items WHERE id = $1`, [fx.itemId]);
@@ -279,11 +373,14 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     const photoId = await createAttachment(fx.leaderOutletUserId, 'petty_cash_photo');
     attachmentIds.push(proofId, photoId);
 
+    // Fixed date (not `new Date()`) — same day-shift regression rationale as the PO/PR tests above.
+    const purchaseDate = '2026-03-01';
+
     const created = await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
       const { pcService } = buildKit();
       return pcService.create(client, ldr, {
         locationId: fx.outletId,
-        purchaseDate: new Date().toISOString().slice(0, 10),
+        purchaseDate,
         storeName: 'Toko Kelontong Pak Budi',
         lines: [{ description: 'Bawang merah', itemId: fx.itemId, storageAreaId: fx.storageAreaOutlet, qty: '2.000', amount: '30000.00', expenseCategory: 'operasional' }],
         paymentProofAttachmentId: proofId,
@@ -294,6 +391,8 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     expect(created.status).toBe('pending');
     expect(created.totalAmount).toBe('30000.00');
     expect(created.photoUrls.sort()).toEqual([proofId, photoId].sort());
+    // Exact round-trip — `petty_cash.purchase_date` is a `DATE` column (same `pg`/WITA pitfall).
+    expect(created.purchaseDate).toBe(purchaseDate);
 
     const balBefore = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) =>
       client.query<{ qty_on_hand: string }>(`SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [fx.outletId, fx.storageAreaOutlet, fx.itemId]),

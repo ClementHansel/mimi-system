@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { Snowflake, Package, Truck, MapPin } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Card, CardContent, CardHeader, CardTitle, Input, EmptyState, toast } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Input, EmptyState, Button } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
+import { ApiError } from '@/lib/api';
 import { getDailyRecap } from './lib/warehouse-api';
 import type { DailyRecap } from './lib/types';
 
@@ -21,14 +22,21 @@ export function RecapPanel() {
   const [date, setDate] = useState(todayISODate());
   const [recap, setRecap] = useState<DailyRecap | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    setError(undefined);
     getDailyRecap(date)
-      .then(setRecap)
-      .catch(() => toast({ title: t('table.error'), variant: 'danger' }))
-      .finally(() => setLoading(false));
-  }, [date, t]);
+      .then((res) => !cancelled && setRecap(res))
+      .catch((err: unknown) => !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [date, t, reloadToken]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -36,7 +44,15 @@ export function RecapPanel() {
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
 
-      {!loading && recap && (
+      {!loading && error && (
+        <EmptyState
+          title={error}
+          size="lg"
+          action={<Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>{t('common.retry')}</Button>}
+        />
+      )}
+
+      {!loading && !error && recap && (
         <>
           <div className="grid gap-3 sm:grid-cols-4">
             <Card>

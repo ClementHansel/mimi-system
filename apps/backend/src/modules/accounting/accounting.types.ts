@@ -1,4 +1,5 @@
 import type { Money, UUID } from '@mimi/shared';
+import { formatDateOnly } from '../../common/date-only.util';
 
 /**
  * M17 `accounting` — shared row/internal shapes (CONTRACTS.md §1.10 block
@@ -10,32 +11,18 @@ import type { Money, UUID } from '@mimi/shared';
  */
 
 /**
- * `node-pg` parses a `DATE` column into a JS `Date` constructed via the
- * LOCAL-timezone constructor (`new Date(year, month-1, day)`, confirmed by
- * this exact off-by-one-day symptom surfacing in
- * `accounting.integration.spec.ts`'s periods test) — not UTC, and there is
- * no global `types.setTypeParser` override anywhere in this backend
- * (`modules/report/report.types.ts` documents the same absence for
- * `TIMESTAMPTZ`). Calling `.toISOString()` on that value re-reads it as UTC,
- * which SHIFTS the calendar date by the server process's UTC offset — under
- * `Asia/Makassar` (UTC+8, D-11's mandated timezone), a `fiscal_periods.end_date`
- * of June 30 serializes as `"2026-06-29T16:00:00.000Z"`, one full day off
- * from the `ISODate` (`YYYY-MM-DD`, no time component) CONTRACTS.md
- * documents for this field. Every `DATE` column this module returns over
- * HTTP (`fiscal_periods.start_date`/`end_date`, `journal_entries.entry_date`)
- * must go through this helper — reading the Date's LOCAL calendar
- * components (which is what recovers the ORIGINAL y/m/d pg's local
- * constructor encoded) rather than its UTC ones. Passing a value pg has NOT
- * converted (already a plain string — a defensive case, not the expected
- * one on this backend today) is a safe no-op.
+ * Every `DATE` column this module returns over HTTP
+ * (`fiscal_periods.start_date`/`end_date`, `journal_entries.entry_date`)
+ * must go through this helper — see `common/date-only.util.ts`'s doc
+ * comment for why (the `pg` local-timezone-`Date` / `.toISOString()`
+ * calendar-day shift this closes). Moved out of this file and into
+ * `common/` by BE-PURCH-FIX once `modules/purchasing`/`modules/supplier`
+ * turned out to need the identical fix (this module was the original,
+ * canonical implementation). `journal.service.ts` now imports it straight
+ * from `common/` too; re-exported here only for any external code still
+ * importing the name from this module's own barrel.
  */
-export function formatDateOnly(value: unknown): string {
-  if (!(value instanceof Date)) return String(value);
-  const y = value.getFullYear();
-  const m = String(value.getMonth() + 1).padStart(2, '0');
-  const d = String(value.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
+export { formatDateOnly };
 
 export interface AccountRow {
   id: UUID;

@@ -14,3 +14,4 @@ export { ScopeService, type LocationScope } from './scope/scope.service';
 export { TokenService } from './jwt/token.service';
 export type { JwtAccessPayload, JwtRefreshPayload } from './jwt/jwt-payload.interface';
 export { AllExceptionsFilter } from './filters/all-exceptions.filter';
+export { formatDateOnly } from './date-only.util';

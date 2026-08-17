@@ -36,7 +36,17 @@ import { WasteRepository } from './waste.repository';
 import { WasteService, type ActorContext } from './waste.service';
 import { ReturnRepository } from './return.repository';
 import { ReturnService } from './return.service';
-import { appPoolForDi, closePool, createAttachment, deleteAttachment, ensureStock, loadFixtures, withRollbackAs, type Fixtures } from './test-support/live-db';
+import {
+  appPoolForDi,
+  closePool,
+  createAttachment,
+  deleteAttachment,
+  ensureStock,
+  loadFixtures,
+  reconcileStockBalance,
+  withRollbackAs,
+  type Fixtures,
+} from './test-support/live-db';
 
 function buildKit() {
   const events = new SyncEventsRepository(appPoolForDi());
@@ -61,20 +71,42 @@ const cleanupPool = new Pool({
     `postgres://${process.env.POSTGRES_USER ?? 'mimi'}:${process.env.POSTGRES_PASSWORD ?? 'mimi_secret'}@localhost:${process.env.POSTGRES_PORT ?? '55433'}/${process.env.POSTGRES_DB ?? 'mimi'}`,
 });
 
+/**
+ * QA-ISOLATION finding: `stock_movements` rows this suite posts durably increment
+ * `stock_balances.qty_on_hand` (real `StockLedgerService` calls, self-committed — see file
+ * header). The two cleanup functions below used to delete the ref-scoped `stock_movements`
+ * rows and stop there, leaving the balance permanently reflecting a movement that no longer
+ * exists — a silent leak `stock-ledger.integration.spec.ts`'s G1 invariant (balance == fold
+ * of movements, checked against the WHOLE table from a later file in the same live DB)
+ * catches. Capture the touched (location, storage_area, item) keys before deleting, then
+ * reconcile the balance to the fold of whatever movements remain — never blind-delete the
+ * balance row itself, since the key may carry real seed history this suite never touched.
+ */
+async function deletedMovementKeys(refType: string, refIdCondition: string, params: unknown[]): Promise<{ location_id: string; storage_area_id: string; item_id: string }[]> {
+  const keys = await cleanupPool.query<{ location_id: string; storage_area_id: string; item_id: string }>(
+    `SELECT DISTINCT location_id, storage_area_id, item_id FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`,
+    params,
+  );
+  await cleanupPool.query(`DELETE FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`, params);
+  return keys.rows;
+}
+
 async function cleanupWasteBatch(batchId: string): Promise<void> {
   const rows = await cleanupPool.query<{ id: string }>(`SELECT id FROM waste_records WHERE batch_id = $1`, [batchId]);
   for (const row of rows.rows) {
     await cleanupPool.query(`UPDATE waste_records SET approval_id = NULL WHERE id = $1`, [row.id]);
     await cleanupPool.query(`DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'waste' AND document_id = $1)`, [row.id]);
     await cleanupPool.query(`DELETE FROM approvals WHERE document_type = 'waste' AND document_id = $1`, [row.id]);
-    await cleanupPool.query(`DELETE FROM stock_movements WHERE ref_type = 'waste_record' AND ref_id = $1`, [row.id]);
+    const keys = await deletedMovementKeys('waste_record', `ref_id = $1`, [row.id]);
+    for (const key of keys) await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
   }
   await cleanupPool.query(`DELETE FROM waste_records WHERE batch_id = $1`, [batchId]);
 }
 
 async function cleanupReturn(id: string): Promise<void> {
   await cleanupPool.query(`UPDATE returns SET approval_id = NULL WHERE id = $1`, [id]);
-  await cleanupPool.query(`DELETE FROM stock_movements WHERE ref_type = 'return' AND ref_id = $1`, [id]);
+  const keys = await deletedMovementKeys('return', `ref_id = $1`, [id]);
+  for (const key of keys) await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
   await cleanupPool.query(`DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'return' AND document_id = $1)`, [id]);
   await cleanupPool.query(`DELETE FROM approvals WHERE document_type = 'return' AND document_id = $1`, [id]);
   await cleanupPool.query(`DELETE FROM returns WHERE id = $1`, [id]);
@@ -101,6 +133,13 @@ describe('Waste & Return — live database', () => {
   });
 
   afterAll(async () => {
+    // Reconcile the 4 keys `beforeAll`'s `ensureStock` bootstrapped directly (no matching
+    // `stock_movements` row for the bootstrap itself — see that function's header) back to
+    // the fold of whatever movements this suite's own tests actually posted against them.
+    await reconcileStockBalance(fx.outletId, fx.storageAreaOutlet, fx.itemId);
+    await reconcileStockBalance(fx.warehouseId, fx.storageAreaWarehouse, fx.itemId);
+    await reconcileStockBalance(fx.outletId, fx.storageAreaOutlet, fx.itemId2);
+    await reconcileStockBalance(fx.warehouseId, fx.storageAreaWarehouse, fx.itemId2);
     await cleanupPool.end();
     await closePool();
   });

@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LockKeyhole, Undo2, ShoppingBag, Store } from 'lucide-react';
+import { LockKeyhole, Undo2, ShoppingBag, Store, AlertTriangle } from 'lucide-react';
 import { calculateCartSummary } from '@mimi/shared';
 import { useI18n } from '@/lib/i18n';
-import { Button, Tabs, TabsList, TabsTrigger, TabsContent, Modal } from '@/components/ui';
+import { Button, Tabs, TabsList, TabsTrigger, TabsContent, Modal, EmptyState } from '@/components/ui';
 import { getBrowserLocalRuntime } from '@/lib/local/browser';
 import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 import { PosStatusBar } from '@/components/pos/PosStatusBar';
+import { PosLocationPicker } from '@/components/pos/PosLocationPicker';
 import { ShiftOpenForm } from '@/components/pos/ShiftOpenForm';
 import { ShiftCloseModal } from '@/components/pos/ShiftCloseModal';
 import { ProductGrid } from '@/components/pos/ProductGrid';
@@ -30,7 +31,7 @@ import type { PosCatalog } from '@/components/pos/types';
 export default function PosPage() {
   const { t } = useI18n();
   const actor = useActorMeta();
-  const location = usePosLocation();
+  const posLocation = usePosLocation();
   const kasirName = useSessionStore((s) => s.user?.name ?? '');
   const currentShift = usePosShiftStore((s) => s.current);
   const cartLines = usePosCartStore((s) => s.lines);
@@ -39,6 +40,8 @@ export default function PosPage() {
   const addProduct = usePosCartStore((s) => s.addProduct);
 
   const [runtime, setRuntime] = useState<LocalRuntime | null>(null);
+  const [runtimeError, setRuntimeError] = useState(false);
+  const [runtimeAttempt, setRuntimeAttempt] = useState(0);
   const [catalog, setCatalog] = useState<PosCatalog | null>(null);
   const [catalogError, setCatalogError] = useState(false);
   const [closeShiftOpen, setCloseShiftOpen] = useState(false);
@@ -47,8 +50,13 @@ export default function PosPage() {
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
 
   useEffect(() => {
-    getBrowserLocalRuntime().then(setRuntime);
-  }, []);
+    setRuntimeError(false);
+    getBrowserLocalRuntime()
+      .then(setRuntime)
+      .catch(() => setRuntimeError(true));
+  }, [runtimeAttempt]);
+
+  const location = posLocation.status === 'ready' ? posLocation.location : null;
 
   useEffect(() => {
     if (!location) return;
@@ -62,11 +70,39 @@ export default function PosPage() {
     saleDiscount,
   );
 
-  if (!actor || !location) {
+  if (posLocation.status === 'error') {
+    return (
+      <EmptyState
+        size="lg"
+        icon={AlertTriangle}
+        title={t('pos.outletLoadFailedTitle')}
+        description={t('pos.outletLoadFailedDescription')}
+        action={<Button onClick={posLocation.retry}>{t('common.retry')}</Button>}
+      />
+    );
+  }
+
+  if (posLocation.status === 'choose') {
+    return <PosLocationPicker options={posLocation.options} onSelect={posLocation.select} />;
+  }
+
+  if (!actor || posLocation.status === 'loading') {
     return <div className="flex min-h-[40vh] items-center justify-center text-text-muted">{t('common.loading')}</div>;
   }
 
-  if (!runtime) {
+  if (runtimeError) {
+    return (
+      <EmptyState
+        size="lg"
+        icon={AlertTriangle}
+        title={t('pos.runtimeLoadFailedTitle')}
+        description={t('pos.runtimeLoadFailedDescription')}
+        action={<Button onClick={() => setRuntimeAttempt((a) => a + 1)}>{t('common.retry')}</Button>}
+      />
+    );
+  }
+
+  if (!runtime || !location) {
     return <div className="flex min-h-[40vh] items-center justify-center text-text-muted">{t('common.loading')}</div>;
   }
 
@@ -76,7 +112,10 @@ export default function PosPage() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <PosStatusBar locationName={location.name} />
+      <PosStatusBar
+        locationName={location.name}
+        onChangeLocation={posLocation.status === 'ready' && posLocation.canChange ? posLocation.change : undefined}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Tabs defaultValue="kasir">

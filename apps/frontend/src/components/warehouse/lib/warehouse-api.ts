@@ -8,10 +8,10 @@
  * flow).
  */
 import { api } from '@/lib/api';
-import type { Paginated } from '@/lib/shared-types';
+import type { Paginated, Opname, OpnameLine } from '@/lib/shared-types';
 import type {
-  Balance, StorageArea, Item, Movement, Replenishment, SuratJalan, Driver, Vehicle,
-  DailyRecap, PurchaseOrder, SupplierDirectoryEntry, ReturnDoc, ReturnDetail,
+  Balance, StorageArea, Item, Movement, Replenishment, SuratJalan,
+  DailyRecap, PurchaseOrder, PurchaseOrderListRow, SupplierDirectoryEntry, ReturnDoc, ReturnDetail, WasteRecord,
 } from './types';
 
 // ── inventory (§4.7) ─────────────────────────────────────────────────────────
@@ -69,7 +69,18 @@ export function processReplenishment(id: string) {
   return api.post<Replenishment>(`/replenishment/${id}/process`);
 }
 
-// ── delivery / Surat Jalan (§4.10) ──────────────────────────────────────────
+// ── delivery / Surat Jalan (§4.10) — READ ONLY from this surface ───────────
+//
+// F-DELIVERY: the create/manage lifecycle (create, patch, ready, load,
+// dispatch, cancel, drivers/vehicles pickers) now lives at `/delivery`
+// (`components/delivery/**`, which reuses this surface's `SjCreateForm` by
+// direct import — do not edit that path from here). Two places to create
+// and manage the same document was the thing to avoid, so only the reads
+// this surface's own `OutboundPanel` rollup needs stay here; every mutation
+// wrapper that used to live here (createSuratJalan/patchSuratJalan/
+// readySuratJalan/loadSuratJalan/dispatchSuratJalan/cancelSuratJalan) plus
+// the driver/vehicle pickers moved with `SuratJalanPanel.tsx`'s removal —
+// `components/delivery/lib/delivery-api.ts` carries its own copies.
 
 export function listSuratJalan(params: { status?: string; date?: string; locationId?: string; driverId?: string } = {}) {
   const qs = new URLSearchParams({ page: '1' });
@@ -84,48 +95,6 @@ export function getSuratJalan(id: string) {
   return api.get<SuratJalan>(`/delivery/surat-jalan/${id}`);
 }
 
-export function createSuratJalan(body: {
-  shipmentType: 'frozen' | 'dry';
-  driverId: string;
-  vehicleId: string;
-  plannedDate: string;
-  drops: { locationId: string; replenishmentRequestId?: string; lines: { itemId: string; qty: string; unitId: string; requestLineId?: string }[] }[];
-  notes?: string;
-}) {
-  return api.post<SuratJalan>('/delivery/surat-jalan', body);
-}
-
-export function patchSuratJalan(
-  id: string,
-  body: Partial<{ driverId: string; vehicleId: string; plannedDate: string; notes: string }>,
-) {
-  return api.patch<SuratJalan>(`/delivery/surat-jalan/${id}`, body);
-}
-
-export function readySuratJalan(id: string) {
-  return api.post<SuratJalan>(`/delivery/surat-jalan/${id}/ready`);
-}
-
-export function loadSuratJalan(id: string, body: { seals: { sealNumber: string }[]; tempC?: string }) {
-  return api.post<SuratJalan>(`/delivery/surat-jalan/${id}/load`, body);
-}
-
-export function dispatchSuratJalan(id: string) {
-  return api.post<SuratJalan>(`/delivery/surat-jalan/${id}/dispatch`);
-}
-
-export function cancelSuratJalan(id: string, body: { reason: string }) {
-  return api.post<SuratJalan>(`/delivery/surat-jalan/${id}/cancel`, body);
-}
-
-export function getDrivers(active = true) {
-  return api.get<Driver[]>(`/delivery/drivers?active=${active}`);
-}
-
-export function getVehicles(active = true) {
-  return api.get<Vehicle[]>(`/delivery/vehicles?active=${active}`);
-}
-
 export function getDailyRecap(date: string) {
   return api.get<DailyRecap>(`/delivery/recap/daily?date=${date}`);
 }
@@ -138,7 +107,10 @@ export function listPurchaseOrders(params: { status?: string; supplierId?: strin
   if (params.supplierId) qs.set('supplierId', params.supplierId);
   if (params.from) qs.set('from', params.from);
   if (params.to) qs.set('to', params.to);
-  return api.get<Paginated<PurchaseOrder>>(`/purchasing/orders?${qs.toString()}`);
+  // `PurchaseOrderListRow`, not the full `PurchaseOrder` detail — the list
+  // endpoint never returns `lines`/`subtotal`/`tax` (see `lib/types.ts`'s
+  // header comment on the two interfaces).
+  return api.get<Paginated<PurchaseOrderListRow>>(`/purchasing/orders?${qs.toString()}`);
 }
 
 export function getPurchaseOrder(id: string) {
@@ -193,4 +165,54 @@ export function shipReturn(id: string, body: { proofAttachmentIds: string[] }) {
 
 export function receiveReturnDoc(id: string, body: { lines: { lineId: string; qtyReceived: string; storageAreaId: string }[]; proofAttachmentIds: string[] }) {
   return api.post<ReturnDoc>(`/returns/${id}/receive`, body);
+}
+
+// ── stock opname (§4.8) — the central warehouse runs its own counts against
+// its own location, same endpoints outlet's `lib/outlet-api.ts` calls ─────
+
+export function listOpname(locationId: string, status?: string) {
+  const qs = new URLSearchParams({ locationId, page: '1' });
+  if (status) qs.set('status', status);
+  return api.get<Paginated<Opname>>(`/stock-opname?${qs.toString()}`);
+}
+
+export function getOpname(id: string) {
+  return api.get<Opname & { lines: OpnameLine[] }>(`/stock-opname/${id}`);
+}
+
+export function createOpname(locationId: string, storageAreaId?: string) {
+  return api.post<Opname & { lines: OpnameLine[] }>('/stock-opname', { locationId, storageAreaId });
+}
+
+export function putOpnameLines(
+  opnameId: string,
+  lines: { storageAreaId: string; itemId: string; countedQty: string; varianceReason?: string }[],
+) {
+  return api.put<OpnameLine[]>(`/stock-opname/${opnameId}/lines`, { lines });
+}
+
+export function submitOpname(id: string) {
+  return api.post<Opname & { lines: OpnameLine[] }>(`/stock-opname/${id}/submit`);
+}
+
+export function cancelOpname(id: string) {
+  return api.delete<{ id: string; status: string }>(`/stock-opname/${id}`);
+}
+
+// ── waste (§4.12) — expired/damaged/spoiled stock written off at the
+// central warehouse itself (distinct from `ReturnPanel`'s retur-to-supplier
+// and retur-from-outlet flows) ──────────────────────────────────────────────
+
+export function listWaste(locationId: string, status?: string) {
+  const qs = new URLSearchParams({ locationId, page: '1' });
+  if (status) qs.set('status', status);
+  return api.get<Paginated<WasteRecord>>(`/waste?${qs.toString()}`);
+}
+
+export function createWaste(body: {
+  locationId: string;
+  items: { storageAreaId: string; itemId: string; qty: string; reason: string; reasonDetail?: string }[];
+  photoAttachmentIds: string[];
+}) {
+  return api.post<WasteRecord[]>('/waste', body);
 }

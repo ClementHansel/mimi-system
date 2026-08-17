@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { businessDateOf, formatCloudDocNumber, type ISODate, type Qty, type UUID } from '@mimi/shared';
+import { formatDateOnly } from '../../common/date-only.util';
 
 export interface ReplenishmentRow {
   id: UUID;
@@ -128,17 +129,6 @@ function mapLineRow(r: RawLineRow): ReplenishmentLineRow {
     qtyReceived: r.qty_received,
     amendReason: r.amend_reason,
   };
-}
-
-/** `needed_by` comes back from `pg` as a JS `Date` at UTC midnight for a `DATE` column — format as `YYYY-MM-DD`, never through `toISOString()` (which would print a UTC-shifted day for negative-offset callers reading it back, D-11). */
-function formatDateOnly(value: unknown): ISODate {
-  if (value instanceof Date) {
-    const y = value.getUTCFullYear();
-    const m = String(value.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(value.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-  return String(value);
 }
 
 @Injectable()

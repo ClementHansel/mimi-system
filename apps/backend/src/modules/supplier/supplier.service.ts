@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { UUID, Money, ISODate, Paginated } from '@mimi/shared';
+import { formatDateOnly } from '../../common/date-only.util';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 
 export interface CreateSupplierDto {
@@ -494,15 +495,26 @@ export class SupplierService {
     );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
 
+    // NOTE (BE-PURCH-FIX sweep): this query previously joined a
+    // `purchase_order_lines` table and a `pv.po_id`/`pv.payment_status`
+    // shape that don't exist — the real tables/columns are `po_lines`
+    // (migration 041) and `payment_verifications.status`, reached via
+    // `purchase_orders.payment_verification_id` (migration 094), not a
+    // `po_id` FK on `payment_verifications` (that table is a generic
+    // `ref_type`/`ref_id` sink shared by 5+ document types, not PO-specific
+    // — see `PoHeaderRow`/`accounting/payment-verifications.service.ts`).
+    // As written this endpoint could never have executed successfully
+    // (`column pv.po_id does not exist`); fixed alongside this ticket's
+    // `orderDate`/DATE-column sweep since it's the same method.
     const res = await client.query<Record<string, any>>(
       `SELECT po.id as po_id, po.po_number, po.order_date, po.status,
               COALESCE(SUM(pol.qty_ordered * pol.unit_price), '0') as total,
-              pv.payment_status
+              pv.status AS payment_status
        FROM purchase_orders po
-       LEFT JOIN purchase_order_lines pol ON pol.po_id = po.id
-       LEFT JOIN payment_verifications pv ON pv.po_id = po.id
+       LEFT JOIN po_lines pol ON pol.po_id = po.id
+       LEFT JOIN payment_verifications pv ON pv.id = po.payment_verification_id
        WHERE ${where}
-       GROUP BY po.id, pv.payment_status
+       GROUP BY po.id, pv.status
        ORDER BY po.order_date DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
@@ -557,7 +569,10 @@ export class SupplierService {
     itemId: r.item_id,
     itemName: r.item_name,
     price: r.price ?? '0.00',
-    effectiveDate: r.effective_date,
+    // `supplier_price_history.effective_date` is a `DATE` column — `pg` parses it into a
+    // local-timezone `Date`; passing it through raw lets JSON's implicit `.toISOString()`
+    // shift the calendar day under WITA (UTC+8). See `common/date-only.util.ts`.
+    effectiveDate: formatDateOnly(r.effective_date),
     source: r.source,
     recordedBy: r.recorded_by ?? null,
   });
@@ -565,7 +580,8 @@ export class SupplierService {
   private mapTransactionEntry = (r: Record<string, any>): TransactionEntry => ({
     poId: r.po_id,
     poNumber: r.po_number,
-    orderDate: r.order_date,
+    // `purchase_orders.order_date` — same `DATE`-column pitfall as above.
+    orderDate: formatDateOnly(r.order_date),
     status: r.status,
     total: r.total ?? '0.00',
     paymentStatus: r.payment_status ?? null,

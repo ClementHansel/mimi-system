@@ -9,6 +9,7 @@ import {
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
+import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import {
   getStorageAreas, getItems, getSupplierDirectory, listReturns, getReturn, createReturn, submitReturn, shipReturn, receiveReturnDoc,
@@ -49,6 +50,7 @@ export function ReturnPanel() {
 
   const [supplierRows, setSupplierRows] = useState<ReturnDoc[]>([]);
   const [supplierLoading, setSupplierLoading] = useState(true);
+  const [supplierError, setSupplierError] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
   const [supplierId, setSupplierId] = useState('');
   const [lines, setLines] = useState<ReturnLineDraft[]>([{ itemId: '', storageAreaId: '', qty: null, condition: 'damaged', reason: '' }]);
@@ -57,6 +59,7 @@ export function ReturnPanel() {
 
   const [outletRows, setOutletRows] = useState<ReturnDoc[]>([]);
   const [outletLoading, setOutletLoading] = useState(true);
+  const [outletError, setOutletError] = useState<string | undefined>(undefined);
   const [receiveTarget, setReceiveTarget] = useState<ReturnDetail | null>(null);
   const [receiveLines, setReceiveLines] = useState<Record<string, ReceiveLineDraft>>({});
   const [receivePhoto, setReceivePhoto] = useState<File | null>(null);
@@ -72,11 +75,19 @@ export function ReturnPanel() {
 
   function reloadSupplierReturns() {
     setSupplierLoading(true);
-    listReturns({ direction: 'gudang_to_supplier' }).then((r) => setSupplierRows(r.rows)).finally(() => setSupplierLoading(false));
+    setSupplierError(undefined);
+    listReturns({ direction: 'gudang_to_supplier' })
+      .then((r) => setSupplierRows(r.rows))
+      .catch((err: unknown) => setSupplierError(err instanceof ApiError ? err.message : t('table.error')))
+      .finally(() => setSupplierLoading(false));
   }
   function reloadOutletReturns() {
     setOutletLoading(true);
-    listReturns({ direction: 'outlet_to_gudang', status: 'in_transit' }).then((r) => setOutletRows(r.rows)).finally(() => setOutletLoading(false));
+    setOutletError(undefined);
+    listReturns({ direction: 'outlet_to_gudang', status: 'in_transit' })
+      .then((r) => setOutletRows(r.rows))
+      .catch((err: unknown) => setOutletError(err instanceof ApiError ? err.message : t('table.error')))
+      .finally(() => setOutletLoading(false));
   }
   useEffect(reloadSupplierReturns, []);
   useEffect(reloadOutletReturns, []);
@@ -215,8 +226,14 @@ export function ReturnPanel() {
             data={{ rows: supplierRows, total: supplierRows.length, page: 1, pageSize: Math.max(supplierRows.length, 1) }}
             keyField={(r) => r.id}
             loading={supplierLoading}
+            error={supplierError}
             emptyDescription={t('warehouse.return.empty')}
           />
+          {supplierError && (
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={reloadSupplierReturns}>{t('common.retry')}</Button>
+            </div>
+          )}
         </div>
 
         <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={t('warehouse.return.new')} size="lg">
@@ -260,9 +277,15 @@ export function ReturnPanel() {
             data={{ rows: outletRows, total: outletRows.length, page: 1, pageSize: Math.max(outletRows.length, 1) }}
             keyField={(r) => r.id}
             loading={outletLoading}
+            error={outletError}
             onRowClick={openReceive}
             emptyDescription={t('warehouse.return.emptyFromOutlet')}
           />
+          {outletError && (
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={reloadOutletReturns}>{t('common.retry')}</Button>
+            </div>
+          )}
         </div>
 
         <Modal open={!!receiveTarget} onClose={() => setReceiveTarget(null)} title={receiveTarget?.returnNumber ?? ''} size="lg">

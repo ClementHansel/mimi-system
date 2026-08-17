@@ -7,6 +7,7 @@ import type {
   TempLog,
   UUID,
 } from '@mimi/shared';
+import { formatDateOnly } from '../../common/date-only.util';
 
 /**
  * Shared read-side SQL + row->DTO mapping for `surat-jalan.service.ts` and
@@ -46,13 +47,6 @@ const HEADER_SELECT = `
     JOIN vehicles v ON v.id = sj.vehicle_id
     LEFT JOIN users cu ON cu.id = sj.created_by
 `;
-
-function formatDateOnly(value: unknown): string {
-  if (value instanceof Date) {
-    return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
-  }
-  return String(value);
-}
 
 export async function selectSuratJalanHeader(client: PoolClient, id: UUID): Promise<SuratJalanHeaderRow | null> {
   const res = await client.query<SuratJalanHeaderRow>(`${HEADER_SELECT} WHERE sj.id = $1`, [id]);

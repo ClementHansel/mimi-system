@@ -456,6 +456,109 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     });
   });
 
+  describe('DATE-column round-trips and getTransactions (BE-PURCH-FIX)', () => {
+    it('getPriceHistory.effectiveDate round-trips the exact YYYY-MM-DD, never shifted by the pg local-Date/WITA gotcha', async () => {
+      const owner = getOwnerPool();
+      const effectiveDate = '2026-06-30'; // fixed, non-"today" — a day-shift can't hide behind a lucky date.
+
+      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
+        `DATE-HIST-${randomUUID().slice(0, 8)}`,
+        'Date Test',
+      ]);
+      const supplierId = suppRes.rows[0].id;
+      const itemRes = await owner.query(`SELECT id FROM items LIMIT 1`);
+      const itemId = itemRes.rows[0].id;
+
+      await owner.query(
+        `INSERT INTO supplier_price_history (supplier_id, item_id, price, effective_date, source)
+         VALUES ($1, $2, '77000.00', $3, 'manual')`,
+        [supplierId, itemId, effectiveDate],
+      );
+
+      try {
+        await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
+          const syncEmit = { emit: async () => {} } as any;
+          const service = new SupplierService(syncEmit);
+
+          const history = await service.getPriceHistory(client, supplierId);
+          const row = history.rows.find((r) => r.price === '77000.00');
+          expect(row).toBeTruthy();
+          // Exact string equality — a `stringMatching(/^\d{4}-\d{2}-\d{2}$/)` regex would pass
+          // just as happily on a one-day-shifted value, which is exactly why this shipped broken.
+          expect(row!.effectiveDate).toBe(effectiveDate);
+        });
+      } finally {
+        await owner.query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [supplierId]);
+        await owner.query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+      }
+    });
+
+    it('getTransactions runs (previously threw — wrong table/column names) and round-trips orderDate + paymentStatus exactly', async () => {
+      const owner = getOwnerPool();
+      const orderDate = '2026-06-30';
+
+      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
+        `DATE-TXN-${randomUUID().slice(0, 8)}`,
+        'Date Txn Test',
+      ]);
+      const supplierId = suppRes.rows[0].id;
+      const locRes = await owner.query(`SELECT id FROM locations LIMIT 1`);
+      const locationId = locRes.rows[0].id;
+      const itemRes = await owner.query<{ id: string; base_unit_id: string }>(`SELECT id, base_unit_id FROM items LIMIT 1`);
+      const itemId = itemRes.rows[0]!.id;
+      const unitId = itemRes.rows[0]!.base_unit_id;
+
+      const poRes = await owner.query(
+        `INSERT INTO purchase_orders (po_number, supplier_id, location_id, status, order_date, created_by)
+         VALUES ($1, $2, $3, 'issued', $4, $5) RETURNING id`,
+        [`PO-TEST-${randomUUID().slice(0, 8)}`, supplierId, locationId, orderDate, fx.kepalaGudangUserId],
+      );
+      // `payment_verifications`' own RLS policy only allows role IN ('owner','manager','finance') —
+      // `kepala_gudang` (this file's usual test role) can't see it, and `purchase_orders`' policy
+      // additionally requires `app_has_location`, which an empty `locationIds` scope would fail.
+      // 'owner' is central (`app_is_central()`) and on both allow-lists, so the read below uses it.
+      const poId = poRes.rows[0].id;
+      await owner.query(
+        `INSERT INTO po_lines (po_id, item_id, unit_id, qty_ordered, unit_price, line_total) VALUES ($1, $2, $3, 2, '5000.00', '10000.00')`,
+        [poId, itemId, unitId],
+      );
+      const pvRes = await owner.query(
+        `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, status, submitted_by)
+         VALUES ($1, 'purchase_order', $2, 'supplier', $3, '10000.00', 'pending', $4) RETURNING id`,
+        [`PV-TEST-${randomUUID().slice(0, 8)}`, poId, supplierId, fx.kepalaGudangUserId],
+      );
+      await owner.query(`UPDATE purchase_orders SET payment_verification_id = $2 WHERE id = $1`, [poId, pvRes.rows[0].id]);
+
+      try {
+        await withRollback(RoleKey.OWNER, [], async (client) => {
+          const syncEmit = { emit: async () => {} } as any;
+          const service = new SupplierService(syncEmit);
+
+          // Previously: `column pv.po_id does not exist` (wrong join) — this call could never
+          // have succeeded before BE-PURCH-FIX's query rewrite.
+          const txns = await service.getTransactions(client, supplierId);
+          const row = txns.rows.find((r) => r.poId === poId);
+          expect(row).toBeTruthy();
+          expect(row!.orderDate).toBe(orderDate); // exact round-trip, not merely date-shaped
+          // `SUM(qty_ordered * unit_price)` on NUMERIC(14,3) * NUMERIC(18,2) is NOT cast back down to
+          // 2dp by this pre-existing query (untouched by BE-PURCH-FIX beyond the join/date fixes) — the
+          // combined scale (5dp) is the actual, real response shape, not a `toFixed`-style rounding.
+          expect(row!.total).toBe('10000.00000');
+          expect(row!.paymentStatus).toBe('pending');
+          expect(row!.status).toBe('issued');
+        });
+      } finally {
+        // `fk_po_pv` (migration 094) requires clearing `purchase_orders.payment_verification_id`
+        // BEFORE the referenced `payment_verifications` row can be deleted.
+        await owner.query(`UPDATE purchase_orders SET payment_verification_id = NULL WHERE id = $1`, [poId]);
+        await owner.query(`DELETE FROM payment_verifications WHERE id = $1`, [pvRes.rows[0].id]);
+        await owner.query(`DELETE FROM po_lines WHERE po_id = $1`, [poId]);
+        await owner.query(`DELETE FROM purchase_orders WHERE id = $1`, [poId]);
+        await owner.query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+      }
+    });
+  });
+
   describe('Money type precision (CONTRACTS.md §0)', () => {
     it('currentPrice returned as decimal string, not JS number', async () => {
       const owner = getOwnerPool();

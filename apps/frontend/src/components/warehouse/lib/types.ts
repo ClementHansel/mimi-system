@@ -11,6 +11,11 @@
  */
 import type { Money, Qty, Temp, UUID, ISODate, ISODateTime } from '@/lib/shared-types';
 
+// `Opname`/`OpnameLine` are imported straight from `@/lib/shared-types` (see
+// that file's M08 section) rather than redeclared here — verified against
+// the live backend response, unlike `PurchaseOrder` below.
+export type { Opname, OpnameLine } from '@/lib/shared-types';
+
 // ── §4.7 inventory ───────────────────────────────────────────────────────────
 
 export interface Balance {
@@ -91,6 +96,16 @@ export interface ApprovalDetail {
   approvalId: UUID;
   state: string;
   amount: Money | null;
+  /**
+   * The step number currently awaiting action, `null` once the chain is
+   * finalized — verified against `replenishment.service.ts`'s
+   * `loadApprovalDetail` (`currentStep: detail.currentStep`, sourced from
+   * `kernel/approvals`' own `ApprovalDetail`). Was missing from this local
+   * type before this pass; nothing here read it yet, but any UI wanting to
+   * tell "still mid-chain" from "chain finished" needs this, not a scan of
+   * `steps` for the first `pending` entry.
+   */
+  currentStep: number | null;
   steps: ApprovalStep[];
 }
 
@@ -126,72 +141,21 @@ export interface Replenishment {
 }
 
 // ── §4.10 delivery ───────────────────────────────────────────────────────────
-
-export interface DropLine {
-  id: UUID;
-  itemId: UUID;
-  itemName: string;
-  unitCode: string;
-  storageType: 'frozen' | 'chilled' | 'dry';
-  qty: Qty;
-  qtyReceived: Qty | null;
-  receivedStorageAreaId: UUID | null;
-  discrepancyReason: string | null;
-}
-
-export interface Drop {
-  id: UUID;
-  dropSeq: number;
-  locationId: UUID;
-  locationName: string;
-  city: string;
-  replenishmentRequestId: UUID | null;
-  status: string;
-  departedAt: ISODateTime | null;
-  arrivedAt: ISODateTime | null;
-  receivedBy: string | null;
-  receivedAt: ISODateTime | null;
-  signatureUrl: string | null;
-  photoUrls: string[];
-  discrepancyNotes: string | null;
-  lines: DropLine[];
-}
-
-export interface Seal {
-  id: UUID;
-  dropId: UUID | null;
-  sealNumber: string;
-  status: string;
-  checkedBy: string | null;
-  checkedAt: ISODateTime | null;
-}
-
-export interface TempLog {
-  id: UUID;
-  dropId: UUID | null;
-  stage: 'load' | 'depart' | 'arrive';
-  tempC: Temp;
-  isBreach: boolean;
-  loggedBy: string;
-  loggedAt: ISODateTime;
-}
-
-export interface SuratJalan {
-  id: UUID;
-  sjNumber: string;
-  originLocationId: UUID;
-  shipmentType: 'frozen' | 'dry';
-  driver: { id: UUID; name: string; phone: string | null };
-  vehicle: { id: UUID; plateNumber: string; hasFreezer: boolean };
-  status: string;
-  plannedDate: ISODate;
-  dispatchedAt: ISODateTime | null;
-  completedAt: ISODateTime | null;
-  drops: Drop[];
-  seals: Seal[];
-  tempLogs: TempLog[];
-  createdBy: string;
-}
+//
+// `Drop`/`DropLine`/`Seal`/`TempLog`/`SuratJalan` used to be hand-rolled
+// copies here (same shape as `@mimi/shared`'s, transcribed independently per
+// this file's header comment about the outlet/warehouse ownership split).
+// That copy had silently drifted: `TempLog.breachedClasses`/`ranges`
+// (cold-chain breach detail — which class(es) a reading actually breached,
+// and the range it was checked against, D-14/owner ruling 2026-08-17) were
+// missing, so any warehouse code reading a `TempLog` off this local type
+// could never see a breach's class detail even though the backend sends it.
+// Flagged during F-DELIVERY's build (that surface always imported the
+// canonical type via `@/lib/shared-types` and never hit this gap). Fixed the
+// same way here now — import + re-export the verified canonical shapes
+// instead of a second hand-rolled copy, per this file's own "redeclare only
+// when genuinely outlet/warehouse-specific" rule; these five are not.
+export type { SuratJalan, Drop, DropLine, Seal, TempLog } from '@/lib/shared-types';
 
 export interface Driver {
   id: UUID;
@@ -221,6 +185,55 @@ export interface DailyRecap {
 
 // ── §4.11 purchasing (PO receiving) ─────────────────────────────────────────
 
+/**
+ * `PurchaseOrder`/`PurchaseOrderLine` below are typed against
+ * `apps/backend/src/modules/purchasing/purchase-order.service.ts`'s actual
+ * `toListRow`/`toDetail` mappers (`PurchaseOrderListRow`/`PurchaseOrderDetail`
+ * there), not blindly against CONTRACTS.md §4.11's `interface` block.
+ *
+ * HISTORY (F-WAREHOUSE): at the start of this pass, `toListRow`/`toDetail`
+ * did NOT populate `approval`/`paymentStatus` at all — CONTRACTS (and
+ * `@mimi/shared`'s `PurchaseOrder`, transcribed from the same block) had
+ * drifted from the live response, and this file's `PurchaseOrder` had copied
+ * that drift verbatim, so reading either field anywhere would have silently
+ * been `undefined`. That was flagged as a latent bug rather than patched
+ * from the frontend. Mid-pass, the backend concurrently landed both fields
+ * for real (`purchase-order.service.ts`'s `loadApprovalDetail` +
+ * `PurchaseOrderRepository`'s `payment_status` LEFT JOIN) — re-verified
+ * against that live diff before typing the two fields below, per the
+ * ticket's "confirm, don't assume" instruction. Current, verified shape:
+ * - `approval`: `null` unconditionally on LIST rows (a per-document
+ *   `kernel/approvals` round trip isn't paid for N list rows — same
+ *   precedent `Replenishment`'s own list endpoint sets); populated for real
+ *   only via `getDetail`/`receive` (the single-document path).
+ * - `paymentStatus`: a plain LEFT JOIN column, so it IS populated on both
+ *   list rows and detail (no N+1 concern for a single scalar).
+ *
+ * The list endpoint (`GET /purchasing/orders`, `listPurchaseOrders` below)
+ * still returns a narrower row than the detail — no `lines`/`subtotal`/
+ * `tax`/`paymentTermsDays`/`prId`/`cancelReason`/`notes`. Only
+ * `getPurchaseOrder` (`GET /purchasing/orders/:id`) and `receivePurchaseOrder`
+ * return the full `PurchaseOrder` detail shape. Kept as two interfaces
+ * (mirroring the backend's own `PurchaseOrderListRow`/`PurchaseOrderDetail`
+ * split) so a caller can't accidentally reach for `.lines` on a bare list
+ * row, or assume `approval` is populated outside the detail view.
+ */
+export interface PurchaseOrderListRow {
+  id: UUID;
+  poNumber: string;
+  supplierId: UUID;
+  supplierName: string;
+  locationId: UUID;
+  status: string;
+  orderDate: ISODate;
+  expectedDate: ISODate | null;
+  total: Money;
+  /** `null` on every list row — see this block's header comment. Real value only via `PurchaseOrder` (the detail shape). */
+  approval: ApprovalDetail | null;
+  /** Populated on list rows too (plain LEFT JOIN column) — `'rejected'` is a real linked-payment-verification status, not in the narrower `PaymentStatus` enum (same widening `PaymentVerification.status` already uses). */
+  paymentStatus: string | null;
+}
+
 export interface PurchaseOrderLine {
   id: UUID;
   itemId: UUID;
@@ -230,23 +243,17 @@ export interface PurchaseOrderLine {
   unitPrice: Money;
   lineTotal: Money;
   qtyReceived: Qty;
+  /** `qtyOrdered - qtyReceived`, floored at 0 server-side (never negative on the wire). */
+  qtyDifference: Qty;
 }
 
-export interface PurchaseOrder {
-  id: UUID;
-  poNumber: string;
-  supplierId: UUID;
-  supplierName: string;
-  locationId: UUID;
-  status: string;
-  orderDate: ISODate;
-  expectedDate: ISODate | null;
+export interface PurchaseOrder extends PurchaseOrderListRow {
   paymentTermsDays: number;
   subtotal: Money;
   tax: Money;
-  total: Money;
-  approval: ApprovalDetail | null;
-  paymentStatus: string | null;
+  prId: UUID | null;
+  cancelReason: string | null;
+  notes: string | null;
   lines: PurchaseOrderLine[];
 }
 
@@ -289,4 +296,24 @@ export interface ReturnDoc {
 export interface ReturnDetail extends ReturnDoc {
   approval: ApprovalDetail | null;
   proofUrls: { shipped: string[]; received: string[] };
+}
+
+// ── §4.12 waste (verified against `waste.service.ts`'s `WasteListRow` — no
+// `WasteRecord` export exists in `@mimi/shared` for this resource, unlike
+// `Opname`/`OpnameLine` above, so it's declared locally same as outlet's) ──
+
+export interface WasteRecord {
+  id: UUID;
+  wasteNumber: string;
+  batchId: UUID;
+  locationName: string;
+  storageAreaName: string;
+  itemName: string;
+  qty: Qty;
+  unitCost: Money;
+  reason: string;
+  status: string;
+  reportedBy: string;
+  photoUrls: string[];
+  occurredAt: ISODateTime;
 }

@@ -217,6 +217,26 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
     30_000,
   );
 
+  it('neededBy round-trips exactly as submitted (DATE column, D-11 WITA day-shift regression)', async () => {
+    const { service } = buildServices();
+    const ldr = callerFor(fx.outletA.leaderUserId, RoleKey.LEADER_OUTLET, [fx.outletA.locationId]);
+    // Fixed, non-today date — a day-shift regression can't hide behind "today happens not to expose it".
+    const neededBy = '2026-06-30';
+
+    const created = await withRollback({ userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds }, (client) =>
+      service.create(client, ldr, { locationId: fx.outletA.locationId, neededBy, lines: [{ itemId: fx.itemId, qtyRequested: '5.000', unitId: fx.unitId }] }),
+    );
+    createdRequestIds.push(created.id);
+    // Exact round-trip, not a loose date-shaped regex — a one-day-shifted value ("2026-06-29") would
+    // still match `/^\d{4}-\d{2}-\d{2}$/` just as happily.
+    expect(created.neededBy).toBe(neededBy);
+
+    const fetched = await withRollback({ userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds }, (client) =>
+      service.getById(client, created.id),
+    );
+    expect(fetched.neededBy).toBe(neededBy);
+  });
+
   it('reject at the supervisor step requires a reason and is terminal (FR-LOG-13)', async () => {
     const { service } = buildServices();
     const ldr = callerFor(fx.outletA.leaderUserId, RoleKey.LEADER_OUTLET, [fx.outletA.locationId]);

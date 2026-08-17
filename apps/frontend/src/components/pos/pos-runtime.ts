@@ -8,6 +8,7 @@
  * Cart/shift totals themselves always go through `@mimi/shared`'s cart
  * calculator, never hand-rolled here.
  */
+import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useSessionStore } from '@/stores/session-store';
 import type { ActorMeta } from '@/lib/local/api/local-runtime';
@@ -22,11 +23,104 @@ export function useActorMeta(): ActorMeta | null {
   return { actorUserId: user.id, actorRole: user.roleKey, appVersion: APP_VERSION };
 }
 
-/** The outlet this device/cashier is scoped to. A cashier device is assigned to exactly one outlet in practice; if `Me.locations` ever carries more than one (a supervisor testing the POS), the first is used and a selector can be added later. */
-export function usePosLocation(): { id: string; name: string } | null {
+export interface PosOutletOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * Result of resolving which outlet this POS session should transact
+ * against (F02-FIX). A cashier device is assigned to exactly one outlet
+ * ('ready', `canChange: false` — identical to the pre-fix behaviour); a
+ * head-office role (Owner/Manager/Finance, D-05) has `Me.locations: []` and
+ * must pick one before anything else can load ('choose', options come from
+ * `GET /api/locations` — the server, via `location.read`, is the RBAC
+ * authority on which outlets are offered); a supervisor account holding
+ * several assigned locations gets the same picker built from
+ * `Me.locations` directly, no fetch needed. 'loading'/'error' give the
+ * zero-location fetch a terminal state instead of spinning forever.
+ */
+export type PosLocationState =
+  | { status: 'loading' }
+  | { status: 'ready'; location: PosOutletOption; canChange: boolean; change: () => void }
+  | { status: 'choose'; options: PosOutletOption[]; select: (id: string) => void }
+  | { status: 'error'; retry: () => void };
+
+const SELECTED_OUTLET_KEY = 'pos.selectedOutletId';
+
+function readStoredOutletId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(SELECTED_OUTLET_KEY);
+}
+
+function storeOutletId(id: string): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SELECTED_OUTLET_KEY, id);
+}
+
+function clearStoredOutletId(): void {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(SELECTED_OUTLET_KEY);
+}
+
+/** The outlet this session works against — see `PosLocationState`. */
+export function usePosLocation(): PosLocationState {
   const user = useSessionStore((s) => s.user);
-  const loc = user?.locations?.[0];
-  return loc ? { id: loc.id, name: loc.name } : null;
+  const assigned = user?.locations ?? [];
+  const needsFetch = assigned.length === 0;
+
+  const [selectedId, setSelectedId] = useState<string | null>(() => readStoredOutletId());
+  const [fetchedOutlets, setFetchedOutlets] = useState<PosOutletOption[] | null>(null);
+  const [fetchError, setFetchError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!needsFetch) return;
+    let cancelled = false;
+    setFetchError(false);
+    api
+      .get<{ rows: PosOutletOption[] }>('/locations?type=outlet&active=true&pageSize=200')
+      .then((res) => {
+        if (!cancelled) setFetchedOutlets(res.rows.map((l) => ({ id: l.id, name: l.name })));
+      })
+      .catch(() => {
+        if (!cancelled) setFetchError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsFetch, attempt]);
+
+  function select(id: string): void {
+    storeOutletId(id);
+    setSelectedId(id);
+  }
+
+  function change(): void {
+    clearStoredOutletId();
+    setSelectedId(null);
+  }
+
+  const single = assigned.length === 1 ? assigned[0] : undefined;
+  if (single) {
+    return { status: 'ready', location: { id: single.id, name: single.name }, canChange: false, change: () => {} };
+  }
+
+  if (needsFetch && fetchError) {
+    return { status: 'error', retry: () => setAttempt((a) => a + 1) };
+  }
+
+  const options = assigned.length > 1 ? assigned.map((l) => ({ id: l.id, name: l.name })) : fetchedOutlets;
+  if (!options) {
+    return { status: 'loading' };
+  }
+
+  const selected = selectedId ? (options.find((o) => o.id === selectedId) ?? null) : null;
+  if (selected) {
+    return { status: 'ready', location: selected, canChange: true, change };
+  }
+
+  return { status: 'choose', options, select };
 }
 
 function catalogCacheKey(locationId: string): string {

@@ -10,7 +10,8 @@ export interface PrHeaderRow {
   status: string;
   requested_by: string;
   requested_by_name: string | null;
-  needed_by: string | null;
+  /** `purchase_requests.needed_by` is a `DATE` column — `pg` parses it into a local-timezone `Date`, not a `string` (this annotation was wrong; see `common/date-only.util.ts`). Never `.toISOString()` this directly. */
+  needed_by: Date | null;
   approval_id: string | null;
   rejection_reason: string | null;
   notes: string | null;

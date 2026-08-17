@@ -232,10 +232,39 @@ export async function deleteGoodsReceipt(id: string): Promise<void> {
   await getOwnerPool().query(`DELETE FROM goods_receipts WHERE id = $1`, [id]);
 }
 
-/** Rolls back the `document_counters`/`stock_movements`/`stock_balances`/`replenishment_requests` side-effects a committed SJ flow leaves — everything this module's OWN tables didn't cascade-delete. */
+/**
+ * Rolls back the `stock_balances` side-effect a committed SJ flow leaves for this key.
+ *
+ * QA-ISOLATION finding: this used to blind-DELETE both `stock_movements` AND the
+ * `stock_balances` row for the key, on the assumption the (warehouse/outlet freezer area,
+ * frozen item) fixture combination this suite dispatches against had zero seed history.
+ * That assumption is false often enough to matter — the seed carries "opening stock
+ * balances for 30 core items across all locations" (see `database/reset.ts`'s own seed
+ * log), and a frozen item at a warehouse/outlet freezer area is a plausible member of
+ * that 30. Blind-deleting the row then durably drops the live DB's total `stock_balances`
+ * row count below what a fresh reset produces — caught empirically here (a fresh-reset
+ * baseline of 630 rows dropped to 628 after one run touching two such keys) — and, worse,
+ * makes `stock_movements` from the REAL seed vanish along with this suite's own rows.
+ *
+ * Fixed to never delete a row it didn't necessarily create: reconcile
+ * `stock_balances.qty_on_hand` to the fold of whatever `stock_movements` remain for the key
+ * (their own `ref_type`/`ref_id` residue is left in place — harmless, polymorphic, and
+ * itself already accounted for by the very fold this reconciles against).
+ */
 export async function resetStockKey(locationId: string, storageAreaId: string, itemId: string): Promise<void> {
-  await getOwnerPool().query(`DELETE FROM stock_movements WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [locationId, storageAreaId, itemId]);
-  await getOwnerPool().query(`DELETE FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [locationId, storageAreaId, itemId]);
+  await getOwnerPool().query(
+    `UPDATE stock_balances
+        SET qty_on_hand = COALESCE(
+          (SELECT SUM(CASE WHEN m.movement_type LIKE '%_out' THEN -m.qty ELSE m.qty END)
+             FROM stock_movements m
+            WHERE m.location_id = stock_balances.location_id
+              AND m.storage_area_id = stock_balances.storage_area_id
+              AND m.item_id = stock_balances.item_id),
+          0
+        )
+      WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+    [locationId, storageAreaId, itemId],
+  );
 }
 
 export async function createReplenishmentRequestFixture(locationId: string, requestedBy: string, itemId: string, unitId: string, qty: string): Promise<{ requestId: string; lineId: string }> {

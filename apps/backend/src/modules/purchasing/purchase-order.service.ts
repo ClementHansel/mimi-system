@@ -14,11 +14,14 @@ import {
   MovementType,
   mulMoneyByQty,
   PurchaseOrderStatus,
+  type ApprovalDetail,
   type Money,
   type Paginated,
+  type PaymentStatus,
   type Qty,
   type UUID,
 } from '@mimi/shared';
+import { formatDateOnly } from '../../common/date-only.util';
 import { ApprovalService } from '../../kernel/approvals/approvals.service';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { PaymentVerificationsService } from '../accounting/payment-verifications.service';
@@ -38,6 +41,27 @@ export interface PurchaseOrderListRow {
   orderDate: string;
   expectedDate: string | null;
   total: Money;
+  /**
+   * CONTRACTS.md §4.11's `PurchaseOrder.approval`. `null` unconditionally on
+   * LIST rows (`toListRow`, never fetched — this field's real value requires
+   * a per-document `kernel/approvals` round trip and a list endpoint can
+   * return dozens of rows; `modules/replenishment`'s `list()`/`toResource(r,
+   * [], null)` sets the same precedent for the same reason). Populated for
+   * real on `getDetail`'s single-document `toDetail` below.
+   */
+  approval: ApprovalDetail | null;
+  /**
+   * CONTRACTS.md §4.11's `PurchaseOrder.paymentStatus` — the linked
+   * `payment_verifications.status` (LEFT JOIN in `PurchaseOrderRepository`'s
+   * `HEADER_SELECT`, so unlike `approval` this one IS populated on list rows
+   * too: it's a single scalar column, not a multi-row chain, so there's no
+   * N+1 cost to avoid). `'rejected'` is a real status a linked PV can reach
+   * (`PaymentVerificationsService.reject()`) but isn't a `PaymentStatus`
+   * enum member (`@mimi/shared` only has pending/verified/paid) — same
+   * widened type `PaymentVerification.status` already uses in
+   * `packages/shared/src/interfaces/index.ts`.
+   */
+  paymentStatus: PaymentStatus | 'rejected' | null;
 }
 
 export interface PurchaseOrderDetail extends PurchaseOrderListRow {
@@ -86,7 +110,7 @@ export class PurchaseOrderService {
   async getDetail(client: PoolClient, id: UUID): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
     const lines = await this.repo.findLines(client, id);
-    return this.toDetail(header, lines);
+    return this.toDetail(client, header, lines);
   }
 
   async create(client: PoolClient, actor: ActorContext, dto: CreatePurchaseOrderDto): Promise<PurchaseOrderDetail> {
@@ -318,7 +342,7 @@ export class PurchaseOrderService {
           await this.repo.updateItemCost(client, poLine.item_id, newAvgCost, poLine.unit_price);
           await this.repo.appendPriceHistory(client, {
             supplierId: header.supplier_id, itemId: poLine.item_id, price: poLine.unit_price,
-            effectiveDate: new Date().toISOString().slice(0, 10), recordedBy: actor.userId,
+            effectiveDate: formatDateOnly(new Date()), recordedBy: actor.userId,
           });
 
           await this.repo.incrementLineReceived(client, poLine.id, line.qtyReceived as Qty);
@@ -381,15 +405,19 @@ export class PurchaseOrderService {
       supplierName: row.supplier_name,
       locationId: row.location_id,
       status: row.status,
-      orderDate: row.order_date.toISOString().slice(0, 10),
-      expectedDate: row.expected_date ? row.expected_date.toISOString().slice(0, 10) : null,
+      orderDate: formatDateOnly(row.order_date),
+      expectedDate: row.expected_date ? formatDateOnly(row.expected_date) : null,
       total: row.total,
+      approval: null, // see field doc comment — real value populated only by `toDetail`.
+      paymentStatus: (row.payment_status as PaymentStatus | 'rejected' | null) ?? null,
     };
   }
 
-  private toDetail(header: PoHeaderRow, lines: PoLineRow[]): PurchaseOrderDetail {
+  private async toDetail(client: PoolClient, header: PoHeaderRow, lines: PoLineRow[]): Promise<PurchaseOrderDetail> {
+    const approval = await this.loadApprovalDetail(client, header);
     return {
       ...this.toListRow(header),
+      approval,
       paymentTermsDays: header.payment_terms_days,
       subtotal: header.subtotal,
       tax: header.tax,
@@ -408,6 +436,41 @@ export class PurchaseOrderService {
         qtyDifference: subMoneyLikeQty(l.qty_ordered, l.qty_received),
       })),
     };
+  }
+
+  /**
+   * CONTRACTS.md §4.11's `PurchaseOrder.approval` — mirrors
+   * `ReplenishmentService.loadApprovalDetail`/`RunsService.toRunApi`'s
+   * identical pattern (`kernel/approvals`'s per-document detail round trip,
+   * never a hand-rolled join). Guarded on `approval_id` rather than a status
+   * string: a draft PO that was submitted, rejected back to draft, and never
+   * resubmitted still HAS an approval_id (§5.3 reject returns the doc to
+   * 'draft', not a terminal state) whose chain the UI can legitimately show.
+   */
+  private async loadApprovalDetail(client: PoolClient, header: PoHeaderRow): Promise<ApprovalDetail | null> {
+    if (!header.approval_id) return null;
+    try {
+      const detail = await this.approvals.getDetail(client, ApprovalDocumentType.PURCHASE_ORDER, header.id);
+      return {
+        approvalId: detail.approvalId,
+        state: detail.state,
+        amount: detail.amount,
+        // null once the chain is finalised — the documented "complete" signal (see @mimi/shared ApprovalDetail).
+        currentStep: detail.currentStep,
+        steps: detail.steps.map((s) => ({
+          stepNo: s.stepNo,
+          approverRole: s.approverRole,
+          state: s.state,
+          actedBy: s.actedBy,
+          actedAt: s.actedAt,
+          reason: s.reason,
+          offlineAuthorized: s.offlineAuthorized,
+          reverificationStatus: s.reverificationStatus,
+        })),
+      };
+    } catch {
+      return null; // No approval row yet / lookup failed — never let a display concern break the read.
+    }
   }
 }
 

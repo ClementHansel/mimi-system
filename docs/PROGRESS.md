@@ -15,26 +15,25 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **1 — Foundation** | 5 | 5 | ✅ complete · **Gate G1 closed** |
 | **2 — Kernel** | 6 | 6 | ✅ complete · **Gate G2 closed** |
 | **3 — Domain backend** | 10 | 10 | ✅ complete · gate closed |
-| **4 — BE finish + FE** | 10 | 5 | 🔄 backend done, FE not started |
-| **5 — Completion** | 7 | 0 | ⬜ not started |
+| **4 — BE finish + FE** | 10 | 10 | ✅ complete |
+| **5 — Completion** | 8 | 4 | 🔄 UI surfaces done; print, posting rules, node packaging, notifications left |
+| **5b — Owner UI round** | 9 | 7 | 🔄 QA-ISOLATION finishing; F-UX not started |
 | **6 — QA** | 7 | 0 | ⬜ not started |
-| **7 — Deploy & handover** | 5 | 0 | ⬜ not started |
-| **Totals** | **52** | **23** | **44%** |
+| **7 — Deploy & handover** | 5 | 1 | 🔄 **deployed to the VPS with CI/CD**; docs, manual, hardware, importer left |
+| **Totals** | **62** | **45** | **73%** |
 
-**Measured test state**
+**Measured test state** — re-run by the coordinator on a freshly reset database, 2026-08-17, not taken from agent reports.
 
 | Workspace | Result |
 |---|---|
-| `@mimi/backend` | **740 pass / 4 fail (744)**, 74 files, serial. The 4 are the known cross-suite seed-mutation artifact (B-05), not defects |
+| `@mimi/backend` | **764 pass / 1 fail (765)**, 77 files. Deterministic across two consecutive runs since QA-ISOLATION. The 1 is a stale assertion mid-fix, not a defect |
+| `@mimi/frontend` | **413 pass (413)**, 60 files |
 | `@mimi/shared` | 205 pass · `@mimi/sync-protocol` 141 pass · `@mimi/branch-node` 42 pass |
-| **Campaign total** | **~1,436 passing** |
-| `@mimi/shared` | 198 pass |
-| `@mimi/sync-protocol` | 141 pass |
-| `@mimi/frontend` | **244 pass (244)**, 36 files — includes 2 transport-throws offline proofs (receiving, absen) |
-| `@mimi/branch-node` | 42 pass |
-| **Total** | **~1,102 passing** |
+| **Campaign total** | **~1,565 passing** |
 
-94 migrations · 104 tables + 4 matviews · backend `tsc` clean · all 3 contract artifacts consistent with code.
+99 migrations (latest **220**) · 104 tables + 4 matviews · backend and frontend `tsc` both clean.
+
+**Deployed:** `http://150.109.15.108:8080` — demo box, mock data, auto-deploys from `main`. Own Postgres/Redis/MinIO, one public port, seven neighbouring projects untouched.
 
 ---
 
@@ -106,6 +105,40 @@ Production is unaffected (the backend owns the whole `api.DOMAIN` host there), s
 ### 🟡 Two host-dev environment traps — **one fixed, one documented**
 - `next.config.ts` fell back to `http://backend:4000` — a Docker service name that cannot resolve on a host — so `next dev` outside compose 500s every proxied call with no hint at DNS. Both compose files set `BACKEND_ORIGIN` explicitly, so the fallback is *only* reached on a host; **changed to `localhost:4000`**, container runs unaffected.
 - `.env` defines `REDIS_PORT=6379`, but the code reads **`REDIS_URL`** and the host mapping is **56379**. Starting the backend from `.env` alone crashes on redis. Not changed (compose-correct); needs `REDIS_URL` exported for host runs.
+
+## 1c-2. Deployed to the shared VPS, and what deploying exposed (2026-08-17)
+
+Live at `http://150.109.15.108:8080` (demo box, mock data). Own directory, own Postgres/Redis/MinIO, own network, **one** public port; the other seven projects on that host are untouched. Auto-deploys from `main` via GitHub Actions — proven green end to end, including a matview refresh step and a real 200 check on `/login`.
+
+**Deploy-order trap worth remembering:** migrations create and refresh the reporting matviews while the database is still EMPTY; the seed loads data afterwards and nothing refreshes them again. A fresh deploy therefore renders **Rp0 and 0 transactions over a full database** — a working system reporting a terrible week, which is far more dangerous than an obviously broken one. The deploy pipeline now refreshes them.
+
+### 🔴 The owner could not open POS or Pembelian — **FIXED**
+- **POS** hung on "Memuat…" **forever** for any user without an assigned outlet (owner, manager, finance): `usePosLocation()` returned `user.locations[0]`, the catalog effect early-returned, and **zero API calls were ever made**. Now an outlet picker, persisted and always visible/changeable. A **second** indefinite spinner was found in the same file — `getBrowserLocalRuntime()` had no `.catch`, so an IndexedDB failure hung the page with an unhandled rejection. Both now end in an error + retry.
+- **Pembelian** was never built — still the Wave-1 placeholder. The tracker said Wave 5 was complete; it was not. Now a real three-tab surface (PR, PO, price history) with the D-20 price gate.
+
+### 🟠 "Where is delivery?" — the capability existed, the navigation did not
+Recorded because the diagnosis was initially **wrong**. There was no `/delivery` route, so both the owner and the coordinator concluded the module was missing. In fact the whole dispatcher workflow — SJ list, multi-drop create, the chiller-vs-dry truck split, driver/vehicle assignment, ready→load→dispatch — already existed as a *tab inside* `/warehouse`. An information-architecture failure, not a missing module, and the clearest argument in the file for the UX pass.
+Resolved by promoting it to `/delivery` (adding status/date filters, a drop-level cold-chain view and a completion rollup), **deleting** the warehouse duplicate, and leaving an outbound summary that links through. Two places to create the same legal shipping document would have been an operational hazard.
+
+### 🔴 A workflow step no UI could reach — **FIXED**
+`POST /replenishment/:id/process` (`approved → processing`) existed, was documented, and **was never called from anywhere**. Outlets could request and the warehouse could approve, but nothing could be marked as being fulfilled — the chain dead-ended after approval.
+
+### 🔴 An endpoint that could never have executed — **FIXED**
+`GET /api/suppliers/:id/transactions` joined a nonexistent table (`purchase_order_lines`, not `po_lines`) and nonexistent columns. It would throw on every call. Nothing had exercised it over HTTP — the same blind spot that let 14 controllers sit at `/api/api/...`.
+
+### 🔴 The DATE/WITA bug had a WRITE path — **FIXED**
+Previously treated as a display defect. It is not: `receive()` stamped `effectiveDate` into `supplier_price_history` — an **append-only** table — using the shifted calculation, writing wrong dates permanently into a price audit trail. Five further sites found (`neededBy`, petty cash `purchaseDate`, PO `expectedDate`, supplier history and transactions). Helper promoted to `common/date-only.util.ts`; `replenishment` and `delivery` were each carrying their own private copy.
+
+### 🟠 CONTRACTS documented fields the backend never sent — **FIXED**
+PO/PR detail were specified to carry `approval` and `paymentStatus`; the services never attached either. The frontend had been typed from the contract rather than the response, so `components/warehouse/lib/types.ts` was reading `undefined`. Backend now implements both (list rows keep `approval: null` to avoid an N+1).
+
+### 🟠 Hand-rolled copies of shared types dropped fields
+`TempLog` was duplicated locally in **both** the driver and warehouse surfaces, and both copies omitted `breachedClasses`/`ranges` — making cold-chain breach information structurally invisible to any code using them. For a business moving frozen chicken that is a safety-relevant omission, not a typing nicety. Both now re-export from `@mimi/shared`.
+
+### 🔴 An RLS policy hides rows from the role that creates them — IN PROGRESS
+`payment_verifications_role` (migration 095) is `FOR ALL USING (owner, manager, finance)` with no SELECT carve-out. `kepala_gudang` performs receiving, receiving creates the row, and that role then cannot read it: `paymentStatus` returns `null` for the user who caused it (`'pending'` when re-read as owner). The fix must **not** simply widen the policy — write access to payment records for warehouse staff would break segregation of duties.
+
+> **The through-line for the whole day:** every one of these is an integration defect. Each component was correct in isolation and wrong at the seam — and none was visible to a unit test. They surfaced only from deploying the thing and clicking through it.
 
 ## 1d. Running system — verified in a real browser
 
@@ -311,15 +344,22 @@ Neither `ApprovalService` nor `ReplenishmentService`/`ReplenishmentAdvancementSe
 - [x] Clean serial run — **61 files / 579 tests, all passing**
 - [x] Node staleness sweep test — delivered by W3-10
 - [x] **Cross-kernel scenario** — written, passing (1.4s, live DB, every step under its **real** role). Found 4 defects: B-06 (production-blocking), B-07, B-08, and `approvals.current_step` never clearing
-- [ ] B-06 resolved (blocking — outlet cannot complete a shipment)
-- [ ] B-05 test isolation (see §2) — a *second consecutive* run reintroduces the seed-invariant failure
+- [x] **B-06 resolved** — migration `216_w1c_fix_surat_jalan_with_check_asymmetry.sql` adds the missing destination-outlet arm to `surat_jalan_scope`'s `WITH CHECK`, so the receiving outlet can complete its own shipment
+- [x] **B-05 test isolation resolved** — QA-ISOLATION split `vitest.config.ts` into a parallel `unit` project and a serial `integration-live-db` project, and replaced blind-delete cleanups with balance reconciliation in 4 suites. Two consecutive full runs now give identical results
 
-### Wave 4 — BE finish + FE start ⬜ (4 sequential batches of ≤3, per §5.5 budget policy)
-**Batch A — COMPLETE.** [x] **W4-03 accounting** — 58 tests (26 property cases across all 16 PRD + 7 system + 2 local event types), double-entry GL, posting engine, payment-verification ladder, trial balance / P&L / balance sheet. Carried items: **D-04 closed** (11 seeded balanced entries, 0 unbalanced), **D-06 closed** (`escalatedInsert` for Kasir-context PV writes), multi-leg rules verified against **real publishers** — found and fixed 2 mismatches. **D-18 unblocked.**
-**Batch A** — [x] **W4-01 payroll** — 10 tests, all §4.15 endpoints, golden case + 3 money-path wiring tests (statutory-ON with vintage selection, POUT-05 opname shortfall, D-19 double-deduct prevention) · [~] W4-03 accounting · [x] **Wave 3 gate: cross-kernel scenario** (found 4 defects incl. production-blocking B-06)
-**Batch B** — [x] **W4-02 purchasing + waste-return** — 10 tests, all §4.11/§4.12 endpoints, **both retur directions with their genuinely different approvers**, 2 permission-denied pins, wajib-foto enforced · [x] **W4-04 asset + dashboard + report** (22 tests: asset 5, dashboard 8, report 9 — salvaged after the B-10 fan-out incident; dashboard proves both scoping directions with real figures) · [x] **W3-08** transfer sales now reach the finance queue — **D-06 loop closed**
-**Batch C — COMPLETE** — [x] **W4-05** `(auth)` + `admin` UI (38 tests; role-appropriate landing, PIN setup, users/master-data/audit/settings, rank-limited role assignment) · [x] **W4-06 POS UI** (13 tests; offline via `LocalRuntime`, honest payment-status per method, ESC/POS receipt) · [x] **W4-07 `outlet` UI** (18 tests; 6 panels — rewiring receiving to the offline path)
-**Batch D** — [x] **W4-08 `warehouse` UI** (11 tests; SJ builder with frozen/dry split + seal/temp, approval queue with amend-reason gate) · [ ] W4-09 `driver` + `assets` UI · [x] **W4-10 `hr` + `me` UI** (25 tests; roster, attendance review with `time_suspect` surfacing, payroll lifecycle, BPJS/PPh21 effective-window editors, mobile self-service — *rewiring absen to the offline path*)
+### Wave 4 — BE finish + FE start ✅ (ran as 4 sequential batches of ≤3, per §5.5 budget policy)
+- [x] **W4-01** payroll — 10 tests, all §4.15 endpoints, golden case + 3 money-path wiring tests (statutory-ON vintage selection, POUT-05 opname shortfall, D-19 double-deduct prevention)
+- [x] **W4-02** purchasing + waste-return — 10 tests, all §4.11/§4.12 endpoints, both retur directions with their genuinely different approvers, 2 permission-denied pins, wajib-foto enforced
+- [x] **W4-03** accounting — 58 tests (26 property cases over all 16 PRD + 7 system + 2 local event types), double-entry GL, posting engine, PV ladder, trial balance / P&L / balance sheet. **D-04 and D-06 closed; D-18 unblocked**; 2 posting-rule mismatches found against real publishers
+- [x] **W4-04** asset + dashboard + report — 22 tests (asset 5, dashboard 8, report 9); salvaged after the B-10 fan-out incident; dashboard proves both scoping directions with real figures
+- [x] **W4-05** `(auth)` + `admin` UI — 38 tests, PIN setup, users/master-data/audit/settings, rank-limited role assignment
+- [x] **W4-06** `pos` UI — 13 tests, offline via `LocalRuntime`, honest per-method payment status, ESC/POS receipt
+- [x] **W4-07** `outlet` UI — 18 tests, 6 panels, receiving rewired to the offline path
+- [x] **W4-08** `warehouse` UI — 11 tests, SJ builder with frozen/dry split + seal/temp, approval queue with amend-reason gate
+- [x] **W4-09** `driver` + `assets` UI — both surfaces render live data; *`driver` emits a 403 on load, see §2*
+- [x] **W4-10** `hr` + `me` UI — 25 tests, roster, attendance review surfacing `time_suspect`, payroll lifecycle, BPJS/PPh21 effective-window editors, absen rewired to the offline path
+
+**Wave 4: 10 of 10 built.** Batch order was A (W4-01, W4-03) → B (W4-02, W4-04) → C (W4-05..07) → D (W4-08..10).
 
 ### Contract defects found by the UI surfaces (each flagged, none worked around silently)
 | Finding | Status |
@@ -333,13 +373,27 @@ Neither `ApprovalService` nor `ReplenishmentService`/`ReplenishmentAdvancementSe
 > **Pattern worth carrying into Wave 5:** two of three offline-capable UI surfaces shipped online-only because their authors assumed a `LocalRuntime` helper was missing without checking. Both were rewired after the fact. **Every future FE brief must say: verify the exports before concluding a helper is absent.** Already added to W4-09's brief.
 
 > **Coordinator correction:** the tracker previously listed W4-10 as "purchasing UI". That was my error — BUILD-PLAN §5 assigns **W4-10 = F08 `hr` + F11 `me`**, and F06 `purchasing` UI belongs to **Wave 5 (W5-04)**. Caught when W4-05 checked the RBAC matrix and found `payroll.statutory.config` is `finance`/`hr_admin`, so the BPJS/PPh21 rate editors belong to the HR surface — not the admin surface my brief had implied. It built only the Owner/Manager slice (readiness + enable/disable) and flagged the split rather than duplicating W4-10's work.
-**Batch C** — [ ] W4-06 **POS UI** (tablet, offline) · [ ] W4-07 `outlet` UI · [ ] W4-08 `warehouse` UI
-**Batch D** — [ ] W4-09 `driver` UI + `assets` UI
+### Wave 5 — Completion 🔄
+- [x] **W5-01** `dashboard` UI — 13 tests, RBAC-scoped (supervisor sees one outlet with an explicit scope banner), 4 tabs, outlet drill-down. Found the double `/api/api` routing bug
+- [x] **W5-02** `finance` UI — 15 tests, payment ladder, journal with a live debits=credits gate, COA, reports with an explicit balanced/unbalanced indicator, fiscal periods, D-17 exception queue. Money as BigInt cents throughout
+- [x] **W5-03** `topology` UI — 17 tests, handles the no-node case, does not alarm on legitimately-offline devices
+- [x] **W5-04** `purchasing` UI — 11 tests, PR/PO/receiving/price history, D-20 price gate. *(Was mis-listed as "notification surfaces"; F06 purchasing is the BUILD-PLAN §5 assignment)*
+- [ ] **W5-05** print/document layer (nota, SJ PDF, slip gaji)
+- [ ] **W5-06** posting-rule completion (all 16 journal events)
+- [ ] **W5-07** branch-node packaging
+- [ ] **W5-08** notification surfaces + n8n WA live test
 
-### Wave 5 — Completion ⬜
-- [ ] W5-01 `dashboard` UI · [ ] W5-02 `finance` UI · [ ] W5-03 `topology` UI
-- [ ] W5-04 notification surfaces + n8n WA live test · [ ] W5-05 print/document layer (nota, SJ PDF, slip gaji)
-- [ ] W5-06 posting-rule completion (all 16 journal events) · [ ] W5-07 branch-node packaging
+### Wave 5b — Owner-driven UI round (2026-08-17) 🔄
+Raised directly by the owner after using the deployed system.
+- [x] **F02-FIX** POS location gate — outlet picker for head-office roles; **two** indefinite spinners removed (22 tests)
+- [x] **F-BRAND** branded login + role-aware home hub — hub reads `NAV_SECTIONS` live so it cannot drift from the sidebar; fixes missing `name`/`autoComplete` on login (5 tests)
+- [x] **F-DELIVERY** `/delivery` dispatcher surface — SJ list with status/date filters, drop-level cold chain, completion rollup, chiller-vs-dry rule unit-tested (27 tests)
+- [x] **F-WAREHOUSE** warehouse upgrade — permission-filtered tabs, stock opname + waste panels, outbound summary, terminal error states; **wired up `replenishment/:id/process`, which no UI could reach**
+- [x] **BE-PURCH-FIX** purchasing contract + DATE/WITA fixes — incl. a **write-path** date bug and a supplier endpoint that could never execute
+- [x] **DB-PV-RLS** migration 220 — `FOR SELECT` carve-out so `kepala_gudang` can read the PV row its own receiving creates, with proof it gained no write access
+- [x] **CLEANUP-DATE** consolidated `formatDateOnly` into `common/`; removed two independently-wrong private copies
+- [ ] **QA-ISOLATION** live-DB suite determinism — serial `integration-live-db` project + reconcile-on-cleanup; **one assertion outstanding**
+- [ ] **F-UX** the broader UI/UX flow simplification the owner asked for — not yet started
 
 ### Wave 6 — QA ⬜
 - [ ] W6-00 QA lead / acceptance matrix · [ ] W6-01 E2E × 8 roles · [ ] W6-02 offline adversarial

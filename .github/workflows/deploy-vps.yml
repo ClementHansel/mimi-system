@@ -1,0 +1,84 @@
+# Deploy Mimi Chicken OS to the shared production VPS on every push to main.
+#
+# The server holds seven unrelated compose projects. Every command below is
+# scoped to `-p mimi` and to /home/ubuntu/mimi so a deploy can only ever touch
+# this stack. Nothing here prunes images, prunes volumes, or restarts the
+# Docker daemon — all three would hit the neighbours.
+name: deploy-vps
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# A second push while a deploy is mid-build would have two `compose up` runs
+# racing on the same project. Queue them instead, and never cancel a running
+# deploy — a half-applied stack is worse than a slightly stale one.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Open SSH session
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Trust the host key
+        # Pinned from the known_hosts secret rather than blind-accepting, so a
+        # DNS or routing hijack cannot silently redirect a deploy (with its
+        # keys) to someone else's machine.
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Pull and rebuild
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
+            cd /home/ubuntu/mimi
+
+            # .env.vps holds the generated production secrets and lives ONLY on
+            # the server — it is gitignored and never travels through CI.
+            test -f .env.vps || { echo "::error::.env.vps missing on server"; exit 1; }
+
+            git fetch --prune origin main
+            git reset --hard origin/main
+
+            docker compose -p mimi \
+              -f docker-compose.yml -f docker-compose.vps.yml \
+              --env-file .env.vps \
+              up -d --build --remove-orphans
+
+            # --remove-orphans is scoped to project `mimi` by -p, so it can only
+            # remove containers this stack previously created.
+          REMOTE
+
+      - name: Verify the stack answers
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
+            cd /home/ubuntu/mimi
+            port="$(grep -E '^FRONTEND_PUBLIC_PORT=' .env.vps | cut -d= -f2)"
+
+            # Poll rather than sleep-then-check: a cold build can take a while
+            # to become healthy, and a fixed sleep either wastes time or lies.
+            for i in $(seq 1 30); do
+              code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/login" || true)"
+              if [ "$code" = "200" ]; then echo "frontend OK after ${i}0s"; exit 0; fi
+              sleep 10
+            done
+
+            echo "::error::frontend did not return 200 within 5 minutes"
+            docker compose -p mimi logs --tail 40 frontend backend
+            exit 1
+          REMOTE

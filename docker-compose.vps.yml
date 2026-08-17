@@ -1,0 +1,70 @@
+# Mimi Chicken OS — overlay for the SHARED production VPS (150.109.15.108).
+#
+# This box already runs seven unrelated compose projects (aire, arka-villa,
+# bambusilver, bfs, free-tax-return-preview, gaiada-social, deploy-test) and
+# roughly 26 containers. The brief was explicit: deploy without disturbing any
+# of them. Everything here exists to honour that.
+#
+#   Usage:
+#     docker compose -p mimi \
+#       -f docker-compose.yml -f docker-compose.vps.yml \
+#       --env-file .env.vps up -d --build
+#
+# Three deliberate choices:
+#
+# 1. ONE public port. Only the frontend is published on the host, because
+#    Next's rewrites already proxy /api and /sync/v1 to the backend over the
+#    internal `mimi-network`. Postgres, Redis, MinIO and the backend stay on
+#    127.0.0.1 (as the base file has them) with a port block verified free on
+#    this host — see .env.vps. Nothing this stack publishes can collide with a
+#    neighbour, and no database is reachable from outside the box.
+#
+# 2. NO Traefik. docker-compose.prod.yml puts Traefik on :80/:443 with
+#    Let's Encrypt, which needs a real hostname pointed at this server. Until
+#    there is one, that file cannot be used here. Ports 80/443 are in fact free
+#    on this host today, but only because aire's nginx has been crash-looping
+#    since 30 July — claiming them would quietly take over a port a neighbour
+#    still believes it owns. Switching to the prod file later is the upgrade
+#    path; see the note at the bottom.
+#
+# 3. Explicit log limits on EVERY service. This host has no
+#    /etc/docker/daemon.json, so container logs grow without bound — one
+#    neighbour has already produced a single 3.1 GB log file. The fix at the
+#    daemon level would restart every container on the box, so instead each
+#    service here caps its own logs. Mimi cannot become the next disk problem.
+
+services:
+  postgres:
+    logging: &vps-logging
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  redis:
+    logging: *vps-logging
+
+  minio:
+    logging: *vps-logging
+
+  backend:
+    logging: *vps-logging
+
+  frontend:
+    # The single public entry point. Host port comes from FRONTEND_PUBLIC_PORT
+    # so it can be moved without editing this file; 0.0.0.0 is required because
+    # the base file's 127.0.0.1 binding would make it unreachable off-box.
+    ports:
+      - "0.0.0.0:${FRONTEND_PUBLIC_PORT:-8080}:3000"
+    logging: *vps-logging
+
+# ---------------------------------------------------------------------------
+# Upgrade path, once a hostname points at this server:
+#   1. Point the DNS A record at 150.109.15.108.
+#   2. Decide who owns :80/:443 — either fix or retire aire's dead nginx, or
+#      have it proxy this stack. Do not let both bind the port.
+#   3. Swap this overlay for docker-compose.prod.yml (Traefik + Let's Encrypt),
+#      set DOMAIN and ACME_EMAIL, and drop FRONTEND_PUBLIC_PORT.
+# Until then the stack is HTTP-only on a non-standard port, which is fine for
+# a demo but NOT acceptable for real payroll data.
+# ---------------------------------------------------------------------------

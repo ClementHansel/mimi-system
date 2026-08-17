@@ -70,3 +70,6 @@ infrastructure/backup/dumps/
 tmp_*
 *.tmp
 scratch/
+
+# Server-only production secrets (generated on the VPS, never committed)
+.env.vps

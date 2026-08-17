@@ -61,6 +61,25 @@ jobs:
             # remove containers this stack previously created.
           REMOTE
 
+      - name: Refresh reporting rollups
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+        # The dashboard reads materialized views, not the base tables. Migrations
+        # create and refresh them while the database is still EMPTY, and the seed
+        # loads data afterwards — so on a fresh deploy every figure renders as
+        # Rp0 / 0 transactions against a database that is in fact full. That is
+        # the worst kind of wrong: it looks like a working system reporting a
+        # terrible week, not like a broken one.
+        run: |
+          ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
+            for v in mv_sales_daily mv_item_usage_daily mv_employee_kpi_daily mv_delivery_recap_daily; do
+              docker exec mimi-postgres psql -U mimi -d mimi -v ON_ERROR_STOP=1 \
+                -tAc "REFRESH MATERIALIZED VIEW CONCURRENTLY ${v}" >/dev/null
+              echo "refreshed ${v}"
+            done
+          REMOTE
+
       - name: Verify the stack answers
         env:
           HOST: ${{ secrets.VPS_HOST }}

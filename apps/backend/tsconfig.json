@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "module": "CommonJS",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": true,
+    // Keep the incremental cache INSIDE dist/. `nest-cli.json` sets
+    // `deleteOutDir: true`, so without this the cache survives a wipe of
+    // dist/, tsc concludes "already up to date", and `nest build` exits 0
+    // having emitted nothing at all — a silently empty build that breaks the
+    // Docker image and any deploy. Co-locating them keeps the two in sync.
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node", "express", "multer"],
+    "paths": {
+      "@mimi/shared": ["../../packages/shared/dist"],
+      "@mimi/shared/*": ["../../packages/shared/dist/*"],
+      "@mimi/sync-protocol": ["../../packages/sync-protocol/dist"],
+      "@mimi/sync-protocol/*": ["../../packages/sync-protocol/dist/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}

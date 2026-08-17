@@ -1,0 +1,236 @@
+# =============================================================================
+# Mimi Chicken Operational System - Docker Compose (base)
+# =============================================================================
+# Base file usable standalone for a plain local run, or combined with an
+# overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# All data-layer ports are bound to 127.0.0.1 only (never exposed on the
+# network). Timezone is fixed WITA (Asia/Makassar) per decision D-11 — do NOT
+# change to Asia/Jakarta.
+# =============================================================================
+
+services:
+  # =============================================================================
+  # Data Layer
+  # =============================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: mimi-postgres
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Makassar}
+      PGTZ: ${PGTZ:-Asia/Makassar}
+      POSTGRES_DB: ${POSTGRES_DB:-mimi}
+      POSTGRES_USER: ${POSTGRES_USER:-mimi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mimi_secret}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mimi} -d ${POSTGRES_DB:-mimi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - mimi-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: mimi-redis
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Makassar}
+    command: redis-server --requirepass ${REDIS_PASSWORD:-mimi_redis_secret}
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-mimi_redis_secret}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - mimi-network
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    container_name: mimi-minio
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Makassar}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-mimi_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-mimi_minio_secret}
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - mimi-network
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:1.70.3
+    container_name: mimi-n8n
+    restart: unless-stopped
+    environment:
+      GENERIC_TIMEZONE: ${TZ:-Asia/Makassar}
+      TZ: ${TZ:-Asia/Makassar}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change_me_n8n_encryption_key}
+      WEBHOOK_URL: ${N8N_PUBLIC_URL:-http://localhost:5678}/
+      N8N_EDITOR_BASE_URL: ${N8N_PUBLIC_URL:-http://localhost:5678}/
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./infrastructure/n8n/workflows:/home/node/.n8n/workflows:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - mimi-network
+
+  # =============================================================================
+  # Application Layer
+  # =============================================================================
+
+  backend:
+    build:
+      context: .
+      dockerfile: ./apps/backend/Dockerfile
+      target: development
+    container_name: mimi-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 4000
+      TZ: ${TZ:-Asia/Makassar}
+      LOCALE: ${LOCALE:-id-ID}
+      CURRENCY: ${CURRENCY:-IDR}
+      # Comma-separated allowlist; unset means "allow any origin" (main.ts),
+      # which is fine for local dev but should always be set explicitly in
+      # prod — see docker-compose.prod.yml, which pins it to ${DOMAIN}.
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      # RUNTIME connection — mimi_app, NOT the superuser (D-21/D-22). Never
+      # point this at ${POSTGRES_USER}; that role bypasses RLS regardless of
+      # FORCE ROW LEVEL SECURITY. Migrations/seed use DATABASE_MIGRATION_URL
+      # instead (see .env.example), run by @mimi/database as the owner.
+      DATABASE_URL: postgres://mimi_app:${DB_APP_PASSWORD:-mimi_app_secret}@postgres:5432/${POSTGRES_DB:-mimi}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-mimi_redis_secret}@redis:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mimi_minio}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-mimi_minio_secret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-mimi-storage}
+      JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_in_production_refresh}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@mimichicken.local}
+      # WhatsApp channel (D-03) — n8n workflow webhook. WA_ENABLED=false means
+      # notifications are captured in a wa_outbox table instead of sent (RISK-P4).
+      WA_ENABLED: ${WA_ENABLED:-false}
+      N8N_WEBHOOK_URL_WA: ${N8N_WEBHOOK_URL_WA:-http://n8n:5678/webhook/wa-notify}
+      # FR-HR-01 default geofence radius for absen GPS validation.
+      GEOFENCE_RADIUS_METERS: ${GEOFENCE_RADIUS_METERS:-100}
+      # Shared secret a branch-node presents when pairing (M22 node-gateway).
+      BRANCH_NODE_PAIRING_SECRET: ${BRANCH_NODE_PAIRING_SECRET:-change_me_pairing_secret}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-4000}:4000"
+    volumes:
+      - ./apps/backend/src:/app/apps/backend/src
+      - ./packages:/app/packages
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks:
+      - mimi-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./apps/frontend/Dockerfile
+      target: development
+    container_name: mimi-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      TZ: ${TZ:-Asia/Makassar}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-}
+      NEXT_PUBLIC_LOCALE: ${LOCALE:-id-ID}
+      NEXT_PUBLIC_CURRENCY: ${CURRENCY:-IDR}
+      BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:4000}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./apps/frontend/src:/app/apps/frontend/src
+      - ./packages:/app/packages
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mimi-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  n8n_data:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  mimi-network:
+    driver: bridge

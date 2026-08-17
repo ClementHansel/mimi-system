@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+/* ────────────────────────────────────────────────────────────────────────
+   Mimi Chicken OS — design tokens
+   ──────────────────────────────────────────────────────────────────────
+   Palette rationale (see W1-E report for the full writeup):
+   - Brand primary is a burnt-terracotta ("goreng" / fried-chicken warmth) —
+     distinct in hue from every status color below so a primary action button
+     is never mistakable for a status pill.
+   - Neutral scale is warm-tinted stone, not cool gray — calmer under the
+     fluorescent kitchen lighting this runs under, and it keeps photos/menu
+     thumbnails from looking color-cast.
+   - Status colors (success/warning/danger/info) are the ONE place hue carries
+     meaning (approval state, stock alerts). They are never used alone —
+     StatusBadge always pairs color with an icon and a label so the system
+     stays usable for color-blind staff (protanopia/deuteranopia safe: green
+     vs amber vs red are kept far apart in the color wheel, not relying on
+     red/green alone).
+   - Dark mode is out of scope (NFR/brief): tokens are defined once, no
+     `prefers-color-scheme` branch.
+   ─────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* Brand — burnt terracotta */
+  --color-brand-50: #fdf3ec;
+  --color-brand-100: #fbe3d1;
+  --color-brand-200: #f5c6a3;
+  --color-brand-300: #eda06e;
+  --color-brand-400: #e17a3f;
+  --color-brand-500: #c85f26;
+  --color-brand-600: #a8481a;
+  --color-brand-700: #863814;
+  --color-brand-800: #6b2d12;
+  --color-brand-900: #4f2110;
+
+  /* Neutral — warm stone */
+  --color-stone-50: #fafaf9;
+  --color-stone-100: #f5f3f1;
+  --color-stone-200: #e7e3de;
+  --color-stone-300: #d3cdc4;
+  --color-stone-400: #a89f93;
+  --color-stone-500: #7c756a;
+  --color-stone-600: #5c564d;
+  --color-stone-700: #423d36;
+  --color-stone-800: #2c2823;
+  --color-stone-900: #1a1714;
+
+  /* Semantic surfaces / text / borders — built from the stone scale so every
+     component reads from one place, and a future re-tint only touches here. */
+  --color-surface: var(--color-stone-50);
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: var(--color-stone-100);
+  --color-text-primary: var(--color-stone-900);
+  --color-text-secondary: var(--color-stone-600);
+  --color-text-muted: var(--color-stone-500);
+  --color-text-inverse: #ffffff;
+  --color-border: var(--color-stone-200);
+  --color-border-strong: var(--color-stone-300);
+  --color-ring: var(--color-brand-500);
+
+  /* Status — success/warning/danger/info/neutral. Kept hue-distinct from
+     --color-brand-*. Always paired with an icon at the call site. */
+  --color-success-50: #ecfdf3;
+  --color-success-600: #15803d;
+  --color-success-700: #116430;
+  --color-warning-50: #fffaeb;
+  --color-warning-600: #b45309;
+  --color-warning-700: #92400a;
+  --color-danger-50: #fef2f2;
+  --color-danger-600: #b91c1c;
+  --color-danger-700: #941414;
+  --color-info-50: #eff6ff;
+  --color-info-600: #1d4ed8;
+  --color-info-700: #1a3fb0;
+  --color-neutral-50: var(--color-stone-100);
+  --color-neutral-600: var(--color-stone-600);
+  --color-neutral-700: var(--color-stone-700);
+
+  /* Cold-chain accent — frozen shipments/areas get their own recognizable
+     "cold" blue so a temperature reading never borrows the danger red until
+     it actually breaches. */
+  --color-cold-50: #ecfeff;
+  --color-cold-600: #0e7490;
+  --color-cold-700: #155e75;
+
+  /* Typography — next/font variables set on <html> in layout.tsx */
+  --font-sans: var(--font-inter), "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-manrope), var(--font-inter), system-ui, sans-serif;
+
+  /* Radii — soft, calm, not sharp (this is a kitchen tool, not a fintech app) */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Elevation — quiet shadows, no heavy drama */
+  --shadow-xs: 0 1px 2px rgb(26 23 20 / 0.06);
+  --shadow-sm: 0 1px 3px rgb(26 23 20 / 0.08), 0 1px 2px rgb(26 23 20 / 0.05);
+  --shadow-md: 0 4px 10px rgb(26 23 20 / 0.08), 0 2px 4px rgb(26 23 20 / 0.05);
+  --shadow-lg: 0 12px 24px rgb(26 23 20 / 0.12), 0 4px 8px rgb(26 23 20 / 0.06);
+
+  /* Touch targets — tablet-first (POS/outlet run on tablets in a hot kitchen;
+     large, unambiguous hit areas beat density). Desktop density comes from
+     Button's default size, not from shrinking these. `--spacing-*` extends
+     Tailwind's spacing scale, so this yields h-touch/h-touch-lg (and
+     w-/p-/min-h- variants) directly. */
+  --spacing-touch: 2.75rem;    /* 44px — floor for any interactive control */
+  --spacing-touch-lg: 3.5rem; /* 56px — POS numpad / primary POS actions */
+}
+
+/* ─── Base ─────────────────────────────────────────────────────────────── */
+* {
+  border-color: var(--color-border);
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Accessible, visible focus ring everywhere — this is a keyboard- and
+   scanner-gun-navigable back-office tool as much as a touch one. */
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--color-brand-200);
+  color: var(--color-brand-900);
+}
+
+/* Respect reduced-motion for the animated status dots (SyncStatusPill,
+   TopologyDevice online pulse) and any future transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@mimi/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enums, types, RBAC matrix, error codes, state machines, money/qty math (NUMERIC-safe), WITA date helpers, payroll calculators, GL balance validator. Pure functions, zero I/O.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "fast-check": "^4.9.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  }
+}

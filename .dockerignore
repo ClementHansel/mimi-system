@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build output
+dist
+**/dist
+.next
+**/.next
+
+# TS incremental build cache (poisons composite `tsc` — must never enter the image)
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Docker
+docker-compose.yml
+docker-compose.*.yml
+
+# Documentation
+*.md
+!README.md
+
+# Tests
+coverage
+**/__tests__
+**/*.test.ts
+**/*.spec.ts
+
+# PRD source
+*.pdf

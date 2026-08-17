@@ -1,0 +1,32 @@
+{
+  "name": "@mimi/sync-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Event shapes, authority matrix, and cursor logic for the three-tier (device / branch-node / cloud) append-only sync protocol (D-12). Shared, read-only after G1, by all three tiers.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@mimi/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "fast-check": "^4.9.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  }
+}

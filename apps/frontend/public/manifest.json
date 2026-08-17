@@ -1,0 +1,27 @@
+{
+  "name": "Mimi Chicken OS",
+  "short_name": "Mimi Chicken",
+  "description": "Sistem operasional Mimi Chicken — kasir, logistik, dan absensi yang tetap berjalan tanpa internet.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#fafaf9",
+  "theme_color": "#a8481a",
+  "lang": "id",
+  "dir": "ltr",
+  "categories": ["business", "food", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Kasir (POS)", "short_name": "Kasir", "url": "/pos", "description": "Buka layar kasir" },
+    { "name": "Outlet", "short_name": "Outlet", "url": "/outlet", "description": "Permintaan barang, stok, opname" },
+    { "name": "Akun Saya", "short_name": "Akun Saya", "url": "/me", "description": "Absen, slip gaji, cuti" }
+  ]
+}

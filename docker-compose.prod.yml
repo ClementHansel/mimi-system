@@ -1,0 +1,107 @@
+# =============================================================================
+# Mimi Chicken OS — PRODUCTION overlay (Traefik + Let's Encrypt)
+# =============================================================================
+# Apply on top of the base file on the VPS:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Pattern follows ../aivory/avry-vps-traefik: Traefik terminates TLS via the
+# HTTP-01/TLS-ALPN challenge against Let's Encrypt, discovers routed services
+# via Docker labels, and is the ONLY public listener (80/443). Every other
+# service (postgres/redis/minio/n8n/backend/frontend) stays bound to
+# 127.0.0.1 as defined in the base file — Traefik reaches them over the
+# internal mimi-network by container name/port, not via the published host
+# ports.
+#
+# First run on a fresh VPS:
+#   1. cp .env.prod.example .env   (fill every CHANGE_ME, set DOMAIN + ACME_EMAIL)
+#   2. docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#   3. docker compose ps                       (all healthy)
+#   4. curl -I https://api.${DOMAIN}/health    (expect 200 once cert issues — can take ~60s)
+# =============================================================================
+
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: mimi-traefik
+    restart: unless-stopped
+    command:
+      - "--api.insecure=false"
+      - "--api.dashboard=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=mimi-network"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?ACME_EMAIL is required}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--log.level=WARN"
+      - "--accesslog=false"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik_certs:/letsencrypt"
+      - "./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro"
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mimi-network
+
+  backend:
+    build:
+      target: production
+    environment:
+      NODE_ENV: production
+      WA_ENABLED: ${WA_ENABLED:-false}
+      # Never leave this open in prod (main.ts allows any origin when unset).
+      CORS_ORIGIN: https://${DOMAIN}
+    volumes: []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mimi-backend.rule=Host(`api.${DOMAIN}`)"
+      - "traefik.http.routers.mimi-backend.entrypoints=websecure"
+      - "traefik.http.routers.mimi-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mimi-backend.loadbalancer.server.port=4000"
+
+  frontend:
+    build:
+      target: production
+    environment:
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
+    volumes: []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mimi-frontend.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.mimi-frontend.entrypoints=websecure"
+      - "traefik.http.routers.mimi-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mimi-frontend.loadbalancer.server.port=3000"
+
+  n8n:
+    environment:
+      N8N_HOST: n8n.${DOMAIN}
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://n8n.${DOMAIN}/
+      N8N_EDITOR_BASE_URL: https://n8n.${DOMAIN}/
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mimi-n8n.rule=Host(`n8n.${DOMAIN}`)"
+      - "traefik.http.routers.mimi-n8n.entrypoints=websecure"
+      - "traefik.http.routers.mimi-n8n.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mimi-n8n.loadbalancer.server.port=5678"
+
+volumes:
+  traefik_certs:
+    driver: local

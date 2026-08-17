@@ -1,0 +1,249 @@
+import { Pool, type PoolClient } from 'pg';
+import { RoleKey } from '@mimi/shared';
+
+/**
+ * Live-DB harness for M10 `delivery`'s integration suite — same two-pool
+ * split as `kernel/approvals/test-support/live-db.ts` and
+ * `modules/inventory/test-support/live-db.ts` (D-21/D-22: a single shared
+ * superuser connection string is exactly how RLS got silently bypassed once,
+ * and how a module can ship green tests against zero working endpoints — a
+ * fake pool never proves a real permission grant exists).
+ *
+ *  - `getOwnerPool()` — `DATABASE_MIGRATION_URL` (superuser, `BYPASSRLS`).
+ *    Fixture setup/teardown ONLY: reading seeded locations/users/items/
+ *    storage-areas/drivers/vehicles. Never used to construct or call any
+ *    service under test.
+ *  - `getAppPool()` — `DATABASE_URL` (the runtime `mimi_app` role — the SAME
+ *    identity `DATABASE_POOL` uses in production). Every service call in the
+ *    integration suite runs against a `PoolClient` from THIS pool, under the
+ *    same `SET LOCAL ROLE app_user` + session-var sequence `RlsContextGuard`
+ *    issues for a real request.
+ */
+
+const OWNER_URL =
+  process.env.DATABASE_MIGRATION_URL ??
+  `postgres://${process.env.POSTGRES_USER ?? 'mimi'}:${process.env.POSTGRES_PASSWORD ?? 'mimi_secret'}@localhost:${
+    process.env.POSTGRES_PORT ?? '55433'
+  }/${process.env.POSTGRES_DB ?? 'mimi'}`;
+
+const APP_URL =
+  process.env.DATABASE_URL ??
+  `postgres://mimi_app:${process.env.DB_APP_PASSWORD ?? 'mimi_app_secret'}@localhost:${
+    process.env.POSTGRES_PORT ?? '55433'
+  }/${process.env.POSTGRES_DB ?? 'mimi'}`;
+
+let ownerPool: Pool | undefined;
+let appPool: Pool | undefined;
+
+/** Fixture setup/teardown ONLY — never construct a delivery service against this pool. */
+export function getOwnerPool(): Pool {
+  ownerPool ??= new Pool({ connectionString: OWNER_URL, max: 5 });
+  return ownerPool;
+}
+
+/** The pool the code under test runs against — same identity (`mimi_app`) as production `DATABASE_POOL`. */
+export function getAppPool(): Pool {
+  appPool ??= new Pool({ connectionString: APP_URL, max: 5 });
+  return appPool;
+}
+
+export async function closePool(): Promise<void> {
+  await ownerPool?.end();
+  await appPool?.end();
+  ownerPool = undefined;
+  appPool = undefined;
+}
+
+export interface RlsCtx {
+  role: string;
+  userId: string;
+  locationIds: readonly string[] | null;
+}
+
+const SYSTEM_CONTEXT_USER_ID = '00000000-0000-0000-0000-0000000000ad';
+export const CENTRAL_CTX: RlsCtx = { role: 'owner', userId: SYSTEM_CONTEXT_USER_ID, locationIds: null };
+
+/** Runs `fn` against a fresh `mimi_app` connection inside a transaction that is ALWAYS rolled back. */
+export async function withRollback<T>(fn: (client: PoolClient) => Promise<T>, ctx: RlsCtx = CENTRAL_CTX): Promise<T> {
+  const client = await getAppPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds === null ? '' : ctx.locationIds.join(',')]);
+    return await fn(client);
+  } finally {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+  }
+}
+
+/**
+ * Counterpart to `withRollback` for every M10 service method — they all
+ * self-commit via `db-tx.ts`'s `withWrite` (the Wave-3 mutation convention:
+ * ONE HTTP request, ONE COMMIT, matching `RlsCleanupInterceptor`'s "a module
+ * service may already have committed on this same client" contract). A test
+ * exercising a real mutating call therefore needs its OWN cleanup — this
+ * helper does not hide that; callers clean up explicitly afterward.
+ */
+export async function withCommit<T>(fn: (client: PoolClient) => Promise<T>, ctx: RlsCtx = CENTRAL_CTX): Promise<T> {
+  const client = await getAppPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds === null ? '' : ctx.locationIds.join(',')]);
+    const result = await fn(client);
+    await client.query('COMMIT').catch(() => {}); // no-op NOTICE if `fn` already committed — same tolerance as RlsCleanupInterceptor
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+export interface Fixtures {
+  warehouseId: string;
+  outletId: string;
+  freezerAreaWarehouse: string;
+  dryAreaWarehouse: string;
+  freezerAreaOutlet: string;
+  dryAreaOutlet: string;
+  frozenItemId: string;
+  frozenItemUnitId: string;
+  dryItemId: string;
+  dryItemUnitId: string;
+  driverId: string;
+  driverUserId: string;
+  frozenVehicleId: string;
+  dryVehicleId: string;
+  usersByRole: Record<RoleKey, string>;
+  outletAssignedUserId: (roleKey: RoleKey) => Promise<string>;
+}
+
+/** Reads real seeded rows over the OWNER pool — never inserts master data (W1-C's territory); reads are harmless regardless of connection identity. */
+export async function loadFixtures(): Promise<Fixtures> {
+  const pool = getOwnerPool();
+
+  const warehouse = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' AND is_active = true ORDER BY created_at ASC LIMIT 1`);
+  const outlet = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'outlet' AND is_active = true ORDER BY code ASC LIMIT 1`);
+  const warehouseId = warehouse.rows[0]!.id;
+  const outletId = outlet.rows[0]!.id;
+
+  const areaFor = async (locationId: string, type: string): Promise<string> => {
+    const res = await pool.query<{ id: string }>(`SELECT id FROM storage_areas WHERE location_id = $1 AND type = $2 AND is_active = true LIMIT 1`, [locationId, type]);
+    if (!res.rows[0]) throw new Error(`Seed is missing a '${type}' storage area at location ${locationId}`);
+    return res.rows[0].id;
+  };
+
+  const frozenItem = await pool.query<{ id: string; base_unit_id: string }>(`SELECT id, base_unit_id FROM items WHERE storage_type = 'frozen' AND is_active = true LIMIT 1`);
+  const dryItem = await pool.query<{ id: string; base_unit_id: string }>(`SELECT id, base_unit_id FROM items WHERE storage_type = 'dry' AND is_active = true LIMIT 1`);
+  if (!frozenItem.rows[0]) throw new Error(`Seed data is missing a 'frozen' item`);
+  if (!dryItem.rows[0]) throw new Error(`Seed data is missing a 'dry' item`);
+
+  const driver = await pool.query<{ id: string; user_id: string }>(`SELECT id, user_id FROM drivers WHERE is_active = true AND user_id IS NOT NULL LIMIT 1`);
+  if (!driver.rows[0]) throw new Error(`Seed data is missing an active driver with a linked user_id`);
+
+  const frozenVehicle = await pool.query<{ id: string }>(`SELECT id FROM vehicles WHERE has_freezer = true AND is_active = true LIMIT 1`);
+  const dryVehicle = await pool.query<{ id: string }>(`SELECT id FROM vehicles WHERE has_freezer = false AND is_active = true LIMIT 1`);
+  if (!frozenVehicle.rows[0]) throw new Error(`Seed data is missing a freezer-capable vehicle`);
+  if (!dryVehicle.rows[0]) throw new Error(`Seed data is missing a non-freezer vehicle`);
+
+  const usersByRole = {} as Record<RoleKey, string>;
+  for (const roleKey of Object.values(RoleKey)) {
+    const res = await pool.query<{ id: string }>(`SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`, [roleKey]);
+    if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`);
+    usersByRole[roleKey] = res.rows[0].id;
+  }
+
+  return {
+    warehouseId,
+    outletId,
+    freezerAreaWarehouse: await areaFor(warehouseId, 'freezer'),
+    dryAreaWarehouse: await areaFor(warehouseId, 'dry_store'),
+    freezerAreaOutlet: await areaFor(outletId, 'freezer'),
+    dryAreaOutlet: await areaFor(outletId, 'dry_store'),
+    frozenItemId: frozenItem.rows[0].id,
+    frozenItemUnitId: frozenItem.rows[0].base_unit_id,
+    dryItemId: dryItem.rows[0].id,
+    dryItemUnitId: dryItem.rows[0].base_unit_id,
+    driverId: driver.rows[0].id,
+    driverUserId: driver.rows[0].user_id,
+    frozenVehicleId: frozenVehicle.rows[0].id,
+    dryVehicleId: dryVehicle.rows[0].id,
+    usersByRole,
+    outletAssignedUserId: async (roleKey: RoleKey) => {
+      const res = await pool.query<{ id: string }>(
+        `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id JOIN user_locations ul ON ul.user_id = u.id WHERE r.key = $1 AND ul.location_id = $2 LIMIT 1`,
+        [roleKey, outletId],
+      );
+      if (!res.rows[0]) throw new Error(`No user with role '${roleKey}' assigned to outlet ${outletId}`);
+      return res.rows[0].id;
+    },
+  };
+}
+
+/** A real, confirmed `attachments` row (kernel/storage's table) — SJ receiving needs at least one photo + a signature, both pre-existing/confirmed before `receive()` is called. Written on the OWNER pool (fixture setup in a table this module doesn't own the writer for; presign/confirm is kernel/storage's HTTP surface, not exercised here). */
+export async function createConfirmedAttachment(kind: string, entityType: string | null, entityId: string | null): Promise<string> {
+  const res = await getOwnerPool().query<{ id: string }>(
+    `INSERT INTO attachments (bucket, object_key, file_name, mime_type, size_bytes, kind, entity_type, entity_id)
+     VALUES ('mimi-test', $1, $2, 'image/jpeg', 1024, $3, $4, $5)
+     RETURNING id`,
+    [`test/${kind}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`, `${kind}.jpg`, kind, entityType, entityId],
+  );
+  return res.rows[0]!.id;
+}
+
+export async function deleteAttachment(id: string): Promise<void> {
+  await getOwnerPool().query(`DELETE FROM attachments WHERE id = $1`, [id]);
+}
+
+/** Full cleanup of everything a create→...→complete flow touches, by `sj_number` prefix — SJ/drops/lines/temp-logs/seals cascade from `surat_jalan`; `document_counters` rows are left (shared, harmless). */
+export async function deleteSuratJalan(id: string): Promise<void> {
+  await getOwnerPool().query(`DELETE FROM surat_jalan WHERE id = $1`, [id]);
+}
+
+export async function deleteGoodsReceipt(id: string): Promise<void> {
+  await getOwnerPool().query(`DELETE FROM goods_receipts WHERE id = $1`, [id]);
+}
+
+/** Rolls back the `document_counters`/`stock_movements`/`stock_balances`/`replenishment_requests` side-effects a committed SJ flow leaves — everything this module's OWN tables didn't cascade-delete. */
+export async function resetStockKey(locationId: string, storageAreaId: string, itemId: string): Promise<void> {
+  await getOwnerPool().query(`DELETE FROM stock_movements WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [locationId, storageAreaId, itemId]);
+  await getOwnerPool().query(`DELETE FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [locationId, storageAreaId, itemId]);
+}
+
+export async function createReplenishmentRequestFixture(locationId: string, requestedBy: string, itemId: string, unitId: string, qty: string): Promise<{ requestId: string; lineId: string }> {
+  const owner = getOwnerPool();
+  const period = new Date().toISOString().slice(0, 7).replace('-', '');
+  const numRes = await owner.query<{ last_number: number }>(
+    `INSERT INTO document_counters (doc_type, period, last_number) VALUES ('RR', $1, 1)
+     ON CONFLICT (doc_type, period) DO UPDATE SET last_number = document_counters.last_number + 1 RETURNING last_number`,
+    [period],
+  );
+  const requestNumber = `RR/${period}/${String(numRes.rows[0]!.last_number).padStart(4, '0')}`;
+  const reqRes = await owner.query<{ id: string }>(
+    `INSERT INTO replenishment_requests (request_number, location_id, status, source, requested_by)
+     VALUES ($1, $2, 'approved', 'manual', $3) RETURNING id`,
+    [requestNumber, locationId, requestedBy],
+  );
+  const requestId = reqRes.rows[0]!.id;
+  const lineRes = await owner.query<{ id: string }>(
+    `INSERT INTO replenishment_request_lines (request_id, item_id, unit_id, qty_requested, qty_approved) VALUES ($1, $2, $3, $4, $4) RETURNING id`,
+    [requestId, itemId, unitId, qty],
+  );
+  return { requestId, lineId: lineRes.rows[0]!.id };
+}
+
+export async function deleteReplenishmentRequest(id: string): Promise<void> {
+  await getOwnerPool().query(`DELETE FROM replenishment_requests WHERE id = $1`, [id]);
+}
+
+export async function readReplenishmentRequestStatus(id: string): Promise<string | null> {
+  const res = await getOwnerPool().query<{ status: string }>(`SELECT status FROM replenishment_requests WHERE id = $1`, [id]);
+  return res.rows[0]?.status ?? null;
+}

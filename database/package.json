@@ -1,0 +1,25 @@
+{
+  "name": "@mimi/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Custom SQL migration runner (ported from AIRE), numbered migrations, and a realistic seed: 1 gudang pusat + 20 outlets across 4 Kalimantan cities, storage areas, items, menu products with recipes, employees, suppliers, seeded COA, and devices.",
+  "scripts": {
+    "migrate": "tsx migrate.ts",
+    "migrate:status": "tsx migrate.ts --status",
+    "seed": "tsx seed.ts",
+    "reset": "tsx reset.ts"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/pg": "^8.20.0",
+    "fast-check": "^4.9.0",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

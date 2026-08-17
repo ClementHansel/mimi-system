@@ -1,0 +1,32 @@
+{
+  "name": "@mimi/branch-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional Tier-2 branch-node agent (D-12/D-13): embedded local Postgres, outbound-only socket.io link to cloud, LAN discovery (mDNS/SSDP/bounded TCP probe) ported from AIRE branch-bridge. Standalone-runnable with SIMULATE=true — no hardware, no inbound ports, ever.",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@mimi/shared": "workspace:*",
+    "@mimi/sync-protocol": "workspace:*",
+    "bonjour-service": "^1.4.3",
+    "node-ssdp": "^4.0.1",
+    "pg": "^8.22.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/node-ssdp": "^4.0.5",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,254 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9.15.4"
+
+jobs:
+  build:
+    name: Install, build, lint, test
+    runs-on: ubuntu-latest
+    # A live Postgres, not just the separate "db" job's — the RLS-bypass
+    # regression test (apps/backend/src/common/guards/rls-context.guard.live-db.regression.spec.ts,
+    # and any future test like it) `describe.skipIf(!process.env.DATABASE_URL)`s
+    # when it can't reach a database. Before this service existed here, that
+    # spec silently skipped in every CI run and only ever executed on a
+    # developer's laptop — the exact "looks like passing software, isn't"
+    # failure shape as D-22 itself (see .env.example's D-21/D-22 comment).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          TZ: Asia/Makassar
+          PGTZ: Asia/Makassar
+          POSTGRES_DB: mimi
+          POSTGRES_USER: mimi
+          POSTGRES_PASSWORD: mimi_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mimi -d mimi"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # apps/backend/test/app-boot.spec.ts compiles the real AppModule and
+      # runs init() — the same graph main.ts builds. RedisModule is @Global
+      # and its ioredis client is constructed eagerly (lazyConnect: false)
+      # as part of that graph, so without a reachable Redis here the boot
+      # test either hangs on connection retries or the client emits an
+      # unhandled 'error' event. Same class of gap as the postgres service
+      # above: without this, the boot test would flake or silently never
+      # exercise the real connection path.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TZ: Asia/Makassar
+      PGTZ: Asia/Makassar
+      # Two identities, same as production (D-21/D-22) — never collapse
+      # these into one. DATABASE_URL is what app code and the live-DB specs
+      # read (mimi_app: non-superuser, RLS-enforced — the actual runtime
+      # path, not a hand-issued SET ROLE). DATABASE_MIGRATION_URL is the
+      # owner connection @mimi/database's migrate/seed/reset scripts use to
+      # create and own schema objects, including the migration that creates
+      # the mimi_app role itself (database/migrations/203_w1c_app_login_role.sql).
+      DATABASE_URL: postgres://mimi_app:mimi_app_secret@localhost:5432/mimi
+      DATABASE_MIGRATION_URL: postgres://mimi:mimi_secret@localhost:5432/mimi
+      # Required by app-boot.spec.ts (see redis service above) — matches the
+      # RedisClientProvider default host/port, pointed at the service container.
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Guards against the exact incident this repo hit: a misplaced tsc
+      # incremental cache (tsBuildInfoFile outside dist/) let `nest
+      # build`/`tsc` exit 0 while emitting zero files, because the cache
+      # said "up to date" against a dist/ that had just been wiped. `pnpm
+      # build` above would have reported success either way — this is the
+      # assertion whose absence let that ship. Fail loudly instead.
+      - name: Verify build actually produced output
+        run: |
+          set -e
+          fail=0
+          if [ ! -s apps/backend/dist/main.js ]; then
+            echo "::error::apps/backend/dist/main.js is missing or empty — build silently emitted nothing"
+            fail=1
+          fi
+          if [ -z "$(find packages/shared/dist -name '*.js' -print -quit 2>/dev/null)" ]; then
+            echo "::error::packages/shared/dist has no compiled output — build silently emitted nothing"
+            fail=1
+          fi
+          if [ -z "$(find packages/sync-protocol/dist -name '*.js' -print -quit 2>/dev/null)" ]; then
+            echo "::error::packages/sync-protocol/dist has no compiled output — build silently emitted nothing"
+            fail=1
+          fi
+          if [ "$fail" -eq 1 ]; then
+            exit 1
+          fi
+          echo "Build guard OK: backend dist/main.js and sibling package dist/ are populated."
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Check for migrations
+        id: migrations
+        run: |
+          count=$(find database/migrations -maxdepth 1 -name '*.sql' 2>/dev/null | wc -l | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Found $count migration file(s) in database/migrations"
+
+      - name: Run migrations (owner connection — creates mimi_app, D-21)
+        if: steps.migrations.outputs.count != '0'
+        run: pnpm db:migrate
+
+      - name: Run seed (owner connection)
+        if: steps.migrations.outputs.count != '0'
+        run: pnpm db:seed
+
+      # Turns "a required env var is silently missing so the test just
+      # doesn't run" into a loud, unmissable CI failure — the general form
+      # of the D-22 lesson, not just a one-off fix for today's file. Any
+      # future `describe.skipIf(!process.env.SOME_VAR)` live-DB spec is
+      # covered automatically: this scans for the pattern rather than
+      # naming today's file.
+      - name: Verify live-DB specs will not silently skip
+        if: always() && steps.migrations.outputs.count != '0'
+        shell: bash
+        run: |
+          set -uo pipefail
+          mapfile -t files < <(grep -rlE "skipIf\(!process\.env\.[A-Z_]+\)" --include="*.spec.ts" apps packages database 2>/dev/null || true)
+          count=${#files[@]}
+
+          {
+            echo "### Live-DB-gated test specs"
+            echo
+            if [ "$count" -eq 0 ]; then
+              echo "None found in this checkout."
+            else
+              echo "Found $count file(s) that skip without a live database. This job provisions postgres and runs migrate+seed, so every one of these is expected to **execute**, not skip:"
+              echo
+              for f in "${files[@]}"; do
+                echo "- \`$f\`"
+              done
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          missing=0
+          for f in "${files[@]}"; do
+            vars=$(grep -oE "skipIf\(!process\.env\.[A-Z_]+\)" "$f" | grep -oE "[A-Z_]+\)" | tr -d ')')
+            for v in $vars; do
+              val="${!v:-}"
+              if [ -z "$val" ]; then
+                echo "::error file=$f::Live-DB spec requires \$$v, which is not set in this job — it would silently SKIP instead of running. This is the exact failure shape D-22 exists to prevent: a missing check that reports green."
+                missing=1
+              fi
+            done
+          done
+
+          if [ "$missing" -eq 1 ]; then
+            echo "::error::One or more live-DB-gated specs would silently skip in this job — see annotations above. Failing loudly instead of letting CI report green with a gap."
+            exit 1
+          fi
+
+          echo "All $count live-DB-gated spec file(s) have their required env var(s) set in this job — none will silently skip."
+
+      - name: Test
+        run: pnpm test
+
+  db:
+    name: Migrations + seed
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          TZ: Asia/Makassar
+          PGTZ: Asia/Makassar
+          POSTGRES_DB: mimi
+          POSTGRES_USER: mimi
+          POSTGRES_PASSWORD: mimi_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mimi -d mimi"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # This job only ever runs migrate+seed, never the backend, so it needs
+      # the OWNER connection (D-21/D-22) — @mimi/database's scripts read
+      # DATABASE_MIGRATION_URL, not DATABASE_URL (that's the runtime/mimi_app
+      # var the backend uses, which this job never touches).
+      DATABASE_MIGRATION_URL: postgres://mimi:mimi_secret@localhost:5432/mimi
+      TZ: Asia/Makassar
+      PGTZ: Asia/Makassar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check for migrations
+        id: migrations
+        run: |
+          count=$(find database/migrations -maxdepth 1 -name '*.sql' 2>/dev/null | wc -l | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Found $count migration file(s) in database/migrations"
+
+      - name: Run migrations
+        if: steps.migrations.outputs.count != '0'
+        run: pnpm db:migrate
+
+      - name: Run seed
+        if: steps.migrations.outputs.count != '0'
+        run: pnpm db:seed
+
+      - name: Skip notice
+        if: steps.migrations.outputs.count == '0'
+        run: echo "::notice::database/migrations is still empty — skipping migrate+seed until senior-db (W1-C) lands them."

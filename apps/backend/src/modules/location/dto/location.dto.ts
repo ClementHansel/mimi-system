@@ -1,0 +1,134 @@
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { LocationType } from '@mimi/shared';
+
+/** Decimal-string pattern for NUMERIC(9,6) lat/lng — optional leading `-`, at least one digit. */
+const DECIMAL_RE = /^-?\d+(\.\d+)?$/;
+
+/** `GET /api/locations?type=&city=&active=&page=` (CONTRACTS.md §4.3). */
+export class ListLocationsQueryDto {
+  @IsOptional()
+  @IsIn(Object.values(LocationType))
+  type?: LocationType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  pageSize?: number = 50;
+}
+
+/** `POST /api/locations` body (CONTRACTS.md §4.3). */
+export class CreateLocationDto {
+  @IsString()
+  @MaxLength(20)
+  code!: string;
+
+  @IsString()
+  @MaxLength(255)
+  name!: string;
+
+  @IsIn(Object.values(LocationType))
+  type!: LocationType;
+
+  @IsString()
+  @MaxLength(100)
+  city!: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(DECIMAL_RE)
+  latitude?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(DECIMAL_RE)
+  longitude?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  geofenceRadiusM?: number;
+}
+
+/** `PATCH /api/locations/:id` body — partial of `CreateLocationDto` (CONTRACTS.md §4.3). */
+export class UpdateLocationDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  name?: string;
+
+  @IsOptional()
+  @IsIn(Object.values(LocationType))
+  type?: LocationType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(DECIMAL_RE)
+  latitude?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(DECIMAL_RE)
+  longitude?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  geofenceRadiusM?: number;
+}

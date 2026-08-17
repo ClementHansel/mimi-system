@@ -1,0 +1,136 @@
+{
+  "name": "Mimi Chicken - WhatsApp Notify (D-03)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wa-notify",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-wa-notify",
+      "name": "Webhook: wa-notify",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "wa-notify",
+      "notes": "Receives { to, templateKey, params, text } from WhatsAppChannelService.send() (apps/backend/src/kernel/notification/channels/whatsapp-channel.service.ts). `to` is an E.164-ish phone number, `text` is the ALREADY-RENDERED Bahasa Indonesia message (backend owns i18n per BUILD-PLAN constraint) — this workflow's only job is relaying it to the real WA gateway."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "has-to",
+              "leftValue": "={{ $json.to }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            },
+            {
+              "id": "has-text",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-payload-valid",
+      "name": "IF: payload has to + text",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WA_GATEWAY_URL }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ to: $json.to, message: $json.text }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "http-wa-gateway",
+      "name": "HTTP Request: WA Gateway",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 200],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_REAL_WA_GATEWAY_CREDENTIAL_ID",
+          "name": "WA Gateway Bearer Token"
+        }
+      },
+      "notes": "RISK-P4 (BUILD-PLAN.md): the real WA gateway URL + credential do not exist yet. `WA_GATEWAY_URL` env var and the `httpHeaderAuth` credential referenced here are PLACEHOLDERS — set both in the n8n credential store and this container's env once the client supplies real gateway access. Nothing on the backend side changes when that happens (WA_ENABLED=true is the only flip). `retryOnFail` absorbs a transient gateway blip (3 tries, 5s apart) before treating it as a real failure; `onError: continueErrorOutput` then routes a persistent failure to the wired error output (main[1] -> 'Respond: gateway error') instead of halting the workflow silently — see n8n-error-handling for why both halves are required."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, messageId: $json.id ?? $json.messageId ?? null } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond-success",
+      "name": "Respond: sent",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [940, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: $json.error?.message ?? $json.message ?? 'WA gateway request failed' } }}",
+        "options": { "responseCode": 502 }
+      },
+      "id": "respond-gateway-error",
+      "name": "Respond: gateway error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'Malformed payload: to and text are required' } }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "respond-bad-request",
+      "name": "Respond: bad request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 440]
+    }
+  ],
+  "connections": {
+    "Webhook: wa-notify": {
+      "main": [[{ "node": "IF: payload has to + text", "type": "main", "index": 0 }]]
+    },
+    "IF: payload has to + text": {
+      "main": [
+        [{ "node": "HTTP Request: WA Gateway", "type": "main", "index": 0 }],
+        [{ "node": "Respond: bad request", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP Request: WA Gateway": {
+      "main": [
+        [{ "node": "Respond: sent", "type": "main", "index": 0 }],
+        [{ "node": "Respond: gateway error", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

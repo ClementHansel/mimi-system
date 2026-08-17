@@ -1,0 +1,72 @@
+# ─── Dependencies ──────────────────────────────────────────────────
+node_modules/
+# pnpm's content-addressable store. Never let this land in a commit — it turns a
+# routine divergence into a repo-wide false-positive conflict (see AIRE history).
+.pnpm-store/
+
+# ─── Build Outputs ────────────────────────────────────────────────
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# ─── Environment & Secrets ────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+
+# ─── IDE & Editor ─────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── OS Generated ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ─── Test & Coverage ──────────────────────────────────────────────
+coverage/
+playwright-report/
+test-results/
+
+# ─── Docker ───────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ─── Traefik / Let's Encrypt secrets ──────────────────────────────
+infrastructure/traefik/letsencrypt/
+infrastructure/traefik/**/acme.json
+
+# ─── n8n runtime data (workflows/credentials are provisioned, not committed) ──
+infrastructure/n8n/data/
+
+# ─── Logs ─────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── Backups (never commit a real dump) ───────────────────────────
+infrastructure/backup/*.sql
+infrastructure/backup/*.sql.gz
+infrastructure/backup/dumps/
+
+# ─── Misc ─────────────────────────────────────────────────────────
+*.tgz
+*.gz
+.turbo/
+.vercel/
+.cache/
+
+# ─── Local scratch / scripts (never commit) ───────────────────────
+tmp_*
+*.tmp
+scratch/

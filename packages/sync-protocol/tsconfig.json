@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "module": "CommonJS",
+    "composite": true,
+    // Same incident as apps/backend/tsconfig.json: `composite: true` implies
+    // an incremental build cache, which TS defaults to placing OUTSIDE
+    // dist/ (package-root tsconfig.tsbuildinfo). If dist/ is ever wiped
+    // without also removing that file (rm -rf dist, a Docker layer without
+    // it, etc.), `tsc` reads the stale cache, decides nothing changed, and
+    // exits 0 having emitted zero files. Co-locating it inside dist/ keeps
+    // the cache and its outputs in sync. Reproduced locally: `rm -rf dist &&
+    // tsc` emitted nothing and exited 0 before this fix.
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.property.test.ts"]
+}

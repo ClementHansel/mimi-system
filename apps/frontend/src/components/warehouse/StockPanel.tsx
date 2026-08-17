@@ -1,0 +1,143 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Boxes, History } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
+import { Card, CardContent, CardHeader, CardTitle, Badge, Input, EmptyState, Modal, toast, Button } from '@/components/ui';
+import { formatQty } from '@/lib/formatters';
+import { fmtDateTime } from '@/lib/dates';
+import { useWarehouseLocation } from './lib/use-warehouse-location';
+import { getBalances, getMovements } from './lib/warehouse-api';
+import type { Balance, Movement } from './lib/types';
+
+/**
+ * Warehouse stock — balances per storage area (freezer/chiller/dry store),
+ * min-stock alerts (`belowMin`, per FR-LOG-07/18/20), and per-item movement
+ * history on demand (FR-LOG-21) so a discrepancy can be traced back to its
+ * originating transfer/receipt/shipment without leaving this screen.
+ */
+export function StockPanel() {
+  const { t } = useI18n();
+  const { locationId } = useWarehouseLocation();
+  const [balances, setBalances] = useState<Balance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [historyFor, setHistoryFor] = useState<Balance | null>(null);
+  const [movements, setMovements] = useState<Movement[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    if (!locationId) return;
+    let cancelled = false;
+    setLoading(true);
+    getBalances({ locationId })
+      .then((res) => !cancelled && setBalances(res.rows))
+      .catch(() => toast({ title: t('table.error'), variant: 'danger' }))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [locationId, t]);
+
+  const byArea = useMemo(() => {
+    const filtered = q.trim()
+      ? balances.filter((b) => b.itemName.toLowerCase().includes(q.trim().toLowerCase()) || b.sku.toLowerCase().includes(q.trim().toLowerCase()))
+      : balances;
+    const groups = new Map<string, Balance[]>();
+    for (const b of filtered) groups.set(b.storageAreaName, [...(groups.get(b.storageAreaName) ?? []), b]);
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [balances, q]);
+
+  function openHistory(b: Balance) {
+    if (!locationId) return;
+    setHistoryFor(b);
+    setHistoryLoading(true);
+    getMovements({ locationId, itemId: b.itemId, storageAreaId: b.storageAreaId })
+      .then((res) => setMovements(res.rows))
+      .catch(() => toast({ title: t('table.error'), variant: 'danger' }))
+      .finally(() => setHistoryLoading(false));
+  }
+
+  if (!locationId) return <EmptyState title={t('table.error')} size="lg" />;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Input placeholder={t('common.filter')} value={q} onChange={(e) => setQ(e.target.value)} wrapperClassName="max-w-sm" />
+
+      {loading && <EmptyState title={t('table.loading')} size="lg" />}
+      {!loading && byArea.length === 0 && <EmptyState title={t('table.empty')} size="lg" />}
+
+      {!loading &&
+        byArea.map(([areaName, items]) => (
+          <Card key={areaName}>
+            <CardHeader className="flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Boxes className="size-4" aria-hidden />
+                {areaName}
+              </CardTitle>
+              <span className="text-sm text-text-muted">{items.length} item</span>
+            </CardHeader>
+            <CardContent className="overflow-x-auto p-0">
+              <table className="w-full border-collapse text-sm">
+                <tbody>
+                  {items.map((b) => (
+                    <tr
+                      key={`${b.storageAreaId}-${b.itemId}`}
+                      className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-sunken"
+                      onClick={() => openHistory(b)}
+                    >
+                      <td className="px-4 py-2.5 text-text-primary">{b.itemName}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{formatQty(b.qtyOnHand, b.unitCode)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        {b.belowMin && (
+                          <Badge variant="warning" size="sm">
+                            <AlertTriangle className="size-3" aria-hidden />
+                            {t('outlet.stock.belowMin')}
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="w-8 px-2 py-2.5 text-right text-text-muted">
+                        <History className="size-4" aria-hidden />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        ))}
+
+      <Modal open={!!historyFor} onClose={() => setHistoryFor(null)} title={historyFor?.itemName ?? ''} size="lg">
+        {historyLoading && <EmptyState title={t('table.loading')} size="sm" />}
+        {!historyLoading && movements.length === 0 && <EmptyState title={t('table.empty')} size="sm" />}
+        {!historyLoading && movements.length > 0 && (
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-sunken text-left text-text-secondary">
+                <th className="px-3 py-2">{t('common.date')}</th>
+                <th className="px-3 py-2">{t('warehouse.stock.movementType')}</th>
+                <th className="px-3 py-2 text-right">{t('outlet.replenishment.qty')}</th>
+                <th className="px-3 py-2">{t('warehouse.stock.counterparty')}</th>
+                <th className="px-3 py-2">{t('common.reason')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movements.map((m) => (
+                <tr key={m.id} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2.5 whitespace-nowrap">{fmtDateTime(m.occurredAt)}</td>
+                  <td className="px-3 py-2.5">{t(`warehouse.stock.movementTypes.${m.movementType}`) === `warehouse.stock.movementTypes.${m.movementType}` ? m.movementType : t(`warehouse.stock.movementTypes.${m.movementType}`)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(m.qty)}</td>
+                  <td className="px-3 py-2.5">{m.counterpartyLocationName ?? '—'}</td>
+                  <td className="px-3 py-2.5">{m.reason ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div className="mt-4 flex justify-end">
+          <Button variant="outline" onClick={() => setHistoryFor(null)}>{t('common.close')}</Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}

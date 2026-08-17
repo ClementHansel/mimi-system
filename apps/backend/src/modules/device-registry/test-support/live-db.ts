@@ -1,0 +1,148 @@
+/**
+ * Live-database test fixtures for M21/M22 (device-registry, node-gateway).
+ * Reuses `kernel/sync/test-support/live-db.ts`'s two-pool pattern verbatim
+ * (owner pool for fixture setup/teardown, app pool = the SAME `mimi_app`
+ * RLS-enforced identity production `DATABASE_POOL` uses, D-21/D-22) rather
+ * than re-implementing it — that file already documents why two separate
+ * pools are non-negotiable here (the exact incident class BUILD-PLAN D-22
+ * describes). This file only adds the fixtures specific to `branch_nodes`/
+ * `pairing_tokens`/`discovered_devices`, which that file has no need of.
+ */
+import { randomBytes, randomUUID } from 'node:crypto';
+import { hashDeviceToken } from '../../../kernel/sync/device-auth.guard';
+
+export {
+  getOwnerPool,
+  getAppPool,
+  fetchOneLocationId,
+  fetchAnotherLocationId,
+  fetchOneUserId,
+  assignUserToLocation,
+  insertTestDevice,
+  cleanupOrigins,
+  cleanupDevices,
+  cleanupUserLocation,
+  closeTestPool,
+} from '../../../kernel/sync/test-support/live-db';
+
+import { getOwnerPool } from '../../../kernel/sync/test-support/live-db';
+
+export interface TestNode {
+  id: string;
+  token: string;
+  tokenHash: string;
+}
+
+/** A second, DIFFERENT real outlet location than the one a test's primary fixture already used — for cross-location authorization tests (spoofing/mismatch cases). Delegates to `fetchAnotherLocationId`'s exact query shape but is named separately here for call-site clarity in node/device pairing tests. */
+export async function insertTestNode(locationId: string, version = '1.0.0-test'): Promise<TestNode> {
+  const token = randomBytes(24).toString('hex');
+  const tokenHash = hashDeviceToken(token);
+  const res = await getOwnerPool().query<{ id: string }>(
+    `INSERT INTO branch_nodes (location_id, name, status, version, node_token_hash, hostname, last_seen_at, paired_at)
+     VALUES ($1, 'W3-10 test node', 'online', $2, $3, 'test-host', NOW(), NOW())
+     RETURNING id`,
+    [locationId, version, tokenHash],
+  );
+  return { id: res.rows[0]!.id, token, tokenHash };
+}
+
+export async function insertTestDeviceForNode(locationId: string, nodeId: string, tokenHash: string): Promise<string> {
+  const res = await getOwnerPool().query<{ id: string }>(
+    `INSERT INTO devices (location_id, node_id, category, name, status, device_token_hash, last_seen_at)
+     VALUES ($1, $2, 'tablet', 'W3-10 test device', 'online', $3, NOW())
+     RETURNING id`,
+    [locationId, nodeId, tokenHash],
+  );
+  return res.rows[0]!.id;
+}
+
+export async function backdateDeviceLastSeen(deviceId: string, secondsAgo: number): Promise<void> {
+  await getOwnerPool().query(`UPDATE devices SET last_seen_at = NOW() - ($2 || ' seconds')::interval WHERE id = $1`, [deviceId, secondsAgo]);
+}
+
+export async function backdateNodeLastSeen(nodeId: string, secondsAgo: number): Promise<void> {
+  await getOwnerPool().query(`UPDATE branch_nodes SET last_seen_at = NOW() - ($2 || ' seconds')::interval WHERE id = $1`, [nodeId, secondsAgo]);
+}
+
+export async function readDeviceStatus(deviceId: string): Promise<string> {
+  const res = await getOwnerPool().query<{ status: string }>(`SELECT status FROM devices WHERE id = $1`, [deviceId]);
+  return res.rows[0]!.status;
+}
+
+export async function readNodeStatus(nodeId: string): Promise<string> {
+  const res = await getOwnerPool().query<{ status: string }>(`SELECT status FROM branch_nodes WHERE id = $1`, [nodeId]);
+  return res.rows[0]!.status;
+}
+
+export async function deviceEventsFor(params: { deviceId?: string; nodeId?: string; locationId?: string }): Promise<{ type: string; created_at: string }[]> {
+  const conds: string[] = [];
+  const args: unknown[] = [];
+  let i = 1;
+  if (params.deviceId) { conds.push(`device_id = $${i++}`); args.push(params.deviceId); }
+  if (params.nodeId) { conds.push(`node_id = $${i++}`); args.push(params.nodeId); }
+  if (params.locationId && !params.deviceId && !params.nodeId) { conds.push(`location_id = $${i} AND device_id IS NULL AND node_id IS NULL`); args.push(params.locationId); }
+  const res = await getOwnerPool().query<{ type: string; created_at: string }>(
+    `SELECT type, created_at FROM device_events WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
+    args,
+  );
+  return res.rows;
+}
+
+/** Cleans up everything a device/node lifecycle test could plausibly have created for the given synthetic ids — child rows before parents (FK order). */
+export async function cleanupNodesAndDevices(params: { nodeIds?: string[]; deviceIds?: string[]; locationIds?: string[] }): Promise<void> {
+  const pool = getOwnerPool();
+  const deviceIds = params.deviceIds ?? [];
+  const nodeIds = params.nodeIds ?? [];
+  if (deviceIds.length > 0) {
+    await pool.query(`DELETE FROM device_heartbeats WHERE device_id = ANY($1::uuid[])`, [deviceIds]);
+    await pool.query(`DELETE FROM device_events WHERE device_id = ANY($1::uuid[])`, [deviceIds]);
+    await pool.query(`DELETE FROM devices WHERE id = ANY($1::uuid[])`, [deviceIds]);
+  }
+  if (nodeIds.length > 0) {
+    await pool.query(`DELETE FROM devices WHERE node_id = ANY($1::uuid[])`, [nodeIds]); // any device this test forgot to list explicitly
+    await pool.query(`DELETE FROM discovered_devices WHERE node_id = ANY($1::uuid[])`, [nodeIds]);
+    await pool.query(`DELETE FROM device_events WHERE node_id = ANY($1::uuid[])`, [nodeIds]);
+    await pool.query(`DELETE FROM branch_nodes WHERE id = ANY($1::uuid[])`, [nodeIds]);
+  }
+  if (params.locationIds && params.locationIds.length > 0) {
+    await pool.query(`DELETE FROM device_events WHERE location_id = ANY($1::uuid[]) AND device_id IS NULL AND node_id IS NULL`, [params.locationIds]);
+    await pool.query(`DELETE FROM pairing_tokens WHERE location_id = ANY($1::uuid[])`, [params.locationIds]);
+  }
+}
+
+export function freshHexToken(): string {
+  return randomBytes(24).toString('hex');
+}
+
+export function freshId(): string {
+  return randomUUID();
+}
+
+/**
+ * A throwaway `outlet` location with a guaranteed-unique `code`, for tests
+ * that need to reason about "ALL devices/node at this location" (the
+ * outlet-offline derived rule, §7.3) — the seeded locations (`fetchOne
+ * LocationId`) already carry real devices from W1-C's seed data, which
+ * would make an "every device here is offline" assertion depend on OTHER
+ * tests'/seed rows' state rather than only the rows this test created.
+ */
+export async function insertIsolatedOutletLocation(): Promise<string> {
+  const code = `T${randomBytes(4).toString('hex').toUpperCase()}`;
+  const res = await getOwnerPool().query<{ id: string }>(
+    `INSERT INTO locations (code, name, type, city) VALUES ($1, 'W3-10 isolated test outlet', 'outlet', 'Balikpapan') RETURNING id`,
+    [code],
+  );
+  return res.rows[0]!.id;
+}
+
+/** Also clears `sync_events`/`sync_conflicts` rows this test's `SyncEmitService.emit()` calls created against the location (cloud-origin device_events/devices/branch_nodes facts) — `sync_events.location_id` FKs to `locations`, so an isolated test location can't be dropped while any survive. */
+export async function deleteLocation(locationId: string): Promise<void> {
+  const pool = getOwnerPool();
+  await pool.query(
+    `DELETE FROM sync_conflicts WHERE loser_event_id IN (SELECT event_id FROM sync_events WHERE location_id = $1) OR winner_event_id IN (SELECT event_id FROM sync_events WHERE location_id = $1)`,
+    [locationId],
+  );
+  await pool.query(`DELETE FROM sync_events WHERE location_id = $1`, [locationId]);
+  await pool.query(`DELETE FROM sync_batches WHERE location_id = $1`, [locationId]);
+  await pool.query(`DELETE FROM locations WHERE id = $1`, [locationId]);
+}

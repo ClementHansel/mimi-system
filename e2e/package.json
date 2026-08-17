@@ -1,0 +1,17 @@
+{
+  "name": "@mimi/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playwright end-to-end suite, one spec per role journey (8 roles) plus the offline/sync adversarial suite.",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report",
+    "install-browsers": "playwright install --with-deps"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.3"
+  }
+}

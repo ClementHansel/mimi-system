@@ -25,13 +25,24 @@ const nextConfig: NextConfig = {
   // reached directly on :3000 (dev) or through Traefik in prod (which handles
   // /api first and never reaches this rewrite).
   async rewrites() {
-    // Both compose files set BACKEND_ORIGIN explicitly, so this fallback is
-    // ONLY reached when running `next dev` directly on a host machine — where
-    // the Docker service name `backend` cannot resolve and every proxied /api
-    // call fails with an opaque 500 (no message, no hint at DNS). Defaulting to
-    // localhost makes host dev work out of the box; container runs are
-    // unaffected because they never fall through to this value.
-    const backend = process.env.BACKEND_ORIGIN || 'http://localhost:4000';
+    // Rewrites are baked into routes-manifest.json at BUILD time, so this is
+    // evaluated by `next build` inside the image — runtime env cannot change
+    // it. The default therefore has to be right for whichever context is
+    // building, and the two contexts want opposite answers:
+    //
+    //   `next build`  → NODE_ENV=production (Next forces it) → running in a
+    //                   container on the compose network, where the backend is
+    //                   the service name `backend`.
+    //   `next dev`    → NODE_ENV=development → running on a host machine,
+    //                   where `backend` does not resolve and every proxied
+    //                   call dies as an opaque 500 with no hint at DNS.
+    //
+    // An explicit BACKEND_ORIGIN always wins over both.
+    const backend =
+      process.env.BACKEND_ORIGIN ||
+      (process.env.NODE_ENV === 'production'
+        ? 'http://backend:4000'
+        : 'http://localhost:4000');
     return [
       { source: '/api/:path*', destination: `${backend}/api/:path*` },
       { source: '/socket.io/:path*', destination: `${backend}/socket.io/:path*` },

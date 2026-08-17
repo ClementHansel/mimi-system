@@ -47,10 +47,37 @@ services:
   minio:
     logging: *vps-logging
 
+  # n8n only exists to drive WhatsApp automation, and WA_ENABLED is false here.
+  # Assigning it a profile that is never activated keeps it out of the stack
+  # instead of leaving a permanently-unhealthy container on a shared box.
+  n8n:
+    profiles: ["wa"]
+
   backend:
+    build:
+      target: production
+    # The base file is the DEV stack: it builds `target: development` and bind-
+    # mounts the source over the image, so the container runs `tsc --watch`
+    # against sources whose workspace deps (@mimi/shared, @mimi/sync-protocol)
+    # were never built — 326 type errors and a never-healthy container.
+    # `volumes: []` drops those mounts so the compiled image is actually used.
+    volumes: []
+    environment:
+      NODE_ENV: production
     logging: *vps-logging
 
   frontend:
+    build:
+      target: production
+    volumes: []
+    environment:
+      NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      # Same-origin: the browser only ever talks to this container, whose Next
+      # rewrites proxy /api and /sync/v1 to the backend over mimi-network. That
+      # is why no backend port needs publishing at all.
+      NEXT_PUBLIC_API_URL: /api
     # The single public entry point. Host port comes from FRONTEND_PUBLIC_PORT
     # so it can be moved without editing this file; 0.0.0.0 is required because
     # the base file's 127.0.0.1 binding would make it unreachable off-box.

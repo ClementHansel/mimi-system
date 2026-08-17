@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION, type OfflineAuthCase, type Paginated, type UUID } from '@mimi/shared';
 import { EventBus } from '../../kernel/events/event-bus.service';
 import type { ExceptionVerdictDto, ListExceptionsQueryDto } from './dto/accounting.dto';
+import { withWrite } from './db-tx';
 
 interface OfflineAuthConflictRow {
   id: UUID;
@@ -93,33 +94,45 @@ export class ExceptionsService {
       throw new BadRequestException({ code: ERR_VALIDATION, message: `Exception case ${id} has no linked offline_authorizations row — cannot record a verdict` });
     }
 
-    await client.query(
-      `UPDATE offline_authorizations SET verdict = $2, reviewed_by = $3, reviewed_at = NOW(), updated_at = NOW() WHERE id = $1`,
-      [row.oa_id, dto.verdict, actorId],
-    );
-    await client.query(
-      `UPDATE sync_conflicts SET status = 'resolved', resolved_by = $2, resolved_at = NOW(), resolution = $3, updated_at = NOW() WHERE id = $1`,
-      [id, actorId, dto.reason],
-    );
+    // Capture the narrowed values as consts BEFORE entering the callback below.
+    // `document_type`/`document_id` are `string | null` on the row type, and the
+    // guard above narrows them — but TypeScript discards narrowing of a mutable
+    // property once it crosses into a closure, since it cannot prove the object
+    // was not reassigned in between. Wrapping this method in `withWrite` (the
+    // silent-rollback fix) moved the publish call into exactly such a closure,
+    // which is what broke the build. Consts keep the narrowing.
+    const documentType = row.document_type;
+    const documentId = row.document_id;
 
-    if (dto.verdict === 'rejected' && row.physical_effect_suspected && row.amount) {
-      // X7 — the ledger is append-only, the cash/goods are gone: post a claim receivable, never a
-      // deletion. `source` distinguishes the two account pairs §6.3/posting_rules seed for
-      // 'offline_auth_rejected' (refund/void -> Dr 1220/Cr 4000 re-recognized revenue; waste -> Dr
-      // 1220/Cr 5100 expense reversal).
-      await this.eventBus.publish('journal.action', {
-        eventType: 'offline_auth_rejected',
-        documentType: row.document_type,
-        documentId: row.document_id,
-        locationId: row.location_id,
-        amount: row.amount,
-        context: { source: row.document_type === 'waste' ? 'waste' : 'refund_or_void', routeToPayrollDeduction: !!dto.routeToPayrollDeduction },
-        occurredAt: new Date().toISOString(),
-      });
-    }
+    return withWrite(client, async () => {
+      await client.query(
+        `UPDATE offline_authorizations SET verdict = $2, reviewed_by = $3, reviewed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [row.oa_id, dto.verdict, actorId],
+      );
+      await client.query(
+        `UPDATE sync_conflicts SET status = 'resolved', resolved_by = $2, resolved_at = NOW(), resolution = $3, updated_at = NOW() WHERE id = $1`,
+        [id, actorId, dto.reason],
+      );
 
-    const updated = await client.query<OfflineAuthConflictRow>(`${CASE_SELECT} AND sc.id = $1`, [id]);
-    return toOfflineAuthCase(updated.rows[0]!);
+      if (dto.verdict === 'rejected' && row.physical_effect_suspected && row.amount) {
+        // X7 — the ledger is append-only, the cash/goods are gone: post a claim receivable, never a
+        // deletion. `source` distinguishes the two account pairs §6.3/posting_rules seed for
+        // 'offline_auth_rejected' (refund/void -> Dr 1220/Cr 4000 re-recognized revenue; waste -> Dr
+        // 1220/Cr 5100 expense reversal).
+        await this.eventBus.publish('journal.action', {
+          eventType: 'offline_auth_rejected',
+          documentType,
+          documentId,
+          locationId: row.location_id,
+          amount: row.amount,
+          context: { source: row.document_type === 'waste' ? 'waste' : 'refund_or_void', routeToPayrollDeduction: !!dto.routeToPayrollDeduction },
+          occurredAt: new Date().toISOString(),
+        });
+      }
+
+      const updated = await client.query<OfflineAuthConflictRow>(`${CASE_SELECT} AND sc.id = $1`, [id]);
+      return toOfflineAuthCase(updated.rows[0]!);
+    });
   }
 }
 

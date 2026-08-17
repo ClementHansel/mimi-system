@@ -64,7 +64,11 @@ export function StockPanel() {
       .finally(() => setHistoryLoading(false));
   }
 
-  if (!locationId) return <EmptyState title={t('table.error')} size="lg" />;
+  // This account has no `warehouse`-type location (e.g. a company-wide role
+  // like Owner) — genuinely nothing to fetch or retry, so say that plainly
+  // instead of the generic `table.error` (which reads as "the request
+  // failed" when no request was ever attempted; FIX-LOADS #1).
+  if (!locationId) return <EmptyState title={t('warehouse.noLocation')} size="lg" />;
 
   return (
     <div className="flex flex-col gap-4">

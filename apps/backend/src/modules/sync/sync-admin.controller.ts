@@ -150,6 +150,11 @@ export class SyncAdminController {
 
     const dismissed = await this.conflicts.dismiss(client, id, req.user!.sub, body.reason);
     if (!dismissed) throw new BadRequestException({ code: 'ERR_NOT_FOUND', message: 'Conflict not found or not open' });
+    // BE-TXN-ROLLBACK: `RlsContextGuard` opens this request's transaction and
+    // `RlsCleanupInterceptor` unconditionally rolls it back afterward — this
+    // write must commit itself, exactly like `pos.controller.ts`'s
+    // controller-commit convention (no service layer here to wrap instead).
+    await client.query('COMMIT');
     return dismissed;
   }
 
@@ -208,6 +213,9 @@ export class SyncAdminController {
       [id, req.user!.sub, body.adjustmentId ? `${body.resolution} (adjustment: ${body.adjustmentId})` : body.resolution],
     );
     if (!res.rows[0]) throw new BadRequestException({ code: 'ERR_NOT_FOUND', message: 'Reconciliation not found or not open' });
+    // BE-TXN-ROLLBACK: same controller-commit convention as `dismissConflict`
+    // above and `pos.controller.ts` — see that comment for why.
+    await client.query('COMMIT');
     return res.rows[0];
   }
 

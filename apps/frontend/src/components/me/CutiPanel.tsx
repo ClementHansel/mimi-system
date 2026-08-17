@@ -6,6 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
 import { Button, Card, CardContent, Modal, Select, Input, Textarea, StatusBadge, EmptyState } from '@/components/ui';
 import { fmtDateRange } from '@/lib/dates';
+import { newUuid } from '@/lib/uuid';
 import { createLeaveRequest, cancelLeaveRequest, getMyLeaves } from './lib/me-api';
 import type { Leave, LeaveQuota } from '@/components/hr/lib/types';
 
@@ -13,7 +14,7 @@ const currentYear = new Date().getFullYear();
 const LEAVE_TYPES = ['annual', 'marriage', 'sick', 'permission', 'unpaid'];
 
 function mintId(): string {
-  return crypto.randomUUID();
+  return newUuid();
 }
 
 /** F11 `me` — Ajukan Cuti/Izin: request leave, see remaining entitlement (cuti tahunan 12 hari, nikah 3 hari — POUT-04). */

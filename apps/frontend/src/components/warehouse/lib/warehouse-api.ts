@@ -17,7 +17,13 @@ import type {
 // ── inventory (§4.7) ─────────────────────────────────────────────────────────
 
 export function getBalances(params: { locationId: string; storageAreaId?: string; q?: string }) {
-  const qs = new URLSearchParams({ locationId: params.locationId, page: '1', pageSize: '500' });
+  // `pageSize` is capped at 200 backend-wide (CONTRACTS.md's pagination
+  // rule, `ListBalancesQueryDto`'s `@Max(200)`) — 500 here 400'd with
+  // ERR_VALIDATION on every call (FIX-LOADS #1: "Stok Gudang" tab always
+  // showed "Gagal memuat data"). 200 matches the documented ceiling; a
+  // warehouse with more than 200 distinct item/storage-area balance rows
+  // would need real pagination here, which this ticket does not add.
+  const qs = new URLSearchParams({ locationId: params.locationId, page: '1', pageSize: '200' });
   if (params.storageAreaId) qs.set('storageAreaId', params.storageAreaId);
   if (params.q) qs.set('q', params.q);
   return api.get<Paginated<Balance>>(`/inventory/balances?${qs.toString()}`);

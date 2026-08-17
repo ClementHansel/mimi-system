@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { can, RoleKey } from '@mimi/shared';
 import { ApprovalService } from '../../kernel/approvals/approvals.service';
@@ -7,18 +7,41 @@ import { EventBus } from '../../kernel/events/event-bus.service';
 import { PeriodsService } from './periods/periods.service';
 import { StatutoryService } from './statutory/statutory.service';
 import { RunsService } from './runs/runs.service';
-import { closePool, loadPayrollFixtures, setRlsContext, withRollbackAs, type PayrollFixtures } from './test-support/live-db';
+import { ComponentsService } from './components/components.service';
+import { LoansService } from './loans/loans.service';
+import {
+  asCommittedRequest,
+  asRequest,
+  cleanupCommittedRows,
+  closePool,
+  loadPayrollFixtures,
+  readSettingValue,
+  setSettingValueCommitted,
+  withRollbackAs,
+  type PayrollFixtures,
+} from './test-support/live-db';
+
+vi.setConfig({ testTimeout: 20_000 });
 
 /**
  * Integration proof for M15 `payroll` (CONTRACTS.md §4.15, FR-HR-03/04) —
  * against a REAL Postgres connection under the SAME RLS session context a
- * real request gets (`withRollbackAs`, mirrors `hr`'s and
- * `kernel/approvals`' own harnesses). Every fixture row (attendance, loan,
- * cash-variance proposal, employee) is inserted on the SAME client/
- * transaction the code under test runs against, then rolled back — no data
- * persists across test runs, and no seed-data drift can silently change the
- * golden case's expected numbers (every input the calculation reads is
- * created fresh, right here, with known values).
+ * real request gets.
+ *
+ * BE-TXN-ROLLBACK: every mutating method across `components`/`loans`/
+ * `periods`/`runs`/`statutory` now self-commits (`db-tx.ts`'s `withWrite()`),
+ * matching `stock-opname`/`waste-return`'s fix. That means a
+ * `withRollbackAs`/`asRequest` connection can no longer chain more than ONE
+ * call into a `withWrite`-wrapped method — the first call's `COMMIT` is
+ * REAL, ends the transaction, and reverts `SET LOCAL ROLE`/session GUCs with
+ * it (see `test-support/live-db.ts`'s `asRequest` doc comment). Every test
+ * below that drives more than one mutating step therefore opens a SEPARATE
+ * `asRequest` connection per step — one call = one simulated HTTP request —
+ * exactly `stock-opname.integration.spec.ts`'s rewritten shape. Fixture rows
+ * that must be visible to a LATER, separate connection are committed via
+ * `asCommittedRequest` and always cleaned up in a `finally` block
+ * (`cleanupCommittedRows` / settings restore) so nothing this suite commits
+ * durably outlives the test run.
  */
 describe('Payroll module (integration, live Postgres)', () => {
   let fixtures: PayrollFixtures;
@@ -26,16 +49,28 @@ describe('Payroll module (integration, live Postgres)', () => {
   let runs: RunsService;
   let periods: PeriodsService;
   let statutory: StatutoryService;
+  let components: ComponentsService;
+  let loans: LoansService;
+
+  function buildRuns(): RunsService {
+    const approvals = new ApprovalService(new ApprovalsRepository());
+    const events = new EventBus();
+    const fakeNotifications = { notify: async () => ({ inApp: [], email: [], whatsapp: [] }) } as any;
+    return new RunsService(periods, statutory, approvals, events, fakeNotifications);
+  }
+
+  function buildLoans(): LoansService {
+    return new LoansService(new ApprovalService(new ApprovalsRepository()));
+  }
 
   beforeAll(async () => {
     try {
       fixtures = await loadPayrollFixtures();
       periods = new PeriodsService();
       statutory = new StatutoryService();
-      const approvals = new ApprovalService(new ApprovalsRepository());
-      const events = new EventBus();
-      const fakeNotifications = { notify: async () => ({ inApp: [], email: [], whatsapp: [] }) } as any;
-      runs = new RunsService(periods, statutory, approvals, events, fakeNotifications);
+      components = new ComponentsService();
+      runs = buildRuns();
+      loans = buildLoans();
     } catch {
       dbAvailable = false;
     }
@@ -44,6 +79,27 @@ describe('Payroll module (integration, live Postgres)', () => {
   afterAll(async () => {
     await closePool();
   });
+
+  async function insertEmployeeFixture(
+    actor: { userId: string; roleKey: RoleKey },
+    label: string,
+    opts: { joinDate: string; baseSalary: string },
+  ): Promise<string> {
+    const employeeId = randomUUID();
+    await asCommittedRequest({ userId: actor.userId, roleKey: actor.roleKey, locationIds: [] }, async (client) => {
+      await client.query(
+        `INSERT INTO employees (id, employee_number, name, join_date, position, location_id, employment_status)
+         VALUES ($1, $2, $3, $4, 'Staff', $5, 'active')`,
+        [employeeId, `EMP-TEST-${employeeId.slice(0, 8)}`, label, opts.joinDate, fixtures.locationId],
+      );
+      await client.query(
+        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
+         VALUES ($1, 'Staff', $2, $3, $4)`,
+        [employeeId, fixtures.locationId, opts.baseSalary, opts.joinDate],
+      );
+    });
+    return employeeId;
+  }
 
   // ── Layer 1: permission matrix, both directions (the "permission denied" pin) ──
 
@@ -78,15 +134,12 @@ describe('Payroll module (integration, live Postgres)', () => {
     expect(can(RoleKey.OWNER, 'payroll.statutory.enable' as never)).toBe(true);
   });
 
-  it('RLS: a Kasir querying payroll_runs directly (bypassing the controller layer entirely) sees nothing for someone else\'s run', async () => {
+  it("RLS: a Kasir querying payroll_runs directly (bypassing the controller layer entirely) sees nothing for someone else's run", async () => {
     if (!dbAvailable) return;
     const kasirUserId = fixtures.usersByRole[RoleKey.KASIR];
     if (!kasirUserId) return;
     await withRollbackAs({ userId: kasirUserId, roleKey: RoleKey.KASIR, locationIds: [fixtures.locationId] }, async (client) => {
       const res = await client.query('SELECT id FROM payroll_runs');
-      // The RLS policy itself (not this test) is the real enforcement — a Kasir's own row-visibility
-      // is `app_is_self` on the LINKED employee only; a run they have no line in must not appear.
-      // Every row this Kasir sees, if any, must be one where they are genuinely a line's employee.
       for (const row of res.rows as { id: string }[]) {
         const ownLine = await client.query('SELECT 1 FROM payroll_lines pl JOIN employees e ON e.id = pl.employee_id WHERE pl.run_id = $1 AND e.user_id = $2', [row.id, kasirUserId]);
         expect(ownLine.rows.length, `Kasir should only see payroll_runs rows they have a line in`).toBeGreaterThan(0);
@@ -99,69 +152,72 @@ describe('Payroll module (integration, live Postgres)', () => {
   it('golden case: a full period calculation with known inputs produces the hand-checked net pay (statutory OFF)', async () => {
     if (!dbAvailable) return;
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+    const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
 
-    await withRollbackAs({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, async (client) => {
+    const savedStatutory = await readSettingValue('payroll.statutory');
+    const savedOvertime = await readSettingValue('hr.overtime');
+    const savedDeductions = await readSettingValue('hr.deduction_rates');
+    let employeeId: string | undefined;
+    let periodId: string | undefined;
+    try {
       // Force the gate OFF and pin the rate settings this golden case's expected numbers depend on —
-      // deterministic regardless of what the seed happens to carry.
-      await client.query(`UPDATE settings SET value = '{"enabled":false,"enabledAt":null,"enabledBy":null}'::jsonb WHERE key = 'payroll.statutory'`);
-      await client.query(`UPDATE settings SET value = '{"ratePerHour":"20000.00","minMinutes":0}'::jsonb WHERE key = 'hr.overtime'`);
-      await client.query(`UPDATE settings SET value = '{"perAbsentDay":"daily_rate","perLateMinute":"1000.00","sickPaid":false,"permissionPaid":false}'::jsonb WHERE key = 'hr.deduction_rates'`);
+      // deterministic regardless of what the seed happens to carry. Committed for real (own
+      // connection) so the LATER, separate `runs.calculateForPeriod` connection actually sees them.
+      await setSettingValueCommitted('payroll.statutory', { enabled: false, enabledAt: null, enabledBy: null });
+      await setSettingValueCommitted('hr.overtime', { ratePerHour: '20000.00', minMinutes: 0 });
+      await setSettingValueCommitted('hr.deduction_rates', { perAbsentDay: 'daily_rate', perLateMinute: '1000.00', sickPaid: false, permissionPaid: false });
 
       // A fresh employee, isolated from any seed noise — known base salary chosen so the daily rate
       // divides EXACTLY (9,300,000 / 31 = 300,000.00), so no rounding ambiguity enters the golden case.
-      const employeeId = randomUUID();
-      await client.query(
-        `INSERT INTO employees (id, employee_number, name, join_date, position, location_id, employment_status)
-         VALUES ($1, $2, 'Golden Case Employee', '2018-07-01', 'Staff', $3, 'active')`,
-        [employeeId, `EMP-TEST-${employeeId.slice(0, 8)}`, fixtures.locationId],
-      );
-      await client.query(
-        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
-         VALUES ($1, 'Staff', $2, '9300000.00', '2018-07-01')`,
-        [employeeId, fixtures.locationId],
-      );
+      employeeId = await insertEmployeeFixture(actor, 'Golden Case Employee', { joinDate: '2018-07-01', baseSalary: '9300000.00' });
 
-      const periodCode = '2019-01';
-      const period = await periods.create(client, periodCode);
+      await asCommittedRequest({ ...actor, locationIds: [] }, async (client) => {
+        // Attendance: 2 late days (20 + 20 = 40 late minutes), 1 day with 120 min overtime, 1 sick,
+        // 1 permission, 1 absent — everything else in the month is simply absent of a row (no auto-mark).
+        const attendanceRows: [string, string, number, number][] = [
+          ['2019-01-02', 'late', 20, 0],
+          ['2019-01-03', 'late', 20, 0],
+          ['2019-01-04', 'present', 0, 120],
+          ['2019-01-05', 'sick', 0, 0],
+          ['2019-01-06', 'permission', 0, 0],
+          ['2019-01-07', 'absent', 0, 0],
+        ];
+        for (const [date, status, lateMinutes, overtimeMinutes] of attendanceRows) {
+          await client.query(
+            `INSERT INTO attendance (employee_id, location_id, date, status, late_minutes, overtime_minutes)
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [employeeId, fixtures.locationId, date, status, lateMinutes, overtimeMinutes],
+          );
+        }
 
-      // Attendance: 2 late days (20 + 20 = 40 late minutes), 1 day with 120 min overtime, 1 sick,
-      // 1 permission, 1 absent — everything else in the month is simply absent of a row (no auto-mark).
-      const attendanceRows: [string, string, number, number][] = [
-        ['2019-01-02', 'late', 20, 0],
-        ['2019-01-03', 'late', 20, 0],
-        ['2019-01-04', 'present', 0, 120],
-        ['2019-01-05', 'sick', 0, 0],
-        ['2019-01-06', 'permission', 0, 0],
-        ['2019-01-07', 'absent', 0, 0],
-      ];
-      for (const [date, status, lateMinutes, overtimeMinutes] of attendanceRows) {
+        // POUT-06: an active loan with a known installment.
         await client.query(
-          `INSERT INTO attendance (employee_id, location_id, date, status, late_minutes, overtime_minutes)
-           VALUES ($1,$2,$3,$4,$5,$6)`,
-          [employeeId, fixtures.locationId, date, status, lateMinutes, overtimeMinutes],
+          `INSERT INTO employee_loans (loan_number, employee_id, principal, monthly_installment, outstanding, status)
+           VALUES ($1, $2, '1000000.00', '200000.00', '1000000.00', 'active')`,
+          [`LOAN-TEST-${employeeId!.slice(0, 8)}`, employeeId],
         );
-      }
 
-      // POUT-06: an active loan with a known installment.
-      await client.query(
-        `INSERT INTO employee_loans (loan_number, employee_id, principal, monthly_installment, outstanding, status)
-         VALUES ($1, $2, '1000000.00', '200000.00', '1000000.00', 'active')`,
-        [`LOAN-TEST-${employeeId.slice(0, 8)}`, employeeId],
-      );
+        // D-19: an approved, unconsumed cash-variance proposal — needs a real pos_shift row (FK) to hang off.
+        const shiftRes = await client.query<{ id: string }>(
+          `INSERT INTO pos_shifts (shift_number, location_id, opened_by, opened_at, opening_cash, client_id)
+           VALUES ($1,$2,$3,NOW(),'0.00',$4) RETURNING id`,
+          [`SHIFT-TEST-${employeeId!.slice(0, 8)}`, fixtures.locationId, hrAdmin, randomUUID()],
+        );
+        await client.query(
+          `INSERT INTO cash_variance_proposals (shift_id, location_id, kasir_user_id, employee_id, amount, status)
+           VALUES ($1,$2,$3,$4,'50000.00','approved')`,
+          [shiftRes.rows[0]!.id, fixtures.locationId, hrAdmin, employeeId],
+        );
+      });
 
-      // D-19: an approved, unconsumed cash-variance proposal — needs a real pos_shift row (FK) to hang off.
-      const shiftRes = await client.query<{ id: string }>(
-        `INSERT INTO pos_shifts (shift_number, location_id, opened_by, opened_at, opening_cash, client_id)
-         VALUES ($1,$2,$3,NOW(),'0.00',$4) RETURNING id`,
-        [`SHIFT-TEST-${employeeId.slice(0, 8)}`, fixtures.locationId, hrAdmin, randomUUID()],
-      );
-      await client.query(
-        `INSERT INTO cash_variance_proposals (shift_id, location_id, kasir_user_id, employee_id, amount, status)
-         VALUES ($1,$2,$3,$4,'50000.00','approved')`,
-        [shiftRes.rows[0]!.id, fixtures.locationId, hrAdmin, employeeId],
-      );
+      // Each mutating step is its own connection now that `periods.create`/`runs.calculateForPeriod`
+      // self-commit.
+      const period = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) => periods.create(client, '2019-01'));
+      periodId = period.id;
 
-      const run = await runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId]);
+      const run = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) =>
+        runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId!]),
+      );
 
       expect(run.statutoryMode).toBe(false);
       expect(run.totalEmployerCost).toBe('0.00');
@@ -169,43 +225,47 @@ describe('Payroll module (integration, live Postgres)', () => {
       expect(run.totalDeductions).toBe('1190000.00'); // 40,000 late + 300,000 sick + 300,000 permission + 300,000 absence + 200,000 loan + 50,000 cash-variance
       expect(run.totalNet).toBe('8150000.00');
 
-      const detail = await runs.getRunDetail(client, run.id);
-      const slip = detail.employees.find((e) => e.employee.id === employeeId)!;
-      expect(slip.lines.some((l) => l.componentCode === 'deduction_loan_installment' && l.amount === '200000.00')).toBe(true);
-      expect(slip.lines.some((l) => l.componentCode === 'deduction_cash_variance' && l.amount === '50000.00')).toBe(true);
-      expect(slip.lines.some((l) => l.isStatutory)).toBe(false); // statutory OFF => zero statutory lines
-    });
+      const slip = (run as any).employees.find((e: any) => e.employee.id === employeeId)!;
+      expect(slip.lines.some((l: any) => l.componentCode === 'deduction_loan_installment' && l.amount === '200000.00')).toBe(true);
+      expect(slip.lines.some((l: any) => l.componentCode === 'deduction_cash_variance' && l.amount === '50000.00')).toBe(true);
+      expect(slip.lines.some((l: any) => l.isStatutory)).toBe(false); // statutory OFF => zero statutory lines
+    } finally {
+      if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+      if (periodId) await cleanupCommittedRows({ periodIds: [periodId] });
+      await setSettingValueCommitted('payroll.statutory', savedStatutory ?? { enabled: false, enabledAt: null, enabledBy: null });
+      await setSettingValueCommitted('hr.overtime', savedOvertime);
+      await setSettingValueCommitted('hr.deduction_rates', savedDeductions);
+    }
   });
 
   it('statutory OFF produces exactly the PRD base set — no bpjs_*/pph21 lines regardless of what statutory config exists', async () => {
     if (!dbAvailable) return;
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
-    await withRollbackAs({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, async (client) => {
-      await client.query(`UPDATE settings SET value = '{"enabled":false,"enabledAt":null,"enabledBy":null}'::jsonb WHERE key = 'payroll.statutory'`);
+    const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
+    const savedStatutory = await readSettingValue('payroll.statutory');
+    let employeeId: string | undefined;
+    let periodId: string | undefined;
+    try {
+      await setSettingValueCommitted('payroll.statutory', { enabled: false, enabledAt: null, enabledBy: null });
+      employeeId = await insertEmployeeFixture(actor, 'Statutory Off Employee', { joinDate: '2020-01-01', baseSalary: '5000000.00' });
 
-      const employeeId = randomUUID();
-      await client.query(
-        `INSERT INTO employees (id, employee_number, name, join_date, position, location_id, employment_status)
-         VALUES ($1, $2, 'Statutory Off Employee', '2020-01-01', 'Staff', $3, 'active')`,
-        [employeeId, `EMP-TEST-${employeeId.slice(0, 8)}`, fixtures.locationId],
+      const period = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) => periods.create(client, '2019-02'));
+      periodId = period.id;
+      const run = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) =>
+        runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId!]),
       );
-      await client.query(
-        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
-         VALUES ($1, 'Staff', $2, '5000000.00', '2020-01-01')`,
-        [employeeId, fixtures.locationId],
-      );
-
-      const period = await periods.create(client, '2019-02');
-      const run = await runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId]);
-      const detail = await runs.getRunDetail(client, run.id);
 
       expect(run.statutoryMode).toBe(false);
       expect(run.totalEmployerCost).toBe('0.00');
-      const codes = new Set(detail.employees[0]!.lines.map((l) => l.componentCode));
+      const codes = new Set((run as any).employees[0]!.lines.map((l: any) => l.componentCode));
       for (const statutoryCode of ['bpjs_kesehatan_employee', 'bpjs_jht_employee', 'bpjs_jp_employee', 'pph21', 'bpjs_kesehatan_employer', 'bpjs_jht_employer', 'bpjs_jkk_employer', 'bpjs_jkm_employer', 'bpjs_jp_employer']) {
         expect(codes.has(statutoryCode), `${statutoryCode} must not appear when statutory is OFF`).toBe(false);
       }
-    });
+    } finally {
+      if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+      if (periodId) await cleanupCommittedRows({ periodIds: [periodId] });
+      await setSettingValueCommitted('payroll.statutory', savedStatutory ?? { enabled: false, enabledAt: null, enabledBy: null });
+    }
   });
 
   // ── Layer 3: full lifecycle through the real approval chain ──────────────
@@ -216,58 +276,62 @@ describe('Payroll module (integration, live Postgres)', () => {
     const finance = fixtures.usersByRole[RoleKey.FINANCE];
     const owner = fixtures.usersByRole[RoleKey.OWNER];
     if (!finance || !owner) return;
-
-    await withRollbackAs({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, async (client) => {
-      await client.query(`UPDATE settings SET value = '{"enabled":false,"enabledAt":null,"enabledBy":null}'::jsonb WHERE key = 'payroll.statutory'`);
-
-      const employeeId = randomUUID();
-      await client.query(
-        `INSERT INTO employees (id, employee_number, name, join_date, position, location_id, employment_status)
-         VALUES ($1, $2, 'Lifecycle Employee', '2021-01-01', 'Staff', $3, 'active')`,
-        [employeeId, `EMP-TEST-${employeeId.slice(0, 8)}`, fixtures.locationId],
-      );
-      await client.query(
-        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
-         VALUES ($1, 'Staff', $2, '4000000.00', '2021-01-01')`,
-        [employeeId, fixtures.locationId],
-      );
-      await client.query(
-        `INSERT INTO employee_loans (loan_number, employee_id, principal, monthly_installment, outstanding, status)
-         VALUES ($1, $2, '600000.00', '600000.00', '600000.00', 'active')`,
-        [`LOAN-TEST2-${employeeId.slice(0, 8)}`, employeeId],
+    const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
+    const savedStatutory = await readSettingValue('payroll.statutory');
+    let employeeId: string | undefined;
+    let periodId: string | undefined;
+    try {
+      await setSettingValueCommitted('payroll.statutory', { enabled: false, enabledAt: null, enabledBy: null });
+      employeeId = await insertEmployeeFixture(actor, 'Lifecycle Employee', { joinDate: '2021-01-01', baseSalary: '4000000.00' });
+      await asCommittedRequest({ ...actor, locationIds: [] }, (client) =>
+        client.query(
+          `INSERT INTO employee_loans (loan_number, employee_id, principal, monthly_installment, outstanding, status)
+           VALUES ($1, $2, '600000.00', '600000.00', '600000.00', 'active')`,
+          [`LOAN-TEST2-${employeeId!.slice(0, 8)}`, employeeId],
+        ),
       );
 
-      const period = await periods.create(client, '2019-03');
-      const calculated = await runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId]);
+      const period = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) => periods.create(client, '2019-03'));
+      periodId = period.id;
+
+      const calculated = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) =>
+        runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId!]),
+      );
       expect(calculated.status).toBe('calculated');
 
-      const submitted = await runs.submit(client, hrAdmin, calculated.id);
+      const submitted = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) => runs.submit(client, hrAdmin, calculated.id));
       expect(submitted.status).toBe('pending_approval');
 
       // Step 1 — Finance. Not the final step (a 2-step chain: finance -> owner) — the run must stay
-      // 'pending_approval', not flip to 'approved' after only the first decision. Real RLS identity
-      // switches to match the real actor (mirrors a separate request's own session in production;
-      // see `setRlsContext`'s doc comment).
-      await setRlsContext(client, { userId: finance, roleKey: RoleKey.FINANCE, locationIds: [] });
-      const afterFinance = await runs.approve(client, finance, RoleKey.FINANCE, submitted.id, 'ok by finance');
+      // 'pending_approval', not flip to 'approved' after only the first decision. Real, SEPARATE RLS
+      // session matching a genuinely different actor's own real request.
+      const afterFinance = await asRequest({ userId: finance, roleKey: RoleKey.FINANCE, locationIds: [] }, (client) =>
+        runs.approve(client, finance, RoleKey.FINANCE, submitted.id, 'ok by finance'),
+      );
       expect(afterFinance.status).toBe('pending_approval');
 
       // Step 2 — Owner. This IS the final step: the run becomes 'approved' and the finalize side
-      // effects (loan payment, PV row) run exactly once, here — including the `payment_verifications`
-      // insert, which is RLS-gated to owner/manager/finance only (a real constraint this test now
-      // actually exercises, not bypassed).
-      await setRlsContext(client, { userId: owner, roleKey: RoleKey.OWNER, locationIds: [] });
-      const afterOwner = await runs.approve(client, owner, RoleKey.OWNER, submitted.id, 'ok by owner');
+      // effects (loan payment, PV row) run exactly once, here.
+      const afterOwner = await asRequest({ userId: owner, roleKey: RoleKey.OWNER, locationIds: [] }, (client) =>
+        runs.approve(client, owner, RoleKey.OWNER, submitted.id, 'ok by owner'),
+      );
       expect(afterOwner.status).toBe('approved');
 
-      const loanRes = await client.query<{ outstanding: string; status: string }>('SELECT outstanding, status FROM employee_loans WHERE employee_id = $1', [employeeId]);
-      expect(loanRes.rows[0]!.outstanding).toBe('0.00');
-      expect(loanRes.rows[0]!.status).toBe('paid_off');
+      // Independent read-back connection — proves the finalize side effects genuinely committed.
+      await asRequest({ userId: owner, roleKey: RoleKey.OWNER, locationIds: [] }, async (client) => {
+        const loanRes = await client.query<{ outstanding: string; status: string }>('SELECT outstanding, status FROM employee_loans WHERE employee_id = $1', [employeeId]);
+        expect(loanRes.rows[0]!.outstanding).toBe('0.00');
+        expect(loanRes.rows[0]!.status).toBe('paid_off');
 
-      const pvRes = await client.query('SELECT id, status FROM payment_verifications WHERE ref_type = $1 AND ref_id = $2', ['payroll_run', afterOwner.id]);
-      expect(pvRes.rows.length).toBe(1);
-      expect(pvRes.rows[0]!.status).toBe('pending');
-    });
+        const pvRes = await client.query('SELECT id, status FROM payment_verifications WHERE ref_type = $1 AND ref_id = $2', ['payroll_run', afterOwner.id]);
+        expect(pvRes.rows.length).toBe(1);
+        expect(pvRes.rows[0]!.status).toBe('pending');
+      });
+    } finally {
+      if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+      if (periodId) await cleanupCommittedRows({ periodIds: [periodId] });
+      await setSettingValueCommitted('payroll.statutory', savedStatutory ?? { enabled: false, enabledAt: null, enabledBy: null });
+    }
   });
 
   // ── Coordinator follow-up: three money-moving wiring paths, proven for real ──
@@ -275,66 +339,69 @@ describe('Payroll module (integration, live Postgres)', () => {
   it('statutory ON: effective-dated BPJS/TER config wires real amounts, and vintage selection picks the window containing the PERIOD END DATE', async () => {
     if (!dbAvailable) return;
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+    const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
 
-    await withRollbackAs({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, async (client) => {
-      // Readiness requires EVERY active employee to carry a tax profile — neutralize the seed's other
-      // ~130 active employees (rolled back with everything else) so this test's ONE employee is the
-      // whole population the readiness check has to satisfy.
-      const employeeId = randomUUID();
+    const savedStatutory = await readSettingValue('payroll.statutory');
+    // Readiness requires EVERY active employee to carry a tax profile — neutralize the seed's other
+    // ~130 active employees so this test's ONE employee is the whole population the readiness check
+    // has to satisfy. This is a REAL, committed mutation of shared seed state (not a rollback), so it
+    // MUST be restored in `finally` — captured by id up front, exactly like the settings-leak the
+    // ticket warns about, just on `employees.employment_status` instead of `settings`.
+    const resignedIds = await asCommittedRequest({ ...actor, locationIds: [] }, async (client) => {
+      const before = await client.query<{ id: string }>(`SELECT id FROM employees WHERE employment_status = 'active'`);
       await client.query(`UPDATE employees SET employment_status = 'resigned' WHERE employment_status = 'active'`);
-      await client.query(
-        `INSERT INTO employees (id, employee_number, name, join_date, position, location_id, employment_status)
-         VALUES ($1, $2, 'Statutory On Employee', '2019-02-01', 'Staff', $3, 'active')`,
-        [employeeId, `EMP-TEST-${employeeId.slice(0, 8)}`, fixtures.locationId],
-      );
-      await client.query(
-        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
-         VALUES ($1, 'Staff', $2, '10000000.00', '2019-02-01')`,
-        [employeeId, fixtures.locationId],
-      );
+      return before.rows.map((r) => r.id);
+    });
 
-      await client.query(`UPDATE settings SET value = '{"enabled":true,"enabledAt":"2019-01-01T00:00:00Z","enabledBy":null}'::jsonb WHERE key = 'payroll.statutory'`);
+    let employeeId: string | undefined;
+    let periodId: string | undefined;
+    try {
+      employeeId = await insertEmployeeFixture(actor, 'Statutory On Employee', { joinDate: '2019-02-01', baseSalary: '10000000.00' });
+      await setSettingValueCommitted('payroll.statutory', { enabled: true, enabledAt: '2019-01-01T00:00:00Z', enabledBy: null });
 
-      // BPJS kesehatan: TWO vintages with DIFFERENT rates — an old, CLOSED window that must be
-      // rejected, and the current, open one that must win because it's the one whose
-      // [effective_from, effective_to] window actually contains the period END DATE (2019-04-30).
-      await client.query(
-        `INSERT INTO bpjs_configs (program, employer_pct, employee_pct, effective_from, effective_to) VALUES
-           ('kesehatan', '1.000', '0.500', '2018-01-01', '2018-12-31'),
-           ('kesehatan', '4.000', '1.000', '2019-01-01', NULL),
-           ('jht',       '3.700', '2.000', '2019-01-01', NULL),
-           ('jkk',       '0.200', '0.000', '2019-01-01', NULL),
-           ('jkm',       '0.300', '0.000', '2019-01-01', NULL),
-           ('jp',        '2.000', '1.000', '2019-01-01', NULL)`,
-      );
-      await client.query(
-        `INSERT INTO pph21_ter_rates (category, bracket_min, bracket_max, rate_pct, effective_from) VALUES ('A', '0.00', NULL, '5.000', '2019-01-01')`,
-      );
-      await client.query(
-        `INSERT INTO pph21_ptkp (ptkp_code, annual_amount, ter_category, effective_from) VALUES ('TK/0', '54000000.00', 'A', '2019-01-01')`,
-      );
-      await client.query(
-        `INSERT INTO pph21_article17_brackets (bracket_min, bracket_max, rate_pct, effective_from) VALUES ('0.00', NULL, '5.000', '2019-01-01')`,
-      );
-      await client.query(
-        `INSERT INTO employee_tax_profiles (employee_id, ptkp_code, dependants_count, bpjs_enrollments) VALUES ($1, 'TK/0', 0, $2::jsonb)`,
-        [
-          employeeId,
-          JSON.stringify({
-            kesehatan: { enrolledSince: '2019-01-01', endedAt: null },
-            jht: { enrolledSince: '2019-01-01', endedAt: null },
-            jkk: { enrolledSince: '2019-01-01', endedAt: null },
-            jkm: { enrolledSince: '2019-01-01', endedAt: null },
-            jp: { enrolledSince: '2019-01-01', endedAt: null },
-          }),
-        ],
-      );
+      await asCommittedRequest({ ...actor, locationIds: [] }, async (client) => {
+        // BPJS kesehatan: TWO vintages with DIFFERENT rates — an old, CLOSED window that must be
+        // rejected, and the current, open one that must win because it's the one whose
+        // [effective_from, effective_to] window actually contains the period END DATE (2019-04-30).
+        await client.query(
+          `INSERT INTO bpjs_configs (program, employer_pct, employee_pct, effective_from, effective_to) VALUES
+             ('kesehatan', '1.000', '0.500', '2018-01-01', '2018-12-31'),
+             ('kesehatan', '4.000', '1.000', '2019-01-01', NULL),
+             ('jht',       '3.700', '2.000', '2019-01-01', NULL),
+             ('jkk',       '0.200', '0.000', '2019-01-01', NULL),
+             ('jkm',       '0.300', '0.000', '2019-01-01', NULL),
+             ('jp',        '2.000', '1.000', '2019-01-01', NULL)`,
+        );
+        await client.query(
+          `INSERT INTO pph21_ter_rates (category, bracket_min, bracket_max, rate_pct, effective_from) VALUES ('A', '0.00', NULL, '5.000', '2019-01-01')`,
+        );
+        await client.query(
+          `INSERT INTO pph21_ptkp (ptkp_code, annual_amount, ter_category, effective_from) VALUES ('TK/0', '54000000.00', 'A', '2019-01-01')`,
+        );
+        await client.query(
+          `INSERT INTO pph21_article17_brackets (bracket_min, bracket_max, rate_pct, effective_from) VALUES ('0.00', NULL, '5.000', '2019-01-01')`,
+        );
+        await client.query(
+          `INSERT INTO employee_tax_profiles (employee_id, ptkp_code, dependants_count, bpjs_enrollments) VALUES ($1, 'TK/0', 0, $2::jsonb)`,
+          [
+            employeeId,
+            JSON.stringify({
+              kesehatan: { enrolledSince: '2019-01-01', endedAt: null },
+              jht: { enrolledSince: '2019-01-01', endedAt: null },
+              jkk: { enrolledSince: '2019-01-01', endedAt: null },
+              jkm: { enrolledSince: '2019-01-01', endedAt: null },
+              jp: { enrolledSince: '2019-01-01', endedAt: null },
+            }),
+          ],
+        );
+      });
 
-      const status = await statutory.getStatus(client);
+      const status = await asRequest({ ...actor, locationIds: [] }, (client) => statutory.getStatus(client));
       expect(status.ready, `readiness should be satisfied: missing=${JSON.stringify(status.missing)}`).toBe(true);
 
-      const period = await periods.create(client, '2019-04'); // end date 2019-04-30 — inside the CURRENT kesehatan window only
-      const run = await runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId]);
+      const period = await asRequest({ ...actor, locationIds: [] }, (client) => periods.create(client, '2019-04')); // end date 2019-04-30 — inside the CURRENT kesehatan window only
+      periodId = period.id;
+      const run = await asRequest({ ...actor, locationIds: [] }, (client) => runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId!]));
 
       expect(run.statutoryMode).toBe(true);
       expect(run.totalGross).toBe('10000000.00'); // base salary only — no attendance/other components
@@ -342,12 +409,9 @@ describe('Payroll module (integration, live Postgres)', () => {
       expect(run.totalDeductions).toBe('900000.00'); // 400,000 BPJS employee (100k+200k+100k) + 500,000 pph21
       expect(run.totalNet).toBe('9100000.00');
 
-      const detail = await runs.getRunDetail(client, run.id);
-      const lines = detail.employees[0]!.lines;
-      const byCode = new Map(lines.map((l) => [l.componentCode, l.amount]));
+      const lines = (run as any).employees[0]!.lines;
+      const byCode = new Map(lines.map((l: any) => [l.componentCode, l.amount]));
 
-      // The vintage-selection proof: the CURRENT rate (4%/1%) is what actually landed, not the old
-      // CLOSED vintage's (1%/0.5%) — a wrong-vintage bug would silently produce 100,000/40,000 here instead.
       expect(byCode.get('bpjs_kesehatan_employee')).toBe('100000.00');
       expect(byCode.get('bpjs_kesehatan_employer')).toBe('400000.00');
       expect(byCode.get('bpjs_jht_employee')).toBe('200000.00');
@@ -358,60 +422,87 @@ describe('Payroll module (integration, live Postgres)', () => {
       expect(byCode.get('bpjs_jp_employee')).toBe('100000.00');
       expect(byCode.get('bpjs_jp_employer')).toBe('200000.00');
       expect(byCode.get('pph21')).toBe('500000.00');
-    });
+    } finally {
+      if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+      if (periodId) await cleanupCommittedRows({ periodIds: [periodId] });
+      await asCommittedRequest({ ...actor, locationIds: [] }, async (client) => {
+        await client.query(`DELETE FROM bpjs_configs`);
+        await client.query(`DELETE FROM pph21_ter_rates`);
+        await client.query(`DELETE FROM pph21_ptkp`);
+        await client.query(`DELETE FROM pph21_article17_brackets`);
+      });
+      await setSettingValueCommitted('payroll.statutory', savedStatutory ?? { enabled: false, enabledAt: null, enabledBy: null });
+      if (resignedIds.length > 0) {
+        await asCommittedRequest({ ...actor, locationIds: [] }, (client) =>
+          client.query(`UPDATE employees SET employment_status = 'active' WHERE id = ANY($1::uuid[])`, [resignedIds]),
+        );
+      }
+    }
   });
 
   it('POUT-05: an approved stock-opname shortfall becomes a real payroll deduction, attributed to the employee on shift that day', async () => {
     if (!dbAvailable) return;
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+    const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
+    const savedStatutory = await readSettingValue('payroll.statutory');
+    let employeeId: string | undefined;
+    let periodId: string | undefined;
+    let workShiftId: string | undefined;
+    let adjustmentNumber: string | undefined;
+    try {
+      await setSettingValueCommitted('payroll.statutory', { enabled: false, enabledAt: null, enabledBy: null });
+      employeeId = await insertEmployeeFixture(actor, 'Shortfall Employee', { joinDate: '2020-01-01', baseSalary: '5000000.00' });
+      adjustmentNumber = `ADJ-TEST-${employeeId!.slice(0, 8)}`;
 
-    await withRollbackAs({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, async (client) => {
-      await client.query(`UPDATE settings SET value = '{"enabled":false,"enabledAt":null,"enabledBy":null}'::jsonb WHERE key = 'payroll.statutory'`);
+      workShiftId = await asCommittedRequest({ ...actor, locationIds: [] }, async (client) => {
+        // On-shift roster for the exact day the opname adjustment happened — this employee is the ONLY
+        // one on shift, so the whole shortfall is attributable to them (no split ambiguity).
+        const shiftDefRes = await client.query<{ id: string }>(
+          `INSERT INTO work_shifts (location_id, name, start_time, end_time, break_minutes) VALUES ($1,'Test Shift','08:00','16:00',60) RETURNING id`,
+          [fixtures.locationId],
+        );
+        await client.query(
+          `INSERT INTO shift_assignments (employee_id, work_shift_id, location_id, date, assigned_by) VALUES ($1,$2,$3,'2019-05-10',$4)`,
+          [employeeId, shiftDefRes.rows[0]!.id, fixtures.locationId, hrAdmin],
+        );
 
-      const employeeId = randomUUID();
-      await client.query(
-        `INSERT INTO employees (id, employee_number, name, join_date, position, location_id, employment_status)
-         VALUES ($1, $2, 'Shortfall Employee', '2020-01-01', 'Staff', $3, 'active')`,
-        [employeeId, `EMP-TEST-${employeeId.slice(0, 8)}`, fixtures.locationId],
-      );
-      await client.query(
-        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
-         VALUES ($1, 'Staff', $2, '5000000.00', '2020-01-01')`,
-        [employeeId, fixtures.locationId],
-      );
+        // The real `stock_adjustments` row W3-05 ships — `created_by`/`approved_by`/`reason` carried
+        // specifically so the resulting deduction traces to a real person's approved count, not thin air.
+        // NOTE: `computeStockShortfallShares` matches on (location_id, date) only, not on which test
+        // created the adjustment — a stray, un-cleaned-up row from a previous run would double-count
+        // the shortfall against THIS run's employee. Both `stock_adjustments` and `work_shifts` MUST
+        // be cleaned up in `finally` (they are outside `cleanupCommittedRows`'s employee/period scope).
+        const storageArea = await client.query<{ id: string }>('SELECT id FROM storage_areas LIMIT 1');
+        const item = await client.query<{ id: string }>('SELECT id FROM items LIMIT 1');
+        await client.query(
+          `INSERT INTO stock_adjustments (adjustment_number, location_id, storage_area_id, item_id, qty_delta, unit_cost, reason, source, created_by, approved_by, applied_at)
+           VALUES ($1,$2,$3,$4,'-5.000','20000.00','Opname count came up short','opname',$5,$5,'2019-05-10T10:00:00+08:00')`,
+          [adjustmentNumber, fixtures.locationId, storageArea.rows[0]!.id, item.rows[0]!.id, hrAdmin],
+        );
+        return shiftDefRes.rows[0]!.id;
+      });
 
-      // On-shift roster for the exact day the opname adjustment happened — this employee is the ONLY
-      // one on shift, so the whole shortfall is attributable to them (no split ambiguity).
-      const shiftDefRes = await client.query<{ id: string }>(
-        `INSERT INTO work_shifts (location_id, name, start_time, end_time, break_minutes) VALUES ($1,'Test Shift','08:00','16:00',60) RETURNING id`,
-        [fixtures.locationId],
-      );
-      await client.query(
-        `INSERT INTO shift_assignments (employee_id, work_shift_id, location_id, date, assigned_by) VALUES ($1,$2,$3,'2019-05-10',$4)`,
-        [employeeId, shiftDefRes.rows[0]!.id, fixtures.locationId, hrAdmin],
-      );
-
-      // The real `stock_adjustments` row W3-05 ships — `created_by`/`approved_by`/`reason` carried
-      // specifically so the resulting deduction traces to a real person's approved count, not thin air.
-      const storageArea = await client.query<{ id: string }>('SELECT id FROM storage_areas LIMIT 1');
-      const item = await client.query<{ id: string }>('SELECT id FROM items LIMIT 1');
-      await client.query(
-        `INSERT INTO stock_adjustments (adjustment_number, location_id, storage_area_id, item_id, qty_delta, unit_cost, reason, source, created_by, approved_by, applied_at)
-         VALUES ($1,$2,$3,$4,'-5.000','20000.00','Opname count came up short','opname',$5,$5,'2019-05-10T10:00:00+08:00')`,
-        [`ADJ-TEST-${employeeId.slice(0, 8)}`, fixtures.locationId, storageArea.rows[0]!.id, item.rows[0]!.id, hrAdmin],
-      );
-
-      const period = await periods.create(client, '2019-05');
-      const run = await runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId]);
-      const detail = await runs.getRunDetail(client, run.id);
-      const shortfallLine = detail.employees[0]!.lines.find((l) => l.componentCode === 'deduction_stock_shortfall');
+      const period = await asRequest({ ...actor, locationIds: [] }, (client) => periods.create(client, '2019-05'));
+      periodId = period.id;
+      const run = await asRequest({ ...actor, locationIds: [] }, (client) => runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId!]));
+      const shortfallLine = (run as any).employees[0]!.lines.find((l: any) => l.componentCode === 'deduction_stock_shortfall');
 
       expect(shortfallLine, 'the approved opname shortfall must produce a deduction_stock_shortfall line').toBeDefined();
       expect(shortfallLine!.amount).toBe('100000.00'); // |qty_delta| 5.000 x unit_cost 20,000.00
       expect(shortfallLine!.sourceRefType).toBe('stock_opname');
       expect(run.totalDeductions).toBe('100000.00');
       expect(run.totalNet).toBe('4900000.00'); // 5,000,000 base - 100,000 shortfall
-    });
+    } finally {
+      if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+      if (periodId) await cleanupCommittedRows({ periodIds: [periodId] });
+      if (adjustmentNumber) {
+        await asCommittedRequest({ ...actor, locationIds: [] }, (client) => client.query('DELETE FROM stock_adjustments WHERE adjustment_number = $1', [adjustmentNumber]));
+      }
+      if (workShiftId) {
+        await asCommittedRequest({ ...actor, locationIds: [] }, (client) => client.query('DELETE FROM work_shifts WHERE id = $1', [workShiftId]));
+      }
+      await setSettingValueCommitted('payroll.statutory', savedStatutory ?? { enabled: false, enabledAt: null, enabledBy: null });
+    }
   });
 
   it("D-19: an approved cash-variance proposal deducts once, and is marked CONSUMED on approval so a later period's run cannot deduct it again", async () => {
@@ -420,69 +511,268 @@ describe('Payroll module (integration, live Postgres)', () => {
     const finance = fixtures.usersByRole[RoleKey.FINANCE];
     const owner = fixtures.usersByRole[RoleKey.OWNER];
     if (!finance || !owner) return;
+    const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
+    const savedStatutory = await readSettingValue('payroll.statutory');
+    let employeeId: string | undefined;
+    let periodAId: string | undefined;
+    let periodBId: string | undefined;
+    try {
+      await setSettingValueCommitted('payroll.statutory', { enabled: false, enabledAt: null, enabledBy: null });
+      employeeId = await insertEmployeeFixture(actor, 'Cash Variance Employee', { joinDate: '2020-01-01', baseSalary: '5000000.00' });
 
-    await withRollbackAs({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, async (client) => {
-      await client.query(`UPDATE settings SET value = '{"enabled":false,"enabledAt":null,"enabledBy":null}'::jsonb WHERE key = 'payroll.statutory'`);
-
-      const employeeId = randomUUID();
-      await client.query(
-        `INSERT INTO employees (id, employee_number, name, join_date, position, location_id, employment_status)
-         VALUES ($1, $2, 'Cash Variance Employee', '2020-01-01', 'Staff', $3, 'active')`,
-        [employeeId, `EMP-TEST-${employeeId.slice(0, 8)}`, fixtures.locationId],
-      );
-      await client.query(
-        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
-         VALUES ($1, 'Staff', $2, '5000000.00', '2020-01-01')`,
-        [employeeId, fixtures.locationId],
-      );
-
-      const shiftRes = await client.query<{ id: string }>(
-        `INSERT INTO pos_shifts (shift_number, location_id, opened_by, opened_at, opening_cash, client_id)
-         VALUES ($1,$2,$3,NOW(),'0.00',$4) RETURNING id`,
-        [`SHIFT-CV-${employeeId.slice(0, 8)}`, fixtures.locationId, hrAdmin, randomUUID()],
-      );
-      const proposalRes = await client.query<{ id: string }>(
-        `INSERT INTO cash_variance_proposals (shift_id, location_id, kasir_user_id, employee_id, amount, status)
-         VALUES ($1,$2,$3,$4,'75000.00','approved') RETURNING id`,
-        [shiftRes.rows[0]!.id, fixtures.locationId, hrAdmin, employeeId],
-      );
-      const proposalId = proposalRes.rows[0]!.id;
+      const proposalId = await asCommittedRequest({ ...actor, locationIds: [] }, async (client) => {
+        const shiftRes = await client.query<{ id: string }>(
+          `INSERT INTO pos_shifts (shift_number, location_id, opened_by, opened_at, opening_cash, client_id)
+           VALUES ($1,$2,$3,NOW(),'0.00',$4) RETURNING id`,
+          [`SHIFT-CV-${employeeId!.slice(0, 8)}`, fixtures.locationId, hrAdmin, randomUUID()],
+        );
+        const proposalRes = await client.query<{ id: string }>(
+          `INSERT INTO cash_variance_proposals (shift_id, location_id, kasir_user_id, employee_id, amount, status)
+           VALUES ($1,$2,$3,$4,'75000.00','approved') RETURNING id`,
+          [shiftRes.rows[0]!.id, fixtures.locationId, hrAdmin, employeeId],
+        );
+        return proposalRes.rows[0]!.id;
+      });
 
       // Period A — the proposal is unconsumed (`payroll_line_id IS NULL`): it MUST appear as a
       // deduction here.
-      const periodA = await periods.create(client, '2019-06');
-      const runA = await runs.calculateForPeriod(client, hrAdmin, periodA.id, [employeeId]);
-      const detailA = await runs.getRunDetail(client, runA.id);
-      const cvLineA = detailA.employees[0]!.lines.find((l) => l.componentCode === 'deduction_cash_variance');
+      const periodA = await asRequest({ ...actor, locationIds: [] }, (client) => periods.create(client, '2019-06'));
+      periodAId = periodA.id;
+      const runA = await asRequest({ ...actor, locationIds: [] }, (client) => runs.calculateForPeriod(client, hrAdmin, periodA.id, [employeeId!]));
+      const cvLineA = (runA as any).employees[0]!.lines.find((l: any) => l.componentCode === 'deduction_cash_variance');
       expect(cvLineA, 'the approved cash-variance proposal must produce a deduction line on the first run').toBeDefined();
       expect(cvLineA!.amount).toBe('75000.00');
       expect(runA.totalNet).toBe('4925000.00'); // 5,000,000 - 75,000
 
-      const before = await client.query<{ payroll_line_id: string | null }>('SELECT payroll_line_id FROM cash_variance_proposals WHERE id = $1', [proposalId]);
-      expect(before.rows[0]!.payroll_line_id).toBeNull(); // still unconsumed at calculate time — consumption is an APPROVE-time effect
+      await asRequest({ ...actor, locationIds: [] }, async (client) => {
+        const before = await client.query<{ payroll_line_id: string | null }>('SELECT payroll_line_id FROM cash_variance_proposals WHERE id = $1', [proposalId]);
+        expect(before.rows[0]!.payroll_line_id).toBeNull(); // still unconsumed at calculate time — consumption is an APPROVE-time effect
+      });
 
       // Drive run A through the real approval chain — this is what marks the proposal consumed.
-      const submittedA = await runs.submit(client, hrAdmin, runA.id);
-      await setRlsContext(client, { userId: finance, roleKey: RoleKey.FINANCE, locationIds: [] });
-      await runs.approve(client, finance, RoleKey.FINANCE, submittedA.id, 'ok');
-      await setRlsContext(client, { userId: owner, roleKey: RoleKey.OWNER, locationIds: [] });
-      const approvedA = await runs.approve(client, owner, RoleKey.OWNER, submittedA.id, 'ok');
+      const submittedA = await asRequest({ ...actor, locationIds: [] }, (client) => runs.submit(client, hrAdmin, runA.id));
+      await asRequest({ userId: finance, roleKey: RoleKey.FINANCE, locationIds: [] }, (client) => runs.approve(client, finance, RoleKey.FINANCE, submittedA.id, 'ok'));
+      const approvedA = await asRequest({ userId: owner, roleKey: RoleKey.OWNER, locationIds: [] }, (client) => runs.approve(client, owner, RoleKey.OWNER, submittedA.id, 'ok'));
       expect(approvedA.status).toBe('approved');
 
-      const after = await client.query<{ payroll_line_id: string | null }>('SELECT payroll_line_id FROM cash_variance_proposals WHERE id = $1', [proposalId]);
-      expect(after.rows[0]!.payroll_line_id, 'approval must mark the proposal consumed via payroll_line_id').not.toBeNull();
+      await asRequest({ ...actor, locationIds: [] }, async (client) => {
+        const after = await client.query<{ payroll_line_id: string | null }>('SELECT payroll_line_id FROM cash_variance_proposals WHERE id = $1', [proposalId]);
+        expect(after.rows[0]!.payroll_line_id, 'approval must mark the proposal consumed via payroll_line_id').not.toBeNull();
+      });
 
       // Period B — same employee, same still-'approved'-status proposal, but NOW consumed
       // (`payroll_line_id` set): it must NOT be deducted a second time.
-      await setRlsContext(client, { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] });
-      const periodB = await periods.create(client, '2019-07');
-      const runB = await runs.calculateForPeriod(client, hrAdmin, periodB.id, [employeeId]);
-      const detailB = await runs.getRunDetail(client, runB.id);
-      const cvLineB = detailB.employees[0]?.lines.find((l) => l.componentCode === 'deduction_cash_variance');
+      const periodB = await asRequest({ ...actor, locationIds: [] }, (client) => periods.create(client, '2019-07'));
+      periodBId = periodB.id;
+      const runB = await asRequest({ ...actor, locationIds: [] }, (client) => runs.calculateForPeriod(client, hrAdmin, periodB.id, [employeeId!]));
+      const cvLineB = (runB as any).employees[0]?.lines.find((l: any) => l.componentCode === 'deduction_cash_variance');
 
       expect(cvLineB, 'a consumed cash-variance proposal must not be deducted again in a later period').toBeUndefined();
       expect(runB.totalDeductions).toBe('0.00');
       expect(runB.totalNet).toBe('5000000.00');
+    } finally {
+      if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+      if (periodAId) await cleanupCommittedRows({ periodIds: [periodAId] });
+      if (periodBId) await cleanupCommittedRows({ periodIds: [periodBId] });
+      await setSettingValueCommitted('payroll.statutory', savedStatutory ?? { enabled: false, enabledAt: null, enabledBy: null });
+    }
+  });
+
+  // ── BE-TXN-ROLLBACK regression: writes must survive past the request that made them ──
+  //
+  // Every mutating method above was reachable only through `req.dbClient` with zero real `COMMIT`
+  // — `RlsCleanupInterceptor`'s unconditional post-request `ROLLBACK` silently discarded every write.
+  // These tests reproduce the REAL two-request shape: the mutation runs on its own connection, and a
+  // GENUINELY SEPARATE connection reads it back — a service that only writes inside the guard's
+  // transaction (no `withWrite`) fails these, a service that commits passes.
+  describe('write-then-read-back across SEPARATE connections (each simulating one real HTTP request)', () => {
+    it('components: create persists past its own request — a later GET (new connection) finds it', async () => {
+      if (!dbAvailable) return;
+      const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+      const code = `WTR-COMP-${randomUUID().slice(0, 8)}`;
+      try {
+        const created = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) =>
+          components.create(client, { code, name: 'WTR Test Component', type: 'earning', calcMethod: 'fixed', defaultAmount: '1000.00' }),
+        );
+        expect(created.code).toBe(code);
+
+        const reread = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) => components.list(client));
+        expect(reread.some((c) => c.code === code)).toBe(true);
+      } finally {
+        await asCommittedRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) => client.query('DELETE FROM salary_components WHERE code = $1', [code]));
+      }
+    });
+
+    it('periods: create persists past its own request — a later list (new connection) finds it', async () => {
+      if (!dbAvailable) return;
+      const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+      const periodCode = '2030-11';
+      let periodId: string | undefined;
+      try {
+        const created = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) => periods.create(client, periodCode));
+        periodId = created.id;
+        expect(created.status).toBe('open');
+
+        const reread = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, (client) => periods.list(client));
+        expect(reread.rows.some((p) => p.id === created.id)).toBe(true);
+      } finally {
+        if (periodId) await cleanupCommittedRows({ periodIds: [periodId] });
+      }
+    });
+
+    it('statutory: putTaxProfile persists past its own request — a later getTaxProfile (new connection) finds it', async () => {
+      if (!dbAvailable) return;
+      const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+      const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
+      let employeeId: string | undefined;
+      let insertedPtkp = false;
+      try {
+        employeeId = await insertEmployeeFixture(actor, 'Tax Profile WTR Employee', { joinDate: '2020-01-01', baseSalary: '5000000.00' });
+        // `pph21_ptkp` carries no RLS and is shared, global config (see `statutory.service.ts`'s class
+        // header) — only delete it in `finally` if THIS test is the one that created it, never a row
+        // another test/run may already depend on.
+        insertedPtkp = await asCommittedRequest({ ...actor, locationIds: [] }, async (client) => {
+          const res = await client.query(
+            `INSERT INTO pph21_ptkp (ptkp_code, annual_amount, ter_category, effective_from) VALUES ('TK/0', '54000000.00', 'A', '2019-01-01') ON CONFLICT DO NOTHING RETURNING ptkp_code`,
+          );
+          return res.rows.length > 0;
+        });
+
+        const written = await asRequest({ ...actor, locationIds: [] }, (client) =>
+          statutory.putTaxProfile(client, hrAdmin, employeeId!, { ptkpCode: 'TK/0', dependantsCount: 1, bpjsEnrollments: {} } as any),
+        );
+        expect(written.ptkpCode).toBe('TK/0');
+
+        const reread = await asRequest({ ...actor, locationIds: [] }, (client) => statutory.getTaxProfile(client, employeeId!));
+        expect(reread.ptkpCode).toBe('TK/0');
+        expect(reread.dependantsCount).toBe(1);
+      } finally {
+        if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+        if (insertedPtkp) {
+          await asCommittedRequest({ ...actor, locationIds: [] }, (client) =>
+            client.query(`DELETE FROM pph21_ptkp WHERE ptkp_code = 'TK/0' AND effective_from = '2019-01-01'`),
+          );
+        }
+      }
+    });
+
+    it('loans: create + approve persist past their own requests — a later read-back (new connection) sees the disbursed loan and its payment_verification', async () => {
+      if (!dbAvailable) return;
+      const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+      const finance = fixtures.usersByRole[RoleKey.FINANCE];
+      const owner = fixtures.usersByRole[RoleKey.OWNER];
+      const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
+      if (!finance && !owner) return;
+
+      let employeeId: string | undefined;
+      let loanId: string | undefined;
+      try {
+        employeeId = await insertEmployeeFixture(actor, 'Loan WTR Employee', { joinDate: '2020-01-01', baseSalary: '5000000.00' });
+
+        // The seed inserts one `employee_loans` row (`LOAN/202608/0001`) directly, without ever going
+        // through `document_counters` — this environment's very FIRST real `loans.create()` call would
+        // otherwise regenerate that exact same number (`nextLoanNumber` starts a fresh counter at 1)
+        // and collide on `employee_loans_loan_number_key`. Pre-seeding the counter past the seed's
+        // already-used number is test-environment setup, not a service/schema change.
+        const loanPeriod = new Date().toISOString().slice(0, 7).replace('-', '');
+        await asCommittedRequest({ ...actor, locationIds: [] }, (client) =>
+          client.query(
+            `INSERT INTO document_counters (doc_type, period, last_number) VALUES ('LOAN', $1, 1)
+             ON CONFLICT (doc_type, period) DO NOTHING`,
+            [loanPeriod],
+          ),
+        );
+
+        const created = await asRequest({ ...actor, locationIds: [] }, (client) =>
+          loans.create(client, hrAdmin, { employeeId: employeeId!, principal: '500000.00', monthlyInstallment: '100000.00', reason: 'WTR regression' }),
+        );
+        loanId = created.id;
+        expect(created.status).toBe('pending');
+
+        // A genuinely separate connection sees the pending loan before any approval — proving
+        // `create` itself committed, not merely a later step in the same chain.
+        await asRequest({ ...actor, locationIds: [] }, async (client) => {
+          const reread = await client.query<{ status: string }>('SELECT status FROM employee_loans WHERE id = $1', [loanId]);
+          expect(reread.rows[0]!.status).toBe('pending');
+        });
+
+        // Drive it through however many approval steps this chain actually has (single or two-step
+        // finance->owner), each its OWN connection — the loop stops once the loan's own real status
+        // (read back from a separate connection each time) says it's no longer pending.
+        let current = created;
+        const approverCandidates: { userId: string; roleKey: RoleKey }[] = [];
+        if (finance) approverCandidates.push({ userId: finance, roleKey: RoleKey.FINANCE });
+        if (owner) approverCandidates.push({ userId: owner, roleKey: RoleKey.OWNER });
+        for (const approver of approverCandidates) {
+          const stillPending = await asRequest({ userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] }, async (client) => {
+            const r = await client.query<{ status: string }>('SELECT status FROM employee_loans WHERE id = $1', [loanId]);
+            return r.rows[0]!.status === 'pending';
+          });
+          if (!stillPending) break;
+          current = await asRequest({ userId: approver.userId, roleKey: approver.roleKey, locationIds: [] }, (client) =>
+            loans.approve(client, approver.userId, approver.roleKey, current.id, 'ok'),
+          );
+        }
+
+        // Final, genuinely separate read-back connection — proves the disbursement's
+        // `payment_verifications` row genuinely committed. Read as the final approver
+        // (owner/finance), not HR Admin — `payment_verifications` RLS is owner/manager/finance-only
+        // (see `loans.service.ts`'s class header), so an HR Admin session would silently see zero
+        // rows here regardless of whether the row committed.
+        const finalApprover = approverCandidates[approverCandidates.length - 1]!;
+        await asRequest({ userId: finalApprover.userId, roleKey: finalApprover.roleKey, locationIds: [] }, async (client) => {
+          const loanRow = await client.query<{ status: string; outstanding: string }>('SELECT status, outstanding FROM employee_loans WHERE id = $1', [loanId]);
+          expect(loanRow.rows[0]!.status).toBe('active');
+          expect(loanRow.rows[0]!.outstanding).toBe('500000.00');
+
+          const pvRow = await client.query('SELECT id FROM payment_verifications WHERE ref_type = $1 AND ref_id = $2', ['other', loanId]);
+          expect(pvRow.rows.length).toBe(1);
+        });
+      } finally {
+        if (loanId) await cleanupCommittedRows({ loanIds: [loanId] });
+        if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+      }
+    });
+
+    it('runs: calculateForPeriod persists past its own request — a later getRunDetail (new connection) sees the calculated lines', async () => {
+      if (!dbAvailable) return;
+      const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+      const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
+      const savedStatutory = await readSettingValue('payroll.statutory');
+      let employeeId: string | undefined;
+      let periodId: string | undefined;
+      try {
+        await setSettingValueCommitted('payroll.statutory', { enabled: false, enabledAt: null, enabledBy: null });
+        // Join date close to the period itself (< 1 year tenure) — PIN-05's tenure allowance only
+        // kicks in at 1+ year tiers (`DEFAULT_TENURE_TIERS`); a join date far in the past relative to
+        // a future period like '2030-12' would otherwise silently add a tenure-allowance line on top
+        // of the flat base salary, throwing off the exact-gross assertion below.
+        employeeId = await insertEmployeeFixture(actor, 'Run WTR Employee', { joinDate: '2030-11-01', baseSalary: '5000000.00' });
+
+        const period = await asRequest({ ...actor, locationIds: [] }, (client) => periods.create(client, '2030-12'));
+        periodId = period.id;
+
+        const calculated = await asRequest({ ...actor, locationIds: [] }, (client) => runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId!]));
+        expect(calculated.status).toBe('calculated');
+
+        // A GENUINELY separate connection/transaction — never sees `calculateForPeriod`'s own
+        // connection's uncommitted state, only what it actually COMMITted. This is the exact shape
+        // the original bug (zero `COMMIT`s in `runs.service.ts`) could not have passed: the run/lines
+        // would have vanished with `RlsCleanupInterceptor`'s post-request `ROLLBACK`.
+        const reread = await asRequest({ ...actor, locationIds: [] }, (client) => runs.getRunDetail(client, calculated.id));
+        expect(reread.id).toBe(calculated.id);
+        expect(reread.status).toBe('calculated');
+        expect(reread.totalGross).toBe('5000000.00');
+        expect(reread.employees[0]!.employee.id).toBe(employeeId);
+
+        const periodReread = await asRequest({ ...actor, locationIds: [] }, (client) => periods.list(client));
+        const periodRow = periodReread.rows.find((p) => p.id === period.id);
+        expect(periodRow?.status).toBe('processing');
+      } finally {
+        if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+        if (periodId) await cleanupCommittedRows({ periodIds: [periodId] });
+        await setSettingValueCommitted('payroll.statutory', savedStatutory ?? { enabled: false, enabledAt: null, enabledBy: null });
+      }
     });
   });
 });

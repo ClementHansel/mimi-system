@@ -52,6 +52,19 @@ jobs:
             git fetch --prune origin main
             git reset --hard origin/main
 
+            # Apply pending migrations BEFORE rebuilding. Missing this step meant
+            # migration 220 (an RLS fix) sat unapplied while the code that assumed
+            # it shipped — the stack would come up "healthy" and quietly behave as
+            # though the fix were not there. The runner is disposable: it only
+            # needs the database package's deps, on the compose network.
+            set -a; . ./.env.vps; set +a
+            docker run --rm --network mimi_mimi-network \
+              -v /home/ubuntu/mimi:/app -w /app/database \
+              -e DATABASE_MIGRATION_URL="$DATABASE_MIGRATION_URL" \
+              -e DATABASE_URL="$DATABASE_URL" \
+              node:22-alpine sh -c \
+              'corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.4 --activate >/dev/null 2>&1 && pnpm migrate'
+
             docker compose -p mimi \
               -f docker-compose.yml -f docker-compose.vps.yml \
               --env-file .env.vps \

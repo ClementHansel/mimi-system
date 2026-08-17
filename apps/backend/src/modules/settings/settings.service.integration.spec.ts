@@ -28,8 +28,14 @@ beforeAll(async () => {
 });
 
 // Every test below runs the service inside `withRollback` (auth's live-db
-// harness), so no write here is ever actually committed — this reset is
-// defensive belt-and-braces only, in case a future edit changes that.
+// harness). That discards a write ONLY if the service method never calls
+// `withWrite` (BE-TXN-ROLLBACK) itself — `putOne`/`putApprovalChain`/
+// `putApprovalMode` all do, and `withWrite`'s `COMMIT` ends `withRollback`'s
+// own transaction for real (Postgres BEGIN doesn't nest), so those DO
+// survive. This `hr.late_grace_minutes` reset is the generic safety net for
+// that specific key; any OTHER settings key/chain a test here mutates needs
+// its own restore in a `finally` (see `putApprovalMode`'s tests below, and
+// "accepts a threshold-only change..." above, for the pattern).
 afterEach(async () => {
   await resetSettingValue('hr.late_grace_minutes', 5);
 });
@@ -134,21 +140,45 @@ describe('SettingsService — approval chains', () => {
     });
   });
 
+  // QA-ATTENDANCE-LEAK: `putApprovalChain` calls `withWrite` (BE-TXN-ROLLBACK) — its `COMMIT`
+  // fires on THIS SAME connection/transaction `withRollback` opened (Postgres has no notion of a
+  // "nested" BEGIN; the inner `COMMIT` ends the outer transaction for real), so this write survives
+  // `withRollback`'s own `ROLLBACK` (which then just runs against no open transaction, a no-op).
+  // This test's header comment above ("no write here is ever actually committed") is therefore
+  // wrong for THIS method specifically — reproduced by two consecutive full-suite runs with no
+  // reset between them: the second run's `auth.service.integration.spec.ts` saw the void_refund
+  // step 2 threshold as the 250000.00 THIS test committed on the first run, not the seeded
+  // 200000.00 (migration 069) it expected. Restored in `finally`, matching `putApprovalMode`'s own
+  // tests just below (which already got this right).
   it('accepts a threshold-only change to an existing chain (step 1 role unchanged)', async () => {
-    await withRollback(async (client) => {
-      const service = buildService();
-      const updated = await service.putApprovalChain(
-        'void_refund',
-        {
-          steps: [
-            { stepNo: 1, approverRole: 'supervisor' as never, minAmount: undefined, maxAmount: undefined },
-            { stepNo: 2, approverRole: 'manager' as never, minAmount: '250000.00', maxAmount: undefined },
-          ],
-        },
-        client,
+    try {
+      const updated = await withRollback((client) =>
+        buildService().putApprovalChain(
+          'void_refund',
+          {
+            steps: [
+              { stepNo: 1, approverRole: 'supervisor' as never, minAmount: undefined, maxAmount: undefined },
+              { stepNo: 2, approverRole: 'manager' as never, minAmount: '250000.00', maxAmount: undefined },
+            ],
+          },
+          client,
+        ),
       );
       expect(updated.steps[1]?.minAmount).toBe('250000.00');
-    });
+    } finally {
+      await withRollback((client) =>
+        buildService().putApprovalChain(
+          'void_refund',
+          {
+            steps: [
+              { stepNo: 1, approverRole: 'supervisor' as never, minAmount: undefined, maxAmount: undefined },
+              { stepNo: 2, approverRole: 'manager' as never, minAmount: '200000.00', maxAmount: undefined },
+            ],
+          },
+          client,
+        ),
+      );
+    }
   });
 
   it('rejects an unknown document type', async () => {
@@ -169,28 +199,38 @@ describe('SettingsService — D-23 per-document-type approval modes', () => {
     });
   });
 
-  it('PUT persists a single document type\'s mode, self-seeding the settings row, and leaves every other type untouched', async () => {
-    await withRollback(async (client) => {
-      const service = buildService();
-      const updated = await service.putApprovalMode(ApprovalDocumentType.VOID_REFUND, { mode: ApprovalMode.OFF }, CALLER, client);
+  // BE-TXN-ROLLBACK: `putApprovalMode` now really commits (`withWrite`), which ends the
+  // transaction `withRollback` opened and reverts `SET LOCAL ROLE`/session GUCs — a later
+  // read on the SAME connection would fail `permission denied`. The write and its
+  // verifying read are therefore two SEPARATE connections, exactly the shape
+  // `stock-opname`'s regression suite established. Since this genuinely commits a shared
+  // `approval.mode` settings row, it's restored in `finally` (SETTINGS-LEAK).
+  it('PUT persists a single document type\'s mode, self-seeding the settings row, and leaves every other type untouched — verified via a SEPARATE connection', async () => {
+    try {
+      const updated = await withRollback((client) => buildService().putApprovalMode(ApprovalDocumentType.VOID_REFUND, { mode: ApprovalMode.OFF }, CALLER, client));
       expect(updated).toEqual({ documentType: ApprovalDocumentType.VOID_REFUND, mode: ApprovalMode.OFF });
 
-      const modes = await service.getApprovalModes(client);
+      const modes = await withRollback((client) => buildService().getApprovalModes(client));
       const voidRefund = modes.find((m) => m.documentType === ApprovalDocumentType.VOID_REFUND);
       const waste = modes.find((m) => m.documentType === ApprovalDocumentType.WASTE);
       expect(voidRefund?.mode).toBe(ApprovalMode.OFF);
       expect(waste?.mode).toBe(ApprovalMode.MANUAL); // untouched by the void_refund-only write
-    });
+    } finally {
+      await withRollback((client) => buildService().putApprovalMode(ApprovalDocumentType.VOID_REFUND, { mode: ApprovalMode.MANUAL }, CALLER, client));
+    }
   });
 
-  it('a mode change is itself auditable data: the settings row records who changed it and when', async () => {
-    await withRollback(async (client) => {
-      const service = buildService();
-      await service.putApprovalMode(ApprovalDocumentType.PAYROLL_RUN, { mode: ApprovalMode.WHATSAPP }, CALLER, client);
-      const row = await client.query<{ updated_by: string; updated_at: Date }>(`SELECT updated_by, updated_at FROM settings WHERE key = 'approval.mode'`);
+  it('a mode change is itself auditable data: the settings row records who changed it and when — read back on a SEPARATE connection', async () => {
+    try {
+      await withRollback((client) => buildService().putApprovalMode(ApprovalDocumentType.PAYROLL_RUN, { mode: ApprovalMode.WHATSAPP }, CALLER, client));
+      const row = await withRollback((client) =>
+        client.query<{ updated_by: string; updated_at: Date }>(`SELECT updated_by, updated_at FROM settings WHERE key = 'approval.mode'`),
+      );
       expect(row.rows[0]?.updated_by).toBe(CALLER.sub);
       expect(row.rows[0]?.updated_at).toBeInstanceOf(Date);
-    });
+    } finally {
+      await withRollback((client) => buildService().putApprovalMode(ApprovalDocumentType.PAYROLL_RUN, { mode: ApprovalMode.MANUAL }, CALLER, client));
+    }
   });
 
   it('rejects an unknown document type (ERR_VALIDATION)', async () => {
@@ -207,5 +247,27 @@ describe('SettingsService — D-23 per-document-type approval modes', () => {
         response: { code: 'ERR_NOT_FOUND' },
       });
     });
+  });
+});
+
+// ── BE-TXN-ROLLBACK regression: writes must survive past the request that made them ──
+//
+// `putOne`/`putApprovalChain`/`putApprovalMode` previously ran with zero `BEGIN...COMMIT`
+// of their own; `RlsCleanupInterceptor`'s unconditional post-request `ROLLBACK` silently
+// discarded every one of them. `asRequest` reproduces the real two-request shape: each
+// call gets its own connection, mimicking `RlsContextGuard`'s `BEGIN` and
+// `RlsCleanupInterceptor`'s `ROLLBACK` exactly — a service that only writes inside the
+// guard's transaction (no `withWrite`) fails this, a service that commits passes.
+describe('write-then-read-back across SEPARATE connections (each simulating one real HTTP request)', () => {
+  it('putOne persists past its own request — a later GET (new connection) sees the new value', async () => {
+    try {
+      const updated = await withRollback((client) => buildService().putOne('hr.late_grace_minutes', { value: 7 }, CALLER, client));
+      expect(updated.value).toBe(7);
+
+      const reread = await withRollback((client) => buildService().getOne('hr.late_grace_minutes', client));
+      expect(reread.value).toBe(7);
+    } finally {
+      await resetSettingValue('hr.late_grace_minutes', 5);
+    }
   });
 });

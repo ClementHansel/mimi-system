@@ -38,6 +38,7 @@ import {
   getStatutoryGate,
 } from '../payroll-settings.util';
 import type { OverrideLineDto } from '../dto/payroll.dto';
+import { withWrite } from '../db-tx';
 
 /**
  * PIN-05 tenure tiers: CONTRACTS.md §1.7/§2.6 describe the FORMULA
@@ -170,21 +171,23 @@ export class RunsService {
       }
     }
 
-    const runSeq = await this.nextRunSeq(client, period.periodCode);
-    const runNumber = formatCloudDocNumber(DocumentPrefix.PAYROLL_RUN, period.periodCode.replace('-', ''), runSeq);
+    return withWrite(client, async () => {
+      const runSeq = await this.nextRunSeq(client, period.periodCode);
+      const runNumber = formatCloudDocNumber(DocumentPrefix.PAYROLL_RUN, period.periodCode.replace('-', ''), runSeq);
 
-    const runRes = await client.query<{ id: UUID }>(
-      `INSERT INTO payroll_runs (period_id, run_seq, run_number, status, statutory_mode, calculated_by, calculated_at)
-       VALUES ($1,$2,$3,'calculated',$4,$5,NOW()) RETURNING id`,
-      [periodId, runSeq, runNumber, gate.enabled, actorUserId],
-    );
-    const runId = runRes.rows[0]!.id;
+      const runRes = await client.query<{ id: UUID }>(
+        `INSERT INTO payroll_runs (period_id, run_seq, run_number, status, statutory_mode, calculated_by, calculated_at)
+         VALUES ($1,$2,$3,'calculated',$4,$5,NOW()) RETURNING id`,
+        [periodId, runSeq, runNumber, gate.enabled, actorUserId],
+      );
+      const runId = runRes.rows[0]!.id;
 
-    const employees = await this.loadEmployees(client, employeeIds);
-    await this.computeAndPersistLines(client, runId, period, employees, gate.enabled, new Set());
+      const employees = await this.loadEmployees(client, employeeIds);
+      await this.computeAndPersistLines(client, runId, period, employees, gate.enabled, new Set());
 
-    await this.periods.markStatus(client, periodId, 'processing');
-    return this.getRunDetail(client, runId);
+      await this.periods.markStatus(client, periodId, 'processing');
+      return this.getRunDetail(client, runId);
+    });
   }
 
   async recalculate(client: PoolClient, actorUserId: UUID, runId: UUID): Promise<PayrollRunApi> {
@@ -194,24 +197,26 @@ export class RunsService {
     }
     const period = await this.periods.requirePeriod(client, run.periodId);
 
-    const employeeIdsRes = await client.query<{ employee_id: UUID }>(
-      'SELECT DISTINCT employee_id FROM payroll_lines WHERE run_id = $1',
-      [runId],
-    );
-    const overriddenRes = await client.query<{ employee_id: UUID }>(
-      'SELECT DISTINCT employee_id FROM payroll_lines WHERE run_id = $1 AND manual_override = true',
-      [runId],
-    );
-    const overriddenEmployeeIds = new Set(overriddenRes.rows.map((r) => r.employee_id));
+    return withWrite(client, async () => {
+      const employeeIdsRes = await client.query<{ employee_id: UUID }>(
+        'SELECT DISTINCT employee_id FROM payroll_lines WHERE run_id = $1',
+        [runId],
+      );
+      const overriddenRes = await client.query<{ employee_id: UUID }>(
+        'SELECT DISTINCT employee_id FROM payroll_lines WHERE run_id = $1 AND manual_override = true',
+        [runId],
+      );
+      const overriddenEmployeeIds = new Set(overriddenRes.rows.map((r) => r.employee_id));
 
-    // Drop every non-overridden line — manual overrides survive a recalculate (CONTRACTS §4.15).
-    await client.query('DELETE FROM payroll_lines WHERE run_id = $1 AND manual_override = false', [runId]);
+      // Drop every non-overridden line — manual overrides survive a recalculate (CONTRACTS §4.15).
+      await client.query('DELETE FROM payroll_lines WHERE run_id = $1 AND manual_override = false', [runId]);
 
-    const employees = await this.loadEmployees(client, employeeIdsRes.rows.map((r) => r.employee_id));
-    await this.computeAndPersistLines(client, runId, period, employees, run.statutoryMode, overriddenEmployeeIds);
+      const employees = await this.loadEmployees(client, employeeIdsRes.rows.map((r) => r.employee_id));
+      await this.computeAndPersistLines(client, runId, period, employees, run.statutoryMode, overriddenEmployeeIds);
 
-    await client.query(`UPDATE payroll_runs SET calculated_by = $2, calculated_at = NOW() WHERE id = $1`, [runId, actorUserId]);
-    return this.getRunDetail(client, runId);
+      await client.query(`UPDATE payroll_runs SET calculated_by = $2, calculated_at = NOW() WHERE id = $1`, [runId, actorUserId]);
+      return this.getRunDetail(client, runId);
+    });
   }
 
   async overrideLine(client: PoolClient, runId: UUID, lineId: UUID, dto: OverrideLineDto): Promise<PayslipLineApi> {
@@ -221,16 +226,18 @@ export class RunsService {
     }
     if (!dto.overrideReason?.trim()) throw new BadRequestException({ code: ERR_VALIDATION, message: 'overrideReason is required' });
 
-    const res = await client.query<Record<string, any>>(
-      `UPDATE payroll_lines SET amount = $3, manual_override = true, override_reason = $4
-         WHERE id = $1 AND run_id = $2
-       RETURNING *`,
-      [lineId, runId, dto.amount, dto.overrideReason],
-    );
-    if (res.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Payroll line not found on this run' });
+    return withWrite(client, async () => {
+      const res = await client.query<Record<string, any>>(
+        `UPDATE payroll_lines SET amount = $3, manual_override = true, override_reason = $4
+           WHERE id = $1 AND run_id = $2
+         RETURNING *`,
+        [lineId, runId, dto.amount, dto.overrideReason],
+      );
+      if (res.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Payroll line not found on this run' });
 
-    await this.recomputeRunTotals(client, runId);
-    return this.toLineApi(client, res.rows[0]!);
+      await this.recomputeRunTotals(client, runId);
+      return this.toLineApi(client, res.rows[0]!);
+    });
   }
 
   // ── lifecycle ────────────────────────────────────────────────────────────
@@ -241,16 +248,18 @@ export class RunsService {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Run must be 'calculated' to submit (currently '${run.status}')` });
     }
 
-    const submitResult = await this.approvals.submit(client, {
-      documentType: ApprovalDocumentType.PAYROLL_RUN,
-      documentId: runId,
-      requestedBy: actorUserId,
-      amount: run.totalNet,
-      locationId: null,
-    });
+    return withWrite(client, async () => {
+      const submitResult = await this.approvals.submit(client, {
+        documentType: ApprovalDocumentType.PAYROLL_RUN,
+        documentId: runId,
+        requestedBy: actorUserId,
+        amount: run.totalNet,
+        locationId: null,
+      });
 
-    await client.query(`UPDATE payroll_runs SET status = 'pending_approval', approval_id = $2 WHERE id = $1`, [runId, submitResult.approvalId]);
-    return this.getRunDetail(client, runId);
+      await client.query(`UPDATE payroll_runs SET status = 'pending_approval', approval_id = $2 WHERE id = $1`, [runId, submitResult.approvalId]);
+      return this.getRunDetail(client, runId);
+    });
   }
 
   async approve(client: PoolClient, actorUserId: UUID, actorRole: string, runId: UUID, note: string | undefined): Promise<PayrollRunApi> {
@@ -259,24 +268,26 @@ export class RunsService {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Run must be 'pending_approval' to approve (currently '${run.status}')` });
     }
 
-    const result = await this.approvals.approve(client, {
-      documentType: ApprovalDocumentType.PAYROLL_RUN,
-      documentId: runId,
-      currentState: run.status,
-      actorUserId,
-      actorRole: actorRole as any,
-      reason: note ?? null,
+    return withWrite(client, async () => {
+      const result = await this.approvals.approve(client, {
+        documentType: ApprovalDocumentType.PAYROLL_RUN,
+        documentId: runId,
+        currentState: run.status,
+        actorUserId,
+        actorRole: actorRole as any,
+        reason: note ?? null,
+      });
+
+      // Only the FINAL step (currentStep === null) actually finalizes the document — an intermediate
+      // step (Finance, before Owner) must leave `payroll_runs.status` at 'pending_approval'; the kernel's
+      // own `approval_steps` bookkeeping already recorded this actor's decision.
+      if (result.currentStep === null && result.approvalState === 'approved') {
+        await client.query(`UPDATE payroll_runs SET status = $2, approved_by = $3, approved_at = NOW() WHERE id = $1`, [runId, result.nextState, actorUserId]);
+        await this.finalizeApprovedRun(client, runId, actorUserId);
+      }
+
+      return this.getRunDetail(client, runId);
     });
-
-    // Only the FINAL step (currentStep === null) actually finalizes the document — an intermediate
-    // step (Finance, before Owner) must leave `payroll_runs.status` at 'pending_approval'; the kernel's
-    // own `approval_steps` bookkeeping already recorded this actor's decision.
-    if (result.currentStep === null && result.approvalState === 'approved') {
-      await client.query(`UPDATE payroll_runs SET status = $2, approved_by = $3, approved_at = NOW() WHERE id = $1`, [runId, result.nextState, actorUserId]);
-      await this.finalizeApprovedRun(client, runId, actorUserId);
-    }
-
-    return this.getRunDetail(client, runId);
   }
 
   async reject(client: PoolClient, actorUserId: UUID, actorRole: string, runId: UUID, reason: string): Promise<PayrollRunApi> {
@@ -286,17 +297,19 @@ export class RunsService {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Run must be 'pending_approval' to reject (currently '${run.status}')` });
     }
 
-    const result = await this.approvals.reject(client, {
-      documentType: ApprovalDocumentType.PAYROLL_RUN,
-      documentId: runId,
-      currentState: run.status,
-      actorUserId,
-      actorRole: actorRole as any,
-      reason,
-    });
+    return withWrite(client, async () => {
+      const result = await this.approvals.reject(client, {
+        documentType: ApprovalDocumentType.PAYROLL_RUN,
+        documentId: runId,
+        currentState: run.status,
+        actorUserId,
+        actorRole: actorRole as any,
+        reason,
+      });
 
-    await client.query(`UPDATE payroll_runs SET status = $2 WHERE id = $1`, [runId, result.nextState]);
-    return this.getRunDetail(client, runId);
+      await client.query(`UPDATE payroll_runs SET status = $2 WHERE id = $1`, [runId, result.nextState]);
+      return this.getRunDetail(client, runId);
+    });
   }
 
   async markPaid(client: PoolClient, _actorUserId: UUID, runId: UUID, paymentVerificationId: UUID): Promise<PayrollRunApi> {
@@ -314,19 +327,21 @@ export class RunsService {
       throw new BadRequestException({ code: ERR_VALIDATION, message: 'The referenced payment verification is not yet paid' });
     }
 
-    await client.query(`UPDATE payroll_runs SET status = 'paid', paid_at = NOW() WHERE id = $1`, [runId]);
+    return withWrite(client, async () => {
+      await client.query(`UPDATE payroll_runs SET status = 'paid', paid_at = NOW() WHERE id = $1`, [runId]);
 
-    await this.events.publish('journal.action', {
-      eventType: JournalSystemEventType.PAYROLL_PAYMENT,
-      documentType: 'payroll_run',
-      documentId: runId,
-      locationId: null,
-      amount: run.totalNet,
-      context: { runNumber: run.runNumber, paymentVerificationId },
-      occurredAt: new Date().toISOString(),
+      await this.events.publish('journal.action', {
+        eventType: JournalSystemEventType.PAYROLL_PAYMENT,
+        documentType: 'payroll_run',
+        documentId: runId,
+        locationId: null,
+        amount: run.totalNet,
+        context: { runNumber: run.runNumber, paymentVerificationId },
+        occurredAt: new Date().toISOString(),
+      });
+
+      return this.getRunDetail(client, runId);
     });
-
-    return this.getRunDetail(client, runId);
   }
 
   async sendSlips(client: PoolClient, runId: UUID, channels: ('email' | 'whatsapp')[]): Promise<{ queued: number; skippedNoContact: number }> {

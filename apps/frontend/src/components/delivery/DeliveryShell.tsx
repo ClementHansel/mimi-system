@@ -1,7 +1,6 @@
 'use client';
 
 import { useI18n } from '@/lib/i18n';
-import { OfflineBanner } from '@/components/ui';
 import { DeliverySuratJalanList } from './DeliverySuratJalanList';
 
 /**
@@ -19,7 +18,7 @@ export function DeliveryShell() {
   const { t } = useI18n();
   return (
     <div className="flex flex-col gap-4 p-4">
-      <OfflineBanner />
+      {/* AppShell already owns the single OfflineBanner for this (non-chromeless) route. */}
       <div>
         <h1 className="font-display text-2xl font-semibold text-text-primary">{t('delivery.title')}</h1>
         <p className="text-sm text-text-muted">{t('delivery.subtitle')}</p>

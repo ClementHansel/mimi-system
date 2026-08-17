@@ -76,7 +76,11 @@ export function ReturnPanel() {
   function reloadSupplierReturns() {
     setSupplierLoading(true);
     setSupplierError(undefined);
-    listReturns({ direction: 'gudang_to_supplier' })
+    // `ReturnDirection` (`@mimi/shared`) is `outlet_to_warehouse` |
+    // `warehouse_to_supplier` — the previous Indonesian-slang values here
+    // never matched the DTO's `@IsIn`, so every call 400'd with
+    // ERR_VALIDATION (FIX-LOADS #2).
+    listReturns({ direction: 'warehouse_to_supplier' })
       .then((r) => setSupplierRows(r.rows))
       .catch((err: unknown) => setSupplierError(err instanceof ApiError ? err.message : t('table.error')))
       .finally(() => setSupplierLoading(false));
@@ -84,7 +88,7 @@ export function ReturnPanel() {
   function reloadOutletReturns() {
     setOutletLoading(true);
     setOutletError(undefined);
-    listReturns({ direction: 'outlet_to_gudang', status: 'in_transit' })
+    listReturns({ direction: 'outlet_to_warehouse', status: 'in_transit' })
       .then((r) => setOutletRows(r.rows))
       .catch((err: unknown) => setOutletError(err instanceof ApiError ? err.message : t('table.error')))
       .finally(() => setOutletLoading(false));
@@ -103,7 +107,7 @@ export function ReturnPanel() {
     try {
       const photoAttachmentId = await uploadAttachment({ file: photo, fileName: photo.name, mimeType: photo.type || 'image/jpeg', kind: 'return_proof' });
       const created = await createReturn({
-        direction: 'gudang_to_supplier',
+        direction: 'warehouse_to_supplier',
         fromLocationId: locationId,
         supplierId,
         lines: valid.map((l) => ({ itemId: l.itemId, storageAreaId: l.storageAreaId, qty: l.qty as string, condition: l.condition, reason: l.reason })),

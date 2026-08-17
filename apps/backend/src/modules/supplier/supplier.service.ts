@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { UUID, Money, ISODate, Paginated } from '@mimi/shared';
 import { formatDateOnly } from '../../common/date-only.util';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
+import { withWrite } from './db-tx';
 
 export interface CreateSupplierDto {
   code: string;
@@ -215,38 +216,40 @@ export class SupplierService {
     if (!dto.code?.trim()) throw new BadRequestException('code is required');
     if (!dto.name?.trim()) throw new BadRequestException('name is required');
 
-    const res = await client.query<Record<string, any>>(
-      `INSERT INTO suppliers
-       (code, name, contact_name, phone, email, address, payment_terms_days, bank_name, bank_account, bank_account_name, outlet_visible, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
-       RETURNING *`,
-      [
-        dto.code.trim(),
-        dto.name.trim(),
-        dto.contactName ?? null,
-        dto.phone ?? null,
-        dto.email ?? null,
-        dto.address ?? null,
-        dto.paymentTermsDays ?? 0,
-        dto.bankName ?? null,
-        dto.bankAccount ?? null,
-        dto.bankAccountName ?? null,
-        dto.outletVisible ?? false,
-      ],
-    );
+    return withWrite(client, async () => {
+      const res = await client.query<Record<string, any>>(
+        `INSERT INTO suppliers
+         (code, name, contact_name, phone, email, address, payment_terms_days, bank_name, bank_account, bank_account_name, outlet_visible, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+         RETURNING *`,
+        [
+          dto.code.trim(),
+          dto.name.trim(),
+          dto.contactName ?? null,
+          dto.phone ?? null,
+          dto.email ?? null,
+          dto.address ?? null,
+          dto.paymentTermsDays ?? 0,
+          dto.bankName ?? null,
+          dto.bankAccount ?? null,
+          dto.bankAccountName ?? null,
+          dto.outletVisible ?? false,
+        ],
+      );
 
-    if (res.rows.length === 0) throw new Error('Failed to create supplier');
-    const supplier = this.mapSupplier(res.rows[0]!);
+      if (res.rows.length === 0) throw new Error('Failed to create supplier');
+      const supplier = this.mapSupplier(res.rows[0]!);
 
-    await this.syncEmit.emit(undefined, {
-      entity: 'suppliers',
-      op: 'created',
-      entityId: supplier.id,
-      locationId: null,
-      actorUserId: userId,
-      data: { code: supplier.code, name: supplier.name },
+      await this.syncEmit.emit(undefined, {
+        entity: 'suppliers',
+        op: 'created',
+        entityId: supplier.id,
+        locationId: null,
+        actorUserId: userId,
+        data: { code: supplier.code, name: supplier.name },
+      });
+      return supplier;
     });
-    return supplier;
   }
 
   /**
@@ -278,49 +281,53 @@ export class SupplierService {
     sets.push('updated_at = NOW()');
     params.push(id);
 
-    const res = await client.query<Record<string, any>>(
-      `UPDATE suppliers SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
-      params,
-    );
+    return withWrite(client, async () => {
+      const res = await client.query<Record<string, any>>(
+        `UPDATE suppliers SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params,
+      );
 
-    if (res.rows.length === 0) {
-      throw new NotFoundException('Supplier not found');
-    }
+      if (res.rows.length === 0) {
+        throw new NotFoundException('Supplier not found');
+      }
 
-    const supplier = this.mapSupplier(res.rows[0]!);
+      const supplier = this.mapSupplier(res.rows[0]!);
 
-    await this.syncEmit.emit(undefined, {
-      entity: 'suppliers',
-      op: 'updated',
-      entityId: id,
-      locationId: null,
-      actorUserId: userId,
-      data: { code: supplier.code, name: supplier.name },
+      await this.syncEmit.emit(undefined, {
+        entity: 'suppliers',
+        op: 'updated',
+        entityId: id,
+        locationId: null,
+        actorUserId: userId,
+        data: { code: supplier.code, name: supplier.name },
+      });
+      return supplier;
     });
-    return supplier;
   }
 
   /**
    * Soft-delete (deactivate) a supplier.
    */
   async deactivate(client: PoolClient, id: UUID, userId: UUID): Promise<{ id: UUID; deactivated: true }> {
-    const res = await client.query<{ id: UUID }>(
-      `UPDATE suppliers SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id`,
-      [id],
-    );
-    if (res.rows.length === 0) {
-      throw new NotFoundException('Supplier not found');
-    }
+    return withWrite(client, async () => {
+      const res = await client.query<{ id: UUID }>(
+        `UPDATE suppliers SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id`,
+        [id],
+      );
+      if (res.rows.length === 0) {
+        throw new NotFoundException('Supplier not found');
+      }
 
-    await this.syncEmit.emit(undefined, {
-      entity: 'suppliers',
-      op: 'deactivated',
-      entityId: id,
-      locationId: null,
-      actorUserId: userId,
-      data: { id },
+      await this.syncEmit.emit(undefined, {
+        entity: 'suppliers',
+        op: 'deactivated',
+        entityId: id,
+        locationId: null,
+        actorUserId: userId,
+        data: { id },
+      });
+      return { id, deactivated: true };
     });
-    return { id, deactivated: true };
   }
 
   /**
@@ -354,69 +361,73 @@ export class SupplierService {
     },
     userId: UUID,
   ): Promise<SupplierItem> {
-    const res = await client.query(
-      `INSERT INTO supplier_items (supplier_id, item_id, supplier_sku, current_price, lead_time_days, is_preferred)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (supplier_id, item_id) DO UPDATE SET
-         supplier_sku = COALESCE($3, supplier_sku),
-         current_price = $4,
-         lead_time_days = COALESCE($5, lead_time_days),
-         is_preferred = COALESCE($6, is_preferred),
-         updated_at = NOW()
-       RETURNING id`,
-      [
-        supplierId,
-        itemId,
-        dto.supplierSku ?? null,
-        dto.currentPrice,
-        dto.leadTimeDays ?? 1,
-        dto.isPreferred ?? false,
-      ],
-    );
+    return withWrite(client, async () => {
+      const res = await client.query(
+        `INSERT INTO supplier_items (supplier_id, item_id, supplier_sku, current_price, lead_time_days, is_preferred)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (supplier_id, item_id) DO UPDATE SET
+           supplier_sku = COALESCE($3, supplier_sku),
+           current_price = $4,
+           lead_time_days = COALESCE($5, lead_time_days),
+           is_preferred = COALESCE($6, is_preferred),
+           updated_at = NOW()
+         RETURNING id`,
+        [
+          supplierId,
+          itemId,
+          dto.supplierSku ?? null,
+          dto.currentPrice,
+          dto.leadTimeDays ?? 1,
+          dto.isPreferred ?? false,
+        ],
+      );
 
-    if (res.rows.length === 0) throw new Error('Failed to upsert supplier item');
-    const itemRow = res.rows[0]!;
+      if (res.rows.length === 0) throw new Error('Failed to upsert supplier item');
+      const itemRow = res.rows[0]!;
 
-    await client.query(
-      `INSERT INTO supplier_price_history (supplier_id, item_id, price, effective_date, source, recorded_by)
-       VALUES ($1, $2, $3, CURRENT_DATE, 'manual', $4)`,
-      [supplierId, itemId, dto.currentPrice, userId],
-    );
+      await client.query(
+        `INSERT INTO supplier_price_history (supplier_id, item_id, price, effective_date, source, recorded_by)
+         VALUES ($1, $2, $3, CURRENT_DATE, 'manual', $4)`,
+        [supplierId, itemId, dto.currentPrice, userId],
+      );
 
-    await this.syncEmit.emit(undefined, {
-      entity: 'supplier_items',
-      op: 'updated',
-      entityId: itemRow.id,
-      locationId: null,
-      actorUserId: userId,
-      data: { supplierId, itemId, currentPrice: dto.currentPrice },
+      await this.syncEmit.emit(undefined, {
+        entity: 'supplier_items',
+        op: 'updated',
+        entityId: itemRow.id,
+        locationId: null,
+        actorUserId: userId,
+        data: { supplierId, itemId, currentPrice: dto.currentPrice },
+      });
+
+      return this.getItems(client, supplierId).then((items) => items.find((i) => i.itemId === itemId)!);
     });
-
-    return this.getItems(client, supplierId).then((items) => items.find((i) => i.itemId === itemId)!);
   }
 
   /**
    * Delete a supplier item.
    */
   async deleteItem(client: PoolClient, supplierId: UUID, itemId: UUID, userId: UUID): Promise<{ ok: true }> {
-    const res = await client.query<{ id: UUID }>(
-      `DELETE FROM supplier_items WHERE supplier_id = $1 AND item_id = $2 RETURNING id`,
-      [supplierId, itemId],
-    );
-    if (res.rows.length === 0) {
-      throw new NotFoundException('Supplier item not found');
-    }
-    const itemRow = res.rows[0]!;
+    return withWrite(client, async () => {
+      const res = await client.query<{ id: UUID }>(
+        `DELETE FROM supplier_items WHERE supplier_id = $1 AND item_id = $2 RETURNING id`,
+        [supplierId, itemId],
+      );
+      if (res.rows.length === 0) {
+        throw new NotFoundException('Supplier item not found');
+      }
+      const itemRow = res.rows[0]!;
 
-    await this.syncEmit.emit(undefined, {
-      entity: 'supplier_items',
-      op: 'deleted',
-      entityId: itemRow.id,
-      locationId: null,
-      actorUserId: userId,
-      data: { supplierId, itemId },
+      await this.syncEmit.emit(undefined, {
+        entity: 'supplier_items',
+        op: 'deleted',
+        entityId: itemRow.id,
+        locationId: null,
+        actorUserId: userId,
+        data: { supplierId, itemId },
+      });
+      return { ok: true };
     });
-    return { ok: true };
   }
 
   /**

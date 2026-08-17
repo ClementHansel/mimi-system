@@ -9,6 +9,7 @@
  * `pairing_tokens`/`discovered_devices`, which that file has no need of.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { hashDeviceToken } from '../../../kernel/sync/device-auth.guard';
 
 export {
@@ -25,7 +26,53 @@ export {
   closeTestPool,
 } from '../../../kernel/sync/test-support/live-db';
 
-import { getOwnerPool } from '../../../kernel/sync/test-support/live-db';
+import { getAppPool, getOwnerPool } from '../../../kernel/sync/test-support/live-db';
+
+/**
+ * BE-TXN-ROLLBACK: a genuine per-request RLS session for exercising
+ * `devices.controller.ts`/`nodes.controller.ts`/`outlet-node-setting.controller.ts`'s
+ * request-scoped mutating routes — mirrors `stock-opname/test-support/live-db.ts`'s
+ * `withRollbackAs`/`asRequest` exactly (own connection, `BEGIN` + `SET LOCAL ROLE app_user`
+ * + session GUCs, run `fn`, ALWAYS `ROLLBACK` + release on the way out — the same
+ * `RlsContextGuard` + `RlsCleanupInterceptor` lifecycle a real HTTP request gets).
+ *
+ * `kernel/sync/test-support/live-db.ts`'s own two-pool harness has no equivalent — every
+ * existing live-DB test in `device-registry`/`node-gateway` instead used
+ * `kernel/sync/system-rls-context.ts`'s `withSystemContext` (its own real BEGIN...COMMIT) to
+ * stand in for "one request," which COMMITS UNCONDITIONALLY regardless of whether the
+ * controller method under test ever calls `withWrite` itself — exactly the shape of harness
+ * that could hide a missing-commit bug (a broken controller would still appear to persist,
+ * because the harness's own commit saves it). `asRequest` below is the one that actually
+ * proves the fix: only a controller method that itself calls `withWrite` survives this
+ * connection's own unconditional `ROLLBACK`.
+ *
+ * THE RULE (identical to stock-opname's own harness): at most ONE call into a
+ * `withWrite`-wrapped controller method per `asRequest` invocation, and nothing else on that
+ * same `client` afterward (not even a read) — once `withWrite`'s `COMMIT` runs, `SET LOCAL
+ * ROLE`/the `app.*` session GUCs revert with it, and any later query on that client fails
+ * `permission denied for table ...`. A write-then-read-back assertion is therefore always TWO
+ * separate `asRequest` calls.
+ */
+export interface RlsSessionContext {
+  role: string;
+  userId: string;
+  locationIds: readonly string[];
+}
+
+export async function asRequest<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await getAppPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    return await fn(client);
+  } finally {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+  }
+}
 
 export interface TestNode {
   id: string;
@@ -99,8 +146,12 @@ export async function cleanupNodesAndDevices(params: { nodeIds?: string[]; devic
     await pool.query(`DELETE FROM devices WHERE id = ANY($1::uuid[])`, [deviceIds]);
   }
   if (nodeIds.length > 0) {
-    await pool.query(`DELETE FROM devices WHERE node_id = ANY($1::uuid[])`, [nodeIds]); // any device this test forgot to list explicitly
+    // `discovered_devices.confirmed_device_id` FKs to `devices(id)` with NO cascade/set-null action —
+    // must be cleared BEFORE deleting the `devices` rows it may reference (BE-TXN-ROLLBACK's
+    // `confirmDiscovered` write-then-read-back test is the first caller to leave a REAL confirmed
+    // `discovered_devices` row behind, surfacing this ordering requirement).
     await pool.query(`DELETE FROM discovered_devices WHERE node_id = ANY($1::uuid[])`, [nodeIds]);
+    await pool.query(`DELETE FROM devices WHERE node_id = ANY($1::uuid[])`, [nodeIds]); // any device this test forgot to list explicitly
     await pool.query(`DELETE FROM device_events WHERE node_id = ANY($1::uuid[])`, [nodeIds]);
     await pool.query(`DELETE FROM branch_nodes WHERE id = ANY($1::uuid[])`, [nodeIds]);
   }

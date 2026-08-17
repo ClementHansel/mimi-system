@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION, type Money, type UUID } from '@mimi/shared';
 import type { CreateComponentDto, PutEmployeeComponentsDto, UpdateComponentDto } from '../dto/payroll.dto';
+import { withWrite } from '../db-tx';
 
 export interface ComponentApi {
   id: UUID;
@@ -40,12 +41,14 @@ export class ComponentsService {
     const existing = await client.query('SELECT id FROM salary_components WHERE code = $1', [dto.code]);
     if (existing.rows.length > 0) throw new ConflictException({ code: ERR_CONFLICT, message: `Component code '${dto.code}' already exists` });
 
-    const res = await client.query<Record<string, any>>(
-      `INSERT INTO salary_components (code, name, type, calc_method, default_amount, is_system)
-       VALUES ($1,$2,$3,$4,$5,false) RETURNING *`,
-      [dto.code, dto.name, dto.type, dto.calcMethod, dto.defaultAmount ?? null],
-    );
-    return this.mapComponent(res.rows[0]!);
+    return withWrite(client, async () => {
+      const res = await client.query<Record<string, any>>(
+        `INSERT INTO salary_components (code, name, type, calc_method, default_amount, is_system)
+         VALUES ($1,$2,$3,$4,$5,false) RETURNING *`,
+        [dto.code, dto.name, dto.type, dto.calcMethod, dto.defaultAmount ?? null],
+      );
+      return this.mapComponent(res.rows[0]!);
+    });
   }
 
   async update(client: PoolClient, id: UUID, dto: UpdateComponentDto): Promise<ComponentApi> {
@@ -71,9 +74,11 @@ export class ComponentsService {
       return this.mapComponent(res.rows[0]!);
     }
 
-    params.push(id);
-    const res = await client.query<Record<string, any>>(`UPDATE salary_components SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`, params);
-    return this.mapComponent(res.rows[0]!);
+    return withWrite(client, async () => {
+      params.push(id);
+      const res = await client.query<Record<string, any>>(`UPDATE salary_components SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`, params);
+      return this.mapComponent(res.rows[0]!);
+    });
   }
 
   async listForEmployee(client: PoolClient, employeeId: UUID): Promise<EmployeeComponentApi[]> {
@@ -92,22 +97,24 @@ export class ComponentsService {
   }
 
   async putForEmployee(client: PoolClient, employeeId: UUID, dto: PutEmployeeComponentsDto): Promise<EmployeeComponentApi[]> {
-    for (const a of dto.assignments) {
-      // Close any currently-open window for this component, then insert the new one — same
-      // "current row has end_date NULL" convention `employments` uses (CONTRACTS §1.7).
-      await client.query(
-        `UPDATE employee_salary_components SET effective_to = $3
-          WHERE employee_id = $1 AND component_id = $2 AND effective_to IS NULL AND effective_from < $4`,
-        [employeeId, a.componentId, a.effectiveFrom, a.effectiveFrom],
-      );
-      await client.query(
-        `INSERT INTO employee_salary_components (employee_id, component_id, amount, effective_from)
-         VALUES ($1,$2,$3,$4)
-         ON CONFLICT (employee_id, component_id, effective_from) DO UPDATE SET amount = EXCLUDED.amount`,
-        [employeeId, a.componentId, a.amount ?? null, a.effectiveFrom],
-      );
-    }
-    return this.listForEmployee(client, employeeId);
+    return withWrite(client, async () => {
+      for (const a of dto.assignments) {
+        // Close any currently-open window for this component, then insert the new one — same
+        // "current row has end_date NULL" convention `employments` uses (CONTRACTS §1.7).
+        await client.query(
+          `UPDATE employee_salary_components SET effective_to = $3
+            WHERE employee_id = $1 AND component_id = $2 AND effective_to IS NULL AND effective_from < $4`,
+          [employeeId, a.componentId, a.effectiveFrom, a.effectiveFrom],
+        );
+        await client.query(
+          `INSERT INTO employee_salary_components (employee_id, component_id, amount, effective_from)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (employee_id, component_id, effective_from) DO UPDATE SET amount = EXCLUDED.amount`,
+          [employeeId, a.componentId, a.amount ?? null, a.effectiveFrom],
+        );
+      }
+      return this.listForEmployee(client, employeeId);
+    });
   }
 
   private dateStr(value: unknown): string {

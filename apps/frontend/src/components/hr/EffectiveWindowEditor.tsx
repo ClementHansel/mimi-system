@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { CalendarClock } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Button, Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState } from '@/components/ui';
+import { Button, Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, PermissionGate } from '@/components/ui';
 import { isoToday, sortByEffectiveFromDesc, validateNewEffectiveFrom, windowState } from './lib/effective-window';
 import type { EffectiveDatedRow } from './lib/types';
 
@@ -65,9 +65,18 @@ export function EffectiveWindowEditor<T extends EffectiveDatedRow>({
           <CardTitle>{title}</CardTitle>
           {description && <CardDescription>{description}</CardDescription>}
         </div>
-        <Button size="sm" variant={showForm ? 'outline' : 'primary'} onClick={() => setShowForm((v) => !v)}>
-          {showForm ? t('common.cancel') : t('hr.statutory.addVintage')}
-        </Button>
+        {/*
+         * The tab itself now only requires `payroll.statutory.read`
+         * (FIX-LOADS #3), so a read-only holder (e.g. Owner) can reach this
+         * screen — but adding a new rate vintage is a write, and stays
+         * behind `payroll.statutory.config` same as the backend's PUT
+         * routes (`StatutoryController`).
+         */}
+        <PermissionGate permission="payroll.statutory.config">
+          <Button size="sm" variant={showForm ? 'outline' : 'primary'} onClick={() => setShowForm((v) => !v)}>
+            {showForm ? t('common.cancel') : t('hr.statutory.addVintage')}
+          </Button>
+        </PermissionGate>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {showForm && (

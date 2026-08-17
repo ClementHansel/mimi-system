@@ -2,7 +2,7 @@
 
 import { Users, CalendarClock, ClipboardCheck, FileClock, Wallet, Percent } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Tabs, TabsList, TabsTrigger, TabsContent, OfflineBanner, PermissionGate } from '@/components/ui';
+import { Tabs, TabsList, TabsTrigger, TabsContent, PermissionGate } from '@/components/ui';
 import { EmployeesPanel } from '@/components/hr/EmployeesPanel';
 import { RosterPanel } from '@/components/hr/RosterPanel';
 import { AttendancePanel } from '@/components/hr/AttendancePanel';
@@ -23,7 +23,7 @@ export default function HrPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <OfflineBanner />
+      {/* AppShell already owns the single OfflineBanner for this (non-chromeless) route. */}
       <h1 className="font-display text-2xl font-semibold text-text-primary">{t('nav.hr')}</h1>
 
       <Tabs defaultValue="employees">
@@ -74,7 +74,17 @@ export default function HrPage() {
           </PermissionGate>
         </TabsContent>
         <TabsContent value="statutory">
-          <PermissionGate permission="payroll.statutory.config" showMessage>
+          {/*
+           * Every GET under `/payroll/statutory*` requires only
+           * `payroll.statutory.read` server-side (`StatutoryController`) —
+           * `payroll.statutory.config` is the WRITE permission (PUT only).
+           * Gating the whole tab behind `.config` denied every `.read`-only
+           * holder (Owner included — FIX-LOADS #3) from even viewing the
+           * current rates. `StatutoryRatesPanel` itself gates each editor's
+           * save action behind `.config`, so this only widens who can see
+           * the read-only history, matching the backend's own split.
+           */}
+          <PermissionGate permission="payroll.statutory.read" showMessage>
             <StatutoryRatesPanel />
           </PermissionGate>
         </TabsContent>

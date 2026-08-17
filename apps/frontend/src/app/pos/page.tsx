@@ -1,25 +1,25 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LockKeyhole, Undo2, ShoppingBag, Store, AlertTriangle } from 'lucide-react';
+import { Undo2, AlertTriangle } from 'lucide-react';
 import { calculateCartSummary } from '@mimi/shared';
 import { useI18n } from '@/lib/i18n';
-import { Button, Tabs, TabsList, TabsTrigger, TabsContent, Modal, EmptyState } from '@/components/ui';
+import { Button, TabsContent, Modal, EmptyState } from '@/components/ui';
 import { getBrowserLocalRuntime } from '@/lib/local/browser';
 import type { LocalRuntime } from '@/lib/local/api/local-runtime';
-import { PosStatusBar } from '@/components/pos/PosStatusBar';
-import { PosLocationPicker } from '@/components/pos/PosLocationPicker';
 import { ShiftOpenForm } from '@/components/pos/ShiftOpenForm';
-import { ShiftCloseModal } from '@/components/pos/ShiftCloseModal';
 import { ProductGrid } from '@/components/pos/ProductGrid';
 import { Cart } from '@/components/pos/Cart';
 import { PaymentPanel } from '@/components/pos/PaymentPanel';
 import { VoidRefundModal } from '@/components/pos/VoidRefundModal';
 import { OnlineOrderForm } from '@/components/pos/OnlineOrderForm';
-import { useSessionStore } from '@/stores/session-store';
-import { useActorMeta, usePosLocation, loadCatalog } from '@/components/pos/pos-runtime';
+import { ShiftPanel } from '@/components/pos/ShiftPanel';
+import { usePosShell } from '@/components/pos/PosShellContext';
+import { PosLocationPicker } from '@/components/pos/PosLocationPicker';
+import { loadCatalog } from '@/components/pos/pos-runtime';
 import { usePosCartStore } from '@/components/pos/cart-store';
 import { usePosShiftStore } from '@/components/pos/shift-store';
+import { useSessionStore } from '@/stores/session-store';
 import type { PosCatalog } from '@/components/pos/types';
 
 /**
@@ -27,11 +27,19 @@ import type { PosCatalog } from '@/components/pos/types';
  * `docs/SYNC-PROTOCOL.md` §8 rows 1-3, 16-17 for the contract this screen
  * implements; `src/components/pos/*` holds every piece, this file only
  * wires them to the runtime and gates by shift state.
+ *
+ * F-POS-2: POS is now a standalone full-screen app — `app/pos/layout.tsx`
+ * supplies the top bar/tab nav/branch line (`PosTopBar`/`PosStatusBar`), and
+ * this file supplies the matching `<TabsContent>` panels once an outlet is
+ * resolved and a shift is open. `actor`/`posLocation` come from
+ * `usePosShell()` (a context the layout also reads) instead of calling
+ * `useActorMeta()`/`usePosLocation()` again here — one resolution, shared,
+ * so the header and this page can never disagree about which outlet is
+ * active or race each other's `/locations` fetch.
  */
 export default function PosPage() {
   const { t } = useI18n();
-  const actor = useActorMeta();
-  const posLocation = usePosLocation();
+  const { actor, posLocation } = usePosShell();
   const kasirName = useSessionStore((s) => s.user?.name ?? '');
   const currentShift = usePosShiftStore((s) => s.current);
   const cartLines = usePosCartStore((s) => s.lines);
@@ -44,7 +52,6 @@ export default function PosPage() {
   const [runtimeAttempt, setRuntimeAttempt] = useState(0);
   const [catalog, setCatalog] = useState<PosCatalog | null>(null);
   const [catalogError, setCatalogError] = useState(false);
-  const [closeShiftOpen, setCloseShiftOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
@@ -111,58 +118,43 @@ export default function PosPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <PosStatusBar
-        locationName={location.name}
-        onChangeLocation={posLocation.status === 'ready' && posLocation.canChange ? posLocation.change : undefined}
-      />
+    <>
+      <TabsContent value="kasir" className="pt-0">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
+          <div className="min-h-[50vh]">
+            {catalogError && !catalog && (
+              <p className="mb-2 text-sm text-warning-700">{t('pos.catalogOfflineNote')}</p>
+            )}
+            <ProductGrid
+              products={catalog?.products ?? []}
+              categories={catalog?.categories ?? []}
+              onAdd={(p) => addProduct({ productId: p.id, productName: p.name, unitPrice: p.price })}
+            />
+          </div>
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4">
+            <Cart lines={cartLines} summary={summary} saleDiscount={saleDiscount} onSaleDiscountChange={setSaleDiscount} />
+            <Button size="touch-lg" fullWidth disabled={cartLines.length === 0} onClick={() => setPayOpen(true)}>
+              {t('pos.goToPayment')}
+            </Button>
+            <Button
+              variant="outline"
+              leftIcon={<Undo2 className="size-4" />}
+              onClick={() => setVoidOpen(true)}
+              disabled={!lastSaleId}
+            >
+              {t('pos.voidLastSale')}
+            </Button>
+          </div>
+        </div>
+      </TabsContent>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Tabs defaultValue="kasir">
-          <TabsList>
-            <TabsTrigger value="kasir">
-              <span className="flex items-center gap-1.5"><Store className="size-4" aria-hidden />{t('pos.tabKasir')}</span>
-            </TabsTrigger>
-            <TabsTrigger value="online">
-              <span className="flex items-center gap-1.5"><ShoppingBag className="size-4" aria-hidden />{t('pos.tabOnlineOrder')}</span>
-            </TabsTrigger>
-          </TabsList>
+      <TabsContent value="online" className="pt-0">
+        <OnlineOrderForm runtime={runtime} actor={actor} locationId={location.id} />
+      </TabsContent>
 
-          <TabsContent value="kasir">
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
-              <div className="min-h-[50vh]">
-                {catalogError && !catalog && (
-                  <p className="mb-2 text-sm text-warning-700">{t('pos.catalogOfflineNote')}</p>
-                )}
-                <ProductGrid
-                  products={catalog?.products ?? []}
-                  categories={catalog?.categories ?? []}
-                  onAdd={(p) => addProduct({ productId: p.id, productName: p.name, unitPrice: p.price })}
-                />
-              </div>
-              <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4">
-                <Cart lines={cartLines} summary={summary} saleDiscount={saleDiscount} onSaleDiscountChange={setSaleDiscount} />
-                <Button size="touch-lg" fullWidth disabled={cartLines.length === 0} onClick={() => setPayOpen(true)}>
-                  {t('pos.goToPayment')}
-                </Button>
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="online">
-            <OnlineOrderForm runtime={runtime} actor={actor} locationId={location.id} />
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-        <Button variant="outline" leftIcon={<Undo2 className="size-4" />} onClick={() => setVoidOpen(true)} disabled={!lastSaleId}>
-          {t('pos.voidLastSale')}
-        </Button>
-        <Button variant="outline" leftIcon={<LockKeyhole className="size-4" />} onClick={() => setCloseShiftOpen(true)}>
-          {t('pos.closeShift')}
-        </Button>
-      </div>
+      <TabsContent value="shift" className="pt-0">
+        <ShiftPanel runtime={runtime} actor={actor} shift={currentShift} />
+      </TabsContent>
 
       <Modal open={payOpen} onClose={() => setPayOpen(false)} title={t('pos.paymentTitle')} size="sm">
         <PaymentPanel
@@ -179,11 +171,9 @@ export default function PosPage() {
         />
       </Modal>
 
-      <ShiftCloseModal open={closeShiftOpen} onClose={() => setCloseShiftOpen(false)} runtime={runtime} actor={actor} shift={currentShift} />
-
       {voidOpen && lastSaleId && (
         <VoidRefundModal open={voidOpen} onClose={() => setVoidOpen(false)} runtime={runtime} actor={actor} saleId={lastSaleId} />
       )}
-    </div>
+    </>
   );
 }

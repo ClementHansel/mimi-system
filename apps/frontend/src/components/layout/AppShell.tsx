@@ -21,6 +21,35 @@ function isPublicRoute(pathname: string): boolean {
 }
 
 /**
+ * Routes that render full-bleed with NO Sidebar/Header even though the
+ * visitor IS authenticated (unlike `PUBLIC_ROUTES` above, the auth-redirect
+ * effect below still applies here — an unauthenticated visitor still bounces
+ * to `/login`).
+ *
+ * - `/` exactly (F-HUB-2): the home hub is a standalone, centred workspace
+ *   chooser with its own slim top bar, not a page rendered inside the app
+ *   shell's chrome.
+ * - `/pos` and everything under it (F-POS-2): the owner reviewed POS against
+ *   AIRE's live till and wants it to read as a standalone cashier app, not a
+ *   page inside the admin shell — a tablet used one-handed during a rush has
+ *   no room for a collapsible sidebar it will never touch. `app/pos/layout.tsx`
+ *   supplies POS's own top bar/tabs/session controls AND its own
+ *   `OfflineBanner` (offline-legibility is non-negotiable everywhere, POS
+ *   most of all) — `AppShell` only keeps `ToastViewport` common to both.
+ *
+ * `/` needs an EXACT match (every path "starts with" `/`); `/pos` needs a
+ * prefix match (its sub-routes must inherit the same treatment) — hence two
+ * lists rather than one, both checked by `isChromelessRoute`.
+ */
+const CHROMELESS_EXACT_ROUTES = ['/'];
+const CHROMELESS_PREFIX_ROUTES = ['/pos'];
+
+function isChromelessRoute(pathname: string): boolean {
+  if (CHROMELESS_EXACT_ROUTES.includes(pathname)) return true;
+  return CHROMELESS_PREFIX_ROUTES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+/**
  * Resolves W2-E's `LocalRuntime` (real `idb` store + HTTP transport + our
  * `connectivity-store`, per `src/lib/local/browser.ts`) and registers
  * `public/sw.js` exactly once per page session — module-scoped so React
@@ -111,6 +140,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Not yet hydrated, or hydrated-but-unauthenticated (redirect effect above
   // is about to fire) — render nothing rather than flashing the shell.
   if (!isHydrated || !accessToken) return null;
+
+  if (isChromelessRoute(pathname)) {
+    return (
+      <>
+        {children}
+        <ToastViewport />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-dvh flex-col">

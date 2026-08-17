@@ -129,7 +129,10 @@ export function StockOpnamePanel() {
     { key: 'lineCount', header: t('outlet.opname.lineCount'), align: 'right' },
   ];
 
-  if (!locationId) return <EmptyState title={t('table.error')} size="lg" />;
+  // See `StockPanel`'s identical guard — no `warehouse`-type location on
+  // this account (e.g. Owner) means there's nothing to fetch, not a failed
+  // request (FIX-LOADS #1).
+  if (!locationId) return <EmptyState title={t('warehouse.noLocation')} size="lg" />;
 
   return (
     <div className="flex flex-col gap-4">

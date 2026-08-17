@@ -23,6 +23,7 @@ import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { SettingsRepository, type ApprovalChainStepRow, type SettingRow } from './settings.repository';
 import { validateSettingValue } from './settings-value-validator';
 import type { ChainStepDto, PutApprovalChainDto, PutApprovalModeDto, PutSettingDto } from './settings.dto';
+import { withWrite } from './db-tx';
 
 /** Same fixed namespace convention as `statutory.service.ts` — `sync_events.entity_id` is UUID NOT NULL but `settings.key` is a VARCHAR PK; `payload.data.key` carries the real identity. */
 const SETTINGS_ENTITY_ID_NAMESPACE = '6f5a8f0a-0a0e-4a9b-9a3a-0f7b6a6a2f10';
@@ -85,19 +86,21 @@ export class SettingsService {
       throw new BadRequestException({ code: ERR_VALIDATION, message: `Invalid value for '${key}'`, details: errors });
     }
 
-    const updated = await this.repo.updateValue(client, key, dto.value, caller.sub);
-    if (!updated) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown settings key '${key}'` });
+    return withWrite(client, async () => {
+      const updated = await this.repo.updateValue(client, key, dto.value, caller.sub);
+      if (!updated) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown settings key '${key}'` });
 
-    await this.syncEmit.emit(client, {
-      entity: SyncEntity.SETTINGS,
-      op: 'updated',
-      entityId: uuidV5(key, SETTINGS_ENTITY_ID_NAMESPACE),
-      locationId: null,
-      actorUserId: caller.sub,
-      data: { key, value: dto.value },
+      await this.syncEmit.emit(client, {
+        entity: SyncEntity.SETTINGS,
+        op: 'updated',
+        entityId: uuidV5(key, SETTINGS_ENTITY_ID_NAMESPACE),
+        locationId: null,
+        actorUserId: caller.sub,
+        data: { key, value: dto.value },
+      });
+
+      return mapSetting(updated);
     });
-
-    return mapSetting(updated);
   }
 
   async listApprovalChains(client: PoolClient): Promise<ApprovalChainRes[]> {
@@ -122,14 +125,16 @@ export class SettingsService {
       });
     }
 
-    await this.repo.replaceChainSteps(
-      client,
-      documentType,
-      dto.steps.map((s) => ({ stepNo: s.stepNo, approverRole: s.approverRole, minAmount: s.minAmount ?? null, maxAmount: s.maxAmount ?? null })),
-    );
+    return withWrite(client, async () => {
+      await this.repo.replaceChainSteps(
+        client,
+        documentType,
+        dto.steps.map((s) => ({ stepNo: s.stepNo, approverRole: s.approverRole, minAmount: s.minAmount ?? null, maxAmount: s.maxAmount ?? null })),
+      );
 
-    const rows = await this.repo.findChainSteps(client, documentType);
-    return groupChainRows(rows)[0]!;
+      const rows = await this.repo.findChainSteps(client, documentType);
+      return groupChainRows(rows)[0]!;
+    });
   }
 
   // ── D-23: per-document-type approval mode ────────────────────────────────
@@ -148,18 +153,20 @@ export class SettingsService {
       throw new BadRequestException({ code: ERR_VALIDATION, message: `Unknown document type '${documentType}'` });
     }
 
-    const values = await this.repo.upsertApprovalMode(client, documentType, dto.mode, caller.sub);
+    return withWrite(client, async () => {
+      const values = await this.repo.upsertApprovalMode(client, documentType, dto.mode, caller.sub);
 
-    await this.syncEmit.emit(client, {
-      entity: SyncEntity.SETTINGS,
-      op: 'updated',
-      entityId: uuidV5(`approval.mode.${documentType}`, SETTINGS_ENTITY_ID_NAMESPACE),
-      locationId: null,
-      actorUserId: caller.sub,
-      data: { key: 'approval.mode', documentType, mode: dto.mode },
+      await this.syncEmit.emit(client, {
+        entity: SyncEntity.SETTINGS,
+        op: 'updated',
+        entityId: uuidV5(`approval.mode.${documentType}`, SETTINGS_ENTITY_ID_NAMESPACE),
+        locationId: null,
+        actorUserId: caller.sub,
+        data: { key: 'approval.mode', documentType, mode: dto.mode },
+      });
+
+      return { documentType: documentType as ApprovalDocumentType, mode: values[documentType] ?? dto.mode };
     });
-
-    return { documentType: documentType as ApprovalDocumentType, mode: values[documentType] ?? dto.mode };
   }
 
   private assertStepsWellFormed(steps: ChainStepDto[]): void {

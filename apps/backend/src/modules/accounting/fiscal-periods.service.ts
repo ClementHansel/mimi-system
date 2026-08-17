@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION } from '@mimi/shared';
 import { toFiscalPeriod, type FiscalPeriod, type FiscalPeriodRow } from './accounting.types';
+import { withWrite } from './db-tx';
 
 const PERIOD_SELECT = `SELECT id, period_code, start_date, end_date, status, closed_by, closed_at FROM fiscal_periods`;
 
@@ -64,13 +65,15 @@ export class FiscalPeriodsService {
     // modules, out of this service's reach, so this check is necessarily a proxy: any 'pending'-shaped
     // signal would have to come from those modules. Documented as the honest limit rather than
     // silently no-op'd.
-    const res = await client.query<FiscalPeriodRow>(
-      `UPDATE fiscal_periods SET status = 'closed', closed_by = $2, closed_at = NOW()
-       WHERE id = $1
-       RETURNING id, period_code, start_date, end_date, status, closed_by, closed_at`,
-      [id, closedBy],
-    );
-    return toFiscalPeriod(res.rows[0]!);
+    return withWrite(client, async () => {
+      const res = await client.query<FiscalPeriodRow>(
+        `UPDATE fiscal_periods SET status = 'closed', closed_by = $2, closed_at = NOW()
+         WHERE id = $1
+         RETURNING id, period_code, start_date, end_date, status, closed_by, closed_at`,
+        [id, closedBy],
+      );
+      return toFiscalPeriod(res.rows[0]!);
+    });
   }
 
   async reopen(client: PoolClient, id: string, reason: string): Promise<FiscalPeriod> {
@@ -82,11 +85,13 @@ export class FiscalPeriodsService {
     if (period.status !== 'closed') {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Fiscal period ${period.period_code} is '${period.status}', not 'closed'` });
     }
-    const res = await client.query<FiscalPeriodRow>(
-      `UPDATE fiscal_periods SET status = 'open', closed_by = NULL, closed_at = NULL WHERE id = $1
-       RETURNING id, period_code, start_date, end_date, status, closed_by, closed_at`,
-      [id],
-    );
-    return toFiscalPeriod(res.rows[0]!);
+    return withWrite(client, async () => {
+      const res = await client.query<FiscalPeriodRow>(
+        `UPDATE fiscal_periods SET status = 'open', closed_by = NULL, closed_at = NULL WHERE id = $1
+         RETURNING id, period_code, start_date, end_date, status, closed_by, closed_at`,
+        [id],
+      );
+      return toFiscalPeriod(res.rows[0]!);
+    });
   }
 }

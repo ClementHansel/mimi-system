@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { OnlinePlatform, OnlineOrderStatus, PaymentMethod, PaymentStatus, RoleKey, SaleStatus, VoidRefundType } from '@mimi/shared';
+import { businessDateOf, OnlinePlatform, OnlineOrderStatus, PaymentMethod, PaymentStatus, RoleKey, SaleStatus, VoidRefundType } from '@mimi/shared';
 import { PosCatalogService } from './services/pos-catalog.service';
 import { PosShiftService } from './services/pos-shift.service';
 import { PosSaleService } from './services/pos-sale.service';
@@ -276,7 +276,17 @@ describe('POS — full shift, live database', () => {
       );
       expect(sale.status).toBe(SaleStatus.COMPLETED);
 
-      const today = new Date().toISOString().slice(0, 10);
+      // The BUSINESS date (WITA), not the UTC date. `toISOString().slice(0,10)`
+      // was used here and is wrong for eight hours out of every twenty-four:
+      // between 00:00 and 08:00 WITA the UTC date is still *yesterday*, so this
+      // asked for yesterday's report while the sale it had just posted landed in
+      // today's WITA business day — the report correctly returned nothing and the
+      // test failed with "expected undefined to be defined".
+      //
+      // It therefore passed all afternoon and started failing after midnight WITA,
+      // which reads exactly like a regression from unrelated work. `getReport`
+      // windows on WITA via `businessDayBoundaries`; the caller must agree.
+      const today = businessDateOf(new Date().toISOString());
       const report = await svc.dailyStock.getReport(client, fx.locationId, today);
       const usageRow = report.find((r) => Number(r.estimatedUsage) > 0);
       expect(usageRow).toBeDefined();

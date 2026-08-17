@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION, type Account } from '@mimi/shared';
 import type { CreateAccountDto, ListAccountsQueryDto, UpdateAccountDto } from './dto/accounting.dto';
 import type { AccountRow } from './accounting.types';
+import { withWrite } from './db-tx';
 
 const ACCOUNT_SELECT = `SELECT id, code, name, type, normal_balance, parent_id, is_postable, is_system, is_active FROM chart_of_accounts`;
 
@@ -55,13 +56,15 @@ export class ChartOfAccountsService {
       if (!parent.rows[0]) throw new BadRequestException({ code: ERR_VALIDATION, message: `parentId ${dto.parentId} not found` });
     }
 
-    const res = await client.query<AccountRow>(
-      `INSERT INTO chart_of_accounts (code, name, type, normal_balance, parent_id, is_postable, is_system, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,false,true)
-       RETURNING id, code, name, type, normal_balance, parent_id, is_postable, is_system, is_active`,
-      [dto.code, dto.name, dto.type, dto.normalBalance, dto.parentId ?? null, dto.isPostable ?? true],
-    );
-    return toAccount(res.rows[0]!);
+    return withWrite(client, async () => {
+      const res = await client.query<AccountRow>(
+        `INSERT INTO chart_of_accounts (code, name, type, normal_balance, parent_id, is_postable, is_system, is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,false,true)
+         RETURNING id, code, name, type, normal_balance, parent_id, is_postable, is_system, is_active`,
+        [dto.code, dto.name, dto.type, dto.normalBalance, dto.parentId ?? null, dto.isPostable ?? true],
+      );
+      return toAccount(res.rows[0]!);
+    });
   }
 
   async update(client: PoolClient, id: string, dto: UpdateAccountDto): Promise<Account> {
@@ -74,13 +77,15 @@ export class ChartOfAccountsService {
       });
     }
 
-    const res = await client.query<AccountRow>(
-      `UPDATE chart_of_accounts SET name = COALESCE($2, name), is_active = COALESCE($3, is_active), updated_at = NOW()
-       WHERE id = $1
-       RETURNING id, code, name, type, normal_balance, parent_id, is_postable, is_system, is_active`,
-      [id, dto.name ?? null, dto.isActive ?? null],
-    );
-    return toAccount(res.rows[0]!);
+    return withWrite(client, async () => {
+      const res = await client.query<AccountRow>(
+        `UPDATE chart_of_accounts SET name = COALESCE($2, name), is_active = COALESCE($3, is_active), updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, code, name, type, normal_balance, parent_id, is_postable, is_system, is_active`,
+        [id, dto.name ?? null, dto.isActive ?? null],
+      );
+      return toAccount(res.rows[0]!);
+    });
   }
 }
 

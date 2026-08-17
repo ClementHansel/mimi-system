@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCcw } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Button, EmptyState, OfflineBanner, SyncStatusPill, toast } from '@/components/ui';
+import { Button, EmptyState, SyncStatusPill, toast } from '@/components/ui';
 import { toDateInput } from '@/lib/dates';
 import { getMyJobs } from './lib/driver-api';
 import { SjJobCard } from './SjJobCard';
@@ -71,7 +71,7 @@ export function DriverJobsPanel() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <OfflineBanner />
+      {/* AppShell already owns the single OfflineBanner for this (non-chromeless) route. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="font-display text-2xl font-semibold text-text-primary">{t('driver.today')}</h1>
         <div className="flex items-center gap-2">

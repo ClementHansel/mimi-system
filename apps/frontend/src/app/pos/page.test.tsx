@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import PosPage from './page';
+import { PosShellProvider } from '@/components/pos/PosShellContext';
 import { useSessionStore } from '@/stores/session-store';
 import { usePosShiftStore } from '@/components/pos/shift-store';
 import { api } from '@/lib/api';
@@ -15,6 +16,13 @@ import type { LocalRuntime } from '@/lib/local/api/local-runtime';
  * way out. This is the ticket's point: prove a zero-location user reaches a
  * real, usable screen instead of that indefinite spinner, and that the
  * runtime-bootstrap failure path also terminates rather than spinning.
+ *
+ * F-POS-2: `PosPage` now reads `actor`/`posLocation` from `usePosShell()`
+ * instead of calling `useActorMeta()`/`usePosLocation()` itself — the real
+ * app supplies that context from `app/pos/layout.tsx` (POS's own standalone
+ * shell, no longer the sidebar app), so every render here wraps `<PosPage/>`
+ * in the same `<PosShellProvider>` to match. The hooks underneath, and what
+ * they read/mock, are unchanged.
  */
 vi.mock('@/lib/local/browser', () => ({ getBrowserLocalRuntime: vi.fn() }));
 vi.mock('@/lib/api', async () => {
@@ -24,6 +32,14 @@ vi.mock('@/lib/api', async () => {
 
 const mockedGetRuntime = vi.mocked(getBrowserLocalRuntime);
 const mockedGet = vi.mocked(api.get);
+
+function renderPosPage() {
+  return render(
+    <PosShellProvider>
+      <PosPage />
+    </PosShellProvider>,
+  );
+}
 
 function setOwner() {
   useSessionStore.setState({
@@ -52,7 +68,7 @@ describe('PosPage — F02-FIX head-office access', () => {
       return Promise.resolve({ products: [], categories: [], version: 'v1' });
     });
 
-    render(<PosPage />);
+    renderPosPage();
 
     // The old bug: zero API calls, indefinite "Memuat…". The fix must
     // actually call the locations endpoint and show a picker.
@@ -74,7 +90,7 @@ describe('PosPage — F02-FIX head-office access', () => {
     mockedGetRuntime.mockResolvedValue({} as unknown as LocalRuntime);
     mockedGet.mockRejectedValue(new Error('network down'));
 
-    render(<PosPage />);
+    renderPosPage();
 
     expect(await screen.findByText('Gagal memuat daftar outlet')).toBeInTheDocument();
     expect(screen.getByText('Coba Lagi')).toBeInTheDocument();
@@ -91,7 +107,7 @@ describe('PosPage — F02-FIX head-office access', () => {
     mockedGetRuntime.mockRejectedValue(new Error('IndexedDB unavailable'));
     mockedGet.mockResolvedValue({ products: [], categories: [], version: 'v1' });
 
-    render(<PosPage />);
+    renderPosPage();
 
     expect(await screen.findByText('Gagal menyiapkan perangkat kasir')).toBeInTheDocument();
     expect(screen.getByText('Coba Lagi')).toBeInTheDocument();

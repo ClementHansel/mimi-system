@@ -15,6 +15,7 @@ import {
 import { ApprovalService } from '../../../kernel/approvals';
 import { pgDateToIso } from '../pg-date.util';
 import type { CreateLoanDto } from '../dto/payroll.dto';
+import { withWrite } from '../db-tx';
 
 export interface LoanApi {
   id: UUID;
@@ -66,53 +67,57 @@ export class LoansService {
     const empRes = await client.query('SELECT id FROM employees WHERE id = $1', [dto.employeeId]);
     if (empRes.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Employee not found' });
 
-    const loanNumber = await this.nextLoanNumber(client);
-    const res = await client.query<Record<string, any>>(
-      `INSERT INTO employee_loans (loan_number, employee_id, principal, monthly_installment, outstanding, reason)
-       VALUES ($1,$2,$3,$4,$3,$5) RETURNING *`,
-      [loanNumber, dto.employeeId, dto.principal, dto.monthlyInstallment, dto.reason ?? null],
-    );
-    const loanId = res.rows[0]!.id as UUID;
+    return withWrite(client, async () => {
+      const loanNumber = await this.nextLoanNumber(client);
+      const res = await client.query<Record<string, any>>(
+        `INSERT INTO employee_loans (loan_number, employee_id, principal, monthly_installment, outstanding, reason)
+         VALUES ($1,$2,$3,$4,$3,$5) RETURNING *`,
+        [loanNumber, dto.employeeId, dto.principal, dto.monthlyInstallment, dto.reason ?? null],
+      );
+      const loanId = res.rows[0]!.id as UUID;
 
-    const submitResult = await this.approvals.submit(client, {
-      documentType: ApprovalDocumentType.EMPLOYEE_LOAN,
-      documentId: loanId,
-      requestedBy: actorUserId,
-      amount: dto.principal,
-      locationId: null,
+      const submitResult = await this.approvals.submit(client, {
+        documentType: ApprovalDocumentType.EMPLOYEE_LOAN,
+        documentId: loanId,
+        requestedBy: actorUserId,
+        amount: dto.principal,
+        locationId: null,
+      });
+      await client.query('UPDATE employee_loans SET approval_id = $2 WHERE id = $1', [loanId, submitResult.approvalId]);
+
+      return this.getById(client, loanId);
     });
-    await client.query('UPDATE employee_loans SET approval_id = $2 WHERE id = $1', [loanId, submitResult.approvalId]);
-
-    return this.getById(client, loanId);
   }
 
   async approve(client: PoolClient, actorUserId: UUID, actorRole: string, id: UUID, note: string | undefined): Promise<LoanApi> {
     const loan = await this.requireLoan(client, id);
     if (loan.status !== 'pending') throw new ConflictException({ code: ERR_CONFLICT, message: `Loan must be 'pending' to approve (currently '${loan.status}')` });
 
-    const result = await this.approvals.approve(client, {
-      documentType: ApprovalDocumentType.EMPLOYEE_LOAN,
-      documentId: id,
-      currentState: loan.status,
-      actorUserId,
-      actorRole: actorRole as any,
-      reason: note ?? null,
+    return withWrite(client, async () => {
+      const result = await this.approvals.approve(client, {
+        documentType: ApprovalDocumentType.EMPLOYEE_LOAN,
+        documentId: id,
+        currentState: loan.status,
+        actorUserId,
+        actorRole: actorRole as any,
+        reason: note ?? null,
+      });
+
+      if (result.currentStep === null && result.approvalState === 'approved') {
+        await client.query(`UPDATE employee_loans SET status = 'active', approved_by = $2, disbursed_at = NOW() WHERE id = $1`, [id, actorUserId]);
+
+        const pvNumber = await this.nextPvNumber(client);
+        // See class header — 'employee_loan' is not a valid `ref_type` under the current CHECK
+        // constraint; 'other' is used deliberately, not as an oversight.
+        await client.query(
+          `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, submitted_by, notes)
+           VALUES ($1,'other',$2,'employee',$3,$4,$5,$6)`,
+          [pvNumber, id, loan.employeeId, loan.principal, actorUserId, `Pencairan pinjaman karyawan ${loan.loanNumber}`],
+        );
+      }
+
+      return this.getById(client, id);
     });
-
-    if (result.currentStep === null && result.approvalState === 'approved') {
-      await client.query(`UPDATE employee_loans SET status = 'active', approved_by = $2, disbursed_at = NOW() WHERE id = $1`, [id, actorUserId]);
-
-      const pvNumber = await this.nextPvNumber(client);
-      // See class header — 'employee_loan' is not a valid `ref_type` under the current CHECK
-      // constraint; 'other' is used deliberately, not as an oversight.
-      await client.query(
-        `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, submitted_by, notes)
-         VALUES ($1,'other',$2,'employee',$3,$4,$5,$6)`,
-        [pvNumber, id, loan.employeeId, loan.principal, actorUserId, `Pencairan pinjaman karyawan ${loan.loanNumber}`],
-      );
-    }
-
-    return this.getById(client, id);
   }
 
   async reject(client: PoolClient, actorUserId: UUID, actorRole: string, id: UUID, reason: string): Promise<LoanApi> {
@@ -120,16 +125,18 @@ export class LoansService {
     const loan = await this.requireLoan(client, id);
     if (loan.status !== 'pending') throw new ConflictException({ code: ERR_CONFLICT, message: `Loan must be 'pending' to reject (currently '${loan.status}')` });
 
-    await this.approvals.reject(client, {
-      documentType: ApprovalDocumentType.EMPLOYEE_LOAN,
-      documentId: id,
-      currentState: loan.status,
-      actorUserId,
-      actorRole: actorRole as any,
-      reason,
+    return withWrite(client, async () => {
+      await this.approvals.reject(client, {
+        documentType: ApprovalDocumentType.EMPLOYEE_LOAN,
+        documentId: id,
+        currentState: loan.status,
+        actorUserId,
+        actorRole: actorRole as any,
+        reason,
+      });
+      await client.query(`UPDATE employee_loans SET status = 'rejected' WHERE id = $1`, [id]);
+      return this.getById(client, id);
     });
-    await client.query(`UPDATE employee_loans SET status = 'rejected' WHERE id = $1`, [id]);
-    return this.getById(client, id);
   }
 
   async schedule(client: PoolClient, id: UUID): Promise<{ rows: { paidAt: string; amount: Money; method: string; payrollRunNumber: string | null }[]; outstanding: Money }> {

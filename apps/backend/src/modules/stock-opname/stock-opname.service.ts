@@ -35,6 +35,7 @@ import type { RejectOpnameDto } from './dto/reject-opname.dto';
 import type { ResolveOpnameLineDto } from './dto/resolve-line.dto';
 import type { UpsertOpnameLinesDto } from './dto/upsert-lines.dto';
 import { StockOpnameRepository, type OpnameHeaderRow, type OpnameLineRow } from './stock-opname.repository';
+import { withWrite } from './db-tx';
 
 export interface ActorContext {
   userId: UUID;
@@ -117,32 +118,34 @@ export class StockOpnameService {
       }
     }
 
-    const opnameNumber = await this.repo.nextOpnameNumber(client);
-    const id = await this.repo.insertOpname(client, {
-      opnameNumber,
-      locationId: dto.locationId,
-      storageAreaId: dto.storageAreaId ?? null,
-      countedBy: actor.userId,
-    });
-
-    const header = await this.requireHeader(client, id);
-    await this.sync.emit(client, {
-      entity: SyncEntity.STOCK_OPNAME,
-      op: 'opened',
-      entityId: id,
-      locationId: dto.locationId,
-      actorUserId: actor.userId,
-      data: {
-        id,
+    return withWrite(client, async () => {
+      const opnameNumber = await this.repo.nextOpnameNumber(client);
+      const id = await this.repo.insertOpname(client, {
         opnameNumber,
         locationId: dto.locationId,
         storageAreaId: dto.storageAreaId ?? null,
         countedBy: actor.userId,
-        startedAt: header.started_at,
-      },
-    });
+      });
 
-    return this.getDetail(client, id);
+      const header = await this.requireHeader(client, id);
+      await this.sync.emit(client, {
+        entity: SyncEntity.STOCK_OPNAME,
+        op: 'opened',
+        entityId: id,
+        locationId: dto.locationId,
+        actorUserId: actor.userId,
+        data: {
+          id,
+          opnameNumber,
+          locationId: dto.locationId,
+          storageAreaId: dto.storageAreaId ?? null,
+          countedBy: actor.userId,
+          startedAt: header.started_at,
+        },
+      });
+
+      return this.getDetail(client, id);
+    });
   }
 
   // ── FR-SO-02: per-storage-area counts, variance + mandatory reason ──────────
@@ -168,41 +171,43 @@ export class StockOpnameService {
       throw new BadRequestException({ code: ERR_VALIDATION, message: `storageAreaId ${storageAreaId} does not belong to opname ${opnameId}'s location` });
     }
 
-    const eventLines: AreaCountedLine[] = [];
-    const lineIds: UUID[] = [];
-    for (const line of dto.lines) {
-      const existing = await this.repo.findLineByKey(client, opnameId, line.storageAreaId, line.itemId);
-      const systemQty = existing?.system_qty ?? (await this.repo.currentSystemQty(client, header.location_id, line.storageAreaId, line.itemId));
-      const diffQty = subQty(line.countedQty, systemQty);
-      const lineId = await this.repo.upsertLine(client, {
-        opnameId,
-        storageAreaId: line.storageAreaId,
-        itemId: line.itemId,
-        systemQty,
-        countedQty: line.countedQty,
-        diffQty,
-        varianceReason: line.varianceReason ?? null,
+    return withWrite(client, async () => {
+      const eventLines: AreaCountedLine[] = [];
+      const lineIds: UUID[] = [];
+      for (const line of dto.lines) {
+        const existing = await this.repo.findLineByKey(client, opnameId, line.storageAreaId, line.itemId);
+        const systemQty = existing?.system_qty ?? (await this.repo.currentSystemQty(client, header.location_id, line.storageAreaId, line.itemId));
+        const diffQty = subQty(line.countedQty, systemQty);
+        const lineId = await this.repo.upsertLine(client, {
+          opnameId,
+          storageAreaId: line.storageAreaId,
+          itemId: line.itemId,
+          systemQty,
+          countedQty: line.countedQty,
+          diffQty,
+          varianceReason: line.varianceReason ?? null,
+        });
+        lineIds.push(lineId);
+        eventLines.push({ itemId: line.itemId, systemQty, countedQty: line.countedQty, varianceReason: line.varianceReason ?? null });
+      }
+
+      await this.sync.emit(client, {
+        entity: SyncEntity.STOCK_OPNAME,
+        op: 'area_counted',
+        entityId: opnameId,
+        locationId: header.location_id,
+        actorUserId: actor.userId,
+        data: { opnameId, storageAreaId, lines: eventLines },
       });
-      lineIds.push(lineId);
-      eventLines.push({ itemId: line.itemId, systemQty, countedQty: line.countedQty, varianceReason: line.varianceReason ?? null });
-    }
 
-    await this.sync.emit(client, {
-      entity: SyncEntity.STOCK_OPNAME,
-      op: 'area_counted',
-      entityId: opnameId,
-      locationId: header.location_id,
-      actorUserId: actor.userId,
-      data: { opnameId, storageAreaId, lines: eventLines },
+      const disputedKeys = await this.disputedLineKeys(client, opnameId);
+      const result: OpnameLine[] = [];
+      for (const lineId of lineIds) {
+        const row = await this.repo.findLineById(client, opnameId, lineId);
+        if (row) result.push(this.toOpnameLine(row, disputedKeys));
+      }
+      return result;
     });
-
-    const disputedKeys = await this.disputedLineKeys(client, opnameId);
-    const result: OpnameLine[] = [];
-    for (const lineId of lineIds) {
-      const row = await this.repo.findLineById(client, opnameId, lineId);
-      if (row) result.push(this.toOpnameLine(row, disputedKeys));
-    }
-    return result;
   }
 
   /** Resolves a C1 double-count dispute (SYNC-PROTOCOL §5.2) — `opname.approve` (an approver adjudicates, not the counter). */
@@ -238,21 +243,23 @@ export class StockOpnameService {
     const diffQty = subQty(countedQty, line.system_qty);
     const varianceReason = (typeof chosenLine.varianceReason === 'string' ? chosenLine.varianceReason : null) ?? (isZeroQty(diffQty) ? null : dto.reason);
 
-    await this.repo.updateLineForResolution(client, lineId, { countedQty, diffQty, varianceReason });
+    return withWrite(client, async () => {
+      await this.repo.updateLineForResolution(client, lineId, { countedQty, diffQty, varianceReason });
 
-    const resolutionEvent = await this.sync.emit(client, {
-      entity: SyncEntity.STOCK_OPNAME,
-      op: 'area_counted',
-      entityId: opnameId,
-      locationId: header.location_id,
-      actorUserId: actor.userId,
-      data: { opnameId, storageAreaId: line.storage_area_id, lines: [{ itemId: line.item_id, systemQty: line.system_qty, countedQty, varianceReason }] },
+      const resolutionEvent = await this.sync.emit(client, {
+        entity: SyncEntity.STOCK_OPNAME,
+        op: 'area_counted',
+        entityId: opnameId,
+        locationId: header.location_id,
+        actorUserId: actor.userId,
+        data: { opnameId, storageAreaId: line.storage_area_id, lines: [{ itemId: line.item_id, systemQty: line.system_qty, countedQty, varianceReason }] },
+      });
+      await this.conflicts.resolve(client, conflict.id, actor.userId, dto.reason, resolutionEvent.eventId);
+
+      const disputedKeys = await this.disputedLineKeys(client, opnameId);
+      const updated = await this.repo.findLineById(client, opnameId, lineId);
+      return this.toOpnameLine(updated!, disputedKeys);
     });
-    await this.conflicts.resolve(client, conflict.id, actor.userId, dto.reason, resolutionEvent.eventId);
-
-    const disputedKeys = await this.disputedLineKeys(client, opnameId);
-    const updated = await this.repo.findLineById(client, opnameId, lineId);
-    return this.toOpnameLine(updated!, disputedKeys);
   }
 
   // ── FR-SO-02: submit (reason-on-variance + no open disputes gate) ──────────
@@ -280,27 +287,29 @@ export class StockOpnameService {
       throw new BadRequestException({ code: ERR_VALIDATION, message: `Opname ${opnameId} has no counted lines` });
     }
 
-    await this.repo.markSubmitted(client, opnameId);
+    return withWrite(client, async () => {
+      await this.repo.markSubmitted(client, opnameId);
 
-    const submitResult = await this.approvals.submit(client, {
-      documentType: ApprovalDocumentType.STOCK_OPNAME,
-      documentId: opnameId,
-      requestedBy: actor.userId,
-      amount: summary.totalVarianceValue,
-      locationId: header.location_id,
+      const submitResult = await this.approvals.submit(client, {
+        documentType: ApprovalDocumentType.STOCK_OPNAME,
+        documentId: opnameId,
+        requestedBy: actor.userId,
+        amount: summary.totalVarianceValue,
+        locationId: header.location_id,
+      });
+      await this.repo.setApprovalId(client, opnameId, submitResult.approvalId);
+
+      await this.sync.emit(client, {
+        entity: SyncEntity.STOCK_OPNAME,
+        op: 'submitted',
+        entityId: opnameId,
+        locationId: header.location_id,
+        actorUserId: actor.userId,
+        data: { opnameId, submittedAt: new Date().toISOString() },
+      });
+
+      return this.getDetail(client, opnameId);
     });
-    await this.repo.setApprovalId(client, opnameId, submitResult.approvalId);
-
-    await this.sync.emit(client, {
-      entity: SyncEntity.STOCK_OPNAME,
-      op: 'submitted',
-      entityId: opnameId,
-      locationId: header.location_id,
-      actorUserId: actor.userId,
-      data: { opnameId, submittedAt: new Date().toISOString() },
-    });
-
-    return this.getDetail(client, opnameId);
   }
 
   // ── FR-SO-03/04: approve (posts stock_adjustments through the ledger) ──────
@@ -312,38 +321,42 @@ export class StockOpnameService {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Opname ${opnameId} is '${header.status}', not 'submitted'` });
     }
 
-    const decision = await this.approvals.approve(client, {
-      documentType: ApprovalDocumentType.STOCK_OPNAME,
-      documentId: opnameId,
-      currentState: header.status,
-      actorUserId: actor.userId,
-      actorRole: actor.roleKey,
-      reason: dto.note ?? null,
-    });
+    return withWrite(client, async () => {
+      const decision = await this.approvals.approve(client, {
+        documentType: ApprovalDocumentType.STOCK_OPNAME,
+        documentId: opnameId,
+        currentState: header.status,
+        actorUserId: actor.userId,
+        actorRole: actor.roleKey,
+        reason: dto.note ?? null,
+      });
 
-    // Escalating chain (SPV/KGD → MGR above threshold): `nextState` reads the
-    // same ('adjusted') at every step — `currentStep === null` is the ONLY
-    // signal the chain is actually finished (kernel report guidance). An
-    // intermediate step persists nothing on our own row; the document stays
-    // 'submitted' until the final decider acts.
-    if (decision.currentStep !== null) {
+      // Escalating chain (SPV/KGD → MGR above threshold): `nextState` reads the
+      // same ('adjusted') at every step — `currentStep === null` is the ONLY
+      // signal the chain is actually finished (kernel report guidance). An
+      // intermediate step persists nothing on our own row; the document stays
+      // 'submitted' until the final decider acts. Even so, `approvals.approve`
+      // above already wrote this step's decision row — that write MUST commit
+      // too, so the early return still happens INSIDE `withWrite`.
+      if (decision.currentStep !== null) {
+        return this.getDetail(client, opnameId);
+      }
+
+      const approvedAt = new Date().toISOString();
+      await this.repo.finalizeDecision(client, opnameId, { status: decision.nextState, approvedBy: actor.userId, approvedAt });
+      await this.postAdjustments(client, actor, opnameId, header, approvedAt);
+
+      await this.sync.emit(client, {
+        entity: SyncEntity.STOCK_OPNAME,
+        op: 'approved',
+        entityId: opnameId,
+        locationId: header.location_id,
+        actorUserId: actor.userId,
+        data: { opnameId, approvedBy: actor.userId, approvedAt },
+      });
+
       return this.getDetail(client, opnameId);
-    }
-
-    const approvedAt = new Date().toISOString();
-    await this.repo.finalizeDecision(client, opnameId, { status: decision.nextState, approvedBy: actor.userId, approvedAt });
-    await this.postAdjustments(client, actor, opnameId, header, approvedAt);
-
-    await this.sync.emit(client, {
-      entity: SyncEntity.STOCK_OPNAME,
-      op: 'approved',
-      entityId: opnameId,
-      locationId: header.location_id,
-      actorUserId: actor.userId,
-      data: { opnameId, approvedBy: actor.userId, approvedAt },
     });
-
-    return this.getDetail(client, opnameId);
   }
 
   async reject(client: PoolClient, actor: ActorContext, opnameId: UUID, dto: RejectOpnameDto): Promise<Opname & { lines: OpnameLine[] }> {
@@ -353,27 +366,29 @@ export class StockOpnameService {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Opname ${opnameId} is '${header.status}', not 'submitted'` });
     }
 
-    const decision = await this.approvals.reject(client, {
-      documentType: ApprovalDocumentType.STOCK_OPNAME,
-      documentId: opnameId,
-      currentState: header.status,
-      actorUserId: actor.userId,
-      actorRole: actor.roleKey,
-      reason: dto.reason,
+    return withWrite(client, async () => {
+      const decision = await this.approvals.reject(client, {
+        documentType: ApprovalDocumentType.STOCK_OPNAME,
+        documentId: opnameId,
+        currentState: header.status,
+        actorUserId: actor.userId,
+        actorRole: actor.roleKey,
+        reason: dto.reason,
+      });
+
+      await this.repo.finalizeDecision(client, opnameId, { status: decision.nextState, approvedBy: null, approvedAt: null });
+
+      await this.sync.emit(client, {
+        entity: SyncEntity.STOCK_OPNAME,
+        op: 'rejected',
+        entityId: opnameId,
+        locationId: header.location_id,
+        actorUserId: actor.userId,
+        data: { opnameId, reason: dto.reason },
+      });
+
+      return this.getDetail(client, opnameId);
     });
-
-    await this.repo.finalizeDecision(client, opnameId, { status: decision.nextState, approvedBy: null, approvedAt: null });
-
-    await this.sync.emit(client, {
-      entity: SyncEntity.STOCK_OPNAME,
-      op: 'rejected',
-      entityId: opnameId,
-      locationId: header.location_id,
-      actorUserId: actor.userId,
-      data: { opnameId, reason: dto.reason },
-    });
-
-    return this.getDetail(client, opnameId);
   }
 
   async cancel(client: PoolClient, actor: ActorContext, opnameId: UUID): Promise<{ id: UUID; status: string }> {
@@ -384,17 +399,19 @@ export class StockOpnameService {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Opname ${opnameId} is '${header.status}' — only draft/counting opnames can be cancelled` });
     }
 
-    await this.repo.setStatus(client, opnameId, OpnameStatus.CANCELLED);
-    await this.sync.emit(client, {
-      entity: SyncEntity.STOCK_OPNAME,
-      op: 'cancelled',
-      entityId: opnameId,
-      locationId: header.location_id,
-      actorUserId: actor.userId,
-      data: { opnameId },
-    });
+    return withWrite(client, async () => {
+      await this.repo.setStatus(client, opnameId, OpnameStatus.CANCELLED);
+      await this.sync.emit(client, {
+        entity: SyncEntity.STOCK_OPNAME,
+        op: 'cancelled',
+        entityId: opnameId,
+        locationId: header.location_id,
+        actorUserId: actor.userId,
+        data: { opnameId },
+      });
 
-    return { id: opnameId, status: OpnameStatus.CANCELLED };
+      return { id: opnameId, status: OpnameStatus.CANCELLED };
+    });
   }
 
   // ── internals ────────────────────────────────────────────────────────────

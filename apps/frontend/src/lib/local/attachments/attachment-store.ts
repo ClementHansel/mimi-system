@@ -34,18 +34,11 @@ import type { LocalDatabase } from '../store/local-database';
 import type { AttachmentRecord } from '../types';
 import type { UUID } from '@mimi/shared';
 import { ATTACHMENT_CAP_BYTES, ATTACHMENT_CAP_COUNT } from '../constants';
+import { newUuid } from '../../uuid';
 
-/** `crypto.randomUUID()` when available (every real browser/Node 19+); a tiny RFC-4122-shaped v4 fallback otherwise — same defensive pattern as `identity.ts`'s `cryptoRandomSource`. Plain v4 is the right choice here (not `formatUuidV7`): attachment ids carry no ordering meaning, they are pure reference keys. */
+/** Shared `newUuid()` (`lib/uuid.ts`) — `crypto.randomUUID()` when available, a `crypto.getRandomValues`-backed v4 fallback otherwise (insecure-origin-safe; never `Math.random()`). Plain v4 is the right choice here (not `formatUuidV7`): attachment ids carry no ordering meaning, they are pure reference keys. */
 function mintAttachmentId(): UUID {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  const hex = () => Math.floor(Math.random() * 16).toString(16);
-  const bytes = Array.from({ length: 32 }, hex);
-  bytes[12] = '4'; // version nibble: v4 (random)
-  bytes[16] = ((parseInt(bytes[16]!, 16) & 0x3) | 0x8).toString(16); // variant bits: 10xx
-  const s = bytes.join('');
-  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`;
+  return newUuid();
 }
 
 export class AttachmentCapExceededError extends Error {

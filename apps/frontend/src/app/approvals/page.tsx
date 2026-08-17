@@ -1,7 +1,6 @@
 'use client';
 
 import { useI18n } from '@/lib/i18n';
-import { OfflineBanner } from '@/components/ui';
 import { ApprovalsInboxPanel } from '@/components/approvals/ApprovalsInboxPanel';
 
 /**
@@ -19,7 +18,7 @@ export default function ApprovalsInboxPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <OfflineBanner />
+      {/* AppShell already owns the single OfflineBanner for this (non-chromeless) route. */}
       <h1 className="font-display text-2xl font-semibold text-text-primary">{t('approvalsInbox.title')}</h1>
       <ApprovalsInboxPanel />
     </div>

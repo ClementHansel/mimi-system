@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useSessionStore } from '@/stores/session-store';
+import { newUuid } from '@/lib/uuid';
 import type { ActorMeta } from '@/lib/local/api/local-runtime';
 import type { PosCatalog, PosProduct } from './types';
 
@@ -165,7 +166,7 @@ export function readCachedCatalog(locationId: string): PosCatalog | null {
 
 /** Client-generated idempotency key — minted once at draft time and reused on every retry (SYNC-PROTOCOL §2.2 rule 3). */
 export function mintClientId(): string {
-  return crypto.randomUUID();
+  return newUuid();
 }
 
 export function isApiError(err: unknown): err is ApiError {

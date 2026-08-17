@@ -22,7 +22,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { Inject } from '@nestjs/common';
 import { DeviceCategory, PairingTargetType, ERR_NOT_FOUND, ERR_VALIDATION, ERR_AUTH_TOKEN_INVALID } from '@mimi/shared';
 import type { UUID } from '@mimi/shared';
@@ -38,6 +38,7 @@ import { DeviceRegistryRepository, type DeviceWithLocation } from './device-regi
 import { PairingTokensService } from './pairing-tokens.service';
 import { DeviceTokenGuard, type RequestWithDeviceIdentity } from './device-token.guard';
 import { TopologyGateway } from './topology.gateway';
+import { withWrite } from './db-tx';
 
 const CLOUD_ORIGIN_ACTOR = '00000000-0000-0000-0000-0000000000c1' as UUID;
 
@@ -101,14 +102,17 @@ export class DevicesController {
     @Body() body: { locationId: UUID; targetType?: 'device'; suggestedCategory?: string },
   ) {
     if (!body?.locationId) throw new BadRequestException({ code: ERR_VALIDATION, message: 'locationId is required' });
-    const client = req.dbClient ?? this.pool;
-    const minted = await this.pairingTokens.mint(client as never, {
-      targetType: PairingTargetType.DEVICE,
-      locationId: body.locationId,
-      createdBy: req.user!.sub,
-      suggestedCategory: body.suggestedCategory,
-    });
-    return minted;
+    const client = (req.dbClient ?? this.pool) as PoolClient;
+    // BE-TXN-ROLLBACK: this mint is a real write on `req.dbClient` — without `withWrite`,
+    // `RlsCleanupInterceptor`'s unconditional post-request ROLLBACK silently discarded it.
+    return withWrite(client, () =>
+      this.pairingTokens.mint(client, {
+        targetType: PairingTargetType.DEVICE,
+        locationId: body.locationId,
+        createdBy: req.user!.sub,
+        suggestedCategory: body.suggestedCategory,
+      }),
+    );
   }
 
   /**
@@ -295,72 +299,80 @@ export class DevicesController {
     @Param('id') id: UUID,
     @Body() body: { name?: string; category?: string; locationId?: UUID },
   ) {
-    const client = req.dbClient ?? this.pool;
+    const client = (req.dbClient ?? this.pool) as PoolClient;
     const before = await this.devices.findById(client, id);
     if (!before) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
     if (body.category && !Object.values(DeviceCategory).includes(body.category as DeviceCategory)) {
       throw new BadRequestException({ code: ERR_VALIDATION, message: `unknown category '${body.category}'` });
     }
 
-    const updated = await this.devices.update(client, id, body);
-    if (!updated) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
+    // BE-TXN-ROLLBACK: validation reads stay outside; once committed to writing, the entire
+    // rest of this method's writes + response-building runs inside one `withWrite` call.
+    return withWrite(client, async () => {
+      const updated = await this.devices.update(client, id, body);
+      if (!updated) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
 
-    await this.syncEmit.emit(client, {
-      entity: 'devices',
-      op: 'profile_updated',
-      entityId: id,
-      locationId: updated.location_id,
-      actorUserId: req.user!.sub,
-      data: { name: body.name, category: body.category, locationId: body.locationId },
+      await this.syncEmit.emit(client, {
+        entity: 'devices',
+        op: 'profile_updated',
+        entityId: id,
+        locationId: updated.location_id,
+        actorUserId: req.user!.sub,
+        data: { name: body.name, category: body.category, locationId: body.locationId },
+      });
+
+      const withLocation = await this.devices.findById(client, id);
+      return toDeviceDto(withLocation!);
     });
-
-    const withLocation = await this.devices.findById(client, id);
-    return toDeviceDto(withLocation!);
   }
 
   @RequirePermission('device.manage')
   @Audited({ entityType: 'devices', action: 'device.manage' })
   @Post(':id/unpair')
   async unpair(@Req() req: RequestWithDbContext, @Param('id') id: UUID, @Body() body: { reason?: string }) {
-    const client = req.dbClient ?? this.pool;
+    const client = (req.dbClient ?? this.pool) as PoolClient;
     const existing = await this.devices.findById(client, id);
     if (!existing) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
 
-    await this.devices.unpair(client, id);
-    await this.devices.insertDeviceEvent(client, { deviceId: id, locationId: existing.location_id, type: 'unpaired', detail: { reason: body?.reason } });
-    // SYNC-PROTOCOL §3.3 group 12: unpairing is the KILL SWITCH described for `revoked` — "must
-    // stop pushing and wipe credentials" — the AUTHORITY op vocabulary has no separate `unpaired` op.
-    await this.syncEmit.emit(client, {
-      entity: 'devices',
-      op: 'revoked',
-      entityId: id,
-      locationId: existing.location_id,
-      actorUserId: req.user!.sub,
-      data: { reason: body?.reason },
-    });
+    return withWrite(client, async () => {
+      await this.devices.unpair(client, id);
+      await this.devices.insertDeviceEvent(client, { deviceId: id, locationId: existing.location_id, type: 'unpaired', detail: { reason: body?.reason } });
+      // SYNC-PROTOCOL §3.3 group 12: unpairing is the KILL SWITCH described for `revoked` — "must
+      // stop pushing and wipe credentials" — the AUTHORITY op vocabulary has no separate `unpaired` op.
+      await this.syncEmit.emit(client, {
+        entity: 'devices',
+        op: 'revoked',
+        entityId: id,
+        locationId: existing.location_id,
+        actorUserId: req.user!.sub,
+        data: { reason: body?.reason },
+      });
 
-    return toDeviceDto((await this.devices.findById(client, id))!);
+      return toDeviceDto((await this.devices.findById(client, id))!);
+    });
   }
 
   @RequirePermission('device.manage')
   @Audited({ entityType: 'devices', action: 'device.manage' })
   @Post(':id/retire')
   async retire(@Req() req: RequestWithDbContext, @Param('id') id: UUID, @Body() body: { replacedByDeviceId?: UUID }) {
-    const client = req.dbClient ?? this.pool;
+    const client = (req.dbClient ?? this.pool) as PoolClient;
     const existing = await this.devices.findById(client, id);
     if (!existing) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
 
-    await this.devices.retire(client, id);
-    await this.devices.insertDeviceEvent(client, { deviceId: id, locationId: existing.location_id, type: 'unpaired', detail: { retired: true, replacedByDeviceId: body?.replacedByDeviceId } });
-    await this.syncEmit.emit(client, {
-      entity: 'devices',
-      op: 'retired',
-      entityId: id,
-      locationId: existing.location_id,
-      actorUserId: req.user!.sub,
-      data: { replacedByDeviceId: body?.replacedByDeviceId },
-    });
+    return withWrite(client, async () => {
+      await this.devices.retire(client, id);
+      await this.devices.insertDeviceEvent(client, { deviceId: id, locationId: existing.location_id, type: 'unpaired', detail: { retired: true, replacedByDeviceId: body?.replacedByDeviceId } });
+      await this.syncEmit.emit(client, {
+        entity: 'devices',
+        op: 'retired',
+        entityId: id,
+        locationId: existing.location_id,
+        actorUserId: req.user!.sub,
+        data: { replacedByDeviceId: body?.replacedByDeviceId },
+      });
 
-    return toDeviceDto((await this.devices.findById(client, id))!);
+      return toDeviceDto((await this.devices.findById(client, id))!);
+    });
   }
 }

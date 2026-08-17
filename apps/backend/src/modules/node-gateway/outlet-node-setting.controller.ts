@@ -31,7 +31,7 @@ import {
   Put,
   Req,
 } from '@nestjs/common';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { ERR_FORBIDDEN, ERR_NODE_QUEUE_PENDING, ERR_NODE_UNREACHABLE, ERR_NOT_FOUND, ERR_VALIDATION } from '@mimi/shared';
 import type { UUID } from '@mimi/shared';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -43,6 +43,7 @@ import { DeviceRegistryRepository } from '../device-registry/device-registry.rep
 import { BranchNodesRepository, type BranchNodeRow } from './branch-nodes.repository';
 import { BridgeGateway } from './bridge.gateway';
 import { OutletNodeSettingRepository, type OutletNodeSettingRow } from './outlet-node-setting.repository';
+import { withWrite } from './db-tx';
 
 /** §7.3's own node "stale after" threshold: a `relayQueueDepth` reading older than this cannot be
  *  trusted as "the queue right now" — the node may have accepted more LAN-device events since. */
@@ -162,65 +163,71 @@ export class OutletNodeSettingController {
       throw new BadRequestException({ code: ERR_VALIDATION, message: 'nodeEnabled (boolean) is required' });
     }
 
-    const client = req.dbClient ?? this.pool;
+    const client = (req.dbClient ?? this.pool) as PoolClient;
     const loc = await this.outletSetting.find(client, locationId);
     if (!loc) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Location not found' });
 
-    if (body.nodeEnabled) {
-      // ON is just the flag — the setup wizard (a separate ticket's UI) drives actual pairing through
-      // the existing `POST /api/nodes/pairing-tokens` -> node `POST /api/nodes/register` flow, now
-      // unlocked by `NodesController.mintPairingToken`'s own `nodeEnabled` gate.
-      const updated = await this.outletSetting.setEnabled(client, locationId, true);
+    // BE-TXN-ROLLBACK: both branches below are real writes on `req.dbClient` — without `withWrite`,
+    // `RlsCleanupInterceptor`'s unconditional post-request ROLLBACK silently discarded them (the
+    // toggle appeared to succeed in the response, but reverted immediately after). The drain-check
+    // throws below happen BEFORE any write in this transaction, so rolling back on them is a no-op.
+    return withWrite(client, async () => {
+      if (body.nodeEnabled) {
+        // ON is just the flag — the setup wizard (a separate ticket's UI) drives actual pairing through
+        // the existing `POST /api/nodes/pairing-tokens` -> node `POST /api/nodes/register` flow, now
+        // unlocked by `NodesController.mintPairingToken`'s own `nodeEnabled` gate.
+        const updated = await this.outletSetting.setEnabled(client, locationId, true);
+        const node = await this.branchNodes.findByLocationId(client, locationId);
+        return toStateDto(updated!, node, { isConnected: node ? this.bridge.isConnected(node.id) : false });
+      }
+
+      // OFF — drain-before-off (D-26's core guarantee).
       const node = await this.branchNodes.findByLocationId(client, locationId);
-      return toStateDto(updated!, node, { isConnected: node ? this.bridge.isConnected(node.id) : false });
-    }
+      const nodeIsLive = !!node && node.status !== 'unpaired' && node.status !== 'retired';
 
-    // OFF — drain-before-off (D-26's core guarantee).
-    const node = await this.branchNodes.findByLocationId(client, locationId);
-    const nodeIsLive = !!node && node.status !== 'unpaired' && node.status !== 'retired';
+      if (nodeIsLive) {
+        const drain = drainStatusFor(node!, this.bridge.isConnected(node!.id));
 
-    if (nodeIsLive) {
-      const drain = drainStatusFor(node!, this.bridge.isConnected(node!.id));
+        if (!drain.reachable) {
+          throw new BadRequestException({
+            code: ERR_NODE_UNREACHABLE,
+            message:
+              drain.pendingCount === null
+                ? 'This node has not reported a queue depth yet — cannot confirm it has drained. Wait for its next heartbeat and try again.'
+                : `This node is unreachable right now, so its drain cannot be re-confirmed. Last known: ${drain.pendingCount} event(s) pending as of ${drain.lastReportedAt}. An unreachable node with a possible backlog is never switched off silently — reconnect it first.`,
+            details: { pendingCount: drain.pendingCount, lastReportedAt: drain.lastReportedAt, reachable: false },
+          });
+        }
+        if (!drain.ready) {
+          throw new BadRequestException({
+            code: ERR_NODE_QUEUE_PENDING,
+            message: `${drain.pendingCount} event(s) are still queued on this node and have not reached the cloud yet. Turning the node off is refused until it drains to zero.`,
+            details: { pendingCount: drain.pendingCount, lastReportedAt: drain.lastReportedAt, reachable: true },
+          });
+        }
 
-      if (!drain.reachable) {
-        throw new BadRequestException({
-          code: ERR_NODE_UNREACHABLE,
-          message:
-            drain.pendingCount === null
-              ? 'This node has not reported a queue depth yet — cannot confirm it has drained. Wait for its next heartbeat and try again.'
-              : `This node is unreachable right now, so its drain cannot be re-confirmed. Last known: ${drain.pendingCount} event(s) pending as of ${drain.lastReportedAt}. An unreachable node with a possible backlog is never switched off silently — reconnect it first.`,
-          details: { pendingCount: drain.pendingCount, lastReportedAt: drain.lastReportedAt, reachable: false },
+        // Drained and reachable — safe to unpair. Mirrors NodesController.unpair()'s own sequence
+        // exactly (same kill-switch, same device fallback to cloud-direct, same audit trail shape).
+        await this.branchNodes.unpair(client, node!.id);
+        await this.deviceRegistry.insertDeviceEvent(client, {
+          nodeId: node!.id,
+          locationId,
+          type: 'unpaired',
+          detail: { reason: 'node_disabled_by_owner' },
         });
-      }
-      if (!drain.ready) {
-        throw new BadRequestException({
-          code: ERR_NODE_QUEUE_PENDING,
-          message: `${drain.pendingCount} event(s) are still queued on this node and have not reached the cloud yet. Turning the node off is refused until it drains to zero.`,
-          details: { pendingCount: drain.pendingCount, lastReportedAt: drain.lastReportedAt, reachable: true },
+        await this.syncEmit.emit(client, {
+          entity: 'branch_nodes',
+          op: 'revoked',
+          entityId: node!.id,
+          locationId,
+          actorUserId: req.user!.sub,
+          data: { reason: 'node_disabled_by_owner' },
         });
+        this.bridge.sendRevoked(node!.id);
       }
 
-      // Drained and reachable — safe to unpair. Mirrors NodesController.unpair()'s own sequence
-      // exactly (same kill-switch, same device fallback to cloud-direct, same audit trail shape).
-      await this.branchNodes.unpair(client, node!.id);
-      await this.deviceRegistry.insertDeviceEvent(client, {
-        nodeId: node!.id,
-        locationId,
-        type: 'unpaired',
-        detail: { reason: 'node_disabled_by_owner' },
-      });
-      await this.syncEmit.emit(client, {
-        entity: 'branch_nodes',
-        op: 'revoked',
-        entityId: node!.id,
-        locationId,
-        actorUserId: req.user!.sub,
-        data: { reason: 'node_disabled_by_owner' },
-      });
-      this.bridge.sendRevoked(node!.id);
-    }
-
-    const updated = await this.outletSetting.setEnabled(client, locationId, false);
-    return toStateDto(updated!, null);
+      const updated = await this.outletSetting.setEnabled(client, locationId, false);
+      return toStateDto(updated!, null);
+    });
   }
 }

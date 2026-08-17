@@ -189,6 +189,13 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
     try {
       return await fn();
     } finally {
+      // QA-ATTENDANCE-LEAK: each `it()` here already calls `cleanAttendance` (by client_id) in its
+      // OWN `finally` before this outer one runs, so in practice this is defense in depth — but
+      // unconditionally clearing (employeeId, date) here too, rather than only when `existing[i]`
+      // was non-null, means this harness no longer depends on every future test remembering that
+      // inner cleanup. See `attendance.integration.spec.ts`'s `withCleanSlate` for the full story of
+      // what happens when that assumption is skipped.
+      for (const date of dates) await deleteAttendanceForDate(employeeId, date);
       for (const row of existing) if (row) await restoreAttendanceRow(row);
     }
   }

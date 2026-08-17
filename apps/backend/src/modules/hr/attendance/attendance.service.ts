@@ -22,6 +22,7 @@ import { resolveDefensibility } from '../time-defensibility.util';
 import type { CheckAttendanceDto, CorrectAttendanceDto } from '../dto/attendance.dto';
 import { StorageService } from '../../../kernel/storage/storage.service';
 import type { JwtAccessPayload } from '../../../common/jwt/jwt-payload.interface';
+import { withWrite } from '../db-tx';
 
 export interface AttendanceSummaryRow {
   employeeId: UUID;
@@ -70,14 +71,18 @@ export class AttendanceService {
 
   async checkIn(client: PoolClient, user: JwtAccessPayload, dto: CheckAttendanceDto): Promise<AttendanceRow> {
     const employee = await this.resolveSelfEmployee(client, user.sub);
-    const row = await this.applyCheckIn(client, employee.id, dto, new Date().toISOString());
-    return this.toAttendanceRow(client, user, row);
+    return withWrite(client, async () => {
+      const row = await this.applyCheckIn(client, employee.id, dto, new Date().toISOString());
+      return this.toAttendanceRow(client, user, row);
+    });
   }
 
   async checkOut(client: PoolClient, user: JwtAccessPayload, dto: CheckAttendanceDto): Promise<AttendanceRow> {
     const employee = await this.resolveSelfEmployee(client, user.sub);
-    const row = await this.applyCheckOut(client, employee.id, dto, new Date().toISOString());
-    return this.toAttendanceRow(client, user, row);
+    return withWrite(client, async () => {
+      const row = await this.applyCheckOut(client, employee.id, dto, new Date().toISOString());
+      return this.toAttendanceRow(client, user, row);
+    });
   }
 
   /**
@@ -254,44 +259,46 @@ export class AttendanceService {
     if (rowRes.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Attendance row not found' });
     const row = rowRes.rows[0]!;
 
-    const sets: string[] = ['corrected_by = $1', 'correction_reason = $2'];
-    const params: unknown[] = [actorUserId, dto.correctionReason];
-    const set = (col: string, val: unknown) => {
-      params.push(val);
-      sets.push(`${col} = $${params.length}`);
-    };
-    if (dto.status !== undefined) set('status', dto.status);
-    if (dto.checkInAt !== undefined) set('check_in_at', dto.checkInAt);
-    if (dto.checkOutAt !== undefined) set('check_out_at', dto.checkOutAt);
+    return withWrite(client, async () => {
+      const sets: string[] = ['corrected_by = $1', 'correction_reason = $2'];
+      const params: unknown[] = [actorUserId, dto.correctionReason];
+      const set = (col: string, val: unknown) => {
+        params.push(val);
+        sets.push(`${col} = $${params.length}`);
+      };
+      if (dto.status !== undefined) set('status', dto.status);
+      if (dto.checkInAt !== undefined) set('check_in_at', dto.checkInAt);
+      if (dto.checkOutAt !== undefined) set('check_out_at', dto.checkOutAt);
 
-    const checkInAt = dto.checkInAt ?? row.check_in_at;
-    const checkOutAt = dto.checkOutAt ?? row.check_out_at;
-    if ((dto.checkInAt !== undefined || dto.checkOutAt !== undefined) && row.shift_assignment_id) {
-      const shiftRes = await client.query<{ start_time: string; end_time: string; break_minutes: number }>(
-        `SELECT ws.start_time, ws.end_time, ws.break_minutes
-           FROM shift_assignments sa JOIN work_shifts ws ON ws.id = sa.work_shift_id
-          WHERE sa.id = $1`,
-        [row.shift_assignment_id],
-      );
-      if (shiftRes.rows.length > 0) {
-        const s = shiftRes.rows[0]!;
-        const window = shiftWindow(pgDateToIso(row.date), toHHmm(s.start_time), toHHmm(s.end_time), s.break_minutes);
-        const graceMinutes = await getLateGraceMinutes(client);
-        if (checkInAt) set('late_minutes', computeLateMinutes(window.startUtc, checkInAt, graceMinutes));
-        if (checkOutAt) {
-          const overtimeSettings = await getOvertimeSettings(client);
-          set('overtime_minutes', computeOvertimeMinutes(window.endUtc, checkOutAt, overtimeSettings.minMinutes));
+      const checkInAt = dto.checkInAt ?? row.check_in_at;
+      const checkOutAt = dto.checkOutAt ?? row.check_out_at;
+      if ((dto.checkInAt !== undefined || dto.checkOutAt !== undefined) && row.shift_assignment_id) {
+        const shiftRes = await client.query<{ start_time: string; end_time: string; break_minutes: number }>(
+          `SELECT ws.start_time, ws.end_time, ws.break_minutes
+             FROM shift_assignments sa JOIN work_shifts ws ON ws.id = sa.work_shift_id
+            WHERE sa.id = $1`,
+          [row.shift_assignment_id],
+        );
+        if (shiftRes.rows.length > 0) {
+          const s = shiftRes.rows[0]!;
+          const window = shiftWindow(pgDateToIso(row.date), toHHmm(s.start_time), toHHmm(s.end_time), s.break_minutes);
+          const graceMinutes = await getLateGraceMinutes(client);
+          if (checkInAt) set('late_minutes', computeLateMinutes(window.startUtc, checkInAt, graceMinutes));
+          if (checkOutAt) {
+            const overtimeSettings = await getOvertimeSettings(client);
+            set('overtime_minutes', computeOvertimeMinutes(window.endUtc, checkOutAt, overtimeSettings.minMinutes));
+          }
+          if (checkInAt && checkOutAt) set('work_minutes', workedMinutes(checkInAt, checkOutAt, s.break_minutes));
         }
-        if (checkInAt && checkOutAt) set('work_minutes', workedMinutes(checkInAt, checkOutAt, s.break_minutes));
       }
-    }
 
-    params.push(id);
-    const res = await client.query<Record<string, any>>(
-      `UPDATE attendance SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
-      params,
-    );
-    return this.toAttendanceRow(client, user, res.rows[0]!);
+      params.push(id);
+      const res = await client.query<Record<string, any>>(
+        `UPDATE attendance SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params,
+      );
+      return this.toAttendanceRow(client, user, res.rows[0]!);
+    });
   }
 
   async listMe(client: PoolClient, user: JwtAccessPayload, month?: string): Promise<AttendanceRow[]> {

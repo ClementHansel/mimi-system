@@ -92,6 +92,52 @@ export async function withRollbackAs<T>(ctx: RlsSessionContext, fn: (client: Poo
   }
 }
 
+/**
+ * BE-TXN-ROLLBACK: an explicit alias for `withRollbackAs`, used ONLY to mark
+ * "this call is standing in for one real HTTP request" at call sites below —
+ * mechanically identical (own connection, `BEGIN` + `SET LOCAL ROLE` +
+ * session GUCs, run `fn`, always `ROLLBACK` + release on the way out). Now
+ * that every mutating method this module's services expose really commits
+ * (`db-tx.ts`'s `withWrite`), a real `COMMIT` inside `fn` ends THIS
+ * connection's transaction and reverts `SET LOCAL ROLE`/the `app.*` GUCs —
+ * anything run afterward on the SAME client (even a plain read) then fails
+ * with `permission denied for table ...`. THE RULE (mirrored from
+ * `stock-opname`'s harness, the reference fix for this exact bug class): a
+ * `withRollbackAs`/`asRequest` block may contain AT MOST ONE call into a
+ * `withWrite`-wrapped service method, and nothing on that same client may run
+ * after it. A write-then-read-back assertion is therefore always TWO calls —
+ * one `asRequest` for the mutation, a SEPARATE one for the verifying read —
+ * which is also the only shape that can catch a service that silently never
+ * commits.
+ */
+export const asRequest = withRollbackAs;
+
+/**
+ * For TEST-ONLY seed writes that must be visible to a LATER, separate
+ * `asRequest`/`withRollbackAs` connection (e.g. hand-inserting an
+ * `offline_credentials`/`offline_authorizations`/`sync_conflicts` trio to
+ * simulate an already-open D-17 exception case before exercising
+ * `recordVerdict`) — opens its own connection, asserts context, runs `fn`,
+ * and actually `COMMIT`s (never rolls back). Use ONLY for fixture setup that
+ * isn't itself the behavior under test; anything that IS the behavior under
+ * test should go through the real service (and `withWrite`), not this.
+ */
+export async function asCommittedRequest<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await getAppPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } finally {
+    client.release();
+  }
+}
+
 export interface Fixtures {
   warehouseId: string;
   outletId: string;

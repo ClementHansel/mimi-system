@@ -4,6 +4,7 @@ import type { UUID } from '@mimi/shared';
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import type { CreateShiftDto, UpdateShiftDto, UpsertRosterDto } from '../dto/shift.dto';
 import { pgDateToIso } from '../pg-date.util';
+import { withWrite } from '../db-tx';
 
 export interface ShiftDto {
   id: UUID;
@@ -52,31 +53,33 @@ export class ShiftsService {
 
   async createShift(client: PoolClient, actorUserId: UUID, dto: CreateShiftDto): Promise<ShiftDto> {
     this.assertWindow(dto.startTime, dto.endTime);
-    const res = await client.query<Record<string, any>>(
-      `INSERT INTO work_shifts (location_id, name, start_time, end_time, break_minutes)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [dto.locationId ?? null, dto.name, dto.startTime, dto.endTime, dto.breakMinutes ?? 0],
-    );
-    const inserted = res.rows[0];
-    if (!inserted) {
-      // `INSERT ... RETURNING *` failing to return its own just-inserted row is not a business
-      // condition (no WHERE clause to fail to match) — a genuine driver/connection fault. Surfacing
-      // it as `ERR_INTERNAL` rather than silently proceeding with `undefined` (which is exactly the
-      // kind of thing that reaches a payroll input path later as `NaN`/`undefined` derived minutes).
-      throw new Error('work_shifts INSERT ... RETURNING * returned no row');
-    }
-    const shift = this.mapShift(inserted);
+    return withWrite(client, async () => {
+      const res = await client.query<Record<string, any>>(
+        `INSERT INTO work_shifts (location_id, name, start_time, end_time, break_minutes)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [dto.locationId ?? null, dto.name, dto.startTime, dto.endTime, dto.breakMinutes ?? 0],
+      );
+      const inserted = res.rows[0];
+      if (!inserted) {
+        // `INSERT ... RETURNING *` failing to return its own just-inserted row is not a business
+        // condition (no WHERE clause to fail to match) — a genuine driver/connection fault. Surfacing
+        // it as `ERR_INTERNAL` rather than silently proceeding with `undefined` (which is exactly the
+        // kind of thing that reaches a payroll input path later as `NaN`/`undefined` derived minutes).
+        throw new Error('work_shifts INSERT ... RETURNING * returned no row');
+      }
+      const shift = this.mapShift(inserted);
 
-    await this.syncEmit.emit(client, {
-      entity: 'work_shifts',
-      op: 'updated',
-      entityId: shift.id,
-      locationId: dto.locationId ?? null,
-      actorUserId,
-      data: { id: shift.id, locationId: dto.locationId ?? null, name: shift.name, startTime: shift.startTime, endTime: shift.endTime, breakMinutes: shift.breakMinutes, isActive: true },
+      await this.syncEmit.emit(client, {
+        entity: 'work_shifts',
+        op: 'updated',
+        entityId: shift.id,
+        locationId: dto.locationId ?? null,
+        actorUserId,
+        data: { id: shift.id, locationId: dto.locationId ?? null, name: shift.name, startTime: shift.startTime, endTime: shift.endTime, breakMinutes: shift.breakMinutes, isActive: true },
+      });
+
+      return shift;
     });
-
-    return shift;
   }
 
   async updateShift(client: PoolClient, actorUserId: UUID, id: UUID, dto: UpdateShiftDto): Promise<ShiftDto> {
@@ -88,47 +91,49 @@ export class ShiftsService {
     const nextEnd = dto.endTime ?? existing.end_time;
     if (dto.startTime !== undefined || dto.endTime !== undefined) this.assertWindow(nextStart, nextEnd);
 
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    const set = (col: string, val: unknown) => {
-      params.push(val);
-      sets.push(`${col} = $${params.length}`);
-    };
-    if (dto.locationId !== undefined) set('location_id', dto.locationId);
-    if (dto.name !== undefined) set('name', dto.name);
-    if (dto.startTime !== undefined) set('start_time', dto.startTime);
-    if (dto.endTime !== undefined) set('end_time', dto.endTime);
-    if (dto.breakMinutes !== undefined) set('break_minutes', dto.breakMinutes);
-    if (dto.isActive !== undefined) set('is_active', dto.isActive);
+    return withWrite(client, async () => {
+      const sets: string[] = [];
+      const params: unknown[] = [];
+      const set = (col: string, val: unknown) => {
+        params.push(val);
+        sets.push(`${col} = $${params.length}`);
+      };
+      if (dto.locationId !== undefined) set('location_id', dto.locationId);
+      if (dto.name !== undefined) set('name', dto.name);
+      if (dto.startTime !== undefined) set('start_time', dto.startTime);
+      if (dto.endTime !== undefined) set('end_time', dto.endTime);
+      if (dto.breakMinutes !== undefined) set('break_minutes', dto.breakMinutes);
+      if (dto.isActive !== undefined) set('is_active', dto.isActive);
 
-    let updated: Record<string, any> = existing;
-    if (sets.length > 0) {
-      params.push(id);
-      const res = await client.query<Record<string, any>>(
-        `UPDATE work_shifts SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
-        params,
-      );
-      const updatedRow = res.rows[0];
-      // The row existed a query ago (checked above) and this UPDATE targets it by primary key with
-      // no other predicate — a zero-row RETURNING here means it was deleted concurrently between our
-      // SELECT and our UPDATE, a real (if rare) race, not something to paper over with `!`.
-      if (!updatedRow) {
-        throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Shift not found' });
+      let updated: Record<string, any> = existing;
+      if (sets.length > 0) {
+        params.push(id);
+        const res = await client.query<Record<string, any>>(
+          `UPDATE work_shifts SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+          params,
+        );
+        const updatedRow = res.rows[0];
+        // The row existed a query ago (checked above) and this UPDATE targets it by primary key with
+        // no other predicate — a zero-row RETURNING here means it was deleted concurrently between our
+        // SELECT and our UPDATE, a real (if rare) race, not something to paper over with `!`.
+        if (!updatedRow) {
+          throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Shift not found' });
+        }
+        updated = updatedRow;
       }
-      updated = updatedRow;
-    }
-    const shift = this.mapShift(updated);
+      const shift = this.mapShift(updated);
 
-    await this.syncEmit.emit(client, {
-      entity: 'work_shifts',
-      op: 'updated',
-      entityId: id,
-      locationId: updated.location_id ?? null,
-      actorUserId,
-      data: { id, locationId: updated.location_id ?? null, name: updated.name, startTime: updated.start_time, endTime: updated.end_time, breakMinutes: updated.break_minutes, isActive: updated.is_active },
+      await this.syncEmit.emit(client, {
+        entity: 'work_shifts',
+        op: 'updated',
+        entityId: id,
+        locationId: updated.location_id ?? null,
+        actorUserId,
+        data: { id, locationId: updated.location_id ?? null, name: updated.name, startTime: updated.start_time, endTime: updated.end_time, breakMinutes: updated.break_minutes, isActive: updated.is_active },
+      });
+
+      return shift;
     });
-
-    return shift;
   }
 
   async getRoster(client: PoolClient, locationId: UUID, from: string, to: string, employeeId?: UUID): Promise<RosterRow[]> {
@@ -174,27 +179,29 @@ export class ShiftsService {
   }
 
   async upsertRoster(client: PoolClient, actorUserId: UUID, dto: UpsertRosterDto): Promise<{ updated: number }> {
-    for (const a of dto.assignments) {
-      const res = await client.query<{ id: UUID }>(
-        `INSERT INTO shift_assignments (employee_id, work_shift_id, location_id, date, assigned_by)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (employee_id, date) DO UPDATE SET
-           work_shift_id = $2, location_id = $3, assigned_by = $5, updated_at = NOW()
-         RETURNING id`,
-        [a.employeeId, a.workShiftId ?? null, dto.locationId, a.date, actorUserId],
-      );
-      const assignmentId = res.rows[0]!.id;
+    return withWrite(client, async () => {
+      for (const a of dto.assignments) {
+        const res = await client.query<{ id: UUID }>(
+          `INSERT INTO shift_assignments (employee_id, work_shift_id, location_id, date, assigned_by)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (employee_id, date) DO UPDATE SET
+             work_shift_id = $2, location_id = $3, assigned_by = $5, updated_at = NOW()
+           RETURNING id`,
+          [a.employeeId, a.workShiftId ?? null, dto.locationId, a.date, actorUserId],
+        );
+        const assignmentId = res.rows[0]!.id;
 
-      await this.syncEmit.emit(client, {
-        entity: 'shift_assignments',
-        op: a.workShiftId ? 'changed' : 'removed',
-        entityId: assignmentId,
-        locationId: dto.locationId,
-        actorUserId,
-        data: { id: assignmentId, employeeId: a.employeeId, workShiftId: a.workShiftId ?? null, locationId: dto.locationId, date: a.date },
-      });
-    }
-    return { updated: dto.assignments.length };
+        await this.syncEmit.emit(client, {
+          entity: 'shift_assignments',
+          op: a.workShiftId ? 'changed' : 'removed',
+          entityId: assignmentId,
+          locationId: dto.locationId,
+          actorUserId,
+          data: { id: assignmentId, employeeId: a.employeeId, workShiftId: a.workShiftId ?? null, locationId: dto.locationId, date: a.date },
+        });
+      }
+      return { updated: dto.assignments.length };
+    });
   }
 
   private assertWindow(startTime: string, endTime: string): void {

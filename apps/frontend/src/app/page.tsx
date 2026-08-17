@@ -1,71 +1,106 @@
 'use client';
 
-import Link from 'next/link';
-import { LayoutGrid } from 'lucide-react';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { LayoutDashboard, ShoppingCart, BookOpen, LayoutGrid } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { useSessionStore } from '@/stores/session-store';
-import { usePermissions } from '@/lib/permissions';
-import { NAV_SECTIONS, type NavItem } from '@/lib/nav';
+import { useSessionStore, type SessionUser } from '@/stores/session-store';
+import { usePermissions, type PermissionKeyOrKeys } from '@/lib/permissions';
+import { NAV_SECTIONS, ALL_NAV_ITEMS } from '@/lib/nav';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { HubTopBar } from '@/components/hub/HubTopBar';
+import { WorkspaceCard } from '@/components/hub/WorkspaceCard';
 import { getLandingRoute } from './(auth)/landing';
 
 /**
- * F-BRAND home hub — the role-aware launchpad the owner asked for ("a home
- * to navigate to POS, Dasbor, Gudang — like AIRE's homepage"). Replaces the
- * old stub that always bounced to `/dashboard`; `/login` now redirects here
- * for every role instead of a per-role route.
+ * F-HUB-2 — the home hub, rebuilt as a standalone WORKSPACE CHOOSER (owner
+ * review against AIRE's live hub: the F-BRAND version that shipped earlier
+ * kept the full app sidebar and a card per permitted destination — "a
+ * second navigation menu, not a simplification"). This page now renders with
+ * NO sidebar and no app chrome (see `AppShell`'s `CHROMELESS_ROUTES`) —
+ * just `HubTopBar` and a centred greeting + at most 3 large workspace cards.
  *
- * Every card's href/permission/label comes from `lib/nav.ts` — the single
- * source of truth the sidebar itself reads — filtered through the exact
- * same `usePermissions().can()` check `Sidebar` uses, so this can never
- * drift into showing a destination the sidebar (or the server) would deny.
- * This file adds NO second nav list; the only new data here is the hub's
- * own copy (`hub.*` in `lib/i18n/id.ts`) and the hero-vs-grid layout below.
+ * The 3 workspaces are fixed (Dasbor / Kasir / Dokumentasi), but each one's
+ * VISIBILITY and target href are still derived live from `lib/nav.ts` +
+ * `usePermissions().can()` — never hand-listed — so a cashier can never see
+ * a Dasbor card they have no permission to use:
  *
- * "Primary job" hero: `getLandingRoute` (`app/(auth)/landing.ts`) already
- * encodes which single destination is each role's day-to-day work (Kasir →
- * POS, Owner/Manager → Dasbor, Kepala Gudang → Gudang Pusat, …). Whichever
- * visible nav item matches that route is promoted to one large hero card;
- * everything else the role can reach renders as a smaller card, grouped by
- * `NAV_SECTIONS` section exactly like the sidebar groups them. For a Kasir
- * — who can only ever reach POS and their own "Akun Saya" — this naturally
- * produces the "essentially one enormous Kasir target" the owner asked for,
- * without a role-specific branch anywhere in this file.
+ *  - Kasir  = visible iff the user can reach `lib/nav.ts`'s `pos` entry.
+ *  - Dasbor = visible iff the user can reach any OTHER NAV_SECTIONS entry —
+ *    "everything that lives behind the sidebar today" per the ticket —
+ *    EXCEPT `me` ("Akun Saya"). `me`'s permission (`payroll.slip.read.own`)
+ *    is near-universal (every employee can see their own payslip), so
+ *    counting it here would make "Dasbor" spuriously visible for every
+ *    Kasir and defeat the single-workspace auto-redirect below, which the
+ *    ticket specifically motivates with "a typical cashier". `me` still
+ *    gets a chance to matter as the last-resort redirect target for an
+ *    account with neither Dasbor nor Kasir access (see `redirectHref`).
+ *  - Dokumentasi = always visible. User manuals aren't modeled as a
+ *    permission in `lib/nav.ts` (they're not an RBAC-gated app surface), and
+ *    reading them isn't privileged, so there is nothing to derive here.
+ *
+ * A user with exactly one of {Dasbor, Kasir} available never sees the
+ * chooser at all — this component redirects straight there. Documentation
+ * is deliberately NOT counted toward that "exactly one" check: it's a
+ * reference resource, not a place to work, so its constant presence
+ * shouldn't stop a cashier standing at a till from landing straight in POS.
  */
+
+const DASBOR_EXCLUDED_IDS = new Set(['pos', 'me']);
+
+/** First NAV_SECTIONS destination (outside POS/`me`) this user can reach —
+ * preferring their role's normal landing route (`(auth)/landing.ts`) so the
+ * Dasbor card takes an Owner to `/dashboard`, a Kepala Gudang to
+ * `/warehouse`, etc., exactly like the old hero card did — falling back to
+ * the first reachable item in nav order for any role/permission combo whose
+ * landing route isn't itself one of that role's visible items. */
+function findDasborTarget(user: SessionUser, can: (k?: PermissionKeyOrKeys) => boolean): string | undefined {
+  const landingHref = getLandingRoute(user);
+  let fallback: string | undefined;
+  for (const section of NAV_SECTIONS) {
+    for (const item of section.items) {
+      if (DASBOR_EXCLUDED_IDS.has(item.id) || !can(item.permission)) continue;
+      if (item.href === landingHref) return item.href;
+      fallback ??= item.href;
+    }
+  }
+  return fallback;
+}
+
 export default function HomePage() {
   const { t } = useI18n();
+  const router = useRouter();
   const user = useSessionStore((s) => s.user);
   const { can } = usePermissions();
 
+  const posItem = ALL_NAV_ITEMS.find((i) => i.id === 'pos');
+  const meItem = ALL_NAV_ITEMS.find((i) => i.id === 'me');
+  const kasirVisible = !!posItem && can(posItem.permission);
+  const meVisible = !!meItem && can(meItem.permission);
+  const dasborTarget = user ? findDasborTarget(user, can) : undefined;
+
+  const operationalCount = (dasborTarget ? 1 : 0) + (kasirVisible ? 1 : 0);
+  const redirectHref =
+    operationalCount === 1
+      ? kasirVisible
+        ? (posItem?.href ?? '/pos')
+        : dasborTarget
+      : operationalCount === 0 && meVisible
+        ? (meItem?.href ?? '/me')
+        : null;
+
   // AppShell withholds children until hydrated + authenticated, so `user`
-  // is expected non-null here; guard anyway rather than assume.
+  // is expected non-null by the time this runs; the effect still guards
+  // against a null `redirectHref` so it never fires for a null user (whose
+  // dasborTarget/operationalCount above resolve to the "show nothing"
+  // shape) or for the normal multi-workspace case.
+  useEffect(() => {
+    if (redirectHref) router.replace(redirectHref);
+  }, [redirectHref, router]);
+
   if (!user) return null;
+  if (redirectHref) return null; // redirecting — never flash a one-card chooser
 
-  // Plain loop (not a mutation captured inside .filter/.map) so TS's control
-  // flow analysis narrows `heroItem` normally below, and so the "first
-  // permission-visible item matching the role's landing route" search reads
-  // as what it is rather than a filter side effect.
-  const heroHref = getLandingRoute(user);
-  let heroItem: NavItem | undefined;
-  for (const section of NAV_SECTIONS) {
-    for (const item of section.items) {
-      if (item.href === heroHref && can(item.permission)) {
-        heroItem = item;
-        break;
-      }
-    }
-    if (heroItem) break;
-  }
-
-  const secondarySections = NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => can(item.permission) && item.id !== heroItem?.id),
-  })).filter((section) => section.items.length > 0);
-
-  // Central roles (Owner/Manager/Finance/HR Admin) carry an empty
-  // `locations` array by design — no outlet restriction, not "unassigned"
-  // (`auth.service.ts`: "central roles with no user_locations rows") — so
-  // the empty case reads as "Semua Lokasi", never as an incomplete setup.
   const outletLabel =
     user.locations.length === 0
       ? t('hub.allOutlets')
@@ -74,70 +109,54 @@ export default function HomePage() {
         : t('hub.multipleOutlets', { count: user.locations.length });
 
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
-  const HeroIcon = heroItem?.icon ?? null;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium text-brand-600">{t('hub.subtitle')}</p>
-        <h1 className="font-display text-2xl font-semibold text-text-primary sm:text-3xl">
-          {t('hub.greeting', { name: firstName })}
-        </h1>
-        <p className="text-sm text-text-secondary">
-          {t('hub.roleAtOutlet', { role: t(`role.${user.roleKey}`), outlet: outletLabel })} · {t('hub.chooseWork')}
-        </p>
-      </div>
+    <div className="flex min-h-dvh flex-col bg-surface">
+      <HubTopBar userName={user.name} roleLabel={t(`role.${user.roleKey}`)} />
 
-      {heroItem && HeroIcon && (
-        <Link
-          href={heroItem.href}
-          className="group flex items-center gap-5 rounded-xl border border-brand-700 bg-gradient-to-br from-brand-500 to-brand-700 p-6 text-white shadow-md transition-transform focus-visible:scale-[1.005] sm:p-8"
-        >
-          <span className="flex size-14 flex-none items-center justify-center rounded-2xl bg-white/15 sm:size-16">
-            <HeroIcon className="size-7 sm:size-8" aria-hidden />
-          </span>
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/70">{t('hub.primaryBadge')}</span>
-            <h2 className="font-display text-xl font-bold sm:text-2xl">{t(heroItem.labelKey)}</h2>
-            <p className="max-w-md text-sm text-white/85">{t(`hub.cardDescription.${heroItem.id}`)}</p>
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:px-6">
+        <div className="flex w-full max-w-4xl flex-col items-center gap-8">
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">{t('hub.overline')}</p>
+            <h1 className="font-display text-3xl font-bold text-text-primary sm:text-4xl">
+              {t('hub.greeting', { name: firstName })}
+            </h1>
+            <p className="text-sm text-text-muted">
+              {t('hub.roleAtOutlet', { role: t(`role.${user.roleKey}`), outlet: outletLabel })}
+            </p>
+            <p className="mt-2 text-base text-text-secondary">{t('hub.subtitle')}</p>
           </div>
-        </Link>
-      )}
 
-      {!heroItem && secondarySections.length === 0 && (
-        <EmptyState
-          icon={LayoutGrid}
-          title={t('hub.emptyTitle')}
-          description={t('hub.emptyDescription')}
-          size="lg"
-        />
-      )}
+          {!dasborTarget && !kasirVisible && (
+            <EmptyState icon={LayoutGrid} title={t('hub.emptyTitle')} description={t('hub.emptyDescription')} size="lg" />
+          )}
 
-      {secondarySections.map((section) => (
-        <div key={section.id} className="flex flex-col gap-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">{t(section.labelKey)}</h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {section.items.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className="group flex min-h-touch-lg items-center gap-4 rounded-lg border border-border bg-surface-raised p-4 shadow-xs transition-colors hover:border-brand-300 hover:bg-brand-50"
-                >
-                  <span className="flex size-11 flex-none items-center justify-center rounded-lg bg-brand-50 text-brand-600 group-hover:bg-brand-100">
-                    <Icon className="size-5" aria-hidden />
-                  </span>
-                  <div className="flex min-w-0 flex-col">
-                    <span className="font-medium text-text-primary">{t(item.labelKey)}</span>
-                    <span className="truncate text-sm text-text-muted">{t(`hub.cardDescription.${item.id}`)}</span>
-                  </div>
-                </Link>
-              );
-            })}
+          <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {dasborTarget && (
+              <WorkspaceCard
+                href={dasborTarget}
+                icon={LayoutDashboard}
+                title={t('nav.dashboard')}
+                description={t('hub.workspace.dasbor.description')}
+              />
+            )}
+            {kasirVisible && (
+              <WorkspaceCard
+                href={posItem?.href ?? '/pos'}
+                icon={ShoppingCart}
+                title={t('nav.pos')}
+                description={t('hub.workspace.kasir.description')}
+              />
+            )}
+            <WorkspaceCard
+              href="/docs"
+              icon={BookOpen}
+              title={t('hub.workspace.dokumentasi.title')}
+              description={t('hub.workspace.dokumentasi.description')}
+            />
           </div>
         </div>
-      ))}
+      </main>
     </div>
   );
 }

@@ -72,7 +72,11 @@ export function WastePanel() {
   function reloadReturns() {
     if (!locationId) return;
     setReturnLoading(true);
-    listReturns(locationId, 'outlet_to_gudang').then((r) => setReturnRows(r.rows)).finally(() => setReturnLoading(false));
+    // `ReturnDirection` (`@mimi/shared`) is `outlet_to_warehouse` |
+    // `warehouse_to_supplier` — the Indonesian-slang value here never
+    // matched the DTO's `@IsIn`, so this 400'd with ERR_VALIDATION on every
+    // call (same root cause as FIX-LOADS #2's warehouse-side Retur bug).
+    listReturns(locationId, 'outlet_to_warehouse').then((r) => setReturnRows(r.rows)).finally(() => setReturnLoading(false));
   }
   useEffect(reloadWaste, [locationId]);
   useEffect(reloadReturns, [locationId]);
@@ -122,7 +126,7 @@ export function WastePanel() {
         file: returnPhoto, fileName: returnPhoto.name, mimeType: returnPhoto.type || 'image/jpeg', kind: 'return_proof',
       });
       const created = await createReturn({
-        direction: 'outlet_to_gudang',
+        direction: 'outlet_to_warehouse',
         fromLocationId: locationId,
         lines: valid.map((l) => ({ itemId: l.itemId, storageAreaId: l.storageAreaId, qty: l.qty as string, condition: l.condition, reason: l.reason })),
         photoAttachmentIds: [photoAttachmentId],

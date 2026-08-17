@@ -17,6 +17,7 @@ import { ChartOfAccountsService } from './chart-of-accounts.service';
 import { FiscalPeriodsService } from './fiscal-periods.service';
 import type { CreateJournalEntryDto, ListJournalQueryDto } from './dto/accounting.dto';
 import type { DraftLine, JournalEntryRow, JournalLineRow } from './accounting.types';
+import { withWrite } from './db-tx';
 
 const ENTRY_SELECT = `
   SELECT je.id, je.entry_number, je.entry_date, je.fiscal_period_id, je.event_type, je.source, je.ref_type,
@@ -111,25 +112,31 @@ export class JournalService {
       throw new BadRequestException({ code: validation.code, message: validation.message });
     }
 
-    const period = await this.periods.findOrCreateForDate(client, dto.entryDate);
-    if (period.status !== 'open') {
-      throw new ConflictException({ code: ERR_PERIOD_CLOSED, message: `Fiscal period ${period.period_code} is '${period.status}' — cannot post into it` });
-    }
+    return withWrite(client, async () => {
+      // `findOrCreateForDate` itself may INSERT (auto-open the calendar period on first touch) — that
+      // write, and the ERR_PERIOD_CLOSED check that depends on its result, both have to be inside the
+      // same transaction as the entry insert below so a rejection here rolls back the harmless
+      // period auto-create too, not leave it half-committed by RlsCleanupInterceptor's ROLLBACK.
+      const period = await this.periods.findOrCreateForDate(client, dto.entryDate);
+      if (period.status !== 'open') {
+        throw new ConflictException({ code: ERR_PERIOD_CLOSED, message: `Fiscal period ${period.period_code} is '${period.status}' — cannot post into it` });
+      }
 
-    const entryId = await this.insertEntry(client, {
-      entryDate: dto.entryDate,
-      fiscalPeriodId: period.id,
-      eventType: null,
-      source: 'manual',
-      refType: null,
-      refId: null,
-      locationId: dto.locationId ?? null,
-      description: dto.description,
-      postedBy,
-      lines: draftLines,
+      const entryId = await this.insertEntry(client, {
+        entryDate: dto.entryDate,
+        fiscalPeriodId: period.id,
+        eventType: null,
+        source: 'manual',
+        refType: null,
+        refId: null,
+        locationId: dto.locationId ?? null,
+        description: dto.description,
+        postedBy,
+        lines: draftLines,
+      });
+
+      return this.getDetail(client, entryId);
     });
-
-    return this.getDetail(client, entryId);
   }
 
   /**
@@ -189,26 +196,31 @@ export class JournalService {
 
     const originalLines = await this.lines(client, id);
     const swapped: DraftLine[] = originalLines.map((l) => ({ accountCode: l.account_code, debit: l.credit, credit: l.debit, memo: l.memo }));
-
     const entryDate = new Date().toISOString().slice(0, 10);
-    const reversalPeriod = await this.periods.findOrCreateForDate(client, entryDate);
-    const entryNumber = await this.nextEntryNumber(client);
-    const reversalId = await this.insertEntry(client, {
-      entryDate,
-      fiscalPeriodId: reversalPeriod.id,
-      eventType: original.event_type,
-      source: 'manual',
-      refType: original.ref_type,
-      refId: original.ref_id,
-      locationId: original.location_id,
-      description: `Reversal of ${original.entry_number}: ${reason}`,
-      postedBy: actorId,
-      lines: swapped,
-      entryNumberOverride: entryNumber,
-    });
 
-    await client.query(`UPDATE journal_entries SET status = 'reversed', reversed_by_entry_id = $2 WHERE id = $1`, [id, reversalId]);
-    return this.getDetail(client, reversalId);
+    return withWrite(client, async () => {
+      // First actual write is `findOrCreateForDate` below (may auto-open the reversal's calendar
+      // period) — everything from here to the final status flip on the original entry must commit
+      // atomically, same reasoning as `postManual` above.
+      const reversalPeriod = await this.periods.findOrCreateForDate(client, entryDate);
+      const entryNumber = await this.nextEntryNumber(client);
+      const reversalId = await this.insertEntry(client, {
+        entryDate,
+        fiscalPeriodId: reversalPeriod.id,
+        eventType: original.event_type,
+        source: 'manual',
+        refType: original.ref_type,
+        refId: original.ref_id,
+        locationId: original.location_id,
+        description: `Reversal of ${original.entry_number}: ${reason}`,
+        postedBy: actorId,
+        lines: swapped,
+        entryNumberOverride: entryNumber,
+      });
+
+      await client.query(`UPDATE journal_entries SET status = 'reversed', reversed_by_entry_id = $2 WHERE id = $1`, [id, reversalId]);
+      return this.getDetail(client, reversalId);
+    });
   }
 
   async postingRules(client: PoolClient, eventType?: string): Promise<

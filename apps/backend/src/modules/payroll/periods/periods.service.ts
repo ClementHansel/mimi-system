@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, payrollPeriodBoundaries, type Paginated, type UUID } from '@mimi/shared';
 import { pgDateToIso } from '../pg-date.util';
+import { withWrite } from '../db-tx';
 
 export interface PeriodRow {
   id: UUID;
@@ -50,11 +51,13 @@ export class PeriodsService {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Period ${periodCode} already exists` });
     }
 
-    const res = await client.query<Record<string, any>>(
-      `INSERT INTO payroll_periods (period_code, start_date, end_date) VALUES ($1,$2,$3) RETURNING *`,
-      [periodCode, startDate, endDate],
-    );
-    return this.mapPeriod(res.rows[0]!, []);
+    return withWrite(client, async () => {
+      const res = await client.query<Record<string, any>>(
+        `INSERT INTO payroll_periods (period_code, start_date, end_date) VALUES ($1,$2,$3) RETURNING *`,
+        [periodCode, startDate, endDate],
+      );
+      return this.mapPeriod(res.rows[0]!, []);
+    });
   }
 
   async requirePeriod(client: PoolClient, id: UUID): Promise<{ id: UUID; periodCode: string; startDate: string; endDate: string; status: string }> {

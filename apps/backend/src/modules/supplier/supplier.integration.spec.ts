@@ -134,30 +134,39 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     });
   });
 
+  // BE-TXN-ROLLBACK: `create`/`update`/`deactivate` now wrap their writes in `withWrite`
+  // (real `BEGIN...COMMIT`) — see `supplier/db-tx.ts`. That `COMMIT` ends whatever
+  // transaction `withRollback` opened here and reverts `SET LOCAL ROLE`/session GUCs with
+  // it, so a later call (even a plain read) on the SAME connection now fails `permission
+  // denied for table suppliers`. Each mutating call below therefore gets its OWN
+  // `withRollback` connection — mirroring `stock-opname`'s regression-suite shape — and,
+  // because the write now genuinely commits a real `suppliers` row, every such test cleans
+  // it up via the owner pool in a `finally` block.
   describe('FR-SUP-01: Supplier CRUD (create, read, update, delete)', () => {
-    it('should create and read back a supplier', async () => {
-      await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
-        const syncEmit = { emit: async () => {} } as any;
-        const service = new SupplierService(syncEmit);
-
-        // Create
-        const created = await service.create(
-          client,
-          {
-            code: `TEST-${randomUUID().slice(0, 8)}`,
-            name: 'Test Supplier Corp',
-            contactName: 'John Doe',
-            phone: '+62-812-3456789',
-            email: 'john@test.com',
-            address: 'Jl. Test No. 1',
-            paymentTermsDays: 30,
-            bankName: 'Bank Test',
-            bankAccount: '1234567890',
-            bankAccountName: 'Supplier Account',
-            outletVisible: false,
-          },
-          SYSTEM_USER_ID,
+    it('should create and read back a supplier — write and read on SEPARATE connections', async () => {
+      const syncEmit = { emit: async () => {} } as any;
+      let supplierId: string | undefined;
+      try {
+        const created = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService(syncEmit).create(
+            client,
+            {
+              code: `TEST-${randomUUID().slice(0, 8)}`,
+              name: 'Test Supplier Corp',
+              contactName: 'John Doe',
+              phone: '+62-812-3456789',
+              email: 'john@test.com',
+              address: 'Jl. Test No. 1',
+              paymentTermsDays: 30,
+              bankName: 'Bank Test',
+              bankAccount: '1234567890',
+              bankAccountName: 'Supplier Account',
+              outletVisible: false,
+            },
+            SYSTEM_USER_ID,
+          ),
         );
+        supplierId = created.id;
 
         expect(created.id).toBeTruthy();
         expect(created.code).toBeTruthy();
@@ -165,66 +174,87 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
         expect(created.paymentTermsDays).toBe(30);
         expect(created.bankName).toBe('Bank Test');
 
-        // Read back
-        const fetched = await service.getById(client, created.id);
+        // A GENUINELY separate connection/transaction — never sees `create`'s connection's
+        // uncommitted state, only what it actually COMMITted.
+        const fetched = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) => new SupplierService(syncEmit).getById(client, created.id));
         expect(fetched.id).toBe(created.id);
         expect(fetched.name).toBe('Test Supplier Corp');
         expect(fetched.paymentTermsDays).toBe(30);
-      });
+      } finally {
+        if (supplierId) await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+      }
     });
 
-    it('should update a supplier', async () => {
-      await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
-        const syncEmit = { emit: async () => {} } as any;
-        const service = new SupplierService(syncEmit);
-
-        const created = await service.create(
-          client,
-          {
-            code: `UPD-${randomUUID().slice(0, 8)}`,
-            name: 'Original Name',
-            contactName: 'Original',
-            paymentTermsDays: 15,
-          },
-          SYSTEM_USER_ID,
+    it('should update a supplier — create and update on SEPARATE connections', async () => {
+      const syncEmit = { emit: async () => {} } as any;
+      let supplierId: string | undefined;
+      try {
+        const created = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService(syncEmit).create(
+            client,
+            {
+              code: `UPD-${randomUUID().slice(0, 8)}`,
+              name: 'Original Name',
+              contactName: 'Original',
+              paymentTermsDays: 15,
+            },
+            SYSTEM_USER_ID,
+          ),
         );
+        supplierId = created.id;
 
-        const updated = await service.update(
-          client,
-          created.id,
-          {
-            name: 'Updated Name',
-            paymentTermsDays: 45,
-          },
-          SYSTEM_USER_ID,
+        const updated = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService(syncEmit).update(
+            client,
+            created.id,
+            {
+              name: 'Updated Name',
+              paymentTermsDays: 45,
+            },
+            SYSTEM_USER_ID,
+          ),
         );
 
         expect(updated.name).toBe('Updated Name');
         expect(updated.paymentTermsDays).toBe(45);
         expect(updated.id).toBe(created.id);
-      });
+
+        // Independent read-back, a THIRD connection: proves `update`'s write genuinely
+        // committed, not merely visible within its own now-closed transaction.
+        const reread = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) => new SupplierService(syncEmit).getById(client, created.id));
+        expect(reread.name).toBe('Updated Name');
+        expect(reread.paymentTermsDays).toBe(45);
+      } finally {
+        if (supplierId) await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+      }
     });
 
-    it('should soft-delete (deactivate) a supplier', async () => {
-      await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
-        const syncEmit = { emit: async () => {} } as any;
-        const service = new SupplierService(syncEmit);
-
-        const created = await service.create(
-          client,
-          {
-            code: `DEL-${randomUUID().slice(0, 8)}`,
-            name: 'To Deactivate',
-          },
-          SYSTEM_USER_ID,
+    it('should soft-delete (deactivate) a supplier — create, deactivate, and verifying read all on SEPARATE connections', async () => {
+      const syncEmit = { emit: async () => {} } as any;
+      let supplierId: string | undefined;
+      try {
+        const created = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService(syncEmit).create(
+            client,
+            {
+              code: `DEL-${randomUUID().slice(0, 8)}`,
+              name: 'To Deactivate',
+            },
+            SYSTEM_USER_ID,
+          ),
         );
+        supplierId = created.id;
 
-        const deactivated = await service.deactivate(client, created.id, SYSTEM_USER_ID);
+        const deactivated = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) => new SupplierService(syncEmit).deactivate(client, created.id, SYSTEM_USER_ID));
         expect(deactivated.deactivated).toBe(true);
 
-        const fetched = await service.getById(client, created.id);
+        // A later GET (new connection) sees the deactivated status, not the pre-deactivate one —
+        // proving `deactivate`'s write persisted past its own request.
+        const fetched = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) => new SupplierService(syncEmit).getById(client, created.id));
         expect(fetched.isActive).toBe(false);
-      });
+      } finally {
+        if (supplierId) await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+      }
     });
   });
 

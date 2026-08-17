@@ -2,7 +2,7 @@
 
 import { ClipboardList, Truck, Boxes, ListChecks, Trash2, Wallet } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Tabs, TabsList, TabsTrigger, TabsContent, OfflineBanner, PermissionGate } from '@/components/ui';
+import { Tabs, TabsList, TabsTrigger, TabsContent, PermissionGate } from '@/components/ui';
 import { ReplenishmentPanel } from '@/components/outlet/ReplenishmentPanel';
 import { ReceivingPanel } from '@/components/outlet/ReceivingPanel';
 import { StockPanel } from '@/components/outlet/StockPanel';
@@ -23,7 +23,7 @@ export default function OutletPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      <OfflineBanner />
+      {/* AppShell already owns the single OfflineBanner for this (non-chromeless) route. */}
       <h1 className="font-display text-2xl font-semibold text-text-primary">{t('nav.outlet')}</h1>
 
       <Tabs defaultValue="replenishment">

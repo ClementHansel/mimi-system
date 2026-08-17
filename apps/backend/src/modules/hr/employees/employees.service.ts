@@ -4,6 +4,7 @@ import { EmploymentStatus, type Employee, type Money, type Paginated, type UUID 
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import type { CreateEmployeeDto, UpdateEmployeeDto } from '../dto/employee.dto';
 import { pgDateToIso } from '../pg-date.util';
+import { withWrite } from '../db-tx';
 
 export interface EmploymentHistoryEntry {
   position: string;
@@ -108,48 +109,50 @@ export class EmployeesService {
     if (!dto.employeeNumber?.trim()) throw new BadRequestException({ code: 'ERR_VALIDATION', message: 'employeeNumber is required' });
     if (!dto.name?.trim()) throw new BadRequestException({ code: 'ERR_VALIDATION', message: 'name is required' });
 
-    const res = await client.query<Record<string, any>>(
-      `INSERT INTO employees
-         (employee_number, user_id, name, nik, phone, email, join_date, position, location_id, bank_name, bank_account_number, bank_account_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       RETURNING *`,
-      [
-        dto.employeeNumber.trim(),
-        dto.userId ?? null,
-        dto.name.trim(),
-        dto.nik ?? null,
-        dto.phone ?? null,
-        dto.email ?? null,
-        dto.joinDate,
-        dto.position,
-        dto.locationId,
-        dto.bankName ?? null,
-        dto.bankAccountNumber ?? null,
-        dto.bankAccountName ?? null,
-      ],
-    );
-    const employeeId = res.rows[0]!.id as UUID;
+    return withWrite(client, async () => {
+      const res = await client.query<Record<string, any>>(
+        `INSERT INTO employees
+           (employee_number, user_id, name, nik, phone, email, join_date, position, location_id, bank_name, bank_account_number, bank_account_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         RETURNING *`,
+        [
+          dto.employeeNumber.trim(),
+          dto.userId ?? null,
+          dto.name.trim(),
+          dto.nik ?? null,
+          dto.phone ?? null,
+          dto.email ?? null,
+          dto.joinDate,
+          dto.position,
+          dto.locationId,
+          dto.bankName ?? null,
+          dto.bankAccountNumber ?? null,
+          dto.bankAccountName ?? null,
+        ],
+      );
+      const employeeId = res.rows[0]!.id as UUID;
 
-    // The employee's founding employment record (position/salary/tenure start — M15's PIN-01/05/06 input).
-    await client.query(
-      `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
-       VALUES ($1,$2,$3,$4,$5)`,
-      [employeeId, dto.position, dto.locationId, dto.baseSalary, dto.joinDate],
-    );
+      // The employee's founding employment record (position/salary/tenure start — M15's PIN-01/05/06 input).
+      await client.query(
+        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [employeeId, dto.position, dto.locationId, dto.baseSalary, dto.joinDate],
+      );
 
-    const locRes = await client.query<{ name: string }>('SELECT name FROM locations WHERE id = $1', [dto.locationId]);
-    const employee = this.mapEmployee({ ...res.rows[0], location_name: locRes.rows[0]?.name ?? '' });
+      const locRes = await client.query<{ name: string }>('SELECT name FROM locations WHERE id = $1', [dto.locationId]);
+      const employee = this.mapEmployee({ ...res.rows[0], location_name: locRes.rows[0]?.name ?? '' });
 
-    await this.syncEmit.emit(client, {
-      entity: 'employees',
-      op: 'created',
-      entityId: employee.id,
-      locationId: dto.locationId,
-      actorUserId,
-      data: { id: employee.id, name: employee.name, position: employee.position, locationId: dto.locationId, isActive: true },
+      await this.syncEmit.emit(client, {
+        entity: 'employees',
+        op: 'created',
+        entityId: employee.id,
+        locationId: dto.locationId,
+        actorUserId,
+        data: { id: employee.id, name: employee.name, position: employee.position, locationId: dto.locationId, isActive: true },
+      });
+
+      return employee;
     });
-
-    return employee;
   }
 
   async update(client: PoolClient, actorUserId: UUID, id: UUID, dto: UpdateEmployeeDto): Promise<Employee> {
@@ -176,38 +179,40 @@ export class EmployeesService {
       set('location_id', dto.employmentChange.locationId);
     }
 
-    if (sets.length > 0) {
-      params.push(id);
-      const res = await client.query(`UPDATE employees SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id`, params);
-      if (res.rows.length === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Employee not found' });
-    }
+    return withWrite(client, async () => {
+      if (sets.length > 0) {
+        params.push(id);
+        const res = await client.query(`UPDATE employees SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id`, params);
+        if (res.rows.length === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Employee not found' });
+      }
 
-    if (dto.employmentChange) {
-      // Close the current open-ended employment row and append the new one — CONTRACTS.md §1.7:
-      // "position/salary history; current row has end_date NULL".
-      await client.query(
-        `UPDATE employments SET end_date = $2 WHERE employee_id = $1 AND end_date IS NULL`,
-        [id, dto.employmentChange.startDate],
-      );
-      await client.query(
-        `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [id, dto.employmentChange.position, dto.employmentChange.locationId, dto.employmentChange.baseSalary, dto.employmentChange.startDate],
-      );
-    }
+      if (dto.employmentChange) {
+        // Close the current open-ended employment row and append the new one — CONTRACTS.md §1.7:
+        // "position/salary history; current row has end_date NULL".
+        await client.query(
+          `UPDATE employments SET end_date = $2 WHERE employee_id = $1 AND end_date IS NULL`,
+          [id, dto.employmentChange.startDate],
+        );
+        await client.query(
+          `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [id, dto.employmentChange.position, dto.employmentChange.locationId, dto.employmentChange.baseSalary, dto.employmentChange.startDate],
+        );
+      }
 
-    const updated = await this.getById(client, id, false);
+      const updated = await this.getById(client, id, false);
 
-    await this.syncEmit.emit(client, {
-      entity: 'employees',
-      op: 'updated',
-      entityId: id,
-      locationId: updated.locationId,
-      actorUserId,
-      data: { id, name: updated.name, position: updated.position, locationId: updated.locationId, isActive: updated.employmentStatus === EmploymentStatus.ACTIVE },
+      await this.syncEmit.emit(client, {
+        entity: 'employees',
+        op: 'updated',
+        entityId: id,
+        locationId: updated.locationId,
+        actorUserId,
+        data: { id, name: updated.name, position: updated.position, locationId: updated.locationId, isActive: updated.employmentStatus === EmploymentStatus.ACTIVE },
+      });
+
+      return updated;
     });
-
-    return updated;
   }
 
   private mapEmployee = (r: Record<string, any>): Employee => ({

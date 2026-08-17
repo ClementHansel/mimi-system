@@ -16,6 +16,7 @@ import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import type { ApproveLeaveDto, RejectLeaveDto, SubmitLeaveDto } from '../dto/leave.dto';
 import { getLeaveQuotas } from '../hr-settings.util';
 import { pgDateToIso } from '../pg-date.util';
+import { withWrite } from '../db-tx';
 
 export interface LeaveRow {
   id: UUID;
@@ -113,19 +114,21 @@ export class LeavesService {
   }
 
   async submit(client: PoolClient, actorUserId: UUID, dto: SubmitLeaveDto): Promise<LeaveRow> {
-    const leaveId = await this.insertAndSubmit(client, actorUserId, dto);
+    return withWrite(client, async () => {
+      const leaveId = await this.insertAndSubmit(client, actorUserId, dto);
 
-    const employee = await this.resolveSelfEmployee(client, actorUserId);
-    await this.syncEmit.emit(client, {
-      entity: 'leave_requests',
-      op: 'submitted',
-      entityId: leaveId,
-      locationId: employee.locationId,
-      actorUserId,
-      data: { clientId: dto.clientId, type: dto.type, startDate: dto.startDate, endDate: dto.endDate, reason: dto.reason ?? null, attachmentId: dto.attachmentId ?? null },
+      const employee = await this.resolveSelfEmployee(client, actorUserId);
+      await this.syncEmit.emit(client, {
+        entity: 'leave_requests',
+        op: 'submitted',
+        entityId: leaveId,
+        locationId: employee.locationId,
+        actorUserId,
+        data: { clientId: dto.clientId, type: dto.type, startDate: dto.startDate, endDate: dto.endDate, reason: dto.reason ?? null, attachmentId: dto.attachmentId ?? null },
+      });
+
+      return this.getRowOrThrow(client, leaveId);
     });
-
-    return this.getRowOrThrow(client, leaveId);
   }
 
   /**
@@ -196,86 +199,92 @@ export class LeavesService {
   async approve(client: PoolClient, actorUserId: UUID, actorRole: RoleKey, id: UUID, dto: ApproveLeaveDto): Promise<LeaveRow> {
     const leave = await this.requireLeave(client, id);
 
-    const result = await this.approvals.approve(client, {
-      documentType: ApprovalDocumentType.LEAVE_REQUEST,
-      documentId: id,
-      currentState: leave.status,
-      actorUserId,
-      actorRole,
-      reason: dto.note ?? null,
+    return withWrite(client, async () => {
+      const result = await this.approvals.approve(client, {
+        documentType: ApprovalDocumentType.LEAVE_REQUEST,
+        documentId: id,
+        currentState: leave.status,
+        actorUserId,
+        actorRole,
+        reason: dto.note ?? null,
+      });
+
+      await client.query(
+        `UPDATE leave_requests SET status = $2, decided_by = $3, decided_at = NOW() WHERE id = $1`,
+        [id, result.nextState, actorUserId],
+      );
+
+      // POUT-01/02/04: an approved leave range marks `attendance.status` for those dates so payroll's
+      // FR-HR-03 summary counts it as leave/sick/permission, not a silent absence.
+      await client.query(
+        `INSERT INTO attendance (employee_id, location_id, date, status)
+         SELECT e.employee_id, e.loc, d::date, $4
+           FROM (SELECT lr.employee_id, emp.location_id AS loc FROM leave_requests lr JOIN employees emp ON emp.id = lr.employee_id WHERE lr.id = $1) e
+          CROSS JOIN LATERAL generate_series($2::date, $3::date, interval '1 day') AS d
+         ON CONFLICT (employee_id, date) DO UPDATE SET status = EXCLUDED.status`,
+        [id, leave.startDate, leave.endDate, this.attendanceStatusFor(leave.type)],
+      );
+
+      await this.syncEmit.emit(client, {
+        entity: 'leave_requests',
+        op: 'approved',
+        entityId: id,
+        locationId: null,
+        actorUserId,
+        data: { note: dto.note ?? undefined },
+      });
+
+      return this.getRowOrThrow(client, id);
     });
-
-    await client.query(
-      `UPDATE leave_requests SET status = $2, decided_by = $3, decided_at = NOW() WHERE id = $1`,
-      [id, result.nextState, actorUserId],
-    );
-
-    // POUT-01/02/04: an approved leave range marks `attendance.status` for those dates so payroll's
-    // FR-HR-03 summary counts it as leave/sick/permission, not a silent absence.
-    await client.query(
-      `INSERT INTO attendance (employee_id, location_id, date, status)
-       SELECT e.employee_id, e.loc, d::date, $4
-         FROM (SELECT lr.employee_id, emp.location_id AS loc FROM leave_requests lr JOIN employees emp ON emp.id = lr.employee_id WHERE lr.id = $1) e
-        CROSS JOIN LATERAL generate_series($2::date, $3::date, interval '1 day') AS d
-       ON CONFLICT (employee_id, date) DO UPDATE SET status = EXCLUDED.status`,
-      [id, leave.startDate, leave.endDate, this.attendanceStatusFor(leave.type)],
-    );
-
-    await this.syncEmit.emit(client, {
-      entity: 'leave_requests',
-      op: 'approved',
-      entityId: id,
-      locationId: null,
-      actorUserId,
-      data: { note: dto.note ?? undefined },
-    });
-
-    return this.getRowOrThrow(client, id);
   }
 
   async reject(client: PoolClient, actorUserId: UUID, actorRole: RoleKey, id: UUID, dto: RejectLeaveDto): Promise<LeaveRow> {
     if (!dto.reason?.trim()) throw new BadRequestException({ code: ERR_VALIDATION, message: 'reason is required' });
     const leave = await this.requireLeave(client, id);
 
-    const result = await this.approvals.reject(client, {
-      documentType: ApprovalDocumentType.LEAVE_REQUEST,
-      documentId: id,
-      currentState: leave.status,
-      actorUserId,
-      actorRole,
-      reason: dto.reason,
-    });
+    return withWrite(client, async () => {
+      const result = await this.approvals.reject(client, {
+        documentType: ApprovalDocumentType.LEAVE_REQUEST,
+        documentId: id,
+        currentState: leave.status,
+        actorUserId,
+        actorRole,
+        reason: dto.reason,
+      });
 
-    await client.query(
-      `UPDATE leave_requests SET status = $2, decided_by = $3, decided_at = NOW(), rejection_reason = $4 WHERE id = $1`,
-      [id, result.nextState, actorUserId, dto.reason],
-    );
+      await client.query(
+        `UPDATE leave_requests SET status = $2, decided_by = $3, decided_at = NOW(), rejection_reason = $4 WHERE id = $1`,
+        [id, result.nextState, actorUserId, dto.reason],
+      );
 
-    await this.syncEmit.emit(client, {
-      entity: 'leave_requests',
-      op: 'rejected',
-      entityId: id,
-      locationId: null,
-      actorUserId,
-      data: { reason: dto.reason },
-    });
-
-    return this.getRowOrThrow(client, id);
-  }
-
-  async cancel(client: PoolClient, actorUserId: UUID, actorRole: RoleKey, id: UUID): Promise<LeaveRow> {
-    const applied = await this.applyCancel(client, actorUserId, actorRole, id);
-    if (applied) {
       await this.syncEmit.emit(client, {
         entity: 'leave_requests',
-        op: 'cancelled',
+        op: 'rejected',
         entityId: id,
         locationId: null,
         actorUserId,
-        data: { id },
+        data: { reason: dto.reason },
       });
-    }
-    return this.getRowOrThrow(client, id);
+
+      return this.getRowOrThrow(client, id);
+    });
+  }
+
+  async cancel(client: PoolClient, actorUserId: UUID, actorRole: RoleKey, id: UUID): Promise<LeaveRow> {
+    return withWrite(client, async () => {
+      const applied = await this.applyCancel(client, actorUserId, actorRole, id);
+      if (applied) {
+        await this.syncEmit.emit(client, {
+          entity: 'leave_requests',
+          op: 'cancelled',
+          entityId: id,
+          locationId: null,
+          actorUserId,
+          data: { id },
+        });
+      }
+      return this.getRowOrThrow(client, id);
+    });
   }
 
   /**

@@ -1,0 +1,71 @@
+/* F-DOCS — print/PDF styling for /docs/**. Loaded only while a /docs route
+   is mounted (see layout.tsx's comment on per-segment CSS chunking), so
+   these rules never apply outside this route group.
+
+   Screen styling for the reader/index uses ordinary Tailwind utility
+   classes at the call site (repo idiom — no other route in this app ships
+   a parallel hand-written stylesheet); this file exists only for the one
+   thing Tailwind utilities can't express: `@page` margin boxes and the
+   print-only cover page used by "Download PDF" (the browser's own
+   print-to-PDF via `window.print()` — see the ticket note on why we did
+   not add a PDF-generation library for a PWA served over mobile data). */
+
+.doc-print-cover { display: none; }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 22mm 16mm 20mm;
+  }
+
+  /* Hide the app shell (sidebar/header/banners/toasts) — only the manual
+     itself should print. These selectors reach outside `.docs-print-scope`
+     deliberately: AppShell (components/layout/AppShell.tsx) renders them as
+     siblings of this route's content, and this stylesheet is not owned by
+     that file, so structural selectors are the only way to reach them
+     without editing AppShell (out of scope for F-DOCS). */
+  header,
+  nav[aria-label],
+  .docs-print-hide {
+    display: none !important;
+  }
+
+  #main-content {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  html, body { background: #fff !important; }
+
+  .docs-print-scope { max-width: none !important; }
+
+  /* Branded cover page — one per printed manual. */
+  .doc-print-cover {
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    height: 250mm;
+    page-break-after: always;
+    color: var(--color-stone-900, #1a1714);
+  }
+  .doc-print-cover .cover-kicker {
+    font-size: 10pt; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--color-brand-600, #a8481a);
+  }
+  .doc-print-cover .cover-rule {
+    width: 64px; height: 3pt; margin: 14px 0 22px;
+    background: var(--color-brand-500, #c85f26);
+  }
+  .doc-print-cover .cover-title { font-size: 28pt; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 14px; }
+  .doc-print-cover .cover-audience { font-size: 13pt; color: var(--color-stone-600, #5c564d); margin: 0 0 40px; }
+  .doc-print-cover .cover-foot { font-size: 9pt; color: var(--color-stone-500, #7c756a); line-height: 1.6; }
+  .doc-print-cover .cover-foot strong { color: var(--color-stone-900, #1a1714); }
+
+  .doc-body h2 { page-break-after: avoid; }
+  .doc-body h3, .doc-body h4 { page-break-after: avoid; }
+  .doc-body pre, .doc-body blockquote, .doc-body tr, .doc-body li { page-break-inside: avoid; }
+  .doc-body table { page-break-inside: auto; }
+  .doc-body thead { display: table-header-group; }
+
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

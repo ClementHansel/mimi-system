@@ -17,6 +17,7 @@
  */
 import { getBrowserLocalRuntime } from '@/lib/local/browser';
 import { useSessionStore } from '@/stores/session-store';
+import { newUuid } from '@/lib/uuid';
 import type { ActorMeta, LocalRuntime } from '@/lib/local/api/local-runtime';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev';
@@ -35,5 +36,5 @@ export function getOutletRuntime(): Promise<LocalRuntime> {
 
 /** Client-generated id — minted once per attachment/action and reused on retry (SYNC-PROTOCOL §2.2 rule 3), same idiom as `pos-runtime.ts`'s `mintClientId`. */
 export function mintId(): string {
-  return crypto.randomUUID();
+  return newUuid();
 }

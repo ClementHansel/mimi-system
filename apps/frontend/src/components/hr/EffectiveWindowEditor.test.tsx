@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { EffectiveWindowEditor } from './EffectiveWindowEditor';
+import { useSessionStore } from '@/stores/session-store';
 
 /**
  * The effective-dated rate editors (BPJS/TER/PTKP/Article-17, CONTRACTS §4.15
@@ -39,6 +40,19 @@ function setup(effectiveFromInitial: string) {
 }
 
 describe('EffectiveWindowEditor', () => {
+  // The "Tambah Vintage Baru" button is gated behind `payroll.statutory.config`
+  // (FIX-LOADS #3 — the tab itself now only requires `.read`, so a session
+  // without the write permission must see history but not this button; see
+  // the dedicated test below).
+  beforeEach(() => {
+    useSessionStore.setState({
+      user: {
+        id: 'u1', username: 'hradmin1', name: 'Test HR Admin', roleKey: 'hr_admin',
+        permissions: ['payroll.statutory.config'], locations: [], employeeId: null, mustSetPin: false,
+      },
+    });
+  });
+
   it('disables save and shows a warning for a duplicate effectiveFrom date', () => {
     setup('');
     const dateInput = screen.getByLabelText('Berlaku Sejak') as HTMLInputElement;
@@ -66,5 +80,35 @@ describe('EffectiveWindowEditor', () => {
     setup('');
     expect(screen.getByText('Aktif')).toBeInTheDocument();
     expect(screen.getByText('Kedaluwarsa')).toBeInTheDocument();
+  });
+
+  // FIX-LOADS #3 regression: viewing the Statutory tab needs only
+  // `payroll.statutory.read` (Owner holds it) — the DTO-write action stays
+  // behind `payroll.statutory.config`, matching `StatutoryController`'s own
+  // GET-vs-PUT permission split so a read-only session can see history
+  // without a hidden 403 waiting behind a visible button.
+  it('hides "Tambah Vintage Baru" for a session with only payroll.statutory.read (e.g. Owner)', () => {
+    useSessionStore.setState({
+      user: {
+        id: 'u2', username: 'owner', name: 'Test Owner', roleKey: 'owner',
+        permissions: ['payroll.statutory.read'], locations: [], employeeId: null, mustSetPin: false,
+      },
+    });
+    const onSubmit = vi.fn();
+    render(
+      <EffectiveWindowEditor
+        title="Tarif BPJS"
+        rows={rows}
+        historyColumns={['Program']}
+        renderHistoryRow={(row) => <td key="p">{row.effectiveFrom}</td>}
+        formFields={<div>form fields</div>}
+        effectiveFrom=""
+        onEffectiveFromChange={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Tambah Vintage Baru' })).not.toBeInTheDocument();
+    // The read-only history is still visible.
+    expect(screen.getByText('Aktif')).toBeInTheDocument();
   });
 });

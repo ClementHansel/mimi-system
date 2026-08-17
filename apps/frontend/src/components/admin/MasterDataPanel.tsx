@@ -517,7 +517,12 @@ export function MasterDataPanel() {
   function reloadLookups() {
     api.get<ItemCategory[]>('/items/categories').then(setCategories).catch(() => {});
     api.get<Unit[]>('/units').then(setUnits).catch(() => {});
-    api.get<{ rows: Item[] }>('/items?pageSize=500').then((r) => setItems(r.rows)).catch(() => {});
+    // `pageSize` is capped at 200 backend-wide (CONTRACTS.md's pagination
+    // rule, `ListItemsQueryDto`'s `@Max(200)`) — 500 here 400'd with
+    // ERR_VALIDATION, silently swallowed by the `.catch(() => {})` below,
+    // which is exactly why the recipe editor's "Bahan" dropdown came up
+    // empty (FIX-LOADS #4): this lookup never actually populated `items`.
+    api.get<{ rows: Item[] }>('/items?pageSize=200').then((r) => setItems(r.rows)).catch(() => {});
   }
   useEffect(reloadLookups, []);
 

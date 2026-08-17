@@ -393,7 +393,47 @@ Raised directly by the owner after using the deployed system.
 - [x] **DB-PV-RLS** migration 220 — `FOR SELECT` carve-out so `kepala_gudang` can read the PV row its own receiving creates, with proof it gained no write access
 - [x] **CLEANUP-DATE** consolidated `formatDateOnly` into `common/`; removed two independently-wrong private copies
 - [ ] **QA-ISOLATION** live-DB suite determinism — serial `integration-live-db` project + reconcile-on-cleanup; **one assertion outstanding**
-- [ ] **F-UX** the broader UI/UX flow simplification the owner asked for — not yet started
+
+### Wave 5c — IA rework + live-system defects (2026-08-17, owner-reviewed) 🔄
+The owner compared the system against AIRE and walked the deployed box. Everything here came from that.
+- [x] **F-HUB-2** home = a **workspace chooser**, not a second menu. Three cards (Dasbor · Kasir · Dokumentasi), no sidebar. Single-workspace users are redirected straight in, so a cashier never sees a chooser. *The first hub was wrong: it kept the sidebar and listed every destination.*
+- [x] **F-POS-2** POS is now a standalone full-screen app — own top bar, branch + reason line, tabs Kasir / GoFood-ShopeeFood / Shift. Shell change only; all components reused (418 tests)
+- [x] **F-DOCS** `/docs` — six role-filtered manuals in Bahasa Indonesia written from the real UI, print-to-PDF, no PDF dependency added. **This is BUILD-PLAN W7-03.**
+- [ ] **FIX-SECURECTX** `crypto.randomUUID` + double sync banner — in progress
+- [ ] **FIX-LOADS** warehouse stock/opname/waste/retur, `/hr` denying the owner, empty recipe-ingredient list — in progress
+- [ ] **F-UX** the remaining flow simplification beyond hub/POS — not yet started
+
+### 🔴 `crypto.randomUUID is not a function` — blank pages on the deployed box
+`/pos` and `/admin` render **nothing** — "Application error: a client-side exception has occurred". `crypto.randomUUID()` exists **only in a secure context** (HTTPS or `localhost`). The deployment is plain HTTP on an IP, so it is `undefined` and throws.
+
+**Every dev machine passes because `localhost` is treated as secure.** That is the entire reason this shipped, and it invalidates the coordinator's earlier judgement that "HTTP is acceptable for a demo box with mock data" — plain HTTP silently disables secure-context APIs, and this codebase depends on them for every client-generated id in the offline layer.
+
+Fixed two ways: a correct RFC-4122 **v4 fallback built on `crypto.getRandomValues`** (available on insecure origins — `Math.random()` is NOT acceptable here, these ids are `clientId`s and idempotency keys in an append-only protocol), and HTTPS proper, which needs a hostname.
+
+### 🔴🔴 THE BIG ONE — writes returned 201 and silently rolled back, across TEN modules
+Found while investigating an unrelated "Gagal memuat data". The worst defect in the project so far.
+
+`RlsCleanupInterceptor` issues an unconditional `ROLLBACK` after every request — by design, because a module service is expected to have already run its own `BEGIN…COMMIT` on the same client, making the rollback a no-op. **Ten modules never did.**
+
+Confirmed live: `POST /api/stock-opname` → **201 with a full body**; an immediate `GET` on that id → **404**; list stays at 0. **Stock opname counts have never persisted, and the API reported success every single time.** Opname variance feeds POUT-05 wage deductions, so this reaches payroll.
+
+**Broken (writes present, commit absent):** `stock-opname`, `accounting`, `hr`, `payroll`, `device-registry`, `node-gateway`, `settings`, `supplier`, `users`, and two `sync-admin` endpoints.
+**Audited and already correct:** `asset`, `delivery`, `inventory`, `item`, `location`, `product`, `purchasing`, `waste-return`, `pos` (controller-commit convention), `auth`, `dashboard`, `report`.
+
+**Why 765 passing tests never caught it — the important part.** Integration suites commit *manually* in their own harness (`withCommit`), so they never exercise the interceptor path a real HTTP request takes. The tests proved the SQL was right and proved nothing about whether it survived the request. Structurally identical to the boot incident, where 744 tests passed while the app could not start because no test ever built the real DI graph.
+
+**A second bug hid inside the first.** The old opname tests chained several mutations onto one connection — which only worked *because nothing committed*. Once commits became real, Postgres reset `SET LOCAL ROLE` at `COMMIT` and the chained calls failed with `permission denied`. The fake behaviour had been holding the tests up.
+
+**Fixes:** a `withWrite()` helper per module matching the existing convention; tests restructured to **write on one connection and read back on a genuinely separate one** — a 201 assertion proves nothing here; and `RlsCleanupInterceptor` now *detects* an uncommitted write on a successful mutating response (via `pg_current_xact_id_if_assigned()`), logging a WARN always and throwing outside production, so this class of bug can never be silent again.
+
+> **Rule earned:** for any mutation, assert the read-back in a **separate request/connection**. A 2xx response body is not evidence of persistence.
+
+### 🟠 Audit and logging — answering "do we have one?"
+Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi → Jejak Audit**. Settings → **Umum is NOT a log** — it is system parameters (approval thresholds, cold-chain bounds, offline-credential TTL, company profile).
+**Caveat on record:** the interceptor only activates on a real HTTP `ExecutionContext`, and every integration suite calls services directly, so **no test currently proves `@Audited()` writes a row**. It works in production; it is unproven in CI. An HTTP-level (supertest) harness would close this.
+
+### 🟠 Test flakiness under load — measured, not assumed
+`attachment-store.test.ts` and `hash-wasm-pin-verifier.test.ts` were reported as failing in one agent's run. Re-run in isolation and as a full suite: **418/418 pass**. Recorded as load flakiness so it is not inherited as a phantom known-failure.
 
 ### Wave 6 — QA ⬜
 - [ ] W6-00 QA lead / acceptance matrix · [ ] W6-01 E2E × 8 roles · [ ] W6-02 offline adversarial

@@ -89,46 +89,81 @@ export const id = {
     driver: 'Driver',
   },
 
-  // F-BRAND home hub (`app/page.tsx`) — role-aware post-login launchpad.
-  // Additive-only namespace; card destinations/labels/permissions still come
-  // from `lib/nav.ts` alone (this only supplies the hub's own copy and a
-  // short per-destination blurb, so it never becomes a second nav list).
+  // F-HUB-2 home hub (`app/page.tsx`) — standalone workspace CHOOSER, modeled
+  // on AIRE's live hub (owner-confirmed) but with Mimi's own 3 workspaces.
+  // Reworked from F-BRAND's card-per-destination hub, which the owner
+  // rejected as "a second nav menu, not a simplification". Card
+  // titles/hrefs/permissions still come from `lib/nav.ts` where applicable
+  // (Dasbor/Kasir) — this namespace only supplies the chooser's own chrome
+  // copy and the 3 workspace blurbs, so it can never drift into a 4th or
+  // 15th card.
   hub: {
+    overline: 'RUANG KERJA',
     greeting: 'Halo, {{name}}',
-    subtitle: 'Beranda Mimi Chicken OS',
-    chooseWork: 'Pilih tujuan Anda untuk mulai bekerja.',
-    roleAtOutlet: '{{role}} · {{outlet}}',
     // A central role (Owner/Manager/Finance/HR Admin) legitimately carries
     // an empty `locations` array — it means "not restricted to one outlet",
     // not "nobody assigned this yet" — so the empty case reads as "Semua
     // Lokasi", never as an incomplete-setup warning.
     allOutlets: 'Semua Lokasi',
     multipleOutlets: '{{count}} Lokasi',
-    primaryBadge: 'Tugas Utama Anda',
+    roleAtOutlet: '{{role}} · {{outlet}}',
+    subtitle: 'Pilih tujuan Anda untuk bekerja hari ini',
     emptyTitle: 'Belum ada akses ke modul manapun',
     emptyDescription: 'Hubungi admin untuk memberikan akses sesuai peran Anda.',
-    cardDescription: {
-      approvals: 'Tinjau dan putuskan dokumen yang menunggu persetujuan Anda.',
-      pos: 'Layani transaksi, buka/tutup kasir, dan proses pembayaran.',
-      dashboard: 'Pantau pendapatan, profit, dan performa operasional.',
-      outlet: 'Permintaan barang, stok per area, opname, waste/retur, kas kecil.',
-      driver: 'Surat jalan hari ini, checklist multi-drop, dan serah terima.',
-      warehouse: 'Stok gudang, antrean persetujuan, dan pengiriman ke outlet.',
-      delivery: 'Buat dan pantau Surat Jalan, drop, dan rantai dingin dari gudang pusat.',
-      purchasing: 'Ajukan dan pantau pembelian ke supplier.',
-      finance: 'Verifikasi pembayaran, jurnal, dan laporan keuangan.',
-      hr: 'Data pegawai, jadwal shift, absensi, cuti, dan payroll.',
-      assets: 'Daftar aset dan jadwal perawatan peralatan.',
-      me: 'Absen, slip gaji, dan pengajuan cuti Anda.',
-      admin: 'Kelola pengguna, data master, dan pengaturan sistem.',
-      topology: 'Status perangkat dan kesehatan sinkronisasi tiap outlet.',
+    workspace: {
+      dasbor: {
+        description: 'Dasbor, gudang pusat, pengiriman, pembelian, keuangan, SDM, aset, dan administrasi.',
+      },
+      kasir: {
+        description: 'Layani pesanan, terima pembayaran, dan kelola shift serta kas kecil.',
+      },
+      dokumentasi: {
+        title: 'Dokumentasi',
+        description: 'Panduan penggunaan langkah demi langkah — baca online atau unduh sebagai PDF.',
+      },
     },
+  },
+
+  // F-DOCS (BUILD-PLAN W7-03) — the "Dokumentasi" workspace: `app/docs/**`.
+  // Manual body copy itself lives in `content/docs/*.ts` (not here — that's
+  // long-form prose per role, not reusable UI chrome); this namespace is
+  // only the reader/index chrome shared across every manual.
+  docs: {
+    kicker: 'Dokumentasi',
+    title: 'Panduan Pengguna',
+    subtitle: 'Panduan langkah demi langkah untuk setiap peran — baca online, atau unduh sebagai PDF.',
+    emptyTitle: 'Belum ada manual untuk peran Anda',
+    emptyDescription: 'Hubungi admin bila menurut Anda seharusnya ada manual yang bisa diakses.',
+    minutesRead: '{{minutes}} menit baca',
+    sectionsCount: '{{count}} bagian',
+    downloadPdf: 'Unduh PDF',
+    backToAll: 'Semua Manual',
+    onThisPage: 'Di Halaman Ini',
+    prev: 'Sebelumnya',
+    next: 'Selanjutnya',
+    notFoundTitle: 'Manual tidak ditemukan',
+    notFoundDescription: 'Halaman ini tidak ada. Kembali ke daftar manual.',
+    deniedTitle: 'Manual ini bukan untuk peran Anda',
+    deniedDescription: 'Manual ini ditujukan untuk peran lain. Hubungi admin bila Anda merasa ini keliru.',
+    printKicker: 'Mimi Chicken OS · Manual Pengguna',
+    printAudience: 'Untuk: {{audience}}',
+    printFootline: 'Sistem operasional untuk gudang pusat dan jaringan outlet.',
+    printedOn: 'Dicetak {{date}}',
   },
 
   // POS (F02) — cashier tablet, offline-first (CONTRACTS §4.13, SYNC-PROTOCOL §8 rows 1-3/16-17).
   pos: {
     noLocation: 'Outlet belum ditentukan',
     notCrossVisible: 'Transaksi belum terlihat di tablet lain — akan muncul setelah tersambung kembali.',
+
+    // F-POS-2 — standalone POS top bar (`PosTopBar`/`app/pos/layout.tsx`):
+    // the compact "Cabang: X" under the brand mark, and the two reasons
+    // `PosStatusBar`'s secondary line gives for why the till is operating as
+    // that outlet (mirrors AIRE's "Operating branch: X — from your open
+    // shift", built from Mimi's own assigned-vs-chosen mechanism).
+    branchLabel: 'Cabang: {{name}}',
+    branchReasonAssigned: 'Outlet ini ditetapkan untuk akun Anda.',
+    branchReasonChosen: 'Berdasarkan outlet yang Anda pilih saat masuk.',
 
     chooseOutletTitle: 'Pilih Outlet',
     chooseOutletDescription: 'Akun Anda tidak terikat ke satu outlet. Pilih outlet yang ingin Anda layani.',
@@ -159,8 +194,19 @@ export const id = {
     shiftClosedDescription: 'Laporan shift final akan tersedia setelah tersinkron.',
     shiftCloseFailed: 'Gagal menutup kasir',
 
+    // F-POS-2 "Shift" tab (`ShiftPanel`) — the running totals already
+    // accumulated in `shift-store.ts` (`recordSale`/`recordVoid`), just
+    // surfaced permanently instead of only inside `ShiftCloseModal`.
+    shiftPanelTitle: 'Ringkasan Shift',
+    shiftPanelDescription: 'Ringkasan berjalan sejak kasir dibuka. Angka final dihitung ulang oleh sistem pusat saat tersinkron.',
+    shiftKasirLabel: 'Kasir',
+    shiftOpenedAtLabel: 'Dibuka Pukul',
+    grossSalesLabel: 'Total Penjualan (lokal)',
+    voidCountLabel: 'Jumlah Void/Refund',
+
     tabKasir: 'Kasir',
     tabOnlineOrder: 'GoFood/ShopeeFood',
+    tabShift: 'Shift',
     catalogEmptyTitle: 'Katalog produk belum tersedia',
     catalogEmptyDescription: 'Sambungkan perangkat ke internet minimal sekali untuk mengunduh katalog produk.',
     catalogOfflineNote: 'Menampilkan katalog tersimpan terakhir — belum berhasil memuat data terbaru.',
@@ -1304,6 +1350,11 @@ export const id = {
       return: 'Retur',
       recap: 'Rekap Harian',
     },
+    // Shown instead of a bare error/blank state when this account has no
+    // `warehouse`-type location (e.g. a company-wide role like Owner) — see
+    // `useWarehouseLocation()`. Distinct from `table.error`/`table.empty`:
+    // there's genuinely nothing to retry here, it's an assignment gap.
+    noLocation: 'Akun ini belum terhubung ke lokasi gudang manapun.',
     approvalQueue: {
       number: 'No. Permintaan',
       outlet: 'Outlet',

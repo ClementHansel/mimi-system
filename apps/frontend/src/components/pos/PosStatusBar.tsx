@@ -26,6 +26,13 @@ import { useConnectivityStore } from '@/stores/connectivity-store';
  * single-outlet cashier device keeps today's fixed display, but anyone who
  * chose their outlet must always be able to see and change that choice so
  * they're never confused about which outlet they're ringing sales into.
+ *
+ * F-POS-2: `onChangeLocation` being present or absent is also exactly "did
+ * this outlet come from a pick or an assignment" — the same boolean the
+ * owner asked this bar to explain in plain language (mirroring AIRE's
+ * "Operating branch: X — from your open shift" line), so `reasonKey` is
+ * derived from it rather than threaded through as a second prop that could
+ * drift out of sync with the button's own presence.
  */
 export function PosStatusBar({
   locationName,
@@ -36,12 +43,16 @@ export function PosStatusBar({
 }) {
   const { t } = useI18n();
   const tier = useConnectivityStore((s) => s.tier);
+  const reasonKey = onChangeLocation ? 'pos.branchReasonChosen' : 'pos.branchReasonAssigned';
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-raised px-4 py-2.5">
-      <span className="flex items-center gap-2 text-sm font-medium text-text-primary">
-        <Store className="size-4 text-text-muted" aria-hidden />
-        {locationName ?? t('pos.noLocation')}
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-medium text-text-primary">
+        <span className="flex items-center gap-2">
+          <Store className="size-4 text-text-muted" aria-hidden />
+          {locationName ?? t('pos.noLocation')}
+        </span>
+        {locationName && <span className="text-xs font-normal text-text-muted">{t(reasonKey)}</span>}
         {onChangeLocation && (
           <Button variant="ghost" size="sm" onClick={onChangeLocation}>
             {t('pos.changeOutlet')}

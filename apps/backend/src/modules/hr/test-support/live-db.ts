@@ -96,6 +96,59 @@ export interface RlsUser {
   locationIds?: string[];
 }
 
+/**
+ * BE-TXN-ROLLBACK: an explicit alias for `withRollbackAs` used ONLY to mark
+ * "this call is standing in for one real HTTP request" at call sites — see
+ * `stock-opname/test-support/live-db.ts`'s `asRequest` doc comment (copied
+ * verbatim in spirit here) for the full gotcha this exists to avoid.
+ *
+ * THE RULE: now that `AttendanceService.checkIn`/`checkOut`/`correct`,
+ * `EmployeesService.create`/`update`, `LeavesService.submit`/`approve`/
+ * `reject`/`cancel`, and `ShiftsService.createShift`/`updateShift`/
+ * `upsertRoster` all call `withWrite` (a REAL `BEGIN...COMMIT`), a
+ * `withRollbackAs`/`asRequest` block may contain AT MOST ONE call into a
+ * `withWrite`-wrapped method, and nothing on that same `client` may run
+ * after it — not even a plain read, and not a second mutating call chained
+ * onto the first. The `COMMIT` (or the `ROLLBACK` a thrown business
+ * exception triggers inside `withWrite`) is REAL: it ends the transaction
+ * `withRollbackAs` opened, and `SET LOCAL ROLE`/the `app.*` session GUCs
+ * revert with it (Postgres reverts ALL transaction-local state at
+ * COMMIT/ROLLBACK, not only at ROLLBACK-from-an-error). Anything run later
+ * on that SAME `client` executes with no role and no session context, and
+ * fails with `permission denied for table ...` (`mimi_app` itself has zero
+ * direct grants — every grant lives behind `app_user`). A write-then-read-
+ * back assertion is therefore always TWO calls: one `asRequest` for the
+ * mutation, a SEPARATE one for the verifying read — which is also the only
+ * shape that can catch a service that silently never commits.
+ */
+export const asRequest = withRollbackAs;
+
+/**
+ * For TEST-ONLY seed writes/mutations that must be visible to a LATER,
+ * separate `asRequest`/`withRollbackAs` connection (e.g. a multi-actor flow
+ * where step 1's row must survive for step 2 to find it) — opens its own
+ * connection, asserts the RLS context, runs `fn`, and actually `COMMIT`s
+ * (never rolls back). Use ONLY for fixture setup/state that isn't itself
+ * the behavior under test; anything that IS the behavior under test should
+ * go through the real service (and `withWrite`), not this. Any global/
+ * shared state (e.g. `settings`) written this way MUST be restored in the
+ * caller's own `finally` — it durably outlives the test, unlike everything
+ * `withRollbackAs` touches.
+ */
+export async function asCommittedRequest<T>(user: RlsUser, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await getAppPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
+    await setRlsContext(client, user);
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } finally {
+    client.release();
+  }
+}
+
 export function toJwtPayload(user: RlsUser, username = 'test-user'): JwtAccessPayload {
   return { sub: user.userId, username, roleKey: user.roleKey, locationIds: user.locationIds ?? [] };
 }
@@ -125,12 +178,26 @@ export async function loadHrFixtures(): Promise<HrFixtures> {
 
   const usersByRole: HrFixtures['usersByRole'] = {};
   for (const roleKey of Object.values(RoleKey)) {
+    // Prefer an employee AT the chosen outlet (tests that assert location scoping
+    // need that), but fall back to ANY employee holding the role.
+    //
+    // Without the fallback, every CENTRAL role — owner, manager, hr_admin,
+    // finance — resolves to `undefined`, because they are not stationed at an
+    // outlet. Callers then silently degrade to whatever role they can find:
+    // `employees.integration.spec.ts` fell through to `kasir`, which is not in
+    // the `employees_scope` RLS policy, so the test failed with "new row
+    // violates row-level security policy" and looked exactly like a product
+    // bug. It was not — employee creation works fine for hr_admin.
+    //
+    // This is the same "central roles have no location" assumption that today
+    // also broke POS (spun forever), the warehouse stock panels, and /me.
     const res = await pool.query<{ user_id: string; employee_id: string; location_id: string }>(
       `SELECT u.id AS user_id, e.id AS employee_id, e.location_id
          FROM employees e
          JOIN users u ON u.id = e.user_id
          JOIN roles r ON r.id = u.role_id
-        WHERE r.key = $1 AND e.location_id = $2
+        WHERE r.key = $1
+        ORDER BY (e.location_id = $2) DESC NULLS LAST
         LIMIT 1`,
       [roleKey, outletRow.id],
     );
@@ -221,7 +288,22 @@ export async function deleteAttendanceForDate(employeeId: string, date: string):
   return existing.rows[0];
 }
 
+/**
+ * QA-ATTENDANCE-LEAK: this helper predates BE-TXN-ROLLBACK, when NOTHING a test wrote through the
+ * service layer ever survived (`RlsCleanupInterceptor`'s blanket `ROLLBACK` discarded it for free)
+ * — so a blind `INSERT` of the snapshot `deleteAttendanceForDate` captured was always safe, because
+ * the (employee_id, date) slot it vacated could never have been refilled by anything else in the
+ * meantime. Now that `checkIn`/`checkOut` go through `withWrite` (a REAL `BEGIN...COMMIT`), a test
+ * wrapped in `withCleanSlate` genuinely commits its own row at that SAME (employee_id, date) key —
+ * so restoring the old snapshot on top of it is not a restore, it's a second row racing the unique
+ * `attendance_employee_id_date_key` constraint against the test's own write. Delete whatever is
+ * CURRENTLY sitting at this (employee_id, date) first — that is either nothing, or the calling
+ * test's own already-asserted-on row, safe to discard — then insert the snapshot. This makes the
+ * restore idempotent no matter what the wrapped test committed, instead of assuming (as the
+ * pre-BE-TXN-ROLLBACK world did) that nothing could ever be there.
+ */
 export async function restoreAttendanceRow(row: Record<string, any>): Promise<void> {
+  await getOwnerPool().query('DELETE FROM attendance WHERE employee_id = $1 AND date = $2', [row.employee_id, row.date]);
   const cols = Object.keys(row);
   const values = cols.map((c) => row[c]);
   const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');

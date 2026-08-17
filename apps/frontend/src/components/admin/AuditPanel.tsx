@@ -35,10 +35,21 @@ export function AuditPanel() {
 
   const columns: DataTableColumn<AuditRow>[] = [
     { key: 'occurredAt', header: t('admin.audit.columnWhen'), sortable: true, render: (r) => fmtDateTime(r.occurredAt) },
-    { key: 'userName', header: t('admin.audit.columnUser'), render: (r) => `${r.userName} (${roleLabel(r.roleKey)})` },
+    { key: 'userName', header: t('admin.audit.columnUser'), render: (r) => `${r.userName ?? '—'} (${roleLabel(r.roleKey)})` },
     { key: 'module', header: t('admin.audit.columnModule') },
     { key: 'action', header: t('admin.audit.columnAction') },
-    { key: 'entityType', header: t('admin.audit.columnEntity'), render: (r) => `${r.entityType} · ${r.entityId.slice(0, 8)}` },
+    {
+      key: 'entityType',
+      header: t('admin.audit.columnEntity'),
+      // `audit_log.entity_id` is NULLABLE and genuinely null in practice — of the
+      // rows on the deployed system, most carry no entity id (a login, say, has
+      // no target row). Calling `.slice()` on that null threw a TypeError during
+      // render, which React escalated into "Application error: a client-side
+      // exception has occurred" — the WHOLE Jejak Audit page went blank rather
+      // than one cell rendering oddly. Guard it, and never assume a nullable
+      // column is populated just because the happy-path row has it.
+      render: (r) => (r.entityId ? `${r.entityType} · ${r.entityId.slice(0, 8)}` : r.entityType),
+    },
     { key: 'reason', header: t('admin.audit.columnReason'), render: (r) => r.reason ?? t('admin.audit.noReason') },
     {
       key: 'offlineAuthorized', header: t('admin.audit.columnOffline'),

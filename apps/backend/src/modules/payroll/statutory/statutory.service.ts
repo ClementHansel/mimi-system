@@ -10,6 +10,7 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { getStatutoryGate } from '../payroll-settings.util';
+import { withWrite } from '../db-tx';
 import type {
   PutArticle17Dto,
   PutBpjsDto,
@@ -71,20 +72,24 @@ export class StatutoryService {
     if (!status.ready) {
       throw new BadRequestException({ code: 'ERR_STATUTORY_NOT_READY', message: 'Statutory payroll is not ready to enable', details: { missing: status.missing } });
     }
-    const enabledAt = new Date().toISOString();
-    await client.query(`UPDATE settings SET value = $1::jsonb, updated_by = $2 WHERE key = 'payroll.statutory'`, [
-      JSON.stringify({ enabled: true, enabledAt, enabledBy: actorUserId }),
-      actorUserId,
-    ]);
-    return this.getStatus(client);
+    return withWrite(client, async () => {
+      const enabledAt = new Date().toISOString();
+      await client.query(`UPDATE settings SET value = $1::jsonb, updated_by = $2 WHERE key = 'payroll.statutory'`, [
+        JSON.stringify({ enabled: true, enabledAt, enabledBy: actorUserId }),
+        actorUserId,
+      ]);
+      return this.getStatus(client);
+    });
   }
 
   async disable(client: PoolClient, actorUserId: UUID, _reason: string): Promise<StatutoryStatus> {
-    await client.query(`UPDATE settings SET value = $1::jsonb, updated_by = $2 WHERE key = 'payroll.statutory'`, [
-      JSON.stringify({ enabled: false, enabledAt: null, enabledBy: null }),
-      actorUserId,
-    ]);
-    return this.getStatus(client);
+    return withWrite(client, async () => {
+      await client.query(`UPDATE settings SET value = $1::jsonb, updated_by = $2 WHERE key = 'payroll.statutory'`, [
+        JSON.stringify({ enabled: false, enabledAt: null, enabledBy: null }),
+        actorUserId,
+      ]);
+      return this.getStatus(client);
+    });
   }
 
   // ── BPJS ─────────────────────────────────────────────────────────────────
@@ -99,16 +104,18 @@ export class StatutoryService {
   }
 
   async putBpjs(client: PoolClient, dto: PutBpjsDto) {
-    for (const row of dto.rows) {
-      await this.closeOpenWindow(client, 'bpjs_configs', { program: row.program }, row.effectiveFrom);
-      await client.query(
-        `INSERT INTO bpjs_configs (program, employer_pct, employee_pct, salary_floor, salary_cap, effective_from)
-         VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (program, effective_from) DO UPDATE SET employer_pct = EXCLUDED.employer_pct, employee_pct = EXCLUDED.employee_pct, salary_floor = EXCLUDED.salary_floor, salary_cap = EXCLUDED.salary_cap`,
-        [row.program, row.employerPct, row.employeePct, row.salaryFloor ?? null, row.salaryCap ?? null, row.effectiveFrom],
-      );
-    }
-    return this.getBpjs(client);
+    return withWrite(client, async () => {
+      for (const row of dto.rows) {
+        await this.closeOpenWindow(client, 'bpjs_configs', { program: row.program }, row.effectiveFrom);
+        await client.query(
+          `INSERT INTO bpjs_configs (program, employer_pct, employee_pct, salary_floor, salary_cap, effective_from)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (program, effective_from) DO UPDATE SET employer_pct = EXCLUDED.employer_pct, employee_pct = EXCLUDED.employee_pct, salary_floor = EXCLUDED.salary_floor, salary_cap = EXCLUDED.salary_cap`,
+          [row.program, row.employerPct, row.employeePct, row.salaryFloor ?? null, row.salaryCap ?? null, row.effectiveFrom],
+        );
+      }
+      return this.getBpjs(client);
+    });
   }
 
   // ── PPh21 TER ────────────────────────────────────────────────────────────
@@ -127,18 +134,20 @@ export class StatutoryService {
     this.assertContiguousBrackets(dto.rows.filter((r) => r.category === 'B'));
     this.assertContiguousBrackets(dto.rows.filter((r) => r.category === 'C'));
 
-    for (const category of ['A', 'B', 'C'] as const) {
-      await this.closeOpenWindow(client, 'pph21_ter_rates', { category }, dto.effectiveFrom);
-    }
-    for (const row of dto.rows) {
-      await client.query(
-        `INSERT INTO pph21_ter_rates (category, bracket_min, bracket_max, rate_pct, effective_from)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (category, bracket_min, effective_from) DO UPDATE SET bracket_max = EXCLUDED.bracket_max, rate_pct = EXCLUDED.rate_pct`,
-        [row.category, row.bracketMin, row.bracketMax ?? null, row.ratePct, dto.effectiveFrom],
-      );
-    }
-    return this.getTer(client);
+    return withWrite(client, async () => {
+      for (const category of ['A', 'B', 'C'] as const) {
+        await this.closeOpenWindow(client, 'pph21_ter_rates', { category }, dto.effectiveFrom);
+      }
+      for (const row of dto.rows) {
+        await client.query(
+          `INSERT INTO pph21_ter_rates (category, bracket_min, bracket_max, rate_pct, effective_from)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (category, bracket_min, effective_from) DO UPDATE SET bracket_max = EXCLUDED.bracket_max, rate_pct = EXCLUDED.rate_pct`,
+          [row.category, row.bracketMin, row.bracketMax ?? null, row.ratePct, dto.effectiveFrom],
+        );
+      }
+      return this.getTer(client);
+    });
   }
 
   // ── PPh21 PTKP ───────────────────────────────────────────────────────────
@@ -152,16 +161,18 @@ export class StatutoryService {
   }
 
   async putPtkp(client: PoolClient, dto: PutPtkpDto) {
-    for (const row of dto.rows) {
-      await this.closeOpenWindow(client, 'pph21_ptkp', { ptkp_code: row.ptkpCode }, dto.effectiveFrom);
-      await client.query(
-        `INSERT INTO pph21_ptkp (ptkp_code, annual_amount, ter_category, effective_from)
-         VALUES ($1,$2,$3,$4)
-         ON CONFLICT (ptkp_code, effective_from) DO UPDATE SET annual_amount = EXCLUDED.annual_amount, ter_category = EXCLUDED.ter_category`,
-        [row.ptkpCode, row.annualAmount, row.terCategory, dto.effectiveFrom],
-      );
-    }
-    return this.getPtkp(client);
+    return withWrite(client, async () => {
+      for (const row of dto.rows) {
+        await this.closeOpenWindow(client, 'pph21_ptkp', { ptkp_code: row.ptkpCode }, dto.effectiveFrom);
+        await client.query(
+          `INSERT INTO pph21_ptkp (ptkp_code, annual_amount, ter_category, effective_from)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (ptkp_code, effective_from) DO UPDATE SET annual_amount = EXCLUDED.annual_amount, ter_category = EXCLUDED.ter_category`,
+          [row.ptkpCode, row.annualAmount, row.terCategory, dto.effectiveFrom],
+        );
+      }
+      return this.getPtkp(client);
+    });
   }
 
   // ── PPh21 Article 17 ─────────────────────────────────────────────────────
@@ -176,16 +187,18 @@ export class StatutoryService {
 
   async putArticle17(client: PoolClient, dto: PutArticle17Dto) {
     this.assertContiguousBrackets(dto.rows);
-    await this.closeOpenWindow(client, 'pph21_article17_brackets', {}, dto.effectiveFrom);
-    for (const row of dto.rows) {
-      await client.query(
-        `INSERT INTO pph21_article17_brackets (bracket_min, bracket_max, rate_pct, effective_from)
-         VALUES ($1,$2,$3,$4)
-         ON CONFLICT (bracket_min, effective_from) DO UPDATE SET bracket_max = EXCLUDED.bracket_max, rate_pct = EXCLUDED.rate_pct`,
-        [row.bracketMin, row.bracketMax ?? null, row.ratePct, dto.effectiveFrom],
-      );
-    }
-    return this.getArticle17(client);
+    return withWrite(client, async () => {
+      await this.closeOpenWindow(client, 'pph21_article17_brackets', {}, dto.effectiveFrom);
+      for (const row of dto.rows) {
+        await client.query(
+          `INSERT INTO pph21_article17_brackets (bracket_min, bracket_max, rate_pct, effective_from)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (bracket_min, effective_from) DO UPDATE SET bracket_max = EXCLUDED.bracket_max, rate_pct = EXCLUDED.rate_pct`,
+          [row.bracketMin, row.bracketMax ?? null, row.ratePct, dto.effectiveFrom],
+        );
+      }
+      return this.getArticle17(client);
+    });
   }
 
   // ── employee tax profile ────────────────────────────────────────────────
@@ -200,15 +213,17 @@ export class StatutoryService {
     const ptkpRes = await client.query('SELECT 1 FROM pph21_ptkp WHERE ptkp_code = $1', [dto.ptkpCode]);
     if (ptkpRes.rows.length === 0) throw new BadRequestException({ code: ERR_VALIDATION, message: `Unknown ptkpCode '${dto.ptkpCode}'` });
 
-    await client.query(
-      `INSERT INTO employee_tax_profiles (employee_id, npwp, ptkp_code, dependants_count, bpjs_enrollments, bpjs_salary_base, updated_by)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
-       ON CONFLICT (employee_id) DO UPDATE SET npwp = EXCLUDED.npwp, ptkp_code = EXCLUDED.ptkp_code,
-         dependants_count = EXCLUDED.dependants_count, bpjs_enrollments = EXCLUDED.bpjs_enrollments,
-         bpjs_salary_base = EXCLUDED.bpjs_salary_base, updated_by = EXCLUDED.updated_by`,
-      [employeeId, dto.npwp ?? null, dto.ptkpCode, dto.dependantsCount, JSON.stringify(dto.bpjsEnrollments ?? {}), dto.bpjsSalaryBase ?? null, actorUserId],
-    );
-    return this.getTaxProfile(client, employeeId);
+    return withWrite(client, async () => {
+      await client.query(
+        `INSERT INTO employee_tax_profiles (employee_id, npwp, ptkp_code, dependants_count, bpjs_enrollments, bpjs_salary_base, updated_by)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7)
+         ON CONFLICT (employee_id) DO UPDATE SET npwp = EXCLUDED.npwp, ptkp_code = EXCLUDED.ptkp_code,
+           dependants_count = EXCLUDED.dependants_count, bpjs_enrollments = EXCLUDED.bpjs_enrollments,
+           bpjs_salary_base = EXCLUDED.bpjs_salary_base, updated_by = EXCLUDED.updated_by`,
+        [employeeId, dto.npwp ?? null, dto.ptkpCode, dto.dependantsCount, JSON.stringify(dto.bpjsEnrollments ?? {}), dto.bpjsSalaryBase ?? null, actorUserId],
+      );
+      return this.getTaxProfile(client, employeeId);
+    });
   }
 
   // ── calculation input assembly (consumed by RunsService) ─────────────────

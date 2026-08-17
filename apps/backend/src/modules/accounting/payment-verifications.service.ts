@@ -17,6 +17,7 @@ import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { EventBus } from '../../kernel/events/event-bus.service';
 import type { CreatePaymentDto, ListPaymentsQueryDto, PayPaymentDto } from './dto/accounting.dto';
 import { extractPvKind, PV_KIND_MARKER, type PaymentVerificationRow } from './accounting.types';
+import { withWrite } from './db-tx';
 
 const PV_SELECT = `
   SELECT pv.id, pv.pv_number, pv.ref_type, pv.ref_id, pv.reference_number AS ref_number, pv.payee_type, pv.payee_id,
@@ -109,25 +110,28 @@ export class PaymentVerificationsService {
 
   async create(client: PoolClient, actor: PaymentActor, dto: CreatePaymentDto): Promise<PaymentVerification> {
     this.assertScope(actor, dto.locationId ?? null);
-    const pvNumber = await this.nextPvNumber(client);
 
-    // The read-back (building the response row via `PV_SELECT`'s JOINs) must ALSO happen escalated,
-    // not after restoring `actor`'s own session — `payment_verifications_role`'s RLS is central-role-
-    // only for SELECT too, so a genuinely scoped caller (Kasir) could insert successfully and then
-    // immediately fail to read the very row it just created. Found live by this module's own
-    // integration test, which is exactly why it runs under a real `kasir` session rather than `owner`.
-    return this.escalatedInsert(client, actor, async () => {
-      const res = await client.query<{ id: UUID }>(
-        `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, proof_attachment_id, reference_number, submitted_by, location_id, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-         RETURNING id`,
-        [pvNumber, dto.refType, dto.refId ?? null, dto.payeeType, dto.payeeId ?? null, dto.amount, dto.proofAttachmentId ?? null, dto.referenceNumber ?? null, actor.userId, dto.locationId ?? null, dto.notes ?? null],
-      );
-      // NOTE: no sync event here — `@mimi/sync-protocol`'s registry (`schema/registry.ts`) defines only
-      // three wire ops for `payment_verifications`: 'verified', 'paid', 'rejected' ("pull-only: no
-      // device push op exists at all" per that package's own authority-matrix test). Creation is a
-      // cloud-only fact a device never needs pushed back to it — matches the vocabulary exactly.
-      return this.getOne(client, res.rows[0]!.id);
+    return withWrite(client, async () => {
+      const pvNumber = await this.nextPvNumber(client);
+
+      // The read-back (building the response row via `PV_SELECT`'s JOINs) must ALSO happen escalated,
+      // not after restoring `actor`'s own session — `payment_verifications_role`'s RLS is central-role-
+      // only for SELECT too, so a genuinely scoped caller (Kasir) could insert successfully and then
+      // immediately fail to read the very row it just created. Found live by this module's own
+      // integration test, which is exactly why it runs under a real `kasir` session rather than `owner`.
+      return this.escalatedInsert(client, actor, async () => {
+        const res = await client.query<{ id: UUID }>(
+          `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, proof_attachment_id, reference_number, submitted_by, location_id, notes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           RETURNING id`,
+          [pvNumber, dto.refType, dto.refId ?? null, dto.payeeType, dto.payeeId ?? null, dto.amount, dto.proofAttachmentId ?? null, dto.referenceNumber ?? null, actor.userId, dto.locationId ?? null, dto.notes ?? null],
+        );
+        // NOTE: no sync event here — `@mimi/sync-protocol`'s registry (`schema/registry.ts`) defines only
+        // three wire ops for `payment_verifications`: 'verified', 'paid', 'rejected' ("pull-only: no
+        // device push op exists at all" per that package's own authority-matrix test). Creation is a
+        // cloud-only fact a device never needs pushed back to it — matches the vocabulary exactly.
+        return this.getOne(client, res.rows[0]!.id);
+      });
     });
   }
 
@@ -194,10 +198,12 @@ export class PaymentVerificationsService {
     if (row.status !== 'pending') {
       throw new ConflictException({ code: ERR_CONFLICT, message: `PV ${row.pv_number} is '${row.status}' — proof can only be attached while pending` });
     }
-    await client.query(`UPDATE payment_verifications SET proof_attachment_id = $2, reference_number = COALESCE($3, reference_number), updated_at = NOW() WHERE id = $1`, [id, proofAttachmentId, referenceNumber ?? null]);
-    // No wire op for 'proof_uploaded' either (see `create()`'s note) — the eventual 'verified' emit is
-    // the first point in this ladder a device-facing subscriber needs to hear about.
-    return this.getOne(client, id);
+    return withWrite(client, async () => {
+      await client.query(`UPDATE payment_verifications SET proof_attachment_id = $2, reference_number = COALESCE($3, reference_number), updated_at = NOW() WHERE id = $1`, [id, proofAttachmentId, referenceNumber ?? null]);
+      // No wire op for 'proof_uploaded' either (see `create()`'s note) — the eventual 'verified' emit is
+      // the first point in this ladder a device-facing subscriber needs to hear about.
+      return this.getOne(client, id);
+    });
   }
 
   /** FR-ACCT-02/03 — requires proof attached (`ERR_PROOF_REQUIRED`). */
@@ -209,13 +215,15 @@ export class PaymentVerificationsService {
     if (!row.proof_attachment_id) {
       throw new BadRequestException({ code: ERR_PROOF_REQUIRED, message: `PV ${row.pv_number} has no proof attachment — upload one before verifying` });
     }
-    const verifiedAt = new Date().toISOString();
-    await client.query(`UPDATE payment_verifications SET status = 'verified', verified_by = $2, verified_at = $3 WHERE id = $1`, [id, actor.userId, verifiedAt]);
-    await this.sync.emit(client, {
-      entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'verified', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
-      data: { verifiedBy: actor.userId, verifiedAt },
+    return withWrite(client, async () => {
+      const verifiedAt = new Date().toISOString();
+      await client.query(`UPDATE payment_verifications SET status = 'verified', verified_by = $2, verified_at = $3 WHERE id = $1`, [id, actor.userId, verifiedAt]);
+      await this.sync.emit(client, {
+        entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'verified', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
+        data: { verifiedBy: actor.userId, verifiedAt },
+      });
+      return this.getOne(client, id);
     });
-    return this.getOne(client, id);
   }
 
   /**
@@ -230,15 +238,17 @@ export class PaymentVerificationsService {
     if (row.status !== 'verified') {
       throw new ConflictException({ code: ERR_CONFLICT, message: `PV ${row.pv_number} is '${row.status}', not 'verified'` });
     }
-    const paidAt = dto.paidAt ?? new Date().toISOString();
-    await client.query(`UPDATE payment_verifications SET status = 'paid', paid_by = $2, paid_at = $3, paid_via = $4 WHERE id = $1`, [id, actor.userId, paidAt, dto.paidVia]);
-    await this.sync.emit(client, {
-      entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'paid', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
-      data: { paidBy: actor.userId, paidAt, paidVia: dto.paidVia },
-    });
+    return withWrite(client, async () => {
+      const paidAt = dto.paidAt ?? new Date().toISOString();
+      await client.query(`UPDATE payment_verifications SET status = 'paid', paid_by = $2, paid_at = $3, paid_via = $4 WHERE id = $1`, [id, actor.userId, paidAt, dto.paidVia]);
+      await this.sync.emit(client, {
+        entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'paid', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
+        data: { paidBy: actor.userId, paidAt, paidVia: dto.paidVia },
+      });
 
-    await this.publishPaymentJournal(row, dto.paidVia, paidAt);
-    return this.getOne(client, id);
+      await this.publishPaymentJournal(row, dto.paidVia, paidAt);
+      return this.getOne(client, id);
+    });
   }
 
   async reject(client: PoolClient, actor: PaymentActor, id: UUID, reason: string): Promise<PaymentVerification> {
@@ -246,12 +256,14 @@ export class PaymentVerificationsService {
     if (row.status === 'paid' || row.status === 'rejected') {
       throw new ConflictException({ code: ERR_CONFLICT, message: `PV ${row.pv_number} is '${row.status}' — cannot reject` });
     }
-    await client.query(`UPDATE payment_verifications SET status = 'rejected', rejection_reason = $2 WHERE id = $1`, [id, reason]);
-    await this.sync.emit(client, {
-      entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'rejected', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
-      data: { reason },
+    return withWrite(client, async () => {
+      await client.query(`UPDATE payment_verifications SET status = 'rejected', rejection_reason = $2 WHERE id = $1`, [id, reason]);
+      await this.sync.emit(client, {
+        entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'rejected', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
+        data: { reason },
+      });
+      return this.getOne(client, id);
     });
-    return this.getOne(client, id);
   }
 
   // ── internals ────────────────────────────────────────────────────────────

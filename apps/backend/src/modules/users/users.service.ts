@@ -23,6 +23,7 @@ import {
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { UsersRepository, type UsersListFilter } from './users.repository';
 import type { AssignLocationsDto, AssignRoleDto, CreateUserDto, ListUsersQueryDto, ResetPasswordDto, UpdateUserDto } from './users.dto';
+import { withWrite } from './db-tx';
 
 const PASSWORD_BCRYPT_ROUNDS = 10;
 
@@ -60,38 +61,42 @@ export class UsersService {
     const role = await this.repo.findRoleByKey(client, dto.roleKey);
     if (!role) throw new BadRequestException({ code: ERR_VALIDATION, message: `unknown role '${dto.roleKey}'` });
 
-    const passwordHash = await bcryptHash(dto.password, PASSWORD_BCRYPT_ROUNDS);
-    const userId = await this.repo.insertUser(client, {
-      username: dto.username,
-      name: dto.name,
-      email: dto.email ?? null,
-      phone: dto.phone ?? null,
-      passwordHash,
-      roleId: role.id,
-    });
-    await this.repo.setLocations(client, userId, dto.locationIds, []);
-
-    await this.emitUsersEvent(client, 'created', userId, caller.sub, dto.locationIds);
-    for (const locationId of dto.locationIds) {
-      await this.syncEmit.emit(client, {
-        entity: SyncEntity.USER_LOCATIONS,
-        op: 'assigned',
-        entityId: userId,
-        locationId,
-        actorUserId: caller.sub,
-        data: { userId, locationId },
+    return withWrite(client, async () => {
+      const passwordHash = await bcryptHash(dto.password, PASSWORD_BCRYPT_ROUNDS);
+      const userId = await this.repo.insertUser(client, {
+        username: dto.username,
+        name: dto.name,
+        email: dto.email ?? null,
+        phone: dto.phone ?? null,
+        passwordHash,
+        roleId: role.id,
       });
-    }
+      await this.repo.setLocations(client, userId, dto.locationIds, []);
 
-    return this.getOne(userId, client);
+      await this.emitUsersEvent(client, 'created', userId, caller.sub, dto.locationIds);
+      for (const locationId of dto.locationIds) {
+        await this.syncEmit.emit(client, {
+          entity: SyncEntity.USER_LOCATIONS,
+          op: 'assigned',
+          entityId: userId,
+          locationId,
+          actorUserId: caller.sub,
+          data: { userId, locationId },
+        });
+      }
+
+      return this.getOne(userId, client);
+    });
   }
 
   async update(id: string, dto: UpdateUserDto, caller: { sub: string }, client: PoolClient): Promise<UserRow> {
     await this.assertExists(id, client);
-    await this.repo.updateProfile(client, id, dto);
-    const locationIds = await this.repo.currentLocationIds(client, id);
-    await this.emitUsersEvent(client, 'updated', id, caller.sub, locationIds);
-    return this.getOne(id, client);
+    return withWrite(client, async () => {
+      await this.repo.updateProfile(client, id, dto);
+      const locationIds = await this.repo.currentLocationIds(client, id);
+      await this.emitUsersEvent(client, 'updated', id, caller.sub, locationIds);
+      return this.getOne(id, client);
+    });
   }
 
   /** "cannot assign a role ranked ≥ caller's" (CONTRACTS.md §4.2) — `ROLE_RANK` (`@mimi/shared`), higher number = broader authority. */
@@ -102,10 +107,12 @@ export class UsersService {
     const role = await this.repo.findRoleByKey(client, dto.roleKey);
     if (!role) throw new BadRequestException({ code: ERR_VALIDATION, message: `unknown role '${dto.roleKey}'` });
 
-    await this.repo.updateRole(client, id, role.id);
-    const locationIds = await this.repo.currentLocationIds(client, id);
-    await this.emitUsersEvent(client, 'updated', id, caller.sub, locationIds);
-    return this.getOne(id, client);
+    return withWrite(client, async () => {
+      await this.repo.updateRole(client, id, role.id);
+      const locationIds = await this.repo.currentLocationIds(client, id);
+      await this.emitUsersEvent(client, 'updated', id, caller.sub, locationIds);
+      return this.getOne(id, client);
+    });
   }
 
   async assignLocations(id: string, dto: AssignLocationsDto, caller: { sub: string }, client: PoolClient): Promise<UserRow> {
@@ -115,50 +122,56 @@ export class UsersService {
     const add = dto.locationIds.filter((locId) => !before.has(locId));
     const remove = [...before].filter((locId) => !after.has(locId));
 
-    await this.repo.setLocations(client, id, add, remove);
+    return withWrite(client, async () => {
+      await this.repo.setLocations(client, id, add, remove);
 
-    for (const locationId of add) {
-      await this.syncEmit.emit(client, {
-        entity: SyncEntity.USER_LOCATIONS,
-        op: 'assigned',
-        entityId: id,
-        locationId,
-        actorUserId: caller.sub,
-        data: { userId: id, locationId },
-      });
-    }
-    for (const locationId of remove) {
-      await this.syncEmit.emit(client, {
-        entity: SyncEntity.USER_LOCATIONS,
-        op: 'revoked',
-        entityId: id,
-        locationId,
-        actorUserId: caller.sub,
-        data: { userId: id, locationId },
-      });
-    }
+      for (const locationId of add) {
+        await this.syncEmit.emit(client, {
+          entity: SyncEntity.USER_LOCATIONS,
+          op: 'assigned',
+          entityId: id,
+          locationId,
+          actorUserId: caller.sub,
+          data: { userId: id, locationId },
+        });
+      }
+      for (const locationId of remove) {
+        await this.syncEmit.emit(client, {
+          entity: SyncEntity.USER_LOCATIONS,
+          op: 'revoked',
+          entityId: id,
+          locationId,
+          actorUserId: caller.sub,
+          data: { userId: id, locationId },
+        });
+      }
 
-    return this.getOne(id, client);
+      return this.getOne(id, client);
+    });
   }
 
   async resetPassword(id: string, dto: ResetPasswordDto, client: PoolClient): Promise<{ ok: true }> {
     await this.assertExists(id, client);
-    const passwordHash = await bcryptHash(dto.newPassword, PASSWORD_BCRYPT_ROUNDS);
-    await this.repo.updatePasswordHash(client, id, passwordHash);
-    // Password hash is never part of any device pull projection (§3.2) — no
-    // sync event needed. Revoking sessions is the actual security action.
-    await this.repo.revokeAllSessions(client, id);
-    return { ok: true };
+    return withWrite(client, async () => {
+      const passwordHash = await bcryptHash(dto.newPassword, PASSWORD_BCRYPT_ROUNDS);
+      await this.repo.updatePasswordHash(client, id, passwordHash);
+      // Password hash is never part of any device pull projection (§3.2) — no
+      // sync event needed. Revoking sessions is the actual security action.
+      await this.repo.revokeAllSessions(client, id);
+      return { ok: true };
+    });
   }
 
   async deactivate(id: string, caller: { sub: string }, client: PoolClient): Promise<{ id: string; deactivated: true }> {
     await this.assertExists(id, client);
-    const locationIds = await this.repo.currentLocationIds(client, id);
-    await this.repo.deactivate(client, id);
-    await this.repo.revokeAllSessions(client, id);
-    await this.repo.revokeAllOfflineCredentials(client, id);
-    await this.emitUsersEvent(client, 'deactivated', id, caller.sub, locationIds);
-    return { id, deactivated: true };
+    return withWrite(client, async () => {
+      const locationIds = await this.repo.currentLocationIds(client, id);
+      await this.repo.deactivate(client, id);
+      await this.repo.revokeAllSessions(client, id);
+      await this.repo.revokeAllOfflineCredentials(client, id);
+      await this.emitUsersEvent(client, 'deactivated', id, caller.sub, locationIds);
+      return { id, deactivated: true };
+    });
   }
 
   async listRoles(client: PoolClient): Promise<{ key: string; name: string; permissions: string[] }[]> {

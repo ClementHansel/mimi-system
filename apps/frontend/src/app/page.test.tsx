@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import HomePage from './page';
 import { useSessionStore, type SessionUser } from '@/stores/session-store';
+
+const replace = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ replace, push: vi.fn() }) }));
 
 function setUser(overrides: Partial<SessionUser>) {
   useSessionStore.setState({
@@ -22,86 +25,91 @@ function setUser(overrides: Partial<SessionUser>) {
 }
 
 /**
- * F-BRAND — the home hub is the one place every role lands after login, so
- * its permission gating IS the security-relevant behaviour under test here
- * (a hidden card is only a UX nicety; the real RBAC boundary is still the
- * server, per `usePermissions`'s own doc comment — but a cashier seeing an
- * Admin/HR/Finance card at all would be a bad UX regression worth a test).
- * Uses real `lib/nav.ts` + `usePermissions` rather than a mock, so this
- * fails the moment the hub's filtering drifts from the sidebar's.
+ * F-HUB-2 — the home hub is now a standalone WORKSPACE CHOOSER with exactly
+ * 3 possible cards (Dasbor / Kasir / Dokumentasi), each gated live off
+ * `lib/nav.ts` + `usePermissions` rather than a hand-listed permission set —
+ * so this, like the F-BRAND version it replaces, uses the real `lib/nav.ts`
+ * + `usePermissions` (no mock) and fails the moment the hub's gating drifts
+ * from the sidebar's. The single-workspace auto-redirect is the new
+ * security/UX-relevant behaviour under test: a typical Kasir must never see
+ * a Dasbor card, and must never see a pointless one-card chooser either —
+ * they land straight in POS.
  */
-describe('HomePage (home hub)', () => {
+describe('HomePage (home hub — workspace chooser)', () => {
   beforeEach(() => {
     useSessionStore.setState({ accessToken: null, refreshToken: null, user: null });
+    replace.mockClear();
   });
 
-  it('shows a Kasir essentially one enormous POS target — no back-office destinations', () => {
-    setUser({
-      roleKey: 'kasir',
-      permissions: ['pos.catalog.read', 'payroll.slip.read.own'],
-    });
-    render(<HomePage />);
-
-    // POS is the role's landing route -> promoted to the hero card.
-    expect(screen.getByText('Kasir (POS)')).toBeInTheDocument();
-    // Only "Akun Saya" remains as a secondary card.
-    expect(screen.getByText('Akun Saya')).toBeInTheDocument();
-
-    // Admin/HR/Finance/Warehouse/Purchasing/Topology must NOT be reachable.
-    expect(screen.queryByText('Administrasi')).not.toBeInTheDocument();
-    expect(screen.queryByText('SDM & Absensi')).not.toBeInTheDocument();
-    expect(screen.queryByText('Keuangan')).not.toBeInTheDocument();
-    expect(screen.queryByText('Gudang Pusat')).not.toBeInTheDocument();
-    expect(screen.queryByText('Pembelian')).not.toBeInTheDocument();
-    expect(screen.queryByText('Topologi Perangkat')).not.toBeInTheDocument();
-    expect(screen.queryByText('Persetujuan Saya')).not.toBeInTheDocument();
-  });
-
-  it("links the Kasir's hero card straight to /pos", () => {
+  it('sends a typical Kasir straight to /pos — no Dasbor card, no one-card chooser flash', () => {
     setUser({ roleKey: 'kasir', permissions: ['pos.catalog.read', 'payroll.slip.read.own'] });
-    render(<HomePage />);
-    expect(screen.getByRole('link', { name: /Kasir \(POS\)/ })).toHaveAttribute('href', '/pos');
+    const { container } = render(<HomePage />);
+
+    expect(replace).toHaveBeenCalledWith('/pos');
+    // Redirect fires synchronously off render-computed state — nothing (no
+    // Dasbor card, no chooser at all) should have painted first.
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it('gives an Owner the full set, with Dasbor as the primary hero', () => {
+  it('sends a single-workspace Dasbor role (no POS access) straight there too', () => {
+    // Kepala Gudang: only warehouse access, no POS, no "Akun Saya" — Dasbor
+    // is the only workspace, so this exercises the OTHER redirect branch.
+    setUser({ roleKey: 'kepala_gudang', permissions: ['delivery.read'] });
+    render(<HomePage />);
+    expect(replace).toHaveBeenCalledWith('/warehouse');
+  });
+
+  it('gives an Owner (Dasbor AND Kasir both reachable) the full 3-card chooser, unredirected', () => {
     setUser({
       roleKey: 'owner',
       permissions: [
         'dashboard.view', 'pos.catalog.read', 'user.read', 'audit.read', 'settings.manage',
         'hr.employee.read', 'payment.read', 'delivery.read', 'purchasing.read',
         'payroll.slip.read.own', 'asset.read', 'topology.read',
-        'replenishment.approve.supervisor', 'opname.approve', 'return.approve',
-        'purchasing.pr.approve', 'purchasing.po.approve', 'pos.void.approve',
-        'payroll.run.approve', 'payroll.loan.approve', 'hr.leave.approve', 'payment.verify',
       ],
-    });
-    render(<HomePage />);
-
-    // Dashboard is Owner's landing route -> hero, so it shouldn't also
-    // appear a second time as a secondary card.
-    const dashboardMatches = screen.getAllByText('Dasbor');
-    expect(dashboardMatches).toHaveLength(1);
-
-    expect(screen.getByText('Administrasi')).toBeInTheDocument();
-    expect(screen.getByText('SDM & Absensi')).toBeInTheDocument();
-    expect(screen.getByText('Persetujuan Saya')).toBeInTheDocument();
-  });
-
-  it('shows the signed-in user, role, and outlet', () => {
-    setUser({
       name: 'Siti Rahma',
-      roleKey: 'kasir',
-      permissions: ['pos.catalog.read', 'payroll.slip.read.own'],
       locations: [{ id: 'l1', code: 'LJN', name: 'Outlet Loa Janan', type: 'outlet', city: 'Samarinda' }],
     });
     render(<HomePage />);
 
+    expect(replace).not.toHaveBeenCalled();
+
+    // Exactly 3 cards: Dasbor, Kasir (POS), Dokumentasi — nothing per
+    // sidebar-destination anymore (that was the rejected F-BRAND model).
+    expect(screen.getByRole('link', { name: /Dasbor/ })).toHaveAttribute('href', '/dashboard');
+    expect(screen.getByRole('link', { name: /Kasir \(POS\)/ })).toHaveAttribute('href', '/pos');
+    expect(screen.getByRole('link', { name: /Dokumentasi/ })).toHaveAttribute('href', '/docs');
+    expect(screen.getAllByRole('link')).toHaveLength(3);
+
+    // Greeting/role/outlet still shown, same as the previous hub.
     expect(screen.getByText(/Halo, Siti/)).toBeInTheDocument();
-    expect(screen.getByText(/Kasir · Outlet Loa Janan/)).toBeInTheDocument();
+    expect(screen.getByText(/Pemilik · Outlet Loa Janan/)).toBeInTheDocument();
+  });
+
+  it('treats an empty locations array as "Semua Lokasi", not an error', () => {
+    setUser({
+      roleKey: 'owner',
+      permissions: ['dashboard.view', 'pos.catalog.read'],
+      locations: [],
+    });
+    render(<HomePage />);
+    expect(screen.getByText(/Pemilik · Semua Lokasi/)).toBeInTheDocument();
+  });
+
+  it('always offers Dokumentasi, even for a zero-permission account with no other workspace', () => {
+    setUser({ roleKey: 'kasir', permissions: [] });
+    render(<HomePage />);
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: /Dokumentasi/ })).toHaveAttribute('href', '/docs');
+    expect(screen.getByText('Belum ada akses ke modul manapun')).toBeInTheDocument();
+    expect(screen.queryByText('Dasbor')).not.toBeInTheDocument();
+    expect(screen.queryByText('Kasir (POS)')).not.toBeInTheDocument();
   });
 
   it('renders nothing before the session user is available', () => {
     const { container } = render(<HomePage />);
     expect(container).toBeEmptyDOMElement();
+    expect(replace).not.toHaveBeenCalled();
   });
 });

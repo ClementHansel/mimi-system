@@ -179,3 +179,71 @@ export async function setSettingValue(client: PoolClient, key: string, value: un
 export async function resetSettingValue(key: string, value: unknown): Promise<void> {
   await getOwnerPool().query(`UPDATE settings SET value = $2::jsonb, updated_by = NULL WHERE key = $1`, [key, JSON.stringify(value)]);
 }
+
+/**
+ * BE-TXN-ROLLBACK: an explicit alias for `withRollback` used ONLY to mark
+ * "this call is standing in for one real HTTP request" at call sites in
+ * `settings`/`statutory`/`users` integration specs — mechanically identical
+ * (own connection, `BEGIN` + `SET LOCAL ROLE` + session GUCs, run `fn`,
+ * always `ROLLBACK` + release on the way out, exactly `RlsContextGuard` +
+ * `RlsCleanupInterceptor`'s own lifecycle).
+ *
+ * THE GOTCHA THAT MATTERS (read before writing a multi-step live-DB test
+ * against `settings`/`statutory`/`users`): once a service method correctly
+ * wraps its writes in `withWrite` (`BEGIN` — a no-op on an already-open
+ * transaction — ... `COMMIT`), that `COMMIT` is REAL: it ends the
+ * transaction `withRollback` opened, and `SET LOCAL ROLE`/the `app.*` session
+ * GUCs revert with it (Postgres reverts ALL transaction-local state at
+ * COMMIT, not only at ROLLBACK). Anything run later on that SAME `client` —
+ * even a plain read — executes with no role and no session context, and
+ * fails with `permission denied for table ...` (`mimi_app` itself has zero
+ * direct grants; every grant lives behind `app_user`).
+ *
+ * THE RULE: an `asRequest`/`withRollback` block may contain AT MOST ONE call
+ * into a `withWrite`-wrapped service method, and nothing on that same
+ * `client` may run after it (not even a read) — matching `waste-return`'s
+ * established convention ("each step of a flow opens its OWN
+ * `withRollbackAs`", see that module's integration spec header) and
+ * `stock-opname/test-support/live-db.ts`'s identical doc comment. A
+ * write-then-read-back assertion is therefore always TWO calls: one
+ * `asRequest`/`withRollback` for the mutation, a SEPARATE one for the
+ * verifying read.
+ *
+ * Data written this way is a REAL commit — like production, it survives this
+ * process's own `ROLLBACK` (there is nothing left to roll back by the time
+ * it runs). Tests using this rely on the standing `pnpm --filter
+ * @mimi/database reset` between runs, same as every other live-DB write path
+ * in this repo — any test committing non-settings domain rows (e.g.
+ * statutory brackets) MUST clean up its own rows via the owner pool in a
+ * `finally` block, and any test committing a shared settings row MUST
+ * restore the original value in a `finally` block (see this ticket's
+ * SETTINGS-LEAK warning).
+ */
+export const asRequest = withRollback;
+
+/**
+ * For TEST-ONLY seed writes that must be visible to a LATER, separate
+ * `asRequest`/`withRollback` connection — opens its own connection, asserts
+ * context, runs `fn`, and actually `COMMIT`s (never rolls back). Use ONLY for
+ * fixture setup that isn't itself the behavior under test; anything that IS
+ * the behavior under test should go through the real service (and
+ * `withWrite`), not this.
+ */
+export async function asCommittedRequest<T>(
+  fn: (client: PoolClient) => Promise<T>,
+  ctx: { userId?: string; roleKey?: string; locationIds?: string[] } = {},
+): Promise<T> {
+  const client = await getAppPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId ?? SYSTEM_SENTINEL_USER_ID]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.roleKey ?? SYSTEM_CENTRAL_ROLE]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [(ctx.locationIds ?? []).join(',')]);
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } finally {
+    client.release();
+  }
+}

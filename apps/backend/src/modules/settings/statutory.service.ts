@@ -45,6 +45,7 @@ export interface TaxProfile {
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { SettingsRepository } from './settings.repository';
 import { StatutoryRepository } from './statutory.repository';
+import { withWrite } from './db-tx';
 import { validateContiguousBrackets } from './statutory-bracket.util';
 import type {
   BpjsRowDto,
@@ -107,10 +108,12 @@ export class StatutoryService {
   }
 
   async putBpjs(dto: PutBpjsDto, client: PoolClient) {
-    for (const row of dto.rows) {
-      await this.upsertOneBpjsRow(row, client);
-    }
-    return this.listBpjs(client);
+    return withWrite(client, async () => {
+      for (const row of dto.rows) {
+        await this.upsertOneBpjsRow(row, client);
+      }
+      return this.listBpjs(client);
+    });
   }
 
   private async upsertOneBpjsRow(row: BpjsRowDto, client: PoolClient): Promise<void> {
@@ -164,13 +167,15 @@ export class StatutoryService {
       });
     }
 
-    await this.repo.closeOpenTer(client, dto.effectiveFrom);
-    await this.repo.insertTerRows(
-      client,
-      dto.effectiveFrom,
-      dto.rows.map((r) => ({ category: r.category, bracketMin: r.bracketMin, bracketMax: r.bracketMax ?? null, ratePct: r.ratePct })),
-    );
-    return this.listTer(client);
+    return withWrite(client, async () => {
+      await this.repo.closeOpenTer(client, dto.effectiveFrom);
+      await this.repo.insertTerRows(
+        client,
+        dto.effectiveFrom,
+        dto.rows.map((r) => ({ category: r.category, bracketMin: r.bracketMin, bracketMax: r.bracketMax ?? null, ratePct: r.ratePct })),
+      );
+      return this.listTer(client);
+    });
   }
 
   private validateTerBrackets(rows: TerRowDto[]): void {
@@ -218,9 +223,11 @@ export class StatutoryService {
       throw new BadRequestException({ code: ERR_VALIDATION, message: `duplicate ptkpCode(s) in one PUT: ${[...new Set(dupes.map((d) => d.ptkpCode))].join(', ')}` });
     }
 
-    await this.repo.closeOpenPtkp(client, dto.effectiveFrom);
-    await this.repo.insertPtkpRows(client, dto.effectiveFrom, dto.rows);
-    return this.listPtkp(client);
+    return withWrite(client, async () => {
+      await this.repo.closeOpenPtkp(client, dto.effectiveFrom);
+      await this.repo.insertPtkpRows(client, dto.effectiveFrom, dto.rows);
+      return this.listPtkp(client);
+    });
   }
 
   // ── PPh21 Article 17 ─────────────────────────────────────────────────────
@@ -251,13 +258,15 @@ export class StatutoryService {
       });
     }
 
-    await this.repo.closeOpenArticle17(client, dto.effectiveFrom);
-    await this.repo.insertArticle17Rows(
-      client,
-      dto.effectiveFrom,
-      dto.rows.map((r) => ({ bracketMin: r.bracketMin, bracketMax: r.bracketMax ?? null, ratePct: r.ratePct })),
-    );
-    return this.listArticle17(client);
+    return withWrite(client, async () => {
+      await this.repo.closeOpenArticle17(client, dto.effectiveFrom);
+      await this.repo.insertArticle17Rows(
+        client,
+        dto.effectiveFrom,
+        dto.rows.map((r) => ({ bracketMin: r.bracketMin, bracketMax: r.bracketMax ?? null, ratePct: r.ratePct })),
+      );
+      return this.listArticle17(client);
+    });
   }
 
   // ── Employee tax profile ─────────────────────────────────────────────────
@@ -277,15 +286,17 @@ export class StatutoryService {
     if (!(await this.repo.ptkpCodeIsValid(client, dto.ptkpCode))) {
       throw new BadRequestException({ code: ERR_VALIDATION, message: `ptkpCode '${dto.ptkpCode}' is not a currently effective PTKP code` });
     }
-    await this.repo.upsertTaxProfile(client, employeeId, {
-      npwp: dto.npwp ?? null,
-      ptkpCode: dto.ptkpCode,
-      dependantsCount: dto.dependantsCount,
-      bpjsEnrollments: dto.bpjsEnrollments ?? {},
-      bpjsSalaryBase: (dto.bpjsSalaryBase as Money | undefined) ?? null,
-      updatedBy: caller.sub,
+    return withWrite(client, async () => {
+      await this.repo.upsertTaxProfile(client, employeeId, {
+        npwp: dto.npwp ?? null,
+        ptkpCode: dto.ptkpCode,
+        dependantsCount: dto.dependantsCount,
+        bpjsEnrollments: dto.bpjsEnrollments ?? {},
+        bpjsSalaryBase: (dto.bpjsSalaryBase as Money | undefined) ?? null,
+        updatedBy: caller.sub,
+      });
+      return this.getTaxProfile(employeeId, client);
     });
-    return this.getTaxProfile(employeeId, client);
   }
 
   // ── enable / disable (the gate) ─────────────────────────────────────────
@@ -298,17 +309,21 @@ export class StatutoryService {
     if (!current.ready) {
       throw new BadRequestException({ code: ERR_STATUTORY_NOT_READY, message: 'Statutory payroll setup is not complete', details: { missing: current.missing } });
     }
-    const value = { enabled: true, enabledAt: new Date().toISOString(), enabledBy: caller.sub };
-    await this.settingsRepo.updateValue(client, 'payroll.statutory', value, caller.sub);
-    await this.emitSettingsUpdated('payroll.statutory', value, caller.sub, client);
-    return this.status(client);
+    return withWrite(client, async () => {
+      const value = { enabled: true, enabledAt: new Date().toISOString(), enabledBy: caller.sub };
+      await this.settingsRepo.updateValue(client, 'payroll.statutory', value, caller.sub);
+      await this.emitSettingsUpdated('payroll.statutory', value, caller.sub, client);
+      return this.status(client);
+    });
   }
 
   async disable(dto: DisableStatutoryDto, caller: { sub: string }, client: PoolClient): Promise<StatutoryStatus> {
-    const value = { enabled: false, enabledAt: null, enabledBy: null, disabledReason: dto.reason };
-    await this.settingsRepo.updateValue(client, 'payroll.statutory', value, caller.sub);
-    await this.emitSettingsUpdated('payroll.statutory', value, caller.sub, client);
-    return this.status(client);
+    return withWrite(client, async () => {
+      const value = { enabled: false, enabledAt: null, enabledBy: null, disabledReason: dto.reason };
+      await this.settingsRepo.updateValue(client, 'payroll.statutory', value, caller.sub);
+      await this.emitSettingsUpdated('payroll.statutory', value, caller.sub, client);
+      return this.status(client);
+    });
   }
 
   private async emitSettingsUpdated(key: string, value: unknown, actorUserId: string, client: PoolClient): Promise<void> {

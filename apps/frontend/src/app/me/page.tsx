@@ -2,7 +2,7 @@
 
 import { QrCode, FileText, CalendarPlus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Tabs, TabsList, TabsTrigger, TabsContent, OfflineBanner } from '@/components/ui';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
 import { AbsenPanel } from '@/components/me/AbsenPanel';
 import { SlipGajiPanel } from '@/components/me/SlipGajiPanel';
 import { CutiPanel } from '@/components/me/CutiPanel';
@@ -21,7 +21,9 @@ export default function MePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-4 p-3">
-      <OfflineBanner />
+      {/* AppShell (components/layout/AppShell.tsx) already renders OfflineBanner once, above every
+          non-chromeless route's <main> — this page is not chromeless, so it does not render its own
+          copy (previously did, producing a stacked duplicate). */}
       <h1 className="font-display text-xl font-semibold text-text-primary">{t('nav.me')}</h1>
 
       <Tabs defaultValue="absen">

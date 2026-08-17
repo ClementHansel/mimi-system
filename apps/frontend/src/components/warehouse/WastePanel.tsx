@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
-  Button, Modal, DataTable, StatusBadge, Select, QtyInput, Textarea, PhotoCapture, toast, PermissionGate,
+  Button, Modal, DataTable, StatusBadge, Select, QtyInput, Textarea, PhotoCapture, toast, PermissionGate, EmptyState,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatQty, formatMoney } from '@/lib/formatters';
@@ -107,7 +107,12 @@ export function WastePanel() {
   const itemOptions = items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }));
   const areaOptions = areas.map((a) => ({ value: a.id, label: a.name }));
 
-  if (!locationId) return null;
+  // Previously `return null` — worse than an empty state, per the standing
+  // rule against errors masquerading as empty states: an account with no
+  // `warehouse`-type location (e.g. Owner) saw literally nothing on this
+  // tab (FIX-LOADS #2), no different from an infinite spinner. Say plainly
+  // there's no location instead.
+  if (!locationId) return <EmptyState title={t('warehouse.noLocation')} size="lg" />;
 
   return (
     <div className="flex flex-col gap-4">

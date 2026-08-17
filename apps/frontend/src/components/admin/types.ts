@@ -122,7 +122,13 @@ export interface AuditRow {
   module: string;
   action: string;
   entityType: string;
-  entityId: UUID;
+  // NULLABLE in the database and null for most real rows (an action with no
+  // single target row — a login, a report export — has no entity id). This was
+  // typed as a plain `UUID`, so TypeScript could not catch `entityId.slice()`
+  // and the Jejak Audit page crashed to a blank "Application error" screen.
+  // The type lying about nullability is the root cause; the guard in
+  // AuditPanel is only the symptom fix.
+  entityId: UUID | null;
   beforeValue: object | null;
   afterValue: object | null;
   reason: string | null;

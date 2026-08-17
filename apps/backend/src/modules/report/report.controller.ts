@@ -44,7 +44,7 @@ import { WasteReportService } from './services/waste-report.service';
  * `report-response.util.ts#assertExportPermission`, called explicitly in
  * every handler right after resolving `format`.
  */
-@Controller('api/reports')
+@Controller('reports')
 export class ReportController {
   constructor(
     private readonly salesReport: SalesReportService,

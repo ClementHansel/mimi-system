@@ -1,32 +1,26 @@
 /**
  * Cold-chain pure helpers for F13 `driver` (D-14, OBJ-03). No I/O, no React —
- * plain predicates so the breach rule and per-drop gating are unit-testable
- * without a rendered form.
+ * plain predicates so per-drop gating is unit-testable without a rendered
+ * form.
  *
- * The frozen range (-25.0..-15.0°C) is the same reference `TempInput`'s own
- * doc comment cites ("frozen chicken runs -25.0..-15.0, D-14") — kept as one
- * named constant here rather than re-typed at each call site.
+ * NO client-side breach evaluation lives here (deliberately — see the
+ * removed `isFrozenBreach`/`FROZEN_TEMP_RANGE` in git history). A `frozen`
+ * shipment is the cold-chain truck and carries BOTH chilled (0..5°C) and
+ * frozen (-25..-15°C) goods at once (the owner's ruling: `ShipmentType`
+ * stays `frozen`/`dry`, but `frozen` means "the cold-chain truck", not
+ * "everything on it is frozen"); the acceptable range depends on which
+ * classes are still onboard at the time of the reading — a per-class
+ * evaluation only the backend can resolve (it knows the live
+ * `storage_areas` ranges and which lines haven't been delivered yet). A
+ * single static range here would flag every chilled reading as a breach
+ * (or worse, silently pass a genuine frozen breach) — replaying that logic
+ * client-side is exactly the duplicated-fraud-rule pattern this codebase
+ * has already paid for. This surface only ever DISPLAYS the server's own
+ * verdict (`TempLog.isBreach`, already wired through `tempLogsForDrop`
+ * below) and never blocks entry of a reading, breach or not.
  */
-import type { Temp, UUID } from '@/lib/shared-types';
+import type { UUID } from '@/lib/shared-types';
 import type { Drop, Seal, SuratJalan } from './types';
-
-export const FROZEN_TEMP_RANGE = { min: -25, max: -15 } as const;
-
-/**
- * Breach check for a `frozen` shipment's cold-chain reading. Display-only
- * threshold comparison (never a wire computation, never re-serialized) —
- * the one place CONTRACTS §0's "never `parseFloat` for anything
- * money/qty/temp-shaped" rule doesn't apply, same carve-out `formatters.ts`
- * documents for its own display helpers. A reading outside the range is
- * flagged, never rejected — "record it honestly" (this ticket's brief);
- * the UI must not discourage entering a bad number.
- */
-export function isFrozenBreach(tempC: Temp | null, shipmentType: 'frozen' | 'dry'): boolean {
-  if (shipmentType !== 'frozen' || tempC === null || tempC === '') return false;
-  const n = Number(tempC);
-  if (Number.isNaN(n)) return false;
-  return n < FROZEN_TEMP_RANGE.min || n > FROZEN_TEMP_RANGE.max;
-}
 
 /** The seal that applies to one drop: a drop-specific seal if the SJ tracked one, otherwise the SJ-wide seal (single freezer box covering the whole route). */
 export function sealForDrop(sj: SuratJalan, dropId: UUID): Seal | null {

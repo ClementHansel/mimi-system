@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin, Thermometer, XCircle } from 'lucide-react';
+import { AlertTriangle, MapPin, Thermometer, XCircle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardContent, Button, StatusBadge } from '@/components/ui';
 import { fmtTime } from '@/lib/dates';
@@ -63,6 +63,17 @@ export function DropCard({ sj, drop, onChanged }: DropCardProps) {
 
         {logs.length > 0 && (
           <div className="flex flex-wrap gap-2">
+            {/*
+              Breach state is `l.isBreach` straight off the wire — the
+              backend resolves it per-class (chiller 0..5°C / freezer
+              -25..-15°C, whichever classes are still onboard) and reports it
+              here; this surface never recomputes it. Color is paired with a
+              distinct icon AND an explicit "breach" word, not color alone
+              (StatusBadge's own accessibility rule). We can't yet name WHICH
+              class breached — CONTRACTS.md's `TempLog` has no such field —
+              see this ticket's report for the follow-up asked of the
+              `@mimi/shared` owner.
+            */}
             {logs.map((l) => (
               <span
                 key={l.id}
@@ -71,8 +82,9 @@ export function DropCard({ sj, drop, onChanged }: DropCardProps) {
                   l.isBreach ? 'bg-danger-50 text-danger-700' : 'bg-cold-50 text-cold-700',
                 )}
               >
-                <Thermometer className="size-3.5" aria-hidden />
+                {l.isBreach ? <AlertTriangle className="size-3.5" aria-hidden /> : <Thermometer className="size-3.5" aria-hidden />}
                 {t(`driver.coldChain.stage.${l.stage}`)}: {formatTemp(l.tempC)}
+                {l.isBreach && ` — ${t('driver.coldChain.breach')}`}
               </span>
             ))}
           </div>

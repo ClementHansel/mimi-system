@@ -9,7 +9,7 @@ import type { JobDto } from './jobs.service';
 import type { ScheduleDto } from './schedules.service';
 
 /** CONTRACTS.md §4.16 — `/api/assets*` (asset register, FR-PMS-01). */
-@Controller('api/assets')
+@Controller('assets')
 export class AssetsController {
   constructor(private readonly service: AssetsService) {}
 

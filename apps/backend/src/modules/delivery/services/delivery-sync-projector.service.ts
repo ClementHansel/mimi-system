@@ -293,11 +293,13 @@ export class DeliverySyncProjector implements SyncProjector {
 
     let locationId = sjHeader.origin_location_id;
     let locationName = 'Gudang Pusat';
+    let dropSeq: number | null = null;
     if (data.dropId) {
       const dropRow = await selectDropById(client, data.dropId);
       if (dropRow) {
         locationId = dropRow.location_id;
         locationName = dropRow.location_name;
+        dropSeq = dropRow.drop_seq;
       }
     }
 
@@ -320,6 +322,8 @@ export class DeliverySyncProjector implements SyncProjector {
       shipmentType,
       locationName,
       locationId,
+      originLocationId: sjHeader.origin_location_id,
+      dropSeq,
       notifyUserIds: recipients,
       clientId: event.eventId,
       loggedAt,

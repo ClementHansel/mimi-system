@@ -24,7 +24,7 @@ import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.se
 import type { PostMovementInput } from '../../../kernel/stock-ledger/stock-ledger.types';
 import { EventBus } from '../../../kernel/events/event-bus.service';
 import { withWrite } from '../db-tx';
-import { requiredAreaTypeFor } from '../storage-type.util';
+import { allowedStorageTypesForShipment, requiredAreaTypeFor } from '../storage-type.util';
 import {
   buildSuratJalanFull,
   buildSuratJalanSummary,
@@ -342,6 +342,8 @@ export class SuratJalanService {
           shipmentType,
           locationName: 'Gudang Pusat',
           locationId: header.origin_location_id,
+          originLocationId: header.origin_location_id,
+          dropSeq: null, // whole SJ still on the truck at 'load'
           notifyUserIds: recipients,
         });
       }
@@ -553,10 +555,15 @@ export class SuratJalanService {
         const itemRes = await client.query<{ storage_type: string; name: string }>(`SELECT storage_type, name FROM items WHERE id = $1`, [line.itemId]);
         const item = itemRes.rows[0];
         if (!item) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Item ${line.itemId} not found` });
-        if (item.storage_type !== shipmentType) {
+        // 'frozen' (the cold-chain truck) carries frozen AND chilled goods — Indonesia's cold truck always
+        // has a chiller (owner decision, 2026-08-17); 'dry' (the ambient truck) carries dry goods only. Two
+        // truck types, still never mixed with each other (FR-LOG-02) — the split just isn't 1:1 with
+        // `items.storage_type` for the cold one anymore.
+        const allowed = allowedStorageTypesForShipment(shipmentType);
+        if (!allowed.includes(item.storage_type as (typeof allowed)[number])) {
           throw new BadRequestException({
             code: ERR_SHIPMENT_TYPE_MIX,
-            message: `${item.name} is '${item.storage_type}' and cannot travel on a '${shipmentType}' Surat Jalan — frozen and dry never share one SJ (FR-LOG-02)`,
+            message: `${item.name} is '${item.storage_type}' and cannot travel on a '${shipmentType}' Surat Jalan (allowed: ${allowed.join(', ')}) — FR-LOG-02`,
           });
         }
       }

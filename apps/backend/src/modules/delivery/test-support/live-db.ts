@@ -111,12 +111,16 @@ export interface Fixtures {
   outletId: string;
   freezerAreaWarehouse: string;
   dryAreaWarehouse: string;
+  chillerAreaWarehouse: string;
   freezerAreaOutlet: string;
   dryAreaOutlet: string;
   frozenItemId: string;
   frozenItemUnitId: string;
   dryItemId: string;
   dryItemUnitId: string;
+  /** No 'chilled' item exists in the seed (only 'frozen'/'dry' — the seed predates the owner's chilled/frozen-share-a-truck decision, W1-C follow-up) — inserted by `loadFixtures` itself, torn down in `deleteChilledItemFixture`. */
+  chilledItemId: string;
+  chilledItemUnitId: string;
   driverId: string;
   driverUserId: string;
   frozenVehicleId: string;
@@ -140,10 +144,24 @@ export async function loadFixtures(): Promise<Fixtures> {
     return res.rows[0].id;
   };
 
-  const frozenItem = await pool.query<{ id: string; base_unit_id: string }>(`SELECT id, base_unit_id FROM items WHERE storage_type = 'frozen' AND is_active = true LIMIT 1`);
+  const frozenItem = await pool.query<{ id: string; base_unit_id: string; category_id: string }>(
+    `SELECT id, base_unit_id, category_id FROM items WHERE storage_type = 'frozen' AND is_active = true LIMIT 1`,
+  );
   const dryItem = await pool.query<{ id: string; base_unit_id: string }>(`SELECT id, base_unit_id FROM items WHERE storage_type = 'dry' AND is_active = true LIMIT 1`);
   if (!frozenItem.rows[0]) throw new Error(`Seed data is missing a 'frozen' item`);
   if (!dryItem.rows[0]) throw new Error(`Seed data is missing a 'dry' item`);
+
+  // No 'chilled' item in the seed yet (see `Fixtures.chilledItemId` doc) — insert one directly, reusing the
+  // frozen item's category/unit to satisfy FKs. `ON CONFLICT (sku) DO NOTHING` + a fixed sku makes this
+  // idempotent across repeated local test runs against the same DB.
+  const chilledSku = 'TEST-CHILLED-FIXTURE-0001';
+  const chilledRes = await pool.query<{ id: string }>(
+    `INSERT INTO items (sku, name, category_id, base_unit_id, storage_type, is_sellable, avg_cost, last_purchase_cost)
+     VALUES ($1, 'Test Fixture — Chilled Item', $2, $3, 'chilled', false, 15000, 15000)
+     ON CONFLICT (sku) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id`,
+    [chilledSku, frozenItem.rows[0].category_id, frozenItem.rows[0].base_unit_id],
+  );
 
   const driver = await pool.query<{ id: string; user_id: string }>(`SELECT id, user_id FROM drivers WHERE is_active = true AND user_id IS NOT NULL LIMIT 1`);
   if (!driver.rows[0]) throw new Error(`Seed data is missing an active driver with a linked user_id`);
@@ -165,12 +183,15 @@ export async function loadFixtures(): Promise<Fixtures> {
     outletId,
     freezerAreaWarehouse: await areaFor(warehouseId, 'freezer'),
     dryAreaWarehouse: await areaFor(warehouseId, 'dry_store'),
+    chillerAreaWarehouse: await areaFor(warehouseId, 'chiller'),
     freezerAreaOutlet: await areaFor(outletId, 'freezer'),
     dryAreaOutlet: await areaFor(outletId, 'dry_store'),
     frozenItemId: frozenItem.rows[0].id,
     frozenItemUnitId: frozenItem.rows[0].base_unit_id,
     dryItemId: dryItem.rows[0].id,
     dryItemUnitId: dryItem.rows[0].base_unit_id,
+    chilledItemId: chilledRes.rows[0]!.id,
+    chilledItemUnitId: frozenItem.rows[0].base_unit_id,
     driverId: driver.rows[0].id,
     driverUserId: driver.rows[0].user_id,
     frozenVehicleId: frozenVehicle.rows[0].id,

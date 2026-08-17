@@ -7,7 +7,7 @@ import { CreateEmployeeDto, UpdateEmployeeDto } from '../dto/employee.dto';
 import { EmployeeDetail, EmployeesService } from './employees.service';
 
 /** CONTRACTS.md §4.14 — `/api/hr/employees*`. */
-@Controller('api/hr/employees')
+@Controller('hr/employees')
 export class EmployeesController {
   constructor(private readonly service: EmployeesService) {}
 

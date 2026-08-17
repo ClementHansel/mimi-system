@@ -9,6 +9,34 @@ import type { Money, UUID } from '@mimi/shared';
  * cross-module contract.
  */
 
+/**
+ * `node-pg` parses a `DATE` column into a JS `Date` constructed via the
+ * LOCAL-timezone constructor (`new Date(year, month-1, day)`, confirmed by
+ * this exact off-by-one-day symptom surfacing in
+ * `accounting.integration.spec.ts`'s periods test) — not UTC, and there is
+ * no global `types.setTypeParser` override anywhere in this backend
+ * (`modules/report/report.types.ts` documents the same absence for
+ * `TIMESTAMPTZ`). Calling `.toISOString()` on that value re-reads it as UTC,
+ * which SHIFTS the calendar date by the server process's UTC offset — under
+ * `Asia/Makassar` (UTC+8, D-11's mandated timezone), a `fiscal_periods.end_date`
+ * of June 30 serializes as `"2026-06-29T16:00:00.000Z"`, one full day off
+ * from the `ISODate` (`YYYY-MM-DD`, no time component) CONTRACTS.md
+ * documents for this field. Every `DATE` column this module returns over
+ * HTTP (`fiscal_periods.start_date`/`end_date`, `journal_entries.entry_date`)
+ * must go through this helper — reading the Date's LOCAL calendar
+ * components (which is what recovers the ORIGINAL y/m/d pg's local
+ * constructor encoded) rather than its UTC ones. Passing a value pg has NOT
+ * converted (already a plain string — a defensive case, not the expected
+ * one on this backend today) is a safe no-op.
+ */
+export function formatDateOnly(value: unknown): string {
+  if (!(value instanceof Date)) return String(value);
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, '0');
+  const d = String(value.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export interface AccountRow {
   id: UUID;
   code: string;
@@ -29,6 +57,27 @@ export interface FiscalPeriodRow {
   status: 'open' | 'closed' | 'locked';
   closed_by: UUID | null;
   closed_at: string | null;
+}
+
+/**
+ * The wire shape CONTRACTS.md §4.17 documents for `GET/POST
+ * /api/accounting/periods*` — camelCase, exactly the 5 fields listed there
+ * (`{id; periodCode; startDate; endDate; status}`), never the raw
+ * `FiscalPeriodRow`. Found leaking as snake_case (`FiscalPeriodsService`
+ * returning `FiscalPeriodRow` straight to the controller) by the finance UI
+ * build — every other §4.17 endpoint in this module already maps through a
+ * `toX()` function before returning; this was the one that didn't.
+ */
+export interface FiscalPeriod {
+  id: UUID;
+  periodCode: string;
+  startDate: string;
+  endDate: string;
+  status: 'open' | 'closed' | 'locked';
+}
+
+export function toFiscalPeriod(row: FiscalPeriodRow): FiscalPeriod {
+  return { id: row.id, periodCode: row.period_code, startDate: formatDateOnly(row.start_date), endDate: formatDateOnly(row.end_date), status: row.status };
 }
 
 export interface JournalEntryRow {

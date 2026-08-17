@@ -25,7 +25,20 @@ export const CURRENCY = 'IDR';
 /** `locations.geofence_radius_m` default (FR-HR-01). */
 export const DEFAULT_GEOFENCE_RADIUS_M = 100;
 
-/** `settings['coldchain.frozen']` default (mirrors `shipment_types` seed row). */
+/**
+ * @deprecated STALE — modeled `settings['coldchain.frozen']` as one static
+ * range for the whole shipment, which was superseded by the owner's ruling
+ * (2026-08-17, cold-chain backend agent finding): a `frozen`-shipment-type
+ * truck is "the cold-chain vehicle" and carries BOTH frozen (-25..-15°C) AND
+ * chilled (0..5°C) cargo at once, so cold-chain evaluation is now PER GOODS
+ * CLASS, sourced from the origin warehouse's own `storage_areas` (D-15) —
+ * not a single shipment-wide setting. `settings['coldchain.frozen']` itself
+ * is a settings-module concern to retire, not this package's; this constant
+ * has zero consumers in this repo (checked at the time of this note) and is
+ * kept only so a caller holding a reference to it doesn't get a build
+ * failure — do not use it in new code, and see `../interfaces`'s
+ * `TempLog.breachedClasses`/`.ranges` for the shape that replaced it.
+ */
 export const DEFAULT_COLD_CHAIN_FROZEN_RANGE: { minC: string; maxC: string } = {
   minC: '-25.0',
   maxC: '-15.0',

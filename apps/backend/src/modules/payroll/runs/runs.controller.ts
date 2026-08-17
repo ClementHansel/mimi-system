@@ -6,7 +6,7 @@ import { ApproveRunDto, MarkPaidDto, OverrideLineDto, RejectRunDto, SendSlipsDto
 import { RunsService } from './runs.service';
 
 /** CONTRACTS.md §4.15 — `/api/payroll/runs*` and `/api/payroll/my-slips`. */
-@Controller('api/payroll')
+@Controller('payroll')
 export class RunsController {
   constructor(private readonly service: RunsService) {}
 

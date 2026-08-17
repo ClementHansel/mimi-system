@@ -5,6 +5,7 @@ import { DATABASE_POOL } from '../../../common/database/database-pool.provider';
 import { NotificationService } from '../../../kernel/notification/notification.service';
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import { withSystemContext } from '../system-context';
+import { COLD_CHAIN_STORAGE_TYPES, requiredAreaTypeFor, type ItemStorageType } from '../storage-type.util';
 
 export interface ShipmentTypeRow {
   id: string;
@@ -16,13 +17,43 @@ export interface ShipmentTypeRow {
   temp_max: string | null;
 }
 
+/** A cold-chain goods class (`items.storage_type` restricted to the two classes a 'frozen' truck may carry) paired with the temperature range that class must stay within, per D-15's `storage_areas` (the owner's answer, 2026-08-17: "move the range off the shipment type and onto the goods"). */
+export interface CargoClassRange {
+  storageType: 'frozen' | 'chilled';
+  tempMin: string | null;
+  tempMax: string | null;
+}
+
+/** Indonesian label for a goods class in the `cold_chain_breach` notification (`{{goodsClass}}`) — the ONE place this backend renders user-facing text is `kernel/notification/i18n/id-ID.ts`; this is data (a param value), not template copy. */
+const GOODS_CLASS_LABEL_ID: Record<'frozen' | 'chilled', string> = {
+  frozen: 'barang beku (frozen)',
+  chilled: 'barang chiller (chilled)',
+};
+
 /**
  * Cold-chain evaluation (D-14, OBJ-03) shared by the SJ load step, per-drop
  * depart/arrive, and the standalone `/temperature-logs` endpoint: writes an
- * append-only `sj_temperature_logs` row, computes `is_breach` against the
- * shipment type's seeded range (`shipment_types.temp_min/max` — frozen
- * -25.0..-15.0), and on breach raises the `cold_chain_breach` notification to
- * Kepala Gudang + Manager + Owner (kernel template already registered).
+ * append-only `sj_temperature_logs` row and computes breach PER GOODS CLASS
+ * present onboard, not against a single static shipment-type range.
+ *
+ * Why: the owner confirmed (2026-08-17) that Indonesia's cold truck ALWAYS
+ * has a chiller, so `shipment_types.key = 'frozen'` means "the cold-chain
+ * vehicle" and legitimately carries BOTH frozen (-25..-15) and chilled
+ * (0..5) goods in the SAME run. Checking a single reading against one static
+ * range (the old behavior) meant either the truck runs at freezer temp and
+ * ruins the chilled goods, or it runs at chiller temp and EVERY frozen-truck
+ * reading gets flagged — training drivers to ignore the alert, which defeats
+ * the whole audit trail this table exists for.
+ *
+ * The fix: resolve which classes ('frozen'/'chilled') are actually onboard
+ * for the reading being taken (`resolveOnboardClassRanges`), pull each
+ * class's range from the ORIGIN warehouse's `storage_areas` (D-15's own
+ * per-area temp_min/max — the "natural source of truth... an item's storage
+ * area tells you the range it must be kept in"), and flag a breach PER CLASS
+ * that the single physical reading falls outside of. A mixed load only
+ * "passes" when the reading satisfies every class still onboard; a genuine
+ * breach names exactly which class it's about (`cold_chain_breach`'s new
+ * `{{goodsClass}}` param) rather than a bare "temperature out of range".
  */
 @Injectable()
 export class ColdChainService {
@@ -54,15 +85,17 @@ export class ColdChainService {
 
     let locationId = sj.origin_location_id;
     let locationName = 'Gudang Pusat';
+    let dropSeq: number | null = null;
     if (params.dropId) {
-      const dropRes = await client.query<{ location_id: string; location_name: string }>(
-        `SELECT d.location_id, l.name AS location_name FROM sj_drops d JOIN locations l ON l.id = d.location_id WHERE d.id = $1 AND d.sj_id = $2`,
+      const dropRes = await client.query<{ location_id: string; location_name: string; drop_seq: number }>(
+        `SELECT d.location_id, l.name AS location_name, d.drop_seq FROM sj_drops d JOIN locations l ON l.id = d.location_id WHERE d.id = $1 AND d.sj_id = $2`,
         [params.dropId, params.sjId],
       );
       const drop = dropRes.rows[0];
       if (!drop) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Drop ${params.dropId} not found on Surat Jalan ${params.sjId}` });
       locationId = drop.location_id;
       locationName = drop.location_name;
+      dropSeq = drop.drop_seq;
     }
 
     const shipmentType = await this.loadShipmentType(client, sj.shipment_type_id);
@@ -76,6 +109,8 @@ export class ColdChainService {
       shipmentType,
       locationName,
       locationId,
+      originLocationId: sj.origin_location_id,
+      dropSeq,
       notifyUserIds: recipients,
     });
 
@@ -135,19 +170,45 @@ export class ColdChainService {
       shipmentType: ShipmentTypeRow;
       locationName: string;
       locationId: UUID | null;
+      /** The gudang pusat this SJ originates from (D-05: THE scoping dimension) — cold-chain ranges are read from ITS `storage_areas` (D-15), never the destination outlet's, matching every other cold-chain/putaway check in this module (`assertLinesMatchShipmentType`, `dispatch()`'s `resolveArea`). */
+      originLocationId: UUID;
+      /**
+       * `null` at `stage: 'load'` (dropId is also null there — the whole SJ is
+       * still on the truck, nothing dropped off yet). Otherwise the drop this
+       * reading is FOR (`sj_drops.drop_seq`) — the onboard cargo at that point
+       * is every line whose drop hasn't been handed off yet, i.e.
+       * `drop_seq >= dropSeq` (see `resolveOnboardClassRanges`).
+       */
+      dropSeq: number | null;
       notifyUserIds: UUID[];
       clientId?: UUID;
       loggedAt?: string;
     },
   ): Promise<{ id: string; isBreach: boolean }> {
-    const isBreach = isTempBreach(params.tempC, params.shipmentType.temp_min, params.shipmentType.temp_max);
+    const classRanges =
+      params.shipmentType.key === 'frozen'
+        ? await this.resolveOnboardClassRanges(client, params.sjId, params.originLocationId, params.dropSeq)
+        : [];
+    const breaches = classRanges.filter((r) => isTempBreach(params.tempC, r.tempMin, r.tempMax));
+    const isBreach = breaches.length > 0;
+    // Machine-parseable breach detail — WHICH class(es), not just the bare boolean (the actionability this
+    // whole redesign is for: "frozen items exceeded -15°C" vs "temperature out of range"). `notes` already
+    // exists on `sj_temperature_logs` (migration 035) and was never populated by any caller — carrying this
+    // here needed no schema change. FE surfacing of this detail is still a follow-up: `TempLog`
+    // (`@mimi/shared`) only has `isBreach: boolean` today; flagged to the architect/W1-C, not improvised here.
+    const notes = isBreach
+      ? JSON.stringify({
+          breachedClasses: breaches.map((b) => b.storageType),
+          ranges: Object.fromEntries(breaches.map((b) => [b.storageType, { min: b.tempMin, max: b.tempMax }])),
+        })
+      : null;
 
     const res = await client.query<{ id: string }>(
-      `INSERT INTO sj_temperature_logs (sj_id, drop_id, stage, temp_c, is_breach, logged_by, client_id, logged_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()))
+      `INSERT INTO sj_temperature_logs (sj_id, drop_id, stage, temp_c, is_breach, logged_by, client_id, logged_at, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()), $9)
        ON CONFLICT (client_id) DO NOTHING
        RETURNING id`,
-      [params.sjId, params.dropId, params.stage, params.tempC, isBreach, params.loggedBy, params.clientId ?? null, params.loggedAt ?? null],
+      [params.sjId, params.dropId, params.stage, params.tempC, isBreach, params.loggedBy, params.clientId ?? null, params.loggedAt ?? null, notes],
     );
 
     // `ON CONFLICT ... DO NOTHING` yields no row on an idempotent replay (same `client_id`) — read back
@@ -159,22 +220,78 @@ export class ColdChainService {
       ).rows[0]?.id;
     if (!id) throw new Error('sj_temperature_logs insert did not return an id');
 
-    if (isBreach && params.notifyUserIds.length > 0) {
-      await this.notifications.notify({
-        templateKey: 'cold_chain_breach',
-        userIds: params.notifyUserIds,
-        locationId: params.locationId ?? undefined,
-        params: {
-          recordedTemp: params.tempC,
-          minTemp: params.shipmentType.temp_min ?? '',
-          maxTemp: params.shipmentType.temp_max ?? '',
-          context: `Surat Jalan ${params.sjId}${params.dropId ? ` / drop ${params.dropId}` : ''} (${params.stage})`,
-          locationName: params.locationName,
-        },
-      });
+    // One notification PER breached class (never a combined "chilled+frozen" message): a single truck
+    // reading can breach BOTH classes at once (e.g. a hot reading blows past both the freezer's -15 max and
+    // the chiller's 5 max), and each is its own actionable fact for Kepala Gudang/Manager/Owner to act on.
+    if (params.notifyUserIds.length > 0) {
+      for (const breach of breaches) {
+        await this.notifications.notify({
+          templateKey: 'cold_chain_breach',
+          userIds: params.notifyUserIds,
+          locationId: params.locationId ?? undefined,
+          params: {
+            recordedTemp: params.tempC,
+            minTemp: breach.tempMin ?? '',
+            maxTemp: breach.tempMax ?? '',
+            goodsClass: GOODS_CLASS_LABEL_ID[breach.storageType],
+            context: `Surat Jalan ${params.sjId}${params.dropId ? ` / drop ${params.dropId}` : ''} (${params.stage})`,
+            locationName: params.locationName,
+          },
+        });
+      }
     }
 
     return { id, isBreach };
+  }
+
+  /**
+   * Resolves the temperature range(s) that apply to a specific reading: the
+   * distinct `items.storage_type` classes ('frozen'/'chilled' — 'dry' never
+   * needs a range) still onboard, each paired with the ORIGIN warehouse's
+   * `storage_areas` range for that class (D-15 — "an item's storage area
+   * tells you the range it must be kept in").
+   *
+   * Onboard scope by stage:
+   *  - `minDropSeq === null` (stage 'load'): the WHOLE SJ — nothing has been
+   *    dropped off yet, so every line on every drop is still on the truck.
+   *  - `minDropSeq` set (stage 'depart'/'arrive' for that drop): every line
+   *    whose drop hasn't been handed off yet, `drop_seq >= minDropSeq` —
+   *    departing for/arriving at drop N still has drop N's own cargo AND
+   *    every later drop's cargo aboard; only completed/failed drops (always
+   *    `drop_seq < minDropSeq` at this point in the route) have left the
+   *    truck. This is what lets a mixed-cargo SJ narrow to "frozen only" once
+   *    its chilled drop is done, rather than checking a class that already
+   *    left.
+   *
+   * Picks the first active area of each type at the origin (ORDER BY
+   * `sort_order` — same tie-break `dispatch()`'s `resolveArea` and
+   * `reverseFailedDropStock` already use for the identical "one canonical
+   * area per type per location" assumption).
+   */
+  private async resolveOnboardClassRanges(client: PoolClient, sjId: UUID, originLocationId: UUID, minDropSeq: number | null): Promise<CargoClassRange[]> {
+    const classesRes = await client.query<{ storage_type: ItemStorageType }>(
+      `SELECT DISTINCT i.storage_type
+         FROM sj_lines sl
+         JOIN items i ON i.id = sl.item_id
+         JOIN sj_drops d ON d.id = sl.drop_id
+        WHERE sl.sj_id = $1
+          AND i.storage_type = ANY($2::text[])
+          AND ($3::int IS NULL OR d.drop_seq >= $3)`,
+      [sjId, COLD_CHAIN_STORAGE_TYPES, minDropSeq],
+    );
+
+    const ranges: CargoClassRange[] = [];
+    for (const row of classesRes.rows) {
+      const storageType = row.storage_type as 'frozen' | 'chilled';
+      const areaRes = await client.query<{ temp_min: string | null; temp_max: string | null }>(
+        `SELECT temp_min, temp_max FROM storage_areas WHERE location_id = $1 AND type = $2 AND is_active = true ORDER BY sort_order ASC LIMIT 1`,
+        [originLocationId, requiredAreaTypeFor(storageType)],
+      );
+      const area = areaRes.rows[0];
+      if (!area) continue; // no active area of this type at origin — same "already have blocked dispatch" reasoning as reverseFailedDropStock; nothing to check against
+      ranges.push({ storageType, tempMin: area.temp_min, tempMax: area.temp_max });
+    }
+    return ranges;
   }
 
   /**

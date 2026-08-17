@@ -6,7 +6,7 @@ import { ApproveLoanDto, CreateLoanDto, RejectLoanDto } from '../dto/payroll.dto
 import { LoansService } from './loans.service';
 
 /** CONTRACTS.md §4.15 — `/api/payroll/loans*`. */
-@Controller('api/payroll/loans')
+@Controller('payroll/loans')
 export class LoansController {
   constructor(private readonly service: LoansService) {}
 

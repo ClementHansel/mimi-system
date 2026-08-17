@@ -32,7 +32,7 @@ import {
 } from './supplier.service';
 import { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 
-@Controller('api/suppliers')
+@Controller('suppliers')
 @UseGuards(JwtAuthGuard)
 export class SupplierController {
   constructor(private readonly service: SupplierService) {}

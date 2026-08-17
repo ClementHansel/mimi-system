@@ -370,6 +370,28 @@ export interface TempLog {
   stage: 'load' | 'depart' | 'arrive';
   tempC: Temp;
   isBreach: boolean;
+  /**
+   * Present only when `isBreach` — which cold-chain goods class(es) this
+   * single reading breached. Per the owner's ruling (2026-08-17): one
+   * `frozen`-shipment-type truck is "the cold-chain vehicle" and routinely
+   * carries BOTH frozen (-25..-15°C) and chilled (0..5°C) cargo at once, so
+   * the backend evaluates the one physical reading against every class
+   * still onboard (`cold-chain.service.ts`'s `resolveOnboardClassRanges`)
+   * rather than a single static range — a mixed load can breach one class,
+   * both, or neither on the same reading. Lets the driver's screen say
+   * "barang beku" vs "barang chiller" instead of a bare "breach", which is
+   * the difference between checking one pallet and checking the whole
+   * load 200 km from Balikpapan.
+   *
+   * Field names mirror `sj_temperature_logs.notes`'s JSON shape exactly
+   * (`cold-chain.service.ts`, the authoritative persisted shape) —
+   * deliberately not renamed/reshaped in transit, the same reason every
+   * other wire shape in this campaign stayed field-for-field with its
+   * shipped counterpart rather than being redescribed at each boundary.
+   */
+  breachedClasses?: ('frozen' | 'chilled')[];
+  /** The range each breached class was checked against, at `storage_areas` (D-15) — origin-warehouse ranges, not a single static shipment-type range (that assumption is stale; see `../constants`'s `DEFAULT_COLD_CHAIN_FROZEN_RANGE`). Keyed by the same classes as `breachedClasses`. */
+  ranges?: Partial<Record<'frozen' | 'chilled', { min: Temp | null; max: Temp | null }>>;
   loggedBy: string;
   loggedAt: ISODateTime;
 }

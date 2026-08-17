@@ -14,11 +14,11 @@ import { DueItem, ScheduleDto, SchedulesService } from './schedules.service';
  * `GET/PATCH :id` — Nest/Express matches overlapping route shapes in
  * REGISTRATION order, and `maintenance/due`'s two segments never actually
  * collide with `:id`'s one, but `schedules/:scheduleId` living under the
- * SAME `api/assets` prefix as `AssetsController` still means order is the
+ * SAME `assets` prefix as `AssetsController` still means order is the
  * only thing keeping this predictable if either controller's shape ever
  * changes — flagged here rather than left as an implicit assumption.
  */
-@Controller('api/assets')
+@Controller('assets')
 export class SchedulesController {
   constructor(
     private readonly service: SchedulesService,

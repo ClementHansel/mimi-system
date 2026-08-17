@@ -61,12 +61,58 @@ describe('M17 accounting — live DB integration', () => {
     });
   });
 
+  // ── fiscal periods: camelCase wire shape (coordinator-flagged regression — the finance UI's
+  // `FiscalPeriodRow` was coded against a live snake_case leak; `list`/`close`/`reopen` must return
+  // exactly CONTRACTS.md §4.17's `{id; periodCode; startDate; endDate; status}`, never the raw
+  // `pg` row (`period_code`/`start_date`/`closed_at`), matching every other endpoint in this module.
+  it('GET periods returns camelCase, never the raw snake_case pg row', async () => {
+    await withRollbackAs({ role: RoleKey.FINANCE, userId: fixtures.usersByRole[RoleKey.FINANCE], locationIds: [] }, async (client) => {
+      const list = await periods.list(client);
+      expect(list.length).toBeGreaterThan(0);
+      const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+      for (const p of list) {
+        expect(p).toEqual(expect.objectContaining({ id: expect.any(String), periodCode: expect.any(String), startDate: expect.stringMatching(dateOnly), endDate: expect.stringMatching(dateOnly), status: expect.any(String) }));
+        // `startDate`/`endDate` must be plain 'YYYY-MM-DD' (CONTRACTS.md's `ISODate`), never a `Date`
+        // object's default JSON serialization — `node-pg` parses `DATE` columns via a LOCAL-timezone
+        // constructor, so a raw `.toISOString()` shifts the calendar day by the server's UTC offset
+        // (Asia/Makassar, UTC+8) — the exact symptom that first caught this (see `formatDateOnly`'s
+        // doc comment in `accounting.types.ts`). Anchoring `startDate` to `periodCode`'s own month
+        // catches that shift directly: a one-day-back leak would fail this line even though the regex
+        // above alone would not (an ISO datetime's date portion still matches `\d{4}-\d{2}-\d{2}`).
+        expect(p.startDate.slice(0, 7)).toBe(p.periodCode);
+        expect(p).not.toHaveProperty('period_code');
+        expect(p).not.toHaveProperty('start_date');
+        expect(p).not.toHaveProperty('end_date');
+        expect(p).not.toHaveProperty('closed_by');
+        expect(p).not.toHaveProperty('closed_at');
+      }
+    });
+  });
+
+  it('POST periods/:id/close and /reopen also return camelCase', async () => {
+    await withRollbackAs({ role: RoleKey.OWNER, userId: fixtures.usersByRole[RoleKey.OWNER], locationIds: [] }, async (client) => {
+      const list = await periods.list(client);
+      const openPeriod = list.find((p) => p.status === 'open');
+      expect(openPeriod).toBeTruthy();
+
+      const closed = await periods.close(client, openPeriod!.id, fixtures.usersByRole[RoleKey.OWNER], undefined);
+      expect(closed.status).toBe('closed');
+      expect(closed.periodCode).toBe(openPeriod!.periodCode);
+      expect(closed).not.toHaveProperty('period_code');
+
+      const reopened = await periods.reopen(client, openPeriod!.id, 'test: verifying camelCase shape');
+      expect(reopened.status).toBe('open');
+      expect(reopened).not.toHaveProperty('closed_at');
+    });
+  });
+
   // ── manual journal entry: balanced succeeds, unbalanced is rejected ─────
 
   it('a balanced manual entry posts; an unbalanced one is rejected with ERR_UNBALANCED_ENTRY', async () => {
     await withRollbackAs({ role: RoleKey.FINANCE, userId: fixtures.usersByRole[RoleKey.FINANCE], locationIds: [] }, async (client) => {
+      const entryDate = new Date().toISOString().slice(0, 10);
       const entry = await journal.postManual(client, fixtures.usersByRole[RoleKey.FINANCE], {
-        entryDate: new Date().toISOString().slice(0, 10),
+        entryDate,
         description: 'Test: pembelian tunai perlengkapan',
         lines: [
           { accountCode: '6100', debit: '150000.00' },
@@ -74,6 +120,9 @@ describe('M17 accounting — live DB integration', () => {
         ],
       });
       expect(entry.status).toBe('posted');
+      // `entryDate` must round-trip exactly as submitted, never shifted by a day (the same `pg`
+      // DATE-parsing/local-timezone gotcha `formatDateOnly` exists to close — see periods' test above).
+      expect(entry.entryDate).toBe(entryDate);
       expect(entry.lines).toHaveLength(2);
       const debitTotal = entry.lines.reduce((s, l) => s + Number(l.debit), 0);
       const creditTotal = entry.lines.reduce((s, l) => s + Number(l.credit), 0);

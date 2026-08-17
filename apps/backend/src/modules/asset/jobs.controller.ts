@@ -11,11 +11,11 @@ import { JobDto, JobsService } from './jobs.service';
  * CONTRACTS.md §4.16 — job + service-history endpoints (FR-PMS-02/04).
  * Registered BEFORE `AssetsController` in `asset.module.ts` so this
  * controller's literal `GET jobs` route binds ahead of `AssetsController`'s
- * `GET :id` — both are single-segment under `api/assets`, and Nest/Express
+ * `GET :id` — both are single-segment under `assets`, and Nest/Express
  * resolves overlapping shapes in registration order (see
  * `schedules.controller.ts`'s header for the fuller note).
  */
-@Controller('api/assets')
+@Controller('assets')
 export class JobsController {
   constructor(
     private readonly service: JobsService,

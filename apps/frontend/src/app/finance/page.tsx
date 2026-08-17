@@ -1,6 +1,5 @@
-import { Landmark } from 'lucide-react';
-import { RoutePlaceholder } from '@/components/layout/RoutePlaceholder';
+import { FinanceShell } from '@/components/finance/FinanceShell';
 
 export default function FinancePage() {
-  return <RoutePlaceholder routeKey="finance" icon={<Landmark className="size-8" />} />;
+  return <FinanceShell />;
 }

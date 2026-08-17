@@ -14,8 +14,19 @@ import { TrendService, type TrendPoint } from './services/trend.service';
 import { OpsStatusService, type OpsStatusResponse } from './services/ops-status.service';
 import { MatviewRefreshService } from './matview-refresh.service';
 
-/** M18 `dashboard` — CONTRACTS.md §4.18. All reads; every dashboard query explicitly applies `req.locationScope` (matviews carry no RLS of their own — see ticket header / `scope.util.ts`). */
-@Controller('api/dashboard')
+/**
+ * M18 `dashboard` — CONTRACTS.md §4.18. All reads; every dashboard query explicitly applies `req.locationScope` (matviews carry no RLS of their own — see ticket header / `scope.util.ts`).
+ *
+ * Controller path is `dashboard`, NOT `api/dashboard` — `main.ts` already
+ * applies a global `api` prefix (`app.setGlobalPrefix('api', ...)`), so an
+ * `api/` prefix here would have doubled up to the live route
+ * `/api/api/dashboard/...`, silently diverging from CONTRACTS.md §4.18's
+ * documented `/api/dashboard/...` paths (verified against the running
+ * backend while wiring F03's frontend — every correctly-routed controller in
+ * this codebase, e.g. `auth`, `accounting`, `inventory`, omits the prefix for
+ * the same reason).
+ */
+@Controller('dashboard')
 export class DashboardController {
   constructor(
     private readonly overview: OverviewService,

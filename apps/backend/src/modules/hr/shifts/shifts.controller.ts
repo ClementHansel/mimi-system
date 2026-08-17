@@ -6,7 +6,7 @@ import { CreateShiftDto, UpdateShiftDto, UpsertRosterDto } from '../dto/shift.dt
 import { RosterRow, ShiftDto, ShiftsService } from './shifts.service';
 
 /** CONTRACTS.md §4.14 — `/api/hr/shifts*`, `/api/hr/roster`. */
-@Controller('api/hr')
+@Controller('hr')
 export class ShiftsController {
   constructor(private readonly service: ShiftsService) {}
 

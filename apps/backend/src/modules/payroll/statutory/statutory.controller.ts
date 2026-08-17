@@ -14,7 +14,7 @@ import {
 import { StatutoryService } from './statutory.service';
 
 /** CONTRACTS.md §4.15 — `/api/payroll/statutory*` (Amendment 1 wizard) and `/api/payroll/employees/:employeeId/tax-profile`. */
-@Controller('api/payroll')
+@Controller('payroll')
 export class StatutoryController {
   constructor(private readonly service: StatutoryService) {}
 

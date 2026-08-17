@@ -6,7 +6,7 @@ import { CreateComponentDto, PutEmployeeComponentsDto, UpdateComponentDto } from
 import { ComponentsService } from './components.service';
 
 /** CONTRACTS.md §4.15 — `/api/payroll/components*` and `/api/payroll/employees/:employeeId/components`. */
-@Controller('api/payroll')
+@Controller('payroll')
 export class ComponentsController {
   constructor(private readonly service: ComponentsService) {}
 

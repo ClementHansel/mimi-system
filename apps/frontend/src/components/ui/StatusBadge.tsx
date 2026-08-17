@@ -34,7 +34,7 @@ export type StatusDomain =
   | 'voidRefund' | 'onlineOrder' | 'settlement' | 'approval' | 'approvalStep'
   | 'employment' | 'attendance' | 'leave' | 'payrollRun' | 'loan' | 'asset'
   | 'maintenanceJob' | 'fiscalPeriod' | 'journalEntry' | 'device' | 'reverification'
-  | 'offlineAuthOutcome';
+  | 'offlineAuthOutcome' | 'topologyOutlet';
 
 type Tone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
@@ -110,6 +110,8 @@ const VOCAB: Record<string, { tone: Tone; icon: LucideIcon }> = {
   offline: { tone: 'neutral', icon: WifiOff },
   unpaired: { tone: 'neutral', icon: Unlink },
   unprovable: { tone: 'warning', icon: HelpCircle },
+  // F12 topology: outlet-level rollup ('online'/'offline' reuse the device tones above).
+  degraded: { tone: 'warning', icon: AlertTriangle },
 };
 
 function prettify(raw: string): string {

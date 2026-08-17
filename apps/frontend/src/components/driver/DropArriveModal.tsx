@@ -6,7 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { Modal, Button, TempInput, Textarea, toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { getDriverRuntime, useActorMeta, mintId } from './lib/driver-runtime';
-import { isFrozenBreach, sealForDrop } from './lib/cold-chain';
+import { sealForDrop } from './lib/cold-chain';
 import type { Drop, SuratJalan } from './lib/types';
 import type { Temp } from '@/lib/shared-types';
 
@@ -17,6 +17,12 @@ import type { Temp } from '@/lib/shared-types';
  * component follows, not CONTRACTS.md's looser prose. Seal verification only
  * shows when the Surat Jalan actually tracked a seal for this drop
  * (`sealForDrop` — SJ-wide seals apply to every drop on the route).
+ *
+ * No client-side breach guess: a `frozen` SJ carries both chilled and
+ * frozen goods, and which range applies is a per-class, backend-only
+ * evaluation (`cold-chain.ts`'s doc comment). This form submits the reading
+ * as entered — never blocked — and leaves the breach verdict to the synced
+ * `TempLog.isBreach` shown later in `DropCard`.
  */
 export interface DropArriveModalProps {
   open: boolean;
@@ -35,7 +41,6 @@ export function DropArriveModal({ open, onClose, sj, drop, onDone }: DropArriveM
   const [submitting, setSubmitting] = useState(false);
 
   const seal = sealForDrop(sj, drop.id);
-  const breach = isFrozenBreach(tempC, sj.shipmentType);
   const sealOk = !seal || sealStatus !== null;
   const notesOk = sealStatus !== 'broken' || sealNotes.trim() !== '';
   const canSubmit = tempC !== null && sealOk && notesOk;
@@ -73,10 +78,8 @@ export function DropArriveModal({ open, onClose, sj, drop, onDone }: DropArriveM
           label={t('driver.arrive.tempLabel')}
           value={tempC}
           onChange={setTempC}
-          breach={breach}
           required
           size="touch"
-          hint={breach ? t('driver.coldChain.breach') : undefined}
         />
 
         {seal && (

@@ -493,6 +493,8 @@ export class DropService {
       shipmentType,
       locationName: row.location_name,
       locationId: row.location_id,
+      originLocationId: sjHeader.origin_location_id,
+      dropSeq: row.drop_seq, // cargo for THIS drop and every later one is still onboard at depart/arrive
       notifyUserIds: recipients,
       loggedAt,
     });

@@ -4,15 +4,18 @@ import { useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { Modal, Button, TempInput, toast } from '@/components/ui';
 import { getDriverRuntime, useActorMeta, mintId } from './lib/driver-runtime';
-import { isFrozenBreach } from './lib/cold-chain';
 import type { Drop, SuratJalan } from './lib/types';
 import type { Temp } from '@/lib/shared-types';
 
 /**
- * "Berangkat" — the first of the three per-drop actions (D-14). Frozen
- * shipments get a load-temp reading before departure; a reading outside
- * -25..-15°C is a breach and is still recorded (never blocked) per this
- * ticket's cold-chain brief. Commits via `commitDropDeparted` +, when a temp
+ * "Berangkat" — the first of the three per-drop actions (D-14). `frozen`
+ * shipments (the cold-chain truck, carrying chilled AND frozen goods
+ * together) get a load-temp reading before departure. Whether that reading
+ * is a breach depends on which classes (chiller 0..5°C / freezer -25..-15°C)
+ * are onboard — only the backend can resolve that per-class evaluation
+ * (`cold-chain.ts`'s doc comment), so this form never guesses; it submits
+ * whatever the driver reads, never blocked, and the breach verdict shows up
+ * later on the synced log. Commits via `commitDropDeparted` +, when a temp
  * was entered, `commitTempLog` — both local-only, queued through the offline
  * outbox (`ReceivingPanel.offline.test.ts` is the proof-shape this mirrors;
  * `DriverJobsPanel.offline.test.ts` is this surface's own).
@@ -32,7 +35,6 @@ export function DropDepartModal({ open, onClose, sj, drop, onDone }: DropDepartM
   const [submitting, setSubmitting] = useState(false);
 
   const isFrozen = sj.shipmentType === 'frozen';
-  const breach = isFrozenBreach(tempC, sj.shipmentType);
   const canSubmit = !isFrozen || tempC !== null;
 
   async function handleSubmit() {
@@ -68,10 +70,8 @@ export function DropDepartModal({ open, onClose, sj, drop, onDone }: DropDepartM
           label={t('driver.depart.tempLabel')}
           value={tempC}
           onChange={setTempC}
-          breach={breach}
           required={isFrozen}
           size="touch"
-          hint={breach ? t('driver.coldChain.breach') : undefined}
         />
         <Button type="button" size="touch-lg" fullWidth loading={submitting} disabled={!canSubmit} onClick={handleSubmit}>
           {t('driver.depart.submit')}

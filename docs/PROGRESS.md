@@ -45,13 +45,79 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **Approval modes** — `manual`/`whatsapp`/`auto`/`off` per document type (D-23), WhatsApp as deep-link notification not auth (D-24) | 🔄 backend building |
 | **Connectivity + sync as two separate always-visible states** with a manual re-probe-and-sync button (D-25b) | ✅ **done** — 298 FE tests. Found the old pill *conflated* both dimensions (`isolated` always won), so "offline but drained" and "online with backlog" were both hidden |
 | **Branch node per-outlet toggle, drain-before-off** (D-26) | ✅ **done** — 22 tests. Refuses OFF with a pending queue *and* refuses when the node is unreachable, since a stale zero is not a current zero. Reuses the real unpair sequence, no parallel path |
-| **Shipment type stays frozen/dry** | ⬜ awaiting confirmation — chilled goods have no category; see §7 |
+| **Cold chain: chilled + frozen share the truck** (owner: *"chilled and frozen always transported with chiller trucks… 2 types of trucks"*) | ✅ **backend done** — 66 delivery tests. `ShipmentType` stays `frozen`/`dry`, where `frozen` = the cold-chain truck carrying both classes. Range now comes from the **goods** via `storage_areas` (freezer −25…−15, chiller 0…5), evaluated **per class**, naming which class breached. Driver UI fix in flight |
+
+**A worse bug found while fixing it:** `assertLinesMatchShipmentType` required exact `item.storage_type === shipmentType`, so **a chilled item could not be added to a frozen Surat Jalan at all** — chilled goods were structurally unshippable, not merely mis-validated. Also: had the range stayed static, every chilled reading would have flagged a breach, and an alarm that always fires is one drivers learn to ignore — which would have destroyed the cold-chain audit trail D-14 exists to create.
+
+**Open follow-ups:** `@mimi/shared`'s `TempLog` exposes only `isBreach: boolean` and needs a `breachedClasses` field so the UI can name the class; the `coldchain.frozen` settings key is now a stale single range.
 
 **Two real bugs found while building these:**
 - `cloudReachable` returned `true` in LAN-only mode (`tier !== 'isolated'` instead of `=== 'online'`), so every plain-REST screen would attempt a cloud call in LAN mode and present the failure as a server error.
 - **Worse, found adjacent:** `onUpstreamChange` fires only on a *transition*, so a device booting already-isolated never corrected the store's defaults — **a tablet powered on with no internet displayed "Online / Tersinkron"**. Fixed by reporting upstream state unconditionally from `start()` and the new `recheckConnectivity()`.
 
 **Process failure of mine:** two agents in this batch edited `packages/shared` (frozen post-G1, collision rule 4) — one added a permission key, one added error codes. My briefs said "never write to `database/`" and never extended that to shared packages. All three additions were correct; the only casualty was a stale count assertion, since fixed. **Briefs must name every frozen path, not just the one that bit us last.**
+
+## 1c. Post-Wave-4 work (owner amendments + incident fixes)
+
+### 🔴 The application did not boot — **FIXED**
+`SupplierModule` injected `SyncEmitService` without importing its module. Nest threw during graph construction, so **the entire API was dead**. Nothing caught it: **0 of 74 test files compiled `AppModule`**, only 1 used Nest's DI at all, and CI never started the app. Every suite constructs services directly, bypassing the container.
+**Fixes:** the import; a boot test at `apps/backend/test/app-boot.spec.ts` that compiles the real graph and runs `init()` (**proven both directions** — fails with the exact original error when reverted); CI now runs it with postgres + redis.
+
+### 🔴 `nest build` silently emitted nothing — **FIXED, and it was three packages**
+`incremental: true` kept tsc's cache at the project root while `deleteOutDir: true` wiped `dist/`. tsc read "up to date", emitted zero files, exited 0. A deploy would have shipped an empty image.
+**Reproduced in `packages/shared` and `packages/sync-protocol` too** (`rm -rf dist && npx tsc` → exit 0, no dist). All three now co-locate the cache at `dist/.tsbuildinfo`. CI and the Dockerfile both assert `dist/main.js` is non-empty; verified by booting the compiled graph **inside the built image**.
+
+### B-11 offline flows — layers 1 and 2 done
+| Layer | State |
+|---|---|
+| 1. Wire contracts + payload schemas | ✅ **already existed** — audit found all four entities classified class-B with schemas cross-checked against live DTOs. Nothing built; would have been the 8th duplication |
+| 2. Device commit helpers | ✅ 135 tests in `lib/local`, transport-throws proofs |
+| 3. Cloud projectors | ⬜ next |
+| 4. Outlet UI rewire | ⬜ after |
+
+**A silent-data-loss bug caught in layer 2.** `commitFact` dedupes on `(entity, entityId, op)`. Following my "use the entity id" instruction literally, a second `stock_opname.area_counted` would have **collided with the first area's queued row and been silently dropped** — an entire storage area's counts gone, no error. Since opname variance feeds POUT-05 wage deductions, that is money. Resolved with a distinct `areaCountId` per (opname, area) and a two-area regression test.
+
+**Line correctly drawn by the contracts:** outlets may *submit* opname/waste/petty-cash/replenishment offline; Kepala Gudang approving and Finance verifying stay online. Only the outlet-supervisor step is offline-provisional (D-17), re-verified on sync.
+
+### 🔴 Dates shifted a calendar day under WITA — **FIXED**
+Found while correcting a naming inconsistency, and the naming was the lesser bug. `FiscalPeriodsService` returned the raw `pg` row (`period_code`, `start_date`) — the only place in `modules/accounting` skipping the `toX()` mapping every sibling uses. Fixing the names exposed what the names were hiding: **`node-pg` parses a `DATE` column into a JS `Date` using the local-timezone constructor**, so the implicit `.toISOString()` in `JSON.stringify` shifts the calendar day by the server's UTC offset. Under `Asia/Makassar` (UTC+8) a period ending **June 30 serialized as `2026-06-29T16:00:00Z`** — a wrong date reaching the finance UI, not merely a wrong field name.
+
+Caught only because the fix added a test asserting the **value**, not the type. A test checking `typeof startDate === 'string'` passes on the wrong day.
+
+**Fixes:** camelCase `FiscalPeriod` matching CONTRACTS §4.17; a documented `formatDateOnly()` that recovers `YYYY-MM-DD` regardless of server timezone; the **same bug found and fixed on `JournalEntry.entryDate`** during the audit-for-other-leaks sweep. Every other endpoint in the module checked — all already map through `toX()`, no `SELECT *`, and their `TIMESTAMPTZ` fields don't suffer this. Regressions now assert exact round-tripped dates, so a reintroduced shift fails loudly.
+
+> **Class of bug worth remembering:** `DATE` (no time, no zone) and `TIMESTAMPTZ` (an instant) behave differently through `pg` + `JSON.stringify`. Only `DATE` shifts. Any new `DATE`-typed column returned to a client needs `formatDateOnly()`.
+
+### 🔴 14 controllers were unreachable at their documented paths — **FIXED**
+`main.ts` applies a global `api` prefix, and 14 controllers *also* declared `@Controller('api/...')`, so their real routes were `/api/api/...`. **Assets (3), suppliers, reports, all four HR controllers and all five payroll controllers** — entire subsystems answering 404 at every path CONTRACTS documents.
+
+Nothing caught it: the app boots fine, the modules look correct in review, and **every suite calls services directly rather than over HTTP**, so no test ever issued a request to a real URL. Found only because the dashboard UI agent hit 404s building against the live API, investigated its own failure, and swept for siblings.
+
+**Fixes:** all 14 corrected to the documented paths; a regression test (`test/no-double-api-prefix.spec.ts`) enumerates the registered route tree from the real `AppModule` **after** the global prefix is applied and asserts no route contains `/api/api/`.
+**Coordinator-verified, not taken on report:** rebuilt, restarted, and probed each family with a real owner token — `assets`, `suppliers`, `reports/sales`, `hr/employees`, `payroll/periods`, `accounting/periods` all 200; `api/api/assets` correctly 404.
+
+### 🔴 The UI reported "Offline" while fully online — **FIXED**
+The header indicator and the offline banner were pinned to *Offline — Tidak Ada Koneksi* on a system visibly loading live data. Cause: `/sync/v1/*` is deliberately **outside** the `/api` prefix (main.ts exclude list, CONTRACTS §4.23) so a device's sync transport needs no knowledge of the REST prefix — but `next.config.ts` proxied only `/api/*` and `/socket.io/*`. The health probe therefore hit the **frontend** origin, 404'd, and the upstream selector concluded every candidate was unreachable.
+
+Production is unaffected (the backend owns the whole `api.DOMAIN` host there), so this only bites same-origin deployments — including every dev machine. Fixed by adding the `/sync/v1/:path*` rewrite alongside `/socket.io`, which existed for exactly the same reason.
+
+> This is the feature the owner specifically asked for. It was **built correctly and wired incorrectly** — the kind of defect unit tests structurally cannot see, since the store, the probe and the transport are each individually right.
+
+### 🟡 Two host-dev environment traps — **one fixed, one documented**
+- `next.config.ts` fell back to `http://backend:4000` — a Docker service name that cannot resolve on a host — so `next dev` outside compose 500s every proxied call with no hint at DNS. Both compose files set `BACKEND_ORIGIN` explicitly, so the fallback is *only* reached on a host; **changed to `localhost:4000`**, container runs unaffected.
+- `.env` defines `REDIS_PORT=6379`, but the code reads **`REDIS_URL`** and the host mapping is **56379**. Starting the backend from `.env` alone crashes on redis. Not changed (compose-correct); needs `REDIS_URL` exported for host runs.
+
+## 1d. Running system — verified in a real browser
+
+**The app runs end to end.** Backend `:4000` (39 modules, 339 routes), frontend `:3100`. Logged in as `owner` via Playwright and captured every surface.
+
+**What works, seen on screen:** branded shell with the full Indonesian IA (Operasional / Logistik & Gudang / Keuangan / SDM / Sistem), the **two-state connectivity indicator live in the header** (Offline · Tersinkron · Coba Sinkron), and `admin` rendering **real backend data** — actual users, roles and outlets across all four cities, with working search, filters and sort.
+
+**Why it looked unbuilt:** `/dashboard` — where every Owner lands after login — still rendered the Wave-1 placeholder reading *"Dibangun oleh W5-01 pada Wave 5."* Every other surface was real; the first screen anyone sees was the one that wasn't.
+
+**Two environment traps found while getting it up:**
+- The frontend reads `NEXT_PUBLIC_API_URL`; starting it with the wrong var name silently falls back to `/api` on its own origin, so **login 404s with no useful error**. Documented in `.env.example` but easy to get wrong.
+- Login inputs carry **no `name` attribute** (React-generated ids only) — breaks password managers, autofill, and any selector-based automation.
 
 ## 2. ACTIVE BLOCKERS
 

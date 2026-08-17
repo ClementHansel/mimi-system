@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isFrozenBreach, nextActionForDrop, sealForDrop, tempLogsForDrop, FROZEN_TEMP_RANGE } from './cold-chain';
+import { nextActionForDrop, sealForDrop, tempLogsForDrop } from './cold-chain';
 import type { Drop, Seal, SuratJalan } from './types';
 
 const BASE_DROP: Drop = {
@@ -39,39 +39,6 @@ function makeSj(overrides: Partial<SuratJalan> = {}): SuratJalan {
     ...overrides,
   };
 }
-
-describe('isFrozenBreach — cold-chain breach rule (D-14, OBJ-03)', () => {
-  it('flags a reading colder than -25.0°C on a frozen shipment', () => {
-    expect(isFrozenBreach('-27.0', 'frozen')).toBe(true);
-  });
-
-  it('flags a reading warmer than -15.0°C on a frozen shipment', () => {
-    expect(isFrozenBreach('-10.0', 'frozen')).toBe(true);
-  });
-
-  it('does NOT flag a reading inside the frozen range', () => {
-    expect(isFrozenBreach('-18.0', 'frozen')).toBe(false);
-  });
-
-  it('treats the exact boundary values as within range (inclusive)', () => {
-    expect(isFrozenBreach(String(FROZEN_TEMP_RANGE.min), 'frozen')).toBe(false);
-    expect(isFrozenBreach(String(FROZEN_TEMP_RANGE.max), 'frozen')).toBe(false);
-  });
-
-  it('never flags a breach for a dry shipment, however extreme the reading', () => {
-    expect(isFrozenBreach('40.0', 'dry')).toBe(false);
-  });
-
-  it('is not a breach when no reading has been entered yet — never blocks the form', () => {
-    expect(isFrozenBreach(null, 'frozen')).toBe(false);
-  });
-
-  it('still records an out-of-range reading rather than rejecting it (the "record it honestly" rule) — the caller decides to submit, this predicate only flags', () => {
-    // isFrozenBreach never throws or returns an error — it's purely advisory.
-    expect(() => isFrozenBreach('-99.9', 'frozen')).not.toThrow();
-    expect(isFrozenBreach('-99.9', 'frozen')).toBe(true);
-  });
-});
 
 describe('nextActionForDrop — per-drop gating (D-14 multi-drop sequence)', () => {
   it('requires depart first when nothing has happened yet', () => {
@@ -135,5 +102,32 @@ describe('sealForDrop / tempLogsForDrop', () => {
     });
     const logs = tempLogsForDrop(sj, 'drop-1');
     expect(logs.map((l) => l.id)).toEqual(['l2', 'l1']);
+  });
+
+  /**
+   * The owner's ruling (post-launch fix): `frozen` SJs are the cold-chain
+   * truck and carry BOTH chilled (0..5°C) and frozen (-25..-15°C) goods, so
+   * the acceptable range is per-class and only the backend (which knows
+   * `storage_areas` and which lines are still onboard) can evaluate it.
+   * This module deliberately exposes NO breach predicate of its own —
+   * `tempLogsForDrop` passes the server's `isBreach` straight through,
+   * unmodified, for every temp log regardless of its value. A 3.0°C chiller
+   * reading (legitimate — well inside 0..5°C) and a -18.0°C freezer reading
+   * (also legitimate) sit side by side below with whatever `isBreach` the
+   * server assigned; this test would have caught the old bug, where a
+   * single static -25..-15°C range would have mislabeled the chiller
+   * reading a breach regardless of what the server said.
+   */
+  it('surfaces exactly the server-provided isBreach per log — no re-evaluation, even for a legitimate chiller-range reading', () => {
+    const sj = makeSj({
+      tempLogs: [
+        { id: 'chiller-ok', dropId: 'drop-1', stage: 'depart', tempC: '3.0', isBreach: false, loggedBy: 'driver-1', loggedAt: '2026-08-17T01:00:00Z' },
+        { id: 'freezer-ok', dropId: 'drop-1', stage: 'depart', tempC: '-18.0', isBreach: false, loggedBy: 'driver-1', loggedAt: '2026-08-17T01:00:01Z' },
+        { id: 'freezer-breach', dropId: 'drop-1', stage: 'arrive', tempC: '-8.0', isBreach: true, loggedBy: 'driver-1', loggedAt: '2026-08-17T03:00:00Z' },
+      ],
+    });
+    const logs = tempLogsForDrop(sj, 'drop-1');
+    const byId = Object.fromEntries(logs.map((l) => [l.id, l.isBreach]));
+    expect(byId).toEqual({ 'chiller-ok': false, 'freezer-ok': false, 'freezer-breach': true });
   });
 });

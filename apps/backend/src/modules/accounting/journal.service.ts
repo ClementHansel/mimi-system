@@ -15,7 +15,7 @@ import {
 import { ChartOfAccountsService } from './chart-of-accounts.service';
 import { FiscalPeriodsService } from './fiscal-periods.service';
 import type { CreateJournalEntryDto, ListJournalQueryDto } from './dto/accounting.dto';
-import type { DraftLine, JournalEntryRow, JournalLineRow } from './accounting.types';
+import { formatDateOnly, type DraftLine, type JournalEntryRow, type JournalLineRow } from './accounting.types';
 
 const ENTRY_SELECT = `
   SELECT je.id, je.entry_number, je.entry_date, je.fiscal_period_id, je.event_type, je.source, je.ref_type,
@@ -251,7 +251,10 @@ export class JournalService {
     return {
       id: row.id,
       entryNumber: row.entry_number,
-      entryDate: row.entry_date,
+      // See `accounting.types.ts`'s `formatDateOnly` doc comment — a raw `row.entry_date` (a `pg`-
+      // parsed `Date`, despite `JournalEntryRow`'s `string` type) would serialize one day off under
+      // Asia/Makassar (UTC+8), same bug class as the periods camelCase leak the coordinator flagged.
+      entryDate: formatDateOnly(row.entry_date),
       eventType: row.event_type,
       source: row.source,
       refType: row.ref_type,

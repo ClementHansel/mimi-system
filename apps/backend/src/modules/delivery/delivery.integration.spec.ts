@@ -169,6 +169,50 @@ describe('M10 delivery — live DB integration', () => {
       });
     });
 
+    it('rejects an SJ mixing a chilled item onto a "dry" shipment (ERR_SHIPMENT_TYPE_MIX) — the ambient truck never carries chilled goods', async () => {
+      await withRollback(async (client) => {
+        await expect(
+          sjService.create(
+            client,
+            {
+              shipmentType: 'dry' as never,
+              driverId: fixtures.driverId,
+              vehicleId: fixtures.dryVehicleId,
+              plannedDate: new Date().toISOString().slice(0, 10),
+              drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.chilledItemId, qty: '5.000', unitId: fixtures.chilledItemUnitId }] }],
+            },
+            fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+          ),
+          'a chilled item on a dry SJ must be rejected',
+        ).rejects.toMatchObject({ response: { code: 'ERR_SHIPMENT_TYPE_MIX' } });
+      });
+    });
+
+    it('accepts a "frozen" SJ mixing frozen AND chilled items in one drop — the cold truck carries both (owner decision, 2026-08-17)', async () => {
+      await withRollback(async (client) => {
+        const sj = await sjService.create(
+          client,
+          {
+            shipmentType: 'frozen' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.frozenVehicleId,
+            plannedDate: new Date().toISOString().slice(0, 10),
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.frozenItemId, qty: '3.000', unitId: fixtures.frozenItemUnitId },
+                  { itemId: fixtures.chilledItemId, qty: '3.000', unitId: fixtures.chilledItemUnitId },
+                ],
+              },
+            ],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        );
+        expect(sj.drops[0]!.lines).toHaveLength(2);
+      });
+    });
+
     it('rejects a "frozen" SJ whose vehicle has no freezer', async () => {
       await withRollback(async (client) => {
         await expect(
@@ -468,6 +512,145 @@ describe('M10 delivery — live DB integration', () => {
 
       const dbRow = await getOwnerPool().query<{ is_breach: boolean }>(`SELECT is_breach FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`, [sjId]);
       expect(dbRow.rows[0]!.is_breach).toBe(true);
+    });
+  });
+
+  // ── owner decision (2026-08-17): the cold truck carries BOTH frozen and chilled goods — breach must be
+  // evaluated PER CLASS (`items.storage_type`) against ITS OWN `storage_areas` range, never against a
+  // single static `shipment_types` range, or a chilled-only run on the cold truck gets falsely flagged on
+  // every reading (the "alarm nobody reads" failure mode this whole redesign exists to avoid). ─────────────
+  describe('cold-chain breach — per-class ranges on a shared cold truck', () => {
+    let mixedSjId: string;
+    let chilledOnlySjId: string;
+    let frozenOnlySjId: string;
+
+    afterAll(async () => {
+      if (mixedSjId) await deleteSuratJalan(mixedSjId);
+      if (chilledOnlySjId) await deleteSuratJalan(chilledOnlySjId);
+      if (frozenOnlySjId) await deleteSuratJalan(frozenOnlySjId);
+    });
+
+    it('mixed cargo (frozen + chilled in the same drop): a freezer-temp reading breaches ONLY the chilled class and names it', async () => {
+      const sj = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'frozen' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.frozenVehicleId,
+            plannedDate: new Date().toISOString().slice(0, 10),
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.frozenItemId, qty: '2.000', unitId: fixtures.frozenItemUnitId },
+                  { itemId: fixtures.chilledItemId, qty: '2.000', unitId: fixtures.chilledItemUnitId },
+                ],
+              },
+            ],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      mixedSjId = sj.id;
+      await withCommit((client) => sjService.ready(client, mixedSjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      notifySpy.mockClear();
+
+      // -18.0°C: squarely inside the freezer's -25..-15 (frozen items are FINE) but well outside the
+      // chiller's 0..5 (chilled items are NOT) — the exact "one truck, one reading, two classes" case.
+      const loaded = await withCommit((client) =>
+        sjService.load(client, mixedSjId, { seals: [{ sealNumber: 'SEAL-MIXED-0001' }], tempC: '-18.0' }, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
+
+      const log = loaded.tempLogs.find((t) => t.stage === 'load');
+      expect(log?.isBreach).toBe(true); // overall boolean stays true (something breached)
+
+      // Exactly one notification — for the chilled class only, not the frozen one.
+      expect(notifySpy).toHaveBeenCalledTimes(1);
+      const call = notifySpy.mock.calls[0]![0];
+      expect(call.templateKey).toBe('cold_chain_breach');
+      expect(call.params.goodsClass).toMatch(/chiller|chilled/i);
+      expect(call.params.minTemp).toBe('0.0');
+      expect(call.params.maxTemp).toBe('5.0');
+
+      // The persisted detail names the breached class, not just the bare boolean (D-14 audit trail:
+      // "frozen items exceeded -15°C" vs "temperature out of range").
+      const dbRow = await getOwnerPool().query<{ is_breach: boolean; notes: string | null }>(
+        `SELECT is_breach, notes FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`,
+        [mixedSjId],
+      );
+      expect(dbRow.rows[0]!.is_breach).toBe(true);
+      const detail = JSON.parse(dbRow.rows[0]!.notes!);
+      expect(detail.breachedClasses).toEqual(['chilled']);
+    });
+
+    it('chilled-only cargo on the cold truck: a normal chilled reading is NOT flagged (the false-positive this redesign fixes)', async () => {
+      const sj = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'frozen' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.frozenVehicleId,
+            plannedDate: new Date().toISOString().slice(0, 10),
+            drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.chilledItemId, qty: '2.000', unitId: fixtures.chilledItemUnitId }] }],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      chilledOnlySjId = sj.id;
+      await withCommit((client) => sjService.ready(client, chilledOnlySjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      notifySpy.mockClear();
+
+      // 2.0°C is squarely inside the chiller's 0..5 range. Under the OLD (single static shipment-type
+      // range) logic this would have been checked against frozen's -25..-15 and wrongly flagged EVERY time.
+      const loaded = await withCommit((client) =>
+        sjService.load(client, chilledOnlySjId, { seals: [{ sealNumber: 'SEAL-CHILLED-0001' }], tempC: '2.0' }, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
+
+      const log = loaded.tempLogs.find((t) => t.stage === 'load');
+      expect(log?.isBreach).toBe(false);
+      expect(notifySpy).not.toHaveBeenCalled();
+
+      const dbRow = await getOwnerPool().query<{ is_breach: boolean }>(`SELECT is_breach FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`, [chilledOnlySjId]);
+      expect(dbRow.rows[0]!.is_breach).toBe(false);
+    });
+
+    it('frozen-only cargo: a genuine breach is still flagged and names the frozen class (regression — the single-class case must keep working)', async () => {
+      const sj = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'frozen' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.frozenVehicleId,
+            plannedDate: new Date().toISOString().slice(0, 10),
+            drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.frozenItemId, qty: '2.000', unitId: fixtures.frozenItemUnitId }] }],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      frozenOnlySjId = sj.id;
+      await withCommit((client) => sjService.ready(client, frozenOnlySjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      notifySpy.mockClear();
+
+      // 10.0°C breaches the freezer's -25..-15 range.
+      const loaded = await withCommit((client) =>
+        sjService.load(client, frozenOnlySjId, { seals: [{ sealNumber: 'SEAL-FROZEN-0001' }], tempC: '10.0' }, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
+
+      const log = loaded.tempLogs.find((t) => t.stage === 'load');
+      expect(log?.isBreach).toBe(true);
+
+      expect(notifySpy).toHaveBeenCalledTimes(1);
+      const call = notifySpy.mock.calls[0]![0];
+      expect(call.params.goodsClass).toMatch(/beku|frozen/i);
+      expect(call.params.minTemp).toBe('-25.0');
+      expect(call.params.maxTemp).toBe('-15.0');
+
+      const dbRow = await getOwnerPool().query<{ notes: string | null }>(`SELECT notes FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`, [frozenOnlySjId]);
+      const detail = JSON.parse(dbRow.rows[0]!.notes!);
+      expect(detail.breachedClasses).toEqual(['frozen']);
     });
   });
 

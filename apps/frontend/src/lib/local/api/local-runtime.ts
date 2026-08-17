@@ -246,6 +246,168 @@ export class LocalRuntime {
     return commitFact(this.db, { entity: SyncEntity.SJ_TEMPERATURE_LOGS, op: 'logged', entityId: logId, data, meta: toPayloadMeta(actor) });
   }
 
+  // ── Stock opname (F0x, D-16 territory) — class B, device-originable per authority-matrix.ts ──
+
+  async commitOpnameOpened(opnameId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.STOCK_OPNAME, op: 'opened', entityId: opnameId, data, meta: toPayloadMeta(actor) });
+  }
+
+  /**
+   * One opname is counted area-by-area — `stock_opname_lines` embeds per
+   * area, the same parent/child shape `sj_drops`/`sj_lines` uses — but
+   * `commitFact`'s dedupe key is `(entity, entityId, op)` (§2.2 rule 3), and
+   * every `area_counted` fact for one opname shares that SAME op. Passing
+   * the opname's own id as `entityId` here would make counting a SECOND
+   * area collide with the FIRST area's already-queued row and silently
+   * return it unchanged — the double-tap guard firing on the wrong action,
+   * dropping a whole area's counts with no error. `areaCountId` is
+   * therefore its own draft-time id, minted once per (opname, storage area)
+   * when that area's count screen opens — exactly the discipline
+   * `commitTempLog`'s per-log id already uses for the same reason. It is
+   * NOT a wire payload field; `data.opnameId`/`data.storageAreaId` are what
+   * correlate the fact back to its parent document once it lands.
+   */
+  async commitOpnameAreaCounted(areaCountId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.STOCK_OPNAME, op: 'area_counted', entityId: areaCountId, data, meta: toPayloadMeta(actor) });
+  }
+
+  async commitOpnameSubmitted(opnameId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.STOCK_OPNAME, op: 'submitted', entityId: opnameId, data, meta: toPayloadMeta(actor) });
+  }
+
+  async commitOpnameCancelled(opnameId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.STOCK_OPNAME, op: 'cancelled', entityId: opnameId, data, meta: toPayloadMeta(actor) });
+  }
+
+  // ── Replenishment requests (block 030-039) — class B, device-originable per authority-matrix.ts ──
+
+  async commitReplenishmentSubmitted(requestId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.REPLENISHMENT_REQUESTS, op: 'submitted', entityId: requestId, data, meta: toPayloadMeta(actor) });
+  }
+
+  async commitReplenishmentCancelled(requestId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.REPLENISHMENT_REQUESTS, op: 'cancelled', entityId: requestId, data, meta: toPayloadMeta(actor) });
+  }
+
+  /**
+   * The outlet supervisor's PLAIN approval — made from a device with a live
+   * authenticated session, no offline credential involved. Distinct from
+   * `commitReplenishmentSupervisorApprovedOffline` below (the §7/D-17
+   * credential+PIN provisional path for when the approving device has no
+   * live session): both are `pushOps` per the authority matrix, but only
+   * the offline variant carries `meta.authorization`. The warehouse/manager
+   * step (`warehouse_approved`) is neither of these — it stays cloud-only.
+   */
+  async commitReplenishmentSupervisorApproved(requestId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.REPLENISHMENT_REQUESTS, op: 'supervisor_approved', entityId: requestId, data, meta: toPayloadMeta(actor) });
+  }
+
+  /**
+   * §7 offline-provisional outlet-supervisor approval — `replenishment.supervisor_approve`
+   * is one of exactly three scopes on §7.6's closed list (the other two are
+   * `void_refund.approve` and `waste.approve`). Gates on the cached
+   * credential + PIN, same shape as `commitVoidApprovedOffline`.
+   */
+  async commitReplenishmentSupervisorApprovedOffline(args: {
+    requestId: UUID;
+    credentialId: UUID;
+    pin: string;
+    amendments?: readonly { lineId: UUID; qtyApproved: Qty; reason: string }[];
+    selfieRef?: AttachmentRef;
+    occurredAt: string;
+    actor: ActorMeta;
+  }): Promise<{ authorization: AuthorizeOfflineOutcome } & Partial<{ commit: CommitFactResult }>> {
+    const authInput: AuthorizeOfflineInput = {
+      credentialId: args.credentialId,
+      pin: args.pin,
+      eventId: args.requestId, // pre-bound per §2.2 rule 3; the real eventId is minted at commit but the binding is over the same logical action
+      entity: SyncEntity.REPLENISHMENT_REQUESTS,
+      entityId: args.requestId,
+      op: 'supervisor_approved_offline',
+      amountIdr: null, // this decision carries no IDR amount of its own (registry: `{ id, amendments }`)
+      occurredAt: args.occurredAt,
+      selfieRef: args.selfieRef,
+      scopeKey: 'replenishment.supervisor_approve',
+    };
+    const outcome = await authorizeOffline(this.db, authInput, this.pinVerifier);
+    if (!outcome.ok) return { authorization: outcome };
+
+    const commit = await commitFact(this.db, {
+      entity: SyncEntity.REPLENISHMENT_REQUESTS,
+      op: 'supervisor_approved_offline',
+      entityId: args.requestId,
+      data: { id: args.requestId, amendments: args.amendments },
+      meta: { ...toPayloadMeta(args.actor), authorization: outcome.meta },
+    });
+    return { authorization: outcome, commit };
+  }
+
+  async commitReplenishmentSupervisorRejected(requestId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.REPLENISHMENT_REQUESTS, op: 'supervisor_rejected', entityId: requestId, data, meta: toPayloadMeta(actor) });
+  }
+
+  // ── Petty cash (block 040-049) — class B, device-originable per authority-matrix.ts ──
+
+  /**
+   * `data` carries both wajib-foto refs (`paymentProofAttachmentId` and
+   * `goodsPhotoAttachmentId` per the registry's `petty_cash.recorded`
+   * schema) — route both blobs through `captureEvidence` first so the
+   * canonical `attachmentId` (not a freshly minted one) ends up in each
+   * field, same "two identities, one row" correlation `commitDropReceived`
+   * relies on for its photo/signature pair.
+   */
+  async commitPettyCashRecorded(pettyCashId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.PETTY_CASH, op: 'recorded', entityId: pettyCashId, data, meta: toPayloadMeta(actor) });
+  }
+
+  // ── Waste records (block 080-089) — class B, device-originable per authority-matrix.ts ──
+
+  async commitWasteReported(batchId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, { entity: SyncEntity.WASTE_RECORDS, op: 'reported', entityId: batchId, data, meta: toPayloadMeta(actor) });
+  }
+
+  /**
+   * §7 offline-provisional outlet-supervisor waste approval —
+   * `waste.approve` is the third of §7.6's closed-list scopes (alongside
+   * `void_refund.approve` and `replenishment.supervisor_approve`). Same
+   * gated shape as `commitVoidApprovedOffline`. The gudang (Kepala Gudang)
+   * step — `approved`/`rejected` — is deliberately NOT this: it stays
+   * cloud-only and has no device commit helper.
+   */
+  async commitWasteApprovedOffline(args: {
+    batchId: UUID;
+    credentialId: UUID;
+    pin: string;
+    note?: string;
+    selfieRef?: AttachmentRef;
+    occurredAt: string;
+    actor: ActorMeta;
+  }): Promise<{ authorization: AuthorizeOfflineOutcome } & Partial<{ commit: CommitFactResult }>> {
+    const authInput: AuthorizeOfflineInput = {
+      credentialId: args.credentialId,
+      pin: args.pin,
+      eventId: args.batchId, // pre-bound per §2.2 rule 3, same idiom as commitVoidApprovedOffline
+      entity: SyncEntity.WASTE_RECORDS,
+      entityId: args.batchId,
+      op: 'approved_offline',
+      amountIdr: null, // registry: `waste_records.approved_offline` is `noteOptional()` — no IDR amount
+      occurredAt: args.occurredAt,
+      selfieRef: args.selfieRef,
+      scopeKey: 'waste.approve',
+    };
+    const outcome = await authorizeOffline(this.db, authInput, this.pinVerifier);
+    if (!outcome.ok) return { authorization: outcome };
+
+    const commit = await commitFact(this.db, {
+      entity: SyncEntity.WASTE_RECORDS,
+      op: 'approved_offline',
+      entityId: args.batchId,
+      data: { note: args.note },
+      meta: { ...toPayloadMeta(args.actor), authorization: outcome.meta },
+    });
+    return { authorization: outcome, commit };
+  }
+
   // ── evidence capture (§4.7) ──────────────────────────────────────────────
 
   async captureEvidence(blob: Blob, mime: string, kind: string): Promise<AttachmentRef> {

@@ -7,7 +7,7 @@ import { CheckAttendanceDto, CorrectAttendanceDto } from '../dto/attendance.dto'
 import { AttendanceService, AttendanceSummaryRow } from './attendance.service';
 
 /** CONTRACTS.md §4.14 — `/api/hr/attendance*`. */
-@Controller('api/hr/attendance')
+@Controller('hr/attendance')
 export class AttendanceController {
   constructor(private readonly service: AttendanceService) {}
 

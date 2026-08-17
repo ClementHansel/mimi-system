@@ -7,7 +7,7 @@ import { RunsService } from '../runs/runs.service';
 import { PeriodsService } from './periods.service';
 
 /** CONTRACTS.md §4.15 — `/api/payroll/periods*`. */
-@Controller('api/payroll/periods')
+@Controller('payroll/periods')
 export class PeriodsController {
   constructor(
     private readonly periods: PeriodsService,

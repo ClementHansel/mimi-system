@@ -7,7 +7,7 @@ import { ApproveLeaveDto, RejectLeaveDto, SubmitLeaveDto } from '../dto/leave.dt
 import { LeaveQuota, LeaveRow, LeavesService } from './leaves.service';
 
 /** CONTRACTS.md §4.14 — `/api/hr/leaves*`. */
-@Controller('api/hr/leaves')
+@Controller('hr/leaves')
 export class LeavesController {
   constructor(private readonly service: LeavesService) {}
 

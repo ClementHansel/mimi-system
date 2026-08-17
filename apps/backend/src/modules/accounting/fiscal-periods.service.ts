@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION } from '@mimi/shared';
-import type { FiscalPeriodRow } from './accounting.types';
+import { toFiscalPeriod, type FiscalPeriod, type FiscalPeriodRow } from './accounting.types';
 
 const PERIOD_SELECT = `SELECT id, period_code, start_date, end_date, status, closed_by, closed_at FROM fiscal_periods`;
 
@@ -10,12 +10,20 @@ const PERIOD_SELECT = `SELECT id, period_code, start_date, end_date, status, clo
  * a `closed` period is `ERR_PERIOD_CLOSED`; `locked` additionally forbids
  * reversal entries (enforced by `JournalService`, which is the one place
  * that actually posts — this service only owns the period lifecycle itself).
+ *
+ * Two shapes, deliberately: the controller-facing methods (`list`, `close`,
+ * `reopen`) return `FiscalPeriod` (camelCase, exactly CONTRACTS.md §4.17's
+ * documented wire shape — see `accounting.types.ts`'s doc comment on the
+ * bug this fixes). `get`/`findOrCreateForDate` stay on the raw
+ * `FiscalPeriodRow` because `JournalService` consumes their snake_case
+ * fields directly (`period.period_code`, etc.) — internal-only, never
+ * returned from a controller.
  */
 @Injectable()
 export class FiscalPeriodsService {
-  async list(client: PoolClient): Promise<FiscalPeriodRow[]> {
+  async list(client: PoolClient): Promise<FiscalPeriod[]> {
     const res = await client.query<FiscalPeriodRow>(`${PERIOD_SELECT} ORDER BY period_code`);
-    return res.rows;
+    return res.rows.map(toFiscalPeriod);
   }
 
   async get(client: PoolClient, id: string): Promise<FiscalPeriodRow> {
@@ -44,7 +52,7 @@ export class FiscalPeriodsService {
     return inserted.rows[0]!;
   }
 
-  async close(client: PoolClient, id: string, closedBy: string, _note: string | undefined): Promise<FiscalPeriodRow> {
+  async close(client: PoolClient, id: string, closedBy: string, _note: string | undefined): Promise<FiscalPeriod> {
     const period = await this.get(client, id);
     if (period.status !== 'open') {
       throw new ConflictException({ code: ERR_CONFLICT, message: `Fiscal period ${period.period_code} is '${period.status}', not 'open'` });
@@ -62,10 +70,10 @@ export class FiscalPeriodsService {
        RETURNING id, period_code, start_date, end_date, status, closed_by, closed_at`,
       [id, closedBy],
     );
-    return res.rows[0]!;
+    return toFiscalPeriod(res.rows[0]!);
   }
 
-  async reopen(client: PoolClient, id: string, reason: string): Promise<FiscalPeriodRow> {
+  async reopen(client: PoolClient, id: string, reason: string): Promise<FiscalPeriod> {
     if (!reason) throw new BadRequestException({ code: ERR_VALIDATION, message: 'reason is required to reopen a fiscal period' });
     const period = await this.get(client, id);
     if (period.status === 'locked') {
@@ -79,6 +87,6 @@ export class FiscalPeriodsService {
        RETURNING id, period_code, start_date, end_date, status, closed_by, closed_at`,
       [id],
     );
-    return res.rows[0]!;
+    return toFiscalPeriod(res.rows[0]!);
   }
 }

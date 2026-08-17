@@ -9,7 +9,6 @@ import { formatQty } from '@/lib/formatters';
 import { dataUrlToFile } from './lib/attachments';
 import { getDriverRuntime, useActorMeta, mintId } from './lib/driver-runtime';
 import { getStorageAreas } from './lib/driver-api';
-import { isFrozenBreach } from './lib/cold-chain';
 import type { Drop, StorageArea, SuratJalan } from './lib/types';
 import type { Qty, Temp } from '@/lib/shared-types';
 
@@ -47,7 +46,7 @@ export interface DropReceiveModalProps {
   onDone: (patch: Partial<Drop>) => void;
 }
 
-export function DropReceiveModal({ open, onClose, sj, drop, onDone }: DropReceiveModalProps) {
+export function DropReceiveModal({ open, onClose, drop, onDone }: DropReceiveModalProps) {
   const { t } = useI18n();
   const actor = useActorMeta();
   const [areas, setAreas] = useState<StorageArea[]>([]);
@@ -79,7 +78,6 @@ export function DropReceiveModal({ open, onClose, sj, drop, onDone }: DropReceiv
 
   const areaOptions = useMemo(() => areas.map((a) => ({ value: a.id, label: a.name })), [areas]);
   const draftList = useMemo(() => drop.lines.map((l) => lines[l.id]).filter((d): d is LineDraft => !!d), [drop.lines, lines]);
-  const breach = isFrozenBreach(tempC, sj.shipmentType);
 
   function updateLine(lineId: string, patch: Partial<LineDraft>) {
     setLines((prev) => ({ ...prev, [lineId]: { ...prev[lineId]!, ...patch } }));
@@ -234,9 +232,7 @@ export function DropReceiveModal({ open, onClose, sj, drop, onDone }: DropReceiv
             label={t('driver.receive.tempLabel')}
             value={tempC}
             onChange={setTempC}
-            breach={breach}
             size="touch"
-            hint={breach ? t('driver.coldChain.breach') : undefined}
           />
         </div>
 

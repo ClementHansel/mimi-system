@@ -1,0 +1,12 @@
+# Revisions to skip in `git blame` — bulk, mechanical, no-behaviour-change
+# commits that would otherwise make every line look like it was last touched
+# by a reformat.
+#
+# Enable locally (once per clone):
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub reads this file automatically.
+
+# Format the entire repository with Prettier (2026-08-18).
+# The repo had a .prettierrc and a CI format:check gate but had never been
+# formatted; 667 files changed, zero behaviour.
+78d35eb505167d33868f5f5aa0608c6524d06fc3

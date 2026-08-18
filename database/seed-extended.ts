@@ -858,17 +858,48 @@ export async function seedExtended(client: pg.Client): Promise<void> {
     // area matching each item's storage_type, so picking items blindly yielded
     // an opname with zero lines.
     //
-    // stock_opname.storage_area_id is NULLABLE and the seeded opname leaves it
-    // NULL, meaning "count the whole location". Filtering on `= $2` against
-    // NULL matched nothing, so the area filter is applied only when set, and
-    // each line carries the area its own balance sits in (the LINE's
-    // storage_area_id is NOT NULL even when the header's is).
+    // stock_opname.storage_area_id is NULLABLE and means "count the whole
+    // location" when unset. Filtering on `= $2` against NULL matched nothing,
+    // so the area filter is applied only when set, and each line carries the
+    // area its own balance sits in (the LINE's storage_area_id is NOT NULL
+    // even when the header's is).
+    //
+    // The header may also point at an area that holds nothing — on the
+    // production box it targeted the chiller, and no core item at that
+    // location is `chilled`, so a correct count produced zero lines and the
+    // opname flow could not be exercised at all. When that happens, re-point
+    // the header at the area in the same location holding the most stock so
+    // header and lines still agree, rather than silently emitting nothing.
+    let countedArea: string | null = opname.storage_area_id;
+    if (countedArea) {
+      const hasStock = await exists(
+        client,
+        `SELECT 1 FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2`,
+        [opname.location_id, countedArea],
+      );
+      if (!hasStock) {
+        const fallback = await one(
+          client,
+          `SELECT storage_area_id FROM stock_balances WHERE location_id = $1
+           GROUP BY storage_area_id ORDER BY count(*) DESC LIMIT 1`,
+          [opname.location_id],
+        );
+        if (fallback) {
+          countedArea = fallback.storage_area_id;
+          await client.query(`UPDATE stock_opname SET storage_area_id = $2 WHERE id = $1`, [
+            opname.id,
+            countedArea,
+          ]);
+          console.log('    (opname header re-pointed: its storage area held no stock)');
+        }
+      }
+    }
     const counted = await rows(
       client,
       `SELECT item_id, storage_area_id, qty_on_hand FROM stock_balances
        WHERE location_id = $1 AND ($2::uuid IS NULL OR storage_area_id = $2)
        ORDER BY item_id LIMIT 12`,
-      [opname.location_id, opname.storage_area_id],
+      [opname.location_id, countedArea],
     );
     for (const bal of counted) {
       const item = { id: bal.item_id };

@@ -26,6 +26,7 @@
 import pg from 'pg';
 import bcrypt from 'bcrypt';
 import { createHash } from 'node:crypto';
+import { businessDateOf } from '@mimi/shared';
 import { seedExtended } from './seed-extended.js';
 
 const { Client } = pg;
@@ -56,8 +57,24 @@ function daysAgo(n: number): Date {
   d.setDate(d.getDate() - n);
   return d;
 }
+/**
+ * The WITA calendar date an instant falls on — NOT `toISOString().slice(0,10)`.
+ *
+ * This system's business day is Asia/Makassar (UTC+8), and every surface asks
+ * the server for "today" in that zone: the driver screen fetches
+ * `my-jobs?date=<local today>`. Deriving seeded dates from UTC instead meant
+ * that between 00:00 and 08:00 WITA the two disagreed — the seed wrote
+ * yesterday's date onto "today's" Surat Jalan, and the driver's phone showed
+ * "Tidak ada Surat Jalan untuk hari ini" against a freshly seeded database.
+ * Caught by the e2e suite at 00:06 WITA, having passed all evening.
+ *
+ * Same class as the two DATE/WITA defects already recorded in PROGRESS.md
+ * (§1c): anything that names a calendar day has to be computed in the business
+ * timezone, and `@mimi/shared`'s `businessDateOf` is the one place that knows
+ * how.
+ */
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return businessDateOf(d.toISOString());
 }
 
 /** The ONE mechanism that may ever produce a cloud-issued document number

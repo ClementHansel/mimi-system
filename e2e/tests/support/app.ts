@@ -30,32 +30,67 @@ export const USERS = {
  */
 export async function login(page: Page, username: string): Promise<void> {
   await page.goto('/login', { waitUntil: 'domcontentloaded' });
-  await page.locator('input[name="username"], input[type="text"]').first().fill(username);
-  await page.locator('input[type="password"]').first().fill(DEMO_PASSWORD);
 
-  // Wait for hydration before submitting. The page disables the submit button
-  // until React has attached `onSubmit`, precisely so a pre-hydration click
-  // cannot fall through to the browser's native submission — which is how this
-  // suite originally found the password being written into the URL. Waiting on
-  // the enabled state tests that guard rather than working around it.
+  // Wait for hydration BEFORE touching the fields, not just before submitting.
+  //
+  // These are controlled inputs backed by `useState('')`. Text typed into the
+  // server-rendered DOM before React attaches is discarded the moment it
+  // hydrates and re-asserts state — the field silently empties. That produced
+  // a login posting an EMPTY username and the page answering "Gagal masuk",
+  // intermittently, depending on how fast the box served the JS.
+  //
+  // The submit button is disabled until hydrated (a real guard against
+  // pre-hydration submits leaking credentials into the URL), so waiting for it
+  // to enable is an honest hydration signal rather than an arbitrary sleep.
   const submit = page.locator('button[type="submit"]').first();
   await expect(submit).toBeEnabled({ timeout: 30_000 });
+
+  const usernameField = page.locator('input[name="username"], input[type="text"]').first();
+  const passwordField = page.locator('input[type="password"]').first();
+  await usernameField.fill(username);
+  await passwordField.fill(DEMO_PASSWORD);
+  // Re-assert after filling: if a late re-render ever clears them again, fail
+  // here naming the cause instead of 30s later on a navigation timeout.
+  await expect(usernameField).toHaveValue(username);
+  await expect(passwordField).toHaveValue(DEMO_PASSWORD);
+
   await submit.click();
 
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 30_000 });
 
   if (page.url().includes('/set-pin')) {
-    const pinInputs = page.locator('input[type="password"], input[inputmode="numeric"]');
-    const count = await pinInputs.count();
-    // Set + confirm; some builds render one field, some two.
-    for (let i = 0; i < Math.min(count, 2); i++) await pinInputs.nth(i).fill(DEMO_PIN);
-    await page.locator('button[type="submit"]').first().click();
+    // THREE fields, in order: current password, new PIN, confirm PIN. Filling
+    // the PIN into the first two (and leaving confirm empty) silently fails
+    // validation and the page simply never navigates.
+    const setPinSubmit = page.locator('button[type="submit"]').first();
+    await expect(setPinSubmit).toBeEnabled({ timeout: 30_000 });
+
+    const fields = page.locator('input[type="password"]');
+    await expect(fields).toHaveCount(3);
+    await fields.nth(0).fill(DEMO_PASSWORD);
+    await fields.nth(1).fill(DEMO_PIN);
+    await fields.nth(2).fill(DEMO_PIN);
+
+    await setPinSubmit.click();
     await page.waitForURL((url) => !url.pathname.includes('/set-pin'), { timeout: 30_000 });
   }
 
   // The hub and every shell route render only after the session store has
   // hydrated; without this the first assertion races an empty DOM.
   await expect(page.locator('body')).not.toBeEmpty();
+}
+
+/**
+ * Waits for the app to settle on `expected`.
+ *
+ * Non-all-access roles land on `/` first and are redirected onward by the hub
+ * in an effect, so reading the path straight after `login()` races that
+ * redirect and sees `/`. Waiting for the destination tests the behaviour;
+ * asserting immediately tests the scheduler.
+ */
+export async function expectLandsOn(page: Page, expected: string): Promise<void> {
+  await page.waitForURL((url) => url.pathname === expected, { timeout: 30_000 });
+  expect(pathOf(page)).toBe(expected);
 }
 
 /** Path only — assertions should never depend on host or query string. */

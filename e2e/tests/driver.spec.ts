@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, pathOf, USERS } from './support/app';
+import { expectLandsOn, login, USERS } from './support/app';
 
 /**
  * The driver's mobile surface. Runs on a phone viewport (see the `mobile`
@@ -12,9 +12,20 @@ import { login, pathOf, USERS } from './support/app';
  * the database all along.
  */
 
-/** Does this driver actually have a trip dated today? */
+/**
+ * Does this driver actually have a trip dated today?
+ *
+ * Waits for the list to RESOLVE first. `my-jobs` is fetched after mount, so
+ * reading the body immediately saw neither a job nor the empty state and every
+ * caller skipped — silently reporting "not applicable" when the real answer was
+ * "not loaded yet".
+ */
 async function hasJobToday(page: import('@playwright/test').Page): Promise<boolean> {
-  const text = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+  const settled = page.locator('body');
+  await expect(settled).toContainText(/SJ\/|Tidak ada Surat Jalan untuk hari ini/, {
+    timeout: 20_000,
+  });
+  const text = (await settled.innerText()).replace(/\s+/g, ' ');
   return !/Tidak ada Surat Jalan untuk hari ini/.test(text);
 }
 
@@ -22,7 +33,7 @@ test.describe('driver job list', () => {
   test('a driver lands directly on their own job list', async ({ page }) => {
     await login(page, USERS.driver);
     // Drivers are redirected past the hub — it belongs to owner/superadmin.
-    expect(pathOf(page)).toBe('/driver');
+    await expectLandsOn(page, '/driver');
     await expect(page.locator('body')).toContainText('Surat Jalan Hari Ini');
   });
 

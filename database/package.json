@@ -11,6 +11,7 @@
     "reset": "tsx reset.ts"
   },
   "dependencies": {
+    "@mimi/shared": "workspace:*",
     "bcrypt": "^6.0.0",
     "pg": "^8.22.0"
   },

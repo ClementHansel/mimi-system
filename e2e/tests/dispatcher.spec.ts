@@ -15,9 +15,24 @@ async function openFirstSuratJalan(page: Page) {
   await page.goto('/delivery');
   const rows = page.locator('table tbody tr');
   await expect(rows.first()).toBeVisible();
-  await rows.first().click();
+
   const drawer = page.locator('[role="dialog"]');
-  await expect(drawer).toBeVisible();
+  // The row is server-rendered, so a click landing before React hydrates hits
+  // an element whose handler is not attached yet and does NOTHING — silently,
+  // with no error. Same class as the login form submitting natively
+  // pre-hydration; the difference is that the login button has an explicit
+  // `disabled until hydrated` guard to wait on and this table has no such
+  // signal. Retrying the open is therefore the honest wait.
+  await expect(async () => {
+    await rows.first().click();
+    await expect(drawer).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 25_000 });
+  // The drawer paints a "Memuat…" placeholder first and fills in from the
+  // server a beat later. Reading `innerText()` before this settles returned the
+  // loading state, which made status-dependent tests SKIP — a skip that means
+  // "I looked too early" is worse than a failure, because it reads as
+  // "not applicable" in the report.
+  await expect(drawer).toContainText('Drop', { timeout: 20_000 });
   return drawer;
 }
 
@@ -83,16 +98,17 @@ test.describe('dispatcher — live board', () => {
     const body = page.locator('body');
     await expect(body).toContainText('Pantau Truk');
 
-    const hasMap = await page.locator('.leaflet-container').count();
-    const empty = await body.innerText();
-    if (/Tidak ada truk dalam perjalanan/.test(empty)) {
+    if (/Tidak ada truk dalam perjalanan/.test(await body.innerText())) {
       // A legitimate state, not a failure — assert it reads as such rather
       // than leaving a blank panel.
-      expect(hasMap, 'no trucks in transit; the empty state should stand alone').toBe(0);
+      await expect(page.locator('.leaflet-container')).toHaveCount(0);
       return;
     }
 
-    expect(hasMap, 'a truck is in transit so the map must render').toBeGreaterThan(0);
+    // Leaflet is loaded through `next/dynamic` with `ssr: false`, so the
+    // container appears a beat after the panel's own text. Counting
+    // immediately raced the chunk download.
+    await expect(page.locator('.leaflet-container')).toBeVisible({ timeout: 20_000 });
     // Tracking needs HTTPS (blocker B-14), so over plain HTTP every truck
     // reports no signal. Either is acceptable; a truck row is not.
     await expect(body).toContainText(/Belum ada sinyal lokasi|Terakhir/);

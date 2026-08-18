@@ -54,6 +54,7 @@
 
 import pg from 'pg';
 import { createHash } from 'node:crypto';
+import { businessDateOf } from '@mimi/shared';
 
 // Local copies of seed.ts's helpers. Duplicated rather than exported across
 // files so this module stays runnable on its own; they are three lines each
@@ -73,8 +74,9 @@ function daysAgo(n: number): Date {
   d.setDate(d.getDate() - n);
   return d;
 }
+/** WITA calendar date, not UTC — see the long note on `seed.ts`'s copy. */
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return businessDateOf(d.toISOString());
 }
 
 /** The ONE mechanism that may produce a document number — mirrors seed.ts's

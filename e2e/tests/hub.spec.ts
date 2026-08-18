@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, mainLinks, pathOf, USERS } from './support/app';
+import { expectLandsOn, login, mainLinks, pathOf, USERS } from './support/app';
 
 /**
  * The hub contract, per the owner's 2026-08-18 ruling: owner and superadmin
@@ -37,7 +37,7 @@ test.describe('home hub', () => {
     test(`${role} lands on the hub with a card for every interface`, async ({ page }) => {
       await login(page, USERS[role]);
 
-      expect(pathOf(page), `${role} should land on the hub`).toBe('/');
+      await expectLandsOn(page, '/');
 
       const links = await mainLinks(page);
       for (const href of EXPECTED_INTERFACES) {
@@ -61,7 +61,8 @@ test.describe('home hub', () => {
   test('kepala gudang is redirected past the hub to the warehouse', async ({ page }) => {
     await login(page, USERS.kepalaGudang);
 
-    expect(pathOf(page), 'a non-all-access role must not sit on the hub').toBe('/warehouse');
+    // Redirected off the hub, not merely away from /login.
+    await expectLandsOn(page, '/warehouse');
 
     // Visiting the hub directly must bounce too — the redirect belongs to the
     // page, not to the login flow.

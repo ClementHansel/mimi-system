@@ -49,14 +49,19 @@ export interface RlsSessionContext {
   locationIds: readonly string[];
 }
 
-export async function withRollbackAs<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollbackAs<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -85,7 +90,8 @@ export async function loadFixtures(): Promise<Fixtures> {
   const kgd = await pool.query<{ user_id: string; location_id: string }>(
     `SELECT ul.user_id, ul.location_id FROM user_locations ul JOIN users u ON u.id = ul.user_id JOIN roles r ON r.id = u.role_id WHERE r.key = 'kepala_gudang' LIMIT 1`,
   );
-  if (!kgd.rows[0]) throw new Error('loadFixtures: no kepala_gudang with a user_locations assignment in the seed');
+  if (!kgd.rows[0])
+    throw new Error('loadFixtures: no kepala_gudang with a user_locations assignment in the seed');
 
   const pair = await pool.query<{ supervisor_id: string; leader_id: string; location_id: string }>(
     `SELECT spv.user_id AS supervisor_id, ldr.user_id AS leader_id, spv.location_id
@@ -97,17 +103,31 @@ export async function loadFixtures(): Promise<Fixtures> {
        JOIN roles ldr_r ON ldr_r.id = ldr_u.role_id AND ldr_r.key = 'leader_outlet'
       LIMIT 1`,
   );
-  if (!pair.rows[0]) throw new Error('loadFixtures: no (supervisor, leader_outlet) pair sharing one outlet in the seed');
+  if (!pair.rows[0])
+    throw new Error(
+      'loadFixtures: no (supervisor, leader_outlet) pair sharing one outlet in the seed',
+    );
 
-  const storageOutlet = await pool.query<{ id: string }>(`SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`, [pair.rows[0].location_id]);
-  const storageWarehouse = await pool.query<{ id: string }>(`SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`, [kgd.rows[0].location_id]);
+  const storageOutlet = await pool.query<{ id: string }>(
+    `SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`,
+    [pair.rows[0].location_id],
+  );
+  const storageWarehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`,
+    [kgd.rows[0].location_id],
+  );
   const item = await pool.query<{ id: string }>(`SELECT id FROM items LIMIT 1`);
-  const item2 = await pool.query<{ id: string }>(`SELECT id FROM items WHERE id <> $1 LIMIT 1`, [item.rows[0]?.id]);
+  const item2 = await pool.query<{ id: string }>(`SELECT id FROM items WHERE id <> $1 LIMIT 1`, [
+    item.rows[0]?.id,
+  ]);
   const supplier = await pool.query<{ id: string }>(`SELECT id FROM suppliers LIMIT 1`);
 
   const usersByRole = {} as Record<RoleKey, string>;
   for (const roleKey of Object.values(RoleKey)) {
-    const res = await pool.query<{ id: string }>(`SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`, [roleKey]);
+    const res = await pool.query<{ id: string }>(
+      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
+      [roleKey],
+    );
     if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}'`);
     usersByRole[roleKey] = res.rows[0].id;
   }
@@ -144,7 +164,12 @@ export async function deleteAttachment(id: string): Promise<void> {
 }
 
 /** Ensures the warehouse has enough on-hand stock at `storageAreaWarehouse` for a return-out/receive test to post against (owner pool, committed durably — visible to the separate app-pool transaction under test). */
-export async function ensureStock(locationId: string, storageAreaId: string, itemId: string, qty: string): Promise<void> {
+export async function ensureStock(
+  locationId: string,
+  storageAreaId: string,
+  itemId: string,
+  qty: string,
+): Promise<void> {
   await getOwnerPool().query(
     `INSERT INTO stock_balances (location_id, storage_area_id, item_id, qty_on_hand) VALUES ($1,$2,$3,$4)
      ON CONFLICT (location_id, storage_area_id, item_id) DO UPDATE SET qty_on_hand = stock_balances.qty_on_hand + $4`,
@@ -164,7 +189,11 @@ export async function ensureStock(locationId: string, storageAreaId: string, ite
  * same live DB) catches. Fix: recompute the balance from the fold of whatever movements
  * actually exist for the key, never leave/blind-delete it.
  */
-export async function reconcileStockBalance(locationId: string, storageAreaId: string, itemId: string): Promise<void> {
+export async function reconcileStockBalance(
+  locationId: string,
+  storageAreaId: string,
+  itemId: string,
+): Promise<void> {
   await getOwnerPool().query(
     `UPDATE stock_balances
         SET qty_on_hand = COALESCE(

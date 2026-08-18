@@ -7,7 +7,13 @@ import { ConflictDetectorService } from '../../../kernel/sync/conflict-detector.
 import { SyncConflictsRepository } from '../../../kernel/sync/sync-conflicts.repository';
 import { ShiftsService } from './shifts.service';
 import type { CreateShiftDto, UpsertRosterDto } from '../dto/shift.dto';
-import { asRequest, closePool, deleteWorkShift, loadHrFixtures, type HrFixtures } from '../test-support/live-db';
+import {
+  asRequest,
+  closePool,
+  deleteWorkShift,
+  loadHrFixtures,
+  type HrFixtures,
+} from '../test-support/live-db';
 
 /**
  * Integration proof for `ShiftsService` (FR-HR-02, M14) — this module had
@@ -28,7 +34,11 @@ describe('ShiftsService (integration, live Postgres)', () => {
   beforeAll(async () => {
     try {
       fixtures = await loadHrFixtures();
-      if (!fixtures.usersByRole[RoleKey.SUPERVISOR] && !fixtures.usersByRole[RoleKey.HR_ADMIN] && !fixtures.usersByRole[RoleKey.KASIR]) {
+      if (
+        !fixtures.usersByRole[RoleKey.SUPERVISOR] &&
+        !fixtures.usersByRole[RoleKey.HR_ADMIN] &&
+        !fixtures.usersByRole[RoleKey.KASIR]
+      ) {
         dbAvailable = false;
         return;
       }
@@ -39,7 +49,10 @@ describe('ShiftsService (integration, live Postgres)', () => {
       });
       await pool.query('SELECT 1');
       const eventsRepo = new SyncEventsRepository(pool);
-      const conflictDetector = new ConflictDetectorService(eventsRepo, new SyncConflictsRepository(pool));
+      const conflictDetector = new ConflictDetectorService(
+        eventsRepo,
+        new SyncConflictsRepository(pool),
+      );
       service = new ShiftsService(new SyncEmitService(eventsRepo, conflictDetector));
     } catch {
       dbAvailable = false;
@@ -55,8 +68,10 @@ describe('ShiftsService (integration, live Postgres)', () => {
   function actorRls() {
     const spv = fixtures.usersByRole[RoleKey.SUPERVISOR];
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN];
-    if (hrAdmin) return { userId: hrAdmin.userId, roleKey: RoleKey.HR_ADMIN, locationIds: [] as string[] };
-    if (spv) return { userId: spv.userId, roleKey: RoleKey.SUPERVISOR, locationIds: [spv.locationId] };
+    if (hrAdmin)
+      return { userId: hrAdmin.userId, roleKey: RoleKey.HR_ADMIN, locationIds: [] as string[] };
+    if (spv)
+      return { userId: spv.userId, roleKey: RoleKey.SUPERVISOR, locationIds: [spv.locationId] };
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
     return { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
   }
@@ -65,18 +80,28 @@ describe('ShiftsService (integration, live Postgres)', () => {
     it('createShift persists past its own request — a later listShifts (new connection) finds it', async () => {
       if (!dbAvailable) return;
       const rls = actorRls();
-      const dto: CreateShiftDto = { locationId: fixtures.outletId, name: 'BE-TXN-ROLLBACK Test Shift', startTime: '07:00', endTime: '15:00', breakMinutes: 30 };
+      const dto: CreateShiftDto = {
+        locationId: fixtures.outletId,
+        name: 'BE-TXN-ROLLBACK Test Shift',
+        startTime: '07:00',
+        endTime: '15:00',
+        breakMinutes: 30,
+      };
 
       let shiftId: string | undefined;
       try {
-        const created = await asRequest(rls, (client) => service.createShift(client, rls.userId, dto));
+        const created = await asRequest(rls, (client) =>
+          service.createShift(client, rls.userId, dto),
+        );
         shiftId = created.id;
         expect(created.name).toBe(dto.name);
 
         // A GENUINELY separate connection — never sees `createShift`'s connection's uncommitted
         // state, only what it actually COMMITted. If `createShift` had never called `withWrite`
         // (the original bug), this list would come back empty.
-        const list = await asRequest(rls, (client) => service.listShifts(client, fixtures.outletId));
+        const list = await asRequest(rls, (client) =>
+          service.listShifts(client, fixtures.outletId),
+        );
         expect(list.some((s) => s.id === created.id)).toBe(true);
       } finally {
         if (shiftId) await deleteWorkShift(shiftId);
@@ -86,19 +111,31 @@ describe('ShiftsService (integration, live Postgres)', () => {
     it('updateShift persists past its own request — a later listShifts (new connection) sees the new name', async () => {
       if (!dbAvailable) return;
       const rls = actorRls();
-      const dto: CreateShiftDto = { locationId: fixtures.outletId, name: 'BE-TXN-ROLLBACK Update Target', startTime: '08:00', endTime: '16:00', breakMinutes: 30 };
+      const dto: CreateShiftDto = {
+        locationId: fixtures.outletId,
+        name: 'BE-TXN-ROLLBACK Update Target',
+        startTime: '08:00',
+        endTime: '16:00',
+        breakMinutes: 30,
+      };
 
       let shiftId: string | undefined;
       try {
-        const created = await asRequest(rls, (client) => service.createShift(client, rls.userId, dto));
+        const created = await asRequest(rls, (client) =>
+          service.createShift(client, rls.userId, dto),
+        );
         shiftId = created.id;
 
         // Separate connection from `createShift` above — its `withWrite` already committed for real.
-        const updated = await asRequest(rls, (client) => service.updateShift(client, rls.userId, created.id, { name: 'BE-TXN-ROLLBACK Renamed' }));
+        const updated = await asRequest(rls, (client) =>
+          service.updateShift(client, rls.userId, created.id, { name: 'BE-TXN-ROLLBACK Renamed' }),
+        );
         expect(updated.name).toBe('BE-TXN-ROLLBACK Renamed');
 
         // A THIRD, still-different connection.
-        const list = await asRequest(rls, (client) => service.listShifts(client, fixtures.outletId));
+        const list = await asRequest(rls, (client) =>
+          service.listShifts(client, fixtures.outletId),
+        );
         const found = list.find((s) => s.id === created.id);
         expect(found?.name).toBe('BE-TXN-ROLLBACK Renamed');
       } finally {
@@ -109,26 +146,43 @@ describe('ShiftsService (integration, live Postgres)', () => {
     it('upsertRoster persists past its own request — a later getRoster (new connection) sees the assignment', async () => {
       if (!dbAvailable) return;
       const rls = actorRls();
-      const employeeId = fixtures.usersByRole[RoleKey.KASIR]?.employeeId ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]?.employeeId;
+      const employeeId =
+        fixtures.usersByRole[RoleKey.KASIR]?.employeeId ??
+        fixtures.usersByRole[RoleKey.LEADER_OUTLET]?.employeeId;
       if (!employeeId) return; // seed has no rosterable employee at this outlet — nothing to prove
 
-      const shiftDto: CreateShiftDto = { locationId: fixtures.outletId, name: 'BE-TXN-ROLLBACK Roster Shift', startTime: '09:00', endTime: '17:00', breakMinutes: 30 };
+      const shiftDto: CreateShiftDto = {
+        locationId: fixtures.outletId,
+        name: 'BE-TXN-ROLLBACK Roster Shift',
+        startTime: '09:00',
+        endTime: '17:00',
+        breakMinutes: 30,
+      };
       let shiftId: string | undefined;
       try {
-        const shift = await asRequest(rls, (client) => service.createShift(client, rls.userId, shiftDto));
+        const shift = await asRequest(rls, (client) =>
+          service.createShift(client, rls.userId, shiftDto),
+        );
         shiftId = shift.id;
 
         // A far-future, randomized-day date — avoids colliding with any real roster row a
         // concurrent test run might also be writing for this employee.
         const day = String(1 + Math.floor(Math.random() * 27)).padStart(2, '0');
         const date = `2099-01-${day}`;
-        const rosterDto: UpsertRosterDto = { locationId: fixtures.outletId, assignments: [{ employeeId, workShiftId: shift.id, date }] };
+        const rosterDto: UpsertRosterDto = {
+          locationId: fixtures.outletId,
+          assignments: [{ employeeId, workShiftId: shift.id, date }],
+        };
         // Separate connection from `createShift` above.
-        const result = await asRequest(rls, (client) => service.upsertRoster(client, rls.userId, rosterDto));
+        const result = await asRequest(rls, (client) =>
+          service.upsertRoster(client, rls.userId, rosterDto),
+        );
         expect(result.updated).toBe(1);
 
         // A THIRD, still-different connection — proves the roster write genuinely committed.
-        const roster = await asRequest(rls, (client) => service.getRoster(client, fixtures.outletId, date, date, employeeId));
+        const roster = await asRequest(rls, (client) =>
+          service.getRoster(client, fixtures.outletId, date, date, employeeId),
+        );
         const row = roster.find((r) => r.employeeId === employeeId);
         expect(row?.days.some((d) => d.date === date && d.workShiftId === shift.id)).toBe(true);
       } finally {

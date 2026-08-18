@@ -1,6 +1,16 @@
 /** Request DTOs — M20 `settings` (CONTRACTS.md §4.20). */
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsDefined, IsIn, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsDefined,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { ApprovalMode, RBAC_ROLE_ORDER, type RoleKey } from '@mimi/shared';
 
 const ROLE_KEYS = RBAC_ROLE_ORDER as readonly string[];

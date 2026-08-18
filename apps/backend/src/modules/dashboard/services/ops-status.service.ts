@@ -82,7 +82,9 @@ export class OpsStatusService {
    */
   private async sjInTransit(client: PoolClient, locationScope: LocationScope): Promise<number> {
     if (locationScope === null) {
-      const res = await client.query<{ n: string }>(`SELECT COUNT(*) AS n FROM surat_jalan WHERE status = 'in_transit'`);
+      const res = await client.query<{ n: string }>(
+        `SELECT COUNT(*) AS n FROM surat_jalan WHERE status = 'in_transit'`,
+      );
       return parseInt(res.rows[0]!.n, 10);
     }
     const res = await client.query<{ n: string }>(
@@ -97,7 +99,10 @@ export class OpsStatusService {
   }
 
   /** `approvals.location_id` (nullable for company-wide document types) — a scoped caller sees only their own locations' pending approvals, never the location-less ones. */
-  private async pendingApprovals(client: PoolClient, locationScope: LocationScope): Promise<number> {
+  private async pendingApprovals(
+    client: PoolClient,
+    locationScope: LocationScope,
+  ): Promise<number> {
     const params: unknown[] = [];
     const scope = scopeClause(locationScope, 'location_id', params);
     const res = await client.query<{ n: string }>(
@@ -154,9 +159,16 @@ export class OpsStatusService {
   }
 
   /** `sj_temperature_logs` has no `location_id` of its own — joined via the drop's outlet, falling back to the SJ's origin warehouse for load-stage (`drop_id IS NULL`) readings. */
-  private async coldChainBreaches24h(client: PoolClient, locationScope: LocationScope): Promise<number> {
+  private async coldChainBreaches24h(
+    client: PoolClient,
+    locationScope: LocationScope,
+  ): Promise<number> {
     const params: unknown[] = [];
-    const scope = scopeClause(locationScope, 'COALESCE(d.location_id, sj.origin_location_id)', params);
+    const scope = scopeClause(
+      locationScope,
+      'COALESCE(d.location_id, sj.origin_location_id)',
+      params,
+    );
     const res = await client.query<{ n: string }>(
       `SELECT COUNT(*) AS n
          FROM sj_temperature_logs t

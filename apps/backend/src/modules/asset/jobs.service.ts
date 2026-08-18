@@ -1,6 +1,13 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { ERR_CONFLICT, ERR_NOT_FOUND, formatCloudDocNumber, type Money, type Paginated, type UUID } from '@mimi/shared';
+import {
+  ERR_CONFLICT,
+  ERR_NOT_FOUND,
+  formatCloudDocNumber,
+  type Money,
+  type Paginated,
+  type UUID,
+} from '@mimi/shared';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import { StorageService } from '../../kernel/storage/storage.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
@@ -80,7 +87,12 @@ export class JobsService {
     private readonly paymentVerifications: PaymentVerificationsService,
   ) {}
 
-  private async resolveProofUrls(client: PoolClient, user: JwtAccessPayload, locationScope: string[] | null, jobId: string): Promise<string[]> {
+  private async resolveProofUrls(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    locationScope: string[] | null,
+    jobId: string,
+  ): Promise<string[]> {
     const res = await client.query<{ id: string }>(
       `SELECT id FROM attachments WHERE entity_type = 'maintenance_job' AND entity_id = $1 ORDER BY created_at ASC`,
       [jobId],
@@ -98,7 +110,12 @@ export class JobsService {
     return urls.filter((u): u is string => u !== null);
   }
 
-  private async map(client: PoolClient, row: JobJoinRow, user: JwtAccessPayload, locationScope: string[] | null): Promise<JobDto> {
+  private async map(
+    client: PoolClient,
+    row: JobJoinRow,
+    user: JwtAccessPayload,
+    locationScope: string[] | null,
+  ): Promise<JobDto> {
     return {
       id: row.id,
       jobNumber: row.job_number,
@@ -109,7 +126,10 @@ export class JobsService {
       assignedToName: row.assigned_to_name,
       completedAt: row.completed_at ? new Date(row.completed_at as string).toISOString() : null,
       cost: row.cost,
-      proofUrls: row.status === 'done' || row.status === 'verified' ? await this.resolveProofUrls(client, user, locationScope, row.id) : [],
+      proofUrls:
+        row.status === 'done' || row.status === 'verified'
+          ? await this.resolveProofUrls(client, user, locationScope, row.id)
+          : [],
     };
   }
 
@@ -122,11 +142,22 @@ export class JobsService {
 
   async list(
     client: PoolClient,
-    query: { locationId?: string; status?: string; assetId?: string; page?: number; pageSize?: number },
+    query: {
+      locationId?: string;
+      status?: string;
+      assetId?: string;
+      page?: number;
+      pageSize?: number;
+    },
     user: JwtAccessPayload,
     locationScope: string[] | null,
   ): Promise<Paginated<JobDto>> {
-    if (query.locationId && !ASSET_CENTRAL_ROLES.has(user.roleKey) && locationScope !== null && !locationScope.includes(query.locationId)) {
+    if (
+      query.locationId &&
+      !ASSET_CENTRAL_ROLES.has(user.roleKey) &&
+      locationScope !== null &&
+      !locationScope.includes(query.locationId)
+    ) {
       return { rows: [], total: 0, page: query.page ?? 1, pageSize: query.pageSize ?? 50 };
     }
 
@@ -164,7 +195,9 @@ export class JobsService {
       params,
     );
 
-    const rows = await Promise.all(rowsRes.rows.map((r) => this.map(client, r, user, locationScope)));
+    const rows = await Promise.all(
+      rowsRes.rows.map((r) => this.map(client, r, user, locationScope)),
+    );
     return { rows, total, page, pageSize };
   }
 
@@ -217,14 +250,24 @@ export class JobsService {
     });
   }
 
-  async start(client: PoolClient, jobId: string, user: JwtAccessPayload, locationScope: string[] | null): Promise<JobDto> {
+  async start(
+    client: PoolClient,
+    jobId: string,
+    user: JwtAccessPayload,
+    locationScope: string[] | null,
+  ): Promise<JobDto> {
     const row = await this.requireJob(client, jobId);
     assertAssetLocationScope(user, locationScope, row.asset_location_id);
     if (row.status !== 'due' && row.status !== 'scheduled') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Job ${row.job_number} is '${row.status}' — cannot start` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Job ${row.job_number} is '${row.status}' — cannot start`,
+      });
     }
     return withWrite(client, async () => {
-      await client.query(`UPDATE maintenance_jobs SET status = 'in_progress' WHERE id = $1`, [jobId]);
+      await client.query(`UPDATE maintenance_jobs SET status = 'in_progress' WHERE id = $1`, [
+        jobId,
+      ]);
       const updated = await this.requireJob(client, jobId);
       // No 'started' op exists in the sync-protocol registry for `maintenance_jobs` (only 'created'/
       // 'completed') — no sync event emitted here, matching the registry's actual vocabulary.
@@ -243,7 +286,10 @@ export class JobsService {
     const row = await this.requireJob(client, jobId);
     assertAssetLocationScope(user, locationScope, row.asset_location_id);
     if (row.status !== 'in_progress' && row.status !== 'due') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Job ${row.job_number} is '${row.status}' — cannot complete` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Job ${row.job_number} is '${row.status}' — cannot complete`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -265,7 +311,16 @@ export class JobsService {
       await client.query(
         `INSERT INTO service_history (asset_id, job_id, service_date, description, vendor, cost, condition_after, odometer_km, recorded_by)
          VALUES ($1,$2,CURRENT_DATE,$3,$4,$5,$6,$7,$8)`,
-        [row.asset_id, jobId, description, dto.vendor ?? null, cost ?? '0', dto.conditionAfter, dto.odometerKm ?? null, actorUserId],
+        [
+          row.asset_id,
+          jobId,
+          description,
+          dto.vendor ?? null,
+          cost ?? '0',
+          dto.conditionAfter,
+          dto.odometerKm ?? null,
+          actorUserId,
+        ],
       );
 
       // Roll the owning schedule's next cycle forward, per this ticket's spec: next_due_at = CURRENT
@@ -299,7 +354,10 @@ export class JobsService {
             notes: dto.vendor ? `Vendor: ${dto.vendor}` : null,
           },
         );
-        await client.query(`UPDATE maintenance_jobs SET payment_verification_id = $2 WHERE id = $1`, [jobId, pvId]);
+        await client.query(
+          `UPDATE maintenance_jobs SET payment_verification_id = $2 WHERE id = $1`,
+          [jobId, pvId],
+        );
       }
 
       const updated = await this.requireJob(client, jobId);
@@ -322,7 +380,10 @@ export class JobsService {
       });
 
       // FR-PMS-01/04: the asset's own condition tracks the just-recorded service outcome.
-      await client.query(`UPDATE assets SET condition = $2 WHERE id = $1`, [row.asset_id, dto.conditionAfter]);
+      await client.query(`UPDATE assets SET condition = $2 WHERE id = $1`, [
+        row.asset_id,
+        dto.conditionAfter,
+      ]);
 
       return job;
     });
@@ -339,7 +400,10 @@ export class JobsService {
     const row = await this.requireJob(client, jobId);
     assertAssetLocationScope(user, locationScope, row.asset_location_id);
     if (row.status !== 'done') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Job ${row.job_number} is '${row.status}' — cannot verify` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Job ${row.job_number} is '${row.status}' — cannot verify`,
+      });
     }
     return withWrite(client, async () => {
       await client.query(
@@ -360,19 +424,24 @@ export class JobsService {
     pageSize: number,
     user: JwtAccessPayload,
     locationScope: string[] | null,
-  ): Promise<Paginated<{
-    serviceDate: string;
-    description: string;
-    vendor: string | null;
-    cost: Money;
-    conditionAfter: string;
-    odometerKm: number | null;
-    recordedBy: string;
-    proofUrls: string[];
-  }>> {
+  ): Promise<
+    Paginated<{
+      serviceDate: string;
+      description: string;
+      vendor: string | null;
+      cost: Money;
+      conditionAfter: string;
+      odometerKm: number | null;
+      recordedBy: string;
+      proofUrls: string[];
+    }>
+  > {
     assertAssetLocationScope(user, locationScope, assetLocationId);
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM service_history WHERE asset_id = $1`, [assetId]);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM service_history WHERE asset_id = $1`,
+      [assetId],
+    );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
 
     const res = await client.query<{
@@ -404,7 +473,9 @@ export class JobsService {
         conditionAfter: r.condition_after,
         odometerKm: r.odometer_km,
         recordedBy: r.recorded_by_name,
-        proofUrls: r.job_id ? await this.resolveProofUrls(client, user, locationScope, r.job_id) : [],
+        proofUrls: r.job_id
+          ? await this.resolveProofUrls(client, user, locationScope, r.job_id)
+          : [],
       })),
     );
 

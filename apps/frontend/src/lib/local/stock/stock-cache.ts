@@ -42,7 +42,10 @@ import type { StoredMovement } from '../types';
 const MOVEMENTS_STORE = 'movements';
 
 /** Writes a batch of already-exploded movements into the local fact log, inside the caller's transaction. */
-export async function recordMovements(tx: TxHandle, movements: readonly MovementFact[]): Promise<void> {
+export async function recordMovements(
+  tx: TxHandle,
+  movements: readonly MovementFact[],
+): Promise<void> {
   const store = tx.store<StoredMovement>(MOVEMENTS_STORE);
   for (const m of movements) {
     await store.put(m);
@@ -58,7 +61,10 @@ export interface RecordSaleArgs {
 }
 
 /** `sales.completed` → `usage_out` movements (FR-POS-06), recorded atomically with the sale's outbox commit. */
-export async function recordSaleWithinTx(tx: TxHandle, args: RecordSaleArgs): Promise<MovementFact[]> {
+export async function recordSaleWithinTx(
+  tx: TxHandle,
+  args: RecordSaleArgs,
+): Promise<MovementFact[]> {
   const movements = explodeSaleToMovements(
     args.saleEventId,
     args.saleLines,
@@ -127,7 +133,16 @@ export async function recordAreaTransferWithinTx(
   unitCost: string,
   occurredAt: string,
 ): Promise<MovementFact[]> {
-  const movements = explodeAreaTransferToMovements(eventId, locationId, itemId, fromAreaId, toAreaId, qty, unitCost, occurredAt);
+  const movements = explodeAreaTransferToMovements(
+    eventId,
+    locationId,
+    itemId,
+    fromAreaId,
+    toAreaId,
+    qty,
+    unitCost,
+    occurredAt,
+  );
   await recordMovements(tx, movements);
   return movements;
 }
@@ -155,7 +170,11 @@ export async function getAllBalances(db: LocalDatabase): Promise<Map<string, Pro
 export async function computeAreaChecksums(db: LocalDatabase): Promise<Record<string, string>> {
   const balances = [...(await getAllBalances(db)).values()];
   return computeAreaBalanceChecksums(
-    balances.map((b) => ({ storageAreaId: b.storageAreaId, itemId: b.itemId, qtyOnHand: b.qtyOnHand })),
+    balances.map((b) => ({
+      storageAreaId: b.storageAreaId,
+      itemId: b.itemId,
+      qtyOnHand: b.qtyOnHand,
+    })),
   );
 }
 
@@ -165,7 +184,11 @@ export async function computeAreaChecksums(db: LocalDatabase): Promise<Record<st
  * facts flowing through `commitFact` (those always apply in `'fact'` mode —
  * an offline sale is never rejected for driving stock negative, C5).
  */
-export async function checkMovement(db: LocalDatabase, movement: MovementFact, mode: LedgerMode): Promise<LedgerPostOutcome> {
+export async function checkMovement(
+  db: LocalDatabase,
+  movement: MovementFact,
+  mode: LedgerMode,
+): Promise<LedgerPostOutcome> {
   const current = await getBalance(db, movement);
   return applyMovement(current, movement, mode);
 }

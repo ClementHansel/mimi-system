@@ -28,17 +28,27 @@ export const usePosCartStore = create<CartState>((set) => ({
       const existing = s.lines.find((l) => l.productId === productId);
       if (existing) {
         const nextQty = (parseFloat(existing.qty) + 1).toString();
-        return { lines: s.lines.map((l) => (l.productId === productId ? { ...l, qty: nextQty } : l)) };
+        return {
+          lines: s.lines.map((l) => (l.productId === productId ? { ...l, qty: nextQty } : l)),
+        };
       }
-      return { lines: [...s.lines, { productId, productName, unitPrice, qty: '1', discount: ZERO_MONEY }] };
+      return {
+        lines: [...s.lines, { productId, productName, unitPrice, qty: '1', discount: ZERO_MONEY }],
+      };
     }),
   setQty: (productId, qty) =>
     set((s) => ({
-      lines: qty === '0' || qty === '' ? s.lines.filter((l) => l.productId !== productId) : s.lines.map((l) => (l.productId === productId ? { ...l, qty } : l)),
+      lines:
+        qty === '0' || qty === ''
+          ? s.lines.filter((l) => l.productId !== productId)
+          : s.lines.map((l) => (l.productId === productId ? { ...l, qty } : l)),
     })),
   setLineDiscount: (productId, discount) =>
-    set((s) => ({ lines: s.lines.map((l) => (l.productId === productId ? { ...l, discount } : l)) })),
-  removeLine: (productId) => set((s) => ({ lines: s.lines.filter((l) => l.productId !== productId) })),
+    set((s) => ({
+      lines: s.lines.map((l) => (l.productId === productId ? { ...l, discount } : l)),
+    })),
+  removeLine: (productId) =>
+    set((s) => ({ lines: s.lines.filter((l) => l.productId !== productId) })),
   setSaleDiscount: (saleDiscount) => set({ saleDiscount }),
   clear: () => set({ lines: [], saleDiscount: ZERO_MONEY }),
 }));
@@ -46,7 +56,12 @@ export const usePosCartStore = create<CartState>((set) => ({
 /** Pure selector helper: derive the cart summary from the current lines (component tests call this directly, no store needed). */
 export function summarizeCart(lines: readonly PosCartLine[], saleDiscount: Money): CartSummary {
   return calculateCartSummary(
-    lines.map((l) => ({ productId: l.productId, unitPrice: l.unitPrice, qty: l.qty, discount: l.discount })),
+    lines.map((l) => ({
+      productId: l.productId,
+      unitPrice: l.unitPrice,
+      qty: l.qty,
+      discount: l.discount,
+    })),
     saleDiscount,
   );
 }

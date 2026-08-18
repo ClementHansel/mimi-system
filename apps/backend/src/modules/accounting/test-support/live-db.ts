@@ -77,14 +77,19 @@ export interface RlsSessionContext {
  * write — CONTRACTS.md §0/§3's "permission denied" pin, real role, not
  * `'owner'`).
  */
-export async function withRollbackAs<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollbackAs<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -122,14 +127,19 @@ export const asRequest = withRollbackAs;
  * isn't itself the behavior under test; anything that IS the behavior under
  * test should go through the real service (and `withWrite`), not this.
  */
-export async function asCommittedRequest<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function asCommittedRequest<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
@@ -148,8 +158,12 @@ export interface Fixtures {
 /** Reads real seeded rows over the OWNER pool — never inserts (this module's fixtures are all pre-existing seed rows: locations, users, chart_of_accounts, fiscal_periods, posting_rules). */
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
-  const warehouse = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`);
-  const outlet = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'outlet' LIMIT 1`);
+  const warehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`,
+  );
+  const outlet = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'outlet' LIMIT 1`,
+  );
   const item = await pool.query<{ id: string }>(`SELECT id FROM items LIMIT 1`);
 
   const usersByRole = {} as Record<RoleKey, string>;
@@ -158,7 +172,10 @@ export async function loadFixtures(): Promise<Fixtures> {
       `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
       [roleKey],
     );
-    if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`);
+    if (!res.rows[0])
+      throw new Error(
+        `Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`,
+      );
     usersByRole[roleKey] = res.rows[0].id;
   }
 

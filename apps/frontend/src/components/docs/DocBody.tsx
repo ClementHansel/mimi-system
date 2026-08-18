@@ -48,13 +48,17 @@ function Block({ block }: { block: DocBlock }) {
       return block.ordered ? (
         <ol className="list-decimal space-y-1.5 pl-5 text-[0.95rem] leading-relaxed text-text-secondary marker:font-semibold marker:text-brand-500">
           {block.items.map((item, i) => (
-            <li key={i}><Inline text={item} /></li>
+            <li key={i}>
+              <Inline text={item} />
+            </li>
           ))}
         </ol>
       ) : (
         <ul className="list-disc space-y-1.5 pl-5 text-[0.95rem] leading-relaxed text-text-secondary marker:text-brand-500">
           {block.items.map((item, i) => (
-            <li key={i}><Inline text={item} /></li>
+            <li key={i}>
+              <Inline text={item} />
+            </li>
           ))}
         </ul>
       );
@@ -66,7 +70,9 @@ function Block({ block }: { block: DocBlock }) {
               <span className="mt-0.5 flex size-6 flex-none items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">
                 {i + 1}
               </span>
-              <span className="pt-0.5"><Inline text={item} /></span>
+              <span className="pt-0.5">
+                <Inline text={item} />
+              </span>
             </li>
           ))}
         </ol>
@@ -74,9 +80,16 @@ function Block({ block }: { block: DocBlock }) {
     case 'callout': {
       const Icon = calloutIcon[block.kind];
       return (
-        <div className={cn('flex gap-2.5 rounded-lg border p-3.5 text-sm leading-relaxed', calloutTone[block.kind])}>
+        <div
+          className={cn(
+            'flex gap-2.5 rounded-lg border p-3.5 text-sm leading-relaxed',
+            calloutTone[block.kind],
+          )}
+        >
           <Icon className="mt-0.5 size-4 flex-none" aria-hidden />
-          <p><Inline text={block.text} /></p>
+          <p>
+            <Inline text={block.text} />
+          </p>
         </div>
       );
     }
@@ -87,7 +100,12 @@ function Block({ block }: { block: DocBlock }) {
             <thead>
               <tr className="bg-stone-100">
                 {block.headers.map((h, i) => (
-                  <th key={i} className="border-b border-border px-3 py-2 text-left font-semibold text-text-primary">{h}</th>
+                  <th
+                    key={i}
+                    className="border-b border-border px-3 py-2 text-left font-semibold text-text-primary"
+                  >
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -95,7 +113,10 @@ function Block({ block }: { block: DocBlock }) {
               {block.rows.map((row, i) => (
                 <tr key={i} className={i % 2 === 1 ? 'bg-surface-sunken/50' : undefined}>
                   {row.map((cell, j) => (
-                    <td key={j} className="border-b border-border px-3 py-2 align-top text-text-secondary">
+                    <td
+                      key={j}
+                      className="border-b border-border px-3 py-2 align-top text-text-secondary"
+                    >
                       <Inline text={cell} />
                     </td>
                   ))}
@@ -117,7 +138,9 @@ export function DocSectionView({ section }: { section: DocSection }) {
       <HeadingTag
         className={cn(
           'font-display font-semibold text-text-primary',
-          section.level === 3 ? 'mt-6 mb-2 text-lg' : 'mt-8 mb-3 border-b border-border pb-2 text-xl',
+          section.level === 3
+            ? 'mt-6 mb-2 text-lg'
+            : 'mt-8 mb-3 border-b border-border pb-2 text-xl',
         )}
       >
         {section.heading}

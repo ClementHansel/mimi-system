@@ -1,9 +1,30 @@
 'use client';
 
 import {
-  Circle, Send, Clock, CheckCircle2, XCircle, Ban, Loader2, Truck, PackageCheck, Lock,
-  ArrowRightCircle, SkipForward, CalendarClock, LogOut, Thermometer, Info, Wrench,
-  AlertTriangle, RefreshCcw, Wifi, WifiOff, Unlink, HelpCircle, type LucideIcon,
+  Circle,
+  Send,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Ban,
+  Loader2,
+  Truck,
+  PackageCheck,
+  Lock,
+  ArrowRightCircle,
+  SkipForward,
+  CalendarClock,
+  LogOut,
+  Thermometer,
+  Info,
+  Wrench,
+  AlertTriangle,
+  RefreshCcw,
+  Wifi,
+  WifiOff,
+  Unlink,
+  HelpCircle,
+  type LucideIcon,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -29,12 +50,36 @@ import { cn } from '@/lib/utils';
  */
 
 export type StatusDomain =
-  | 'replenishment' | 'suratJalan' | 'drop' | 'opname' | 'waste' | 'return'
-  | 'purchaseRequest' | 'purchaseOrder' | 'pettyCash' | 'shift' | 'sale' | 'payment'
-  | 'voidRefund' | 'onlineOrder' | 'settlement' | 'approval' | 'approvalStep'
-  | 'employment' | 'attendance' | 'leave' | 'payrollRun' | 'loan' | 'asset'
-  | 'maintenanceJob' | 'fiscalPeriod' | 'journalEntry' | 'device' | 'reverification'
-  | 'offlineAuthOutcome' | 'topologyOutlet';
+  | 'replenishment'
+  | 'suratJalan'
+  | 'drop'
+  | 'opname'
+  | 'waste'
+  | 'return'
+  | 'purchaseRequest'
+  | 'purchaseOrder'
+  | 'pettyCash'
+  | 'shift'
+  | 'sale'
+  | 'payment'
+  | 'voidRefund'
+  | 'onlineOrder'
+  | 'settlement'
+  | 'approval'
+  | 'approvalStep'
+  | 'employment'
+  | 'attendance'
+  | 'leave'
+  | 'payrollRun'
+  | 'loan'
+  | 'asset'
+  | 'maintenanceJob'
+  | 'fiscalPeriod'
+  | 'journalEntry'
+  | 'device'
+  | 'reverification'
+  | 'offlineAuthOutcome'
+  | 'topologyOutlet';
 
 type Tone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
@@ -145,7 +190,13 @@ export function StatusBadge({ domain, status, size = 'md', className }: StatusBa
         className,
       )}
     >
-      <Icon className={cn(size === 'sm' ? 'size-3' : 'size-3.5', status === 'processing' && 'animate-spin')} aria-hidden />
+      <Icon
+        className={cn(
+          size === 'sm' ? 'size-3' : 'size-3.5',
+          status === 'processing' && 'animate-spin',
+        )}
+        aria-hidden
+      />
       {label}
     </span>
   );

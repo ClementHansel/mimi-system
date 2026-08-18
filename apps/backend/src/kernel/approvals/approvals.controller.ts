@@ -1,6 +1,11 @@
 import { Controller, Get, Param, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
-import { ApprovalDocumentType, type ApprovalDetail, type Paginated, type RoleKey } from '@mimi/shared';
+import {
+  ApprovalDocumentType,
+  type ApprovalDetail,
+  type Paginated,
+  type RoleKey,
+} from '@mimi/shared';
 import type { RequestWithDbContext } from '../../common/guards/rls-context.guard';
 import { ApprovalService } from './approvals.service';
 import { ListPendingApprovalsQueryDto } from './dto/list-pending-approvals.query';
@@ -31,7 +36,11 @@ export class ApprovalsController {
     const user = req.user!;
     return this.approvals.getPending(
       req.dbClient!,
-      { userId: user.sub, roleKey: user.roleKey as RoleKey, locationIds: req.locationScope ?? null },
+      {
+        userId: user.sub,
+        roleKey: user.roleKey as RoleKey,
+        locationIds: req.locationScope ?? null,
+      },
       { documentType: query.documentType, page: query.page ?? 1, pageSize: query.pageSize ?? 50 },
     );
   }

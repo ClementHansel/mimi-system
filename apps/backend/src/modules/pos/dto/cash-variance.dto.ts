@@ -1,5 +1,15 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsISO8601, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsISO8601,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 import { CashVarianceProposalStatus } from '@mimi/shared';
 
 /**

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { argon2id } from 'hash-wasm';
 import { hashWasmPinVerifier, createHashWasmPinVerifier } from './pin-verifier';
-import { authorizeOffline, cacheCredential, encodeOfflineCredentialToken } from './offline-credentials';
+import {
+  authorizeOffline,
+  cacheCredential,
+  encodeOfflineCredentialToken,
+} from './offline-credentials';
 import { createTestDatabase } from '../test-support/fixtures';
 import type { OfflineCredentialClaims } from '../types';
 
@@ -114,7 +118,12 @@ describe('hash-wasm-backed PinVerifier (SYNC-PROTOCOL §7.2, real argon2id)', ()
       pinVerifier: await mintPinVerifier('555555'),
       selfieRequiredAboveIdr: '200000.00',
     };
-    await cacheCredential(db, { credentialId: claims.credentialId, token: encodeOfflineCredentialToken(claims), scopes: claims.scopes, expiresAt: claims.exp });
+    await cacheCredential(db, {
+      credentialId: claims.credentialId,
+      token: encodeOfflineCredentialToken(claims),
+      scopes: claims.scopes,
+      expiresAt: claims.exp,
+    });
 
     const outcome = await authorizeOffline(
       db,

@@ -25,12 +25,18 @@ export interface PermissionGateProps {
   showMessage?: boolean;
 }
 
-export function PermissionGate({ permission, children, fallback, showMessage }: PermissionGateProps) {
+export function PermissionGate({
+  permission,
+  children,
+  fallback,
+  showMessage,
+}: PermissionGateProps) {
   const { can } = usePermissions();
   const { t } = useI18n();
 
   if (can(permission)) return <>{children}</>;
   if (fallback !== undefined) return <>{fallback}</>;
-  if (showMessage) return <EmptyState icon={ShieldAlert} title={t('permissionGate.noAccess')} size="sm" />;
+  if (showMessage)
+    return <EmptyState icon={ShieldAlert} title={t('permissionGate.noAccess')} size="sm" />;
   return null;
 }

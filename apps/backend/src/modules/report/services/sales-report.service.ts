@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { addMoney, businessDayBoundaries, ZERO_MONEY, type ISODate, type Money } from '@mimi/shared';
+import {
+  addMoney,
+  businessDayBoundaries,
+  ZERO_MONEY,
+  type ISODate,
+  type Money,
+} from '@mimi/shared';
 import type { SalesReportGroupBy } from '../dto/sales-report.query';
 import { assertLocationInScope } from '../scope.util';
 import type { ReportCallerContext } from '../report.types';
@@ -139,7 +145,8 @@ export class SalesReportService {
       [...(from ? [from] : []), ...(to ? [to] : []), ...(scopeIds ? [scopeIds] : [])],
     );
 
-    const keyOf = (r: { sales_date: string; location_id: string }) => (groupBy === 'day' ? r.sales_date : r.location_id);
+    const keyOf = (r: { sales_date: string; location_id: string }) =>
+      groupBy === 'day' ? r.sales_date : r.location_id;
 
     const feesByKey = new Map<string, Money>();
     for (const r of feesRes.rows) {
@@ -149,7 +156,11 @@ export class SalesReportService {
 
     const buckets = new Map<string, { txCount: number; gross: Money; discount: Money }>();
     let locationNames: Map<string, string> | null = null;
-    if (groupBy === 'outlet') locationNames = await this.locationNames(client, mvRes.rows.map((r) => r.location_id));
+    if (groupBy === 'outlet')
+      locationNames = await this.locationNames(
+        client,
+        mvRes.rows.map((r) => r.location_id),
+      );
 
     for (const r of mvRes.rows) {
       const key = keyOf(r);
@@ -183,13 +194,19 @@ export class SalesReportService {
 
   private async locationNames(client: PoolClient, ids: string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
-    const res = await client.query<{ id: string; name: string }>(`SELECT id, name FROM locations WHERE id = ANY($1::uuid[])`, [
-      [...new Set(ids)],
-    ]);
+    const res = await client.query<{ id: string; name: string }>(
+      `SELECT id, name FROM locations WHERE id = ANY($1::uuid[])`,
+      [[...new Set(ids)]],
+    );
     return new Map(res.rows.map((r) => [r.id, r.name]));
   }
 
-  private async groupByProduct(client: PoolClient, from: ISODate | null, to: ISODate | null, scopeIds: string[] | null): Promise<SalesReportRow[]> {
+  private async groupByProduct(
+    client: PoolClient,
+    from: ISODate | null,
+    to: ISODate | null,
+    scopeIds: string[] | null,
+  ): Promise<SalesReportRow[]> {
     const params: unknown[] = [];
     let where = `s.status = 'completed'`;
     if (from) {
@@ -205,7 +222,13 @@ export class SalesReportService {
       where += ` AND s.location_id = ANY($${params.length}::uuid[])`;
     }
 
-    const res = await client.query<{ product_id: string; product_name: string; tx_count: string; gross: Money; discount: Money }>(
+    const res = await client.query<{
+      product_id: string;
+      product_name: string;
+      tx_count: string;
+      gross: Money;
+      discount: Money;
+    }>(
       `SELECT sl.product_id, p.name AS product_name, COUNT(DISTINCT sl.sale_id)::int AS tx_count,
               COALESCE(SUM(sl.line_total), '0.00') AS gross, COALESCE(SUM(sl.discount), '0.00') AS discount
          FROM sale_lines sl
@@ -228,7 +251,12 @@ export class SalesReportService {
     }));
   }
 
-  private async groupByMethod(client: PoolClient, from: ISODate | null, to: ISODate | null, scopeIds: string[] | null): Promise<SalesReportRow[]> {
+  private async groupByMethod(
+    client: PoolClient,
+    from: ISODate | null,
+    to: ISODate | null,
+    scopeIds: string[] | null,
+  ): Promise<SalesReportRow[]> {
     const params: unknown[] = [];
     let where = `s.status = 'completed'`;
     if (from) {

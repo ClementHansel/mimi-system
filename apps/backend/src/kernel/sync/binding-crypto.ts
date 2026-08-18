@@ -20,7 +20,13 @@
  * keep it that way rather than re-deriving the cipher elsewhere.
  */
 import { ConfigService } from '@nestjs/config';
-import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 
 const ALGO = 'aes-256-gcm';
 const IV_BYTES = 12;
@@ -78,7 +84,14 @@ export interface BindingHmacInput {
 }
 
 function bindingMessage(input: BindingHmacInput): string {
-  return [input.eventId, input.entity, input.entityId, input.op, input.amountIdr, input.occurredAt].join('‖');
+  return [
+    input.eventId,
+    input.entity,
+    input.entityId,
+    input.op,
+    input.amountIdr,
+    input.occurredAt,
+  ].join('‖');
 }
 
 /** `HMAC_SHA256(k, event_id ‖ entity ‖ entity_id ‖ op ‖ amount_idr ‖ occurred_at)`, hex-encoded (§7.3). */
@@ -87,7 +100,11 @@ export function computeBindingHmac(k: Buffer, input: BindingHmacInput): string {
 }
 
 /** Constant-time compare — never a plain `===` on secret-derived material. */
-export function verifyBindingHmac(k: Buffer, input: BindingHmacInput, providedHmacHex: string): boolean {
+export function verifyBindingHmac(
+  k: Buffer,
+  input: BindingHmacInput,
+  providedHmacHex: string,
+): boolean {
   const expected = computeBindingHmac(k, input);
   const expectedBuf = Buffer.from(expected, 'hex');
   const providedBuf = Buffer.from(providedHmacHex, 'hex');

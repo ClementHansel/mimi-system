@@ -17,7 +17,14 @@
  * showing a Supervisor cannot approve the supplier leg.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ERR_NOT_FOUND, ERR_PHOTO_REQUIRED, ERR_VALIDATION, ReturnDirection, RoleKey, WasteReason } from '@mimi/shared';
+import {
+  ERR_NOT_FOUND,
+  ERR_PHOTO_REQUIRED,
+  ERR_VALIDATION,
+  ReturnDirection,
+  RoleKey,
+  WasteReason,
+} from '@mimi/shared';
 import { Pool } from 'pg';
 
 vi.setConfig({ testTimeout: 20_000 });
@@ -61,7 +68,11 @@ function buildKit() {
   return { wasteService, returnService };
 }
 
-function actorFor(fx: Fixtures, role: RoleKey, locationScope: readonly string[] | null = null): ActorContext {
+function actorFor(
+  fx: Fixtures,
+  role: RoleKey,
+  locationScope: readonly string[] | null = null,
+): ActorContext {
   return { userId: fx.usersByRole[role], roleKey: role, locationScope };
 }
 
@@ -82,23 +93,44 @@ const cleanupPool = new Pool({
  * reconcile the balance to the fold of whatever movements remain — never blind-delete the
  * balance row itself, since the key may carry real seed history this suite never touched.
  */
-async function deletedMovementKeys(refType: string, refIdCondition: string, params: unknown[]): Promise<{ location_id: string; storage_area_id: string; item_id: string }[]> {
-  const keys = await cleanupPool.query<{ location_id: string; storage_area_id: string; item_id: string }>(
+async function deletedMovementKeys(
+  refType: string,
+  refIdCondition: string,
+  params: unknown[],
+): Promise<{ location_id: string; storage_area_id: string; item_id: string }[]> {
+  const keys = await cleanupPool.query<{
+    location_id: string;
+    storage_area_id: string;
+    item_id: string;
+  }>(
     `SELECT DISTINCT location_id, storage_area_id, item_id FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`,
     params,
   );
-  await cleanupPool.query(`DELETE FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`, params);
+  await cleanupPool.query(
+    `DELETE FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`,
+    params,
+  );
   return keys.rows;
 }
 
 async function cleanupWasteBatch(batchId: string): Promise<void> {
-  const rows = await cleanupPool.query<{ id: string }>(`SELECT id FROM waste_records WHERE batch_id = $1`, [batchId]);
+  const rows = await cleanupPool.query<{ id: string }>(
+    `SELECT id FROM waste_records WHERE batch_id = $1`,
+    [batchId],
+  );
   for (const row of rows.rows) {
     await cleanupPool.query(`UPDATE waste_records SET approval_id = NULL WHERE id = $1`, [row.id]);
-    await cleanupPool.query(`DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'waste' AND document_id = $1)`, [row.id]);
-    await cleanupPool.query(`DELETE FROM approvals WHERE document_type = 'waste' AND document_id = $1`, [row.id]);
+    await cleanupPool.query(
+      `DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'waste' AND document_id = $1)`,
+      [row.id],
+    );
+    await cleanupPool.query(
+      `DELETE FROM approvals WHERE document_type = 'waste' AND document_id = $1`,
+      [row.id],
+    );
     const keys = await deletedMovementKeys('waste_record', `ref_id = $1`, [row.id]);
-    for (const key of keys) await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
+    for (const key of keys)
+      await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
   }
   await cleanupPool.query(`DELETE FROM waste_records WHERE batch_id = $1`, [batchId]);
 }
@@ -106,9 +138,16 @@ async function cleanupWasteBatch(batchId: string): Promise<void> {
 async function cleanupReturn(id: string): Promise<void> {
   await cleanupPool.query(`UPDATE returns SET approval_id = NULL WHERE id = $1`, [id]);
   const keys = await deletedMovementKeys('return', `ref_id = $1`, [id]);
-  for (const key of keys) await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
-  await cleanupPool.query(`DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'return' AND document_id = $1)`, [id]);
-  await cleanupPool.query(`DELETE FROM approvals WHERE document_type = 'return' AND document_id = $1`, [id]);
+  for (const key of keys)
+    await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
+  await cleanupPool.query(
+    `DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'return' AND document_id = $1)`,
+    [id],
+  );
+  await cleanupPool.query(
+    `DELETE FROM approvals WHERE document_type = 'return' AND document_id = $1`,
+    [id],
+  );
   await cleanupPool.query(`DELETE FROM returns WHERE id = $1`, [id]);
 }
 
@@ -151,46 +190,83 @@ describe('Waste & Return — live database', () => {
     const photoId = await createAttachment(fx.leaderOutletUserId, 'waste_photo');
     attachmentIds.push(photoId);
 
-    const created = await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-      const { wasteService } = buildKit();
-      return wasteService.create(client, ldr, {
-        locationId: fx.outletId,
-        items: [{ storageAreaId: fx.storageAreaOutlet, itemId: fx.itemId, qty: '3.000', reason: WasteReason.EXPIRED, reasonDetail: 'Kadaluarsa' }],
-        photoAttachmentIds: [photoId],
-      });
-    });
+    const created = await withRollbackAs(
+      { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { wasteService } = buildKit();
+        return wasteService.create(client, ldr, {
+          locationId: fx.outletId,
+          items: [
+            {
+              storageAreaId: fx.storageAreaOutlet,
+              itemId: fx.itemId,
+              qty: '3.000',
+              reason: WasteReason.EXPIRED,
+              reasonDetail: 'Kadaluarsa',
+            },
+          ],
+          photoAttachmentIds: [photoId],
+        });
+      },
+    );
     expect(created).toHaveLength(1);
     batchIds.push(created[0]!.batchId);
     expect(created[0]!.status).toBe('pending');
     expect(created[0]!.photoUrls).toEqual([photoId]);
 
-    const before = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) =>
-      client.query<{ qty_on_hand: string }>(`SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [fx.outletId, fx.storageAreaOutlet, fx.itemId]),
+    const before = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) =>
+        client.query<{ qty_on_hand: string }>(
+          `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+          [fx.outletId, fx.storageAreaOutlet, fx.itemId],
+        ),
     );
 
-    const approved = await withRollbackAs({ role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] }, (client) => {
-      const { wasteService } = buildKit();
-      return wasteService.approve(client, spv, created[0]!.batchId, {});
-    });
+    const approved = await withRollbackAs(
+      { role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { wasteService } = buildKit();
+        return wasteService.approve(client, spv, created[0]!.batchId, {});
+      },
+    );
     expect(approved[0]!.status).toBe('approved');
 
-    const after = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) =>
-      client.query<{ qty_on_hand: string }>(`SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [fx.outletId, fx.storageAreaOutlet, fx.itemId]),
+    const after = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) =>
+        client.query<{ qty_on_hand: string }>(
+          `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+          [fx.outletId, fx.storageAreaOutlet, fx.itemId],
+        ),
     );
-    expect(Number(before.rows[0]!.qty_on_hand) - Number(after.rows[0]!.qty_on_hand)).toBeCloseTo(3, 3);
+    expect(Number(before.rows[0]!.qty_on_hand) - Number(after.rows[0]!.qty_on_hand)).toBeCloseTo(
+      3,
+      3,
+    );
   });
 
   it('waste create without a photo is rejected (wajib foto, FR-WST-01)', async () => {
     const ldr = actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]);
     await expect(
-      withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-        const { wasteService } = buildKit();
-        return wasteService.create(client, ldr, {
-          locationId: fx.outletId,
-          items: [{ storageAreaId: fx.storageAreaOutlet, itemId: fx.itemId, qty: '1.000', reason: WasteReason.DAMAGED }],
-          photoAttachmentIds: [],
-        });
-      }),
+      withRollbackAs(
+        { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+        (client) => {
+          const { wasteService } = buildKit();
+          return wasteService.create(client, ldr, {
+            locationId: fx.outletId,
+            items: [
+              {
+                storageAreaId: fx.storageAreaOutlet,
+                itemId: fx.itemId,
+                qty: '1.000',
+                reason: WasteReason.DAMAGED,
+              },
+            ],
+            photoAttachmentIds: [],
+          });
+        },
+      ),
     ).rejects.toMatchObject({ response: { code: ERR_PHOTO_REQUIRED } });
   });
 
@@ -202,53 +278,85 @@ describe('Waste & Return — live database', () => {
     const creationPhoto = await createAttachment(fx.leaderOutletUserId, 'defect_photo');
     attachmentIds.push(creationPhoto);
 
-    const created = await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.create(client, ldr, {
-        direction: ReturnDirection.OUTLET_TO_WAREHOUSE,
-        fromLocationId: fx.outletId,
-        toLocationId: fx.warehouseId,
-        lines: [{ itemId: fx.itemId, storageAreaId: fx.storageAreaOutlet, qty: '2.000', condition: 'damaged' as never, reason: 'Kemasan rusak' }],
-        photoAttachmentIds: [creationPhoto],
-      });
-    });
+    const created = await withRollbackAs(
+      { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.create(client, ldr, {
+          direction: ReturnDirection.OUTLET_TO_WAREHOUSE,
+          fromLocationId: fx.outletId,
+          toLocationId: fx.warehouseId,
+          lines: [
+            {
+              itemId: fx.itemId,
+              storageAreaId: fx.storageAreaOutlet,
+              qty: '2.000',
+              condition: 'damaged' as never,
+              reason: 'Kemasan rusak',
+            },
+          ],
+          photoAttachmentIds: [creationPhoto],
+        });
+      },
+    );
     returnIds.push(created.id);
     expect(created.status).toBe('draft');
 
-    await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.submit(client, ldr, created.id);
-    });
+    await withRollbackAs(
+      { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.submit(client, ldr, created.id);
+      },
+    );
 
-    const approved = await withRollbackAs({ role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.approve(client, spv, created.id, undefined);
-    });
+    const approved = await withRollbackAs(
+      { role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.approve(client, spv, created.id, undefined);
+      },
+    );
     expect(approved.status).toBe('approved');
 
     const proofShip = await createAttachment(fx.leaderOutletUserId, 'return_proof');
     attachmentIds.push(proofShip);
-    const shipped = await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.ship(client, ldr, created.id, { proofAttachmentIds: [proofShip] });
-    });
+    const shipped = await withRollbackAs(
+      { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.ship(client, ldr, created.id, { proofAttachmentIds: [proofShip] });
+      },
+    );
     expect(shipped.status).toBe('in_transit');
 
     const proofReceive = await createAttachment(fx.kepalaGudangUserId, 'receiving_photo');
     attachmentIds.push(proofReceive);
-    const received = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.receive(client, kgd, created.id, {
-        lines: [{ lineId: shipped.lines[0]!.lineId, qtyReceived: '2.000', storageAreaId: fx.storageAreaWarehouse }],
-        proofAttachmentIds: [proofReceive],
-      });
-    });
+    const received = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.receive(client, kgd, created.id, {
+          lines: [
+            {
+              lineId: shipped.lines[0]!.lineId,
+              qtyReceived: '2.000',
+              storageAreaId: fx.storageAreaWarehouse,
+            },
+          ],
+          proofAttachmentIds: [proofReceive],
+        });
+      },
+    );
     expect(received.status).toBe('received');
 
-    const completed = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.complete(client, created.id, {});
-    });
+    const completed = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.complete(client, created.id, {});
+      },
+    );
     expect(completed.status).toBe('completed');
   });
 
@@ -265,19 +373,34 @@ describe('Waste & Return — live database', () => {
     const creationPhoto = await createAttachment(fx.leaderOutletUserId, 'defect_photo');
     attachmentIds.push(creationPhoto);
 
-    const created = await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.create(client, ldr, {
-        direction: ReturnDirection.OUTLET_TO_WAREHOUSE,
-        fromLocationId: fx.outletId,
-        toLocationId: fx.warehouseId,
-        lines: [
-          { itemId: fx.itemId, storageAreaId: fx.storageAreaOutlet, qty: '5.000', condition: 'damaged' as never, reason: 'Kemasan rusak' },
-          { itemId: fx.itemId2, storageAreaId: fx.storageAreaOutlet, qty: '4.000', condition: 'expired' as never, reason: 'Kadaluarsa' },
-        ],
-        photoAttachmentIds: [creationPhoto],
-      });
-    });
+    const created = await withRollbackAs(
+      { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.create(client, ldr, {
+          direction: ReturnDirection.OUTLET_TO_WAREHOUSE,
+          fromLocationId: fx.outletId,
+          toLocationId: fx.warehouseId,
+          lines: [
+            {
+              itemId: fx.itemId,
+              storageAreaId: fx.storageAreaOutlet,
+              qty: '5.000',
+              condition: 'damaged' as never,
+              reason: 'Kemasan rusak',
+            },
+            {
+              itemId: fx.itemId2,
+              storageAreaId: fx.storageAreaOutlet,
+              qty: '4.000',
+              condition: 'expired' as never,
+              reason: 'Kadaluarsa',
+            },
+          ],
+          photoAttachmentIds: [creationPhoto],
+        });
+      },
+    );
     returnIds.push(created.id);
     expect(created.lines).toHaveLength(2);
     const [lineA, lineB] = created.lines;
@@ -288,20 +411,29 @@ describe('Waste & Return — live database', () => {
     expect(lineA!.lineId).not.toBe(lineB!.lineId);
     expect(lineA!.lineId).not.toBe(created.id);
 
-    await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.submit(client, ldr, created.id);
-    });
-    await withRollbackAs({ role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.approve(client, spv, created.id, undefined);
-    });
+    await withRollbackAs(
+      { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.submit(client, ldr, created.id);
+      },
+    );
+    await withRollbackAs(
+      { role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.approve(client, spv, created.id, undefined);
+      },
+    );
     const proofShip = await createAttachment(fx.leaderOutletUserId, 'return_proof');
     attachmentIds.push(proofShip);
-    const shipped = await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.ship(client, ldr, created.id, { proofAttachmentIds: [proofShip] });
-    });
+    const shipped = await withRollbackAs(
+      { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.ship(client, ldr, created.id, { proofAttachmentIds: [proofShip] });
+      },
+    );
 
     const shippedLineForItem = (itemId: string) => shipped.lines.find((l) => l.itemId === itemId)!;
 
@@ -309,16 +441,27 @@ describe('Waste & Return — live database', () => {
     // key off `lineId` alone and never needs to fall back to `itemId` disambiguation.
     const proofReceive = await createAttachment(fx.kepalaGudangUserId, 'receiving_photo');
     attachmentIds.push(proofReceive);
-    const received = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.receive(client, kgd, created.id, {
-        lines: [
-          { lineId: shippedLineForItem(fx.itemId).lineId, qtyReceived: '5.000', storageAreaId: fx.storageAreaWarehouse },
-          { lineId: shippedLineForItem(fx.itemId2).lineId, qtyReceived: '3.000', storageAreaId: fx.storageAreaWarehouse },
-        ],
-        proofAttachmentIds: [proofReceive],
-      });
-    });
+    const received = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.receive(client, kgd, created.id, {
+          lines: [
+            {
+              lineId: shippedLineForItem(fx.itemId).lineId,
+              qtyReceived: '5.000',
+              storageAreaId: fx.storageAreaWarehouse,
+            },
+            {
+              lineId: shippedLineForItem(fx.itemId2).lineId,
+              qtyReceived: '3.000',
+              storageAreaId: fx.storageAreaWarehouse,
+            },
+          ],
+          proofAttachmentIds: [proofReceive],
+        });
+      },
+    );
     expect(received.status).toBe('received');
 
     const receivedLineA = received.lines.find((l) => l.itemId === fx.itemId)!;
@@ -332,19 +475,34 @@ describe('Waste & Return — live database', () => {
     const photoId = await createAttachment(fx.leaderOutletUserId, 'defect_photo');
     attachmentIds.push(photoId);
     await expect(
-      withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-        const { returnService } = buildKit();
-        return returnService.create(client, ldr, {
-          direction: ReturnDirection.OUTLET_TO_WAREHOUSE,
-          fromLocationId: fx.outletId,
-          toLocationId: fx.warehouseId,
-          lines: [
-            { itemId: fx.itemId, storageAreaId: fx.storageAreaOutlet, qty: '2.000', condition: 'damaged' as never, reason: 'Sebagian rusak' },
-            { itemId: fx.itemId, storageAreaId: fx.storageAreaOutlet, qty: '1.000', condition: 'expired' as never, reason: 'Sebagian kadaluarsa' },
-          ],
-          photoAttachmentIds: [photoId],
-        });
-      }),
+      withRollbackAs(
+        { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+        (client) => {
+          const { returnService } = buildKit();
+          return returnService.create(client, ldr, {
+            direction: ReturnDirection.OUTLET_TO_WAREHOUSE,
+            fromLocationId: fx.outletId,
+            toLocationId: fx.warehouseId,
+            lines: [
+              {
+                itemId: fx.itemId,
+                storageAreaId: fx.storageAreaOutlet,
+                qty: '2.000',
+                condition: 'damaged' as never,
+                reason: 'Sebagian rusak',
+              },
+              {
+                itemId: fx.itemId,
+                storageAreaId: fx.storageAreaOutlet,
+                qty: '1.000',
+                condition: 'expired' as never,
+                reason: 'Sebagian kadaluarsa',
+              },
+            ],
+            photoAttachmentIds: [photoId],
+          });
+        },
+      ),
     ).rejects.toMatchObject({ response: { code: ERR_VALIDATION } });
   });
 
@@ -355,67 +513,104 @@ describe('Waste & Return — live database', () => {
     const creationPhoto = await createAttachment(fx.kepalaGudangUserId, 'defect_photo');
     attachmentIds.push(creationPhoto);
 
-    const created = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.create(client, kgd, {
-        direction: ReturnDirection.WAREHOUSE_TO_SUPPLIER,
-        fromLocationId: fx.warehouseId,
-        supplierId: fx.supplierId,
-        lines: [{ itemId: fx.itemId, storageAreaId: fx.storageAreaWarehouse, qty: '1.000', condition: 'quality' as never, reason: 'Kualitas tidak sesuai' }],
-        photoAttachmentIds: [creationPhoto],
-      });
-    });
+    const created = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.create(client, kgd, {
+          direction: ReturnDirection.WAREHOUSE_TO_SUPPLIER,
+          fromLocationId: fx.warehouseId,
+          supplierId: fx.supplierId,
+          lines: [
+            {
+              itemId: fx.itemId,
+              storageAreaId: fx.storageAreaWarehouse,
+              qty: '1.000',
+              condition: 'quality' as never,
+              reason: 'Kualitas tidak sesuai',
+            },
+          ],
+          photoAttachmentIds: [creationPhoto],
+        });
+      },
+    );
     returnIds.push(created.id);
 
-    await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.submit(client, kgd, created.id);
-    });
+    await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.submit(client, kgd, created.id);
+      },
+    );
 
     // Permission-denied pin: a Supervisor (the outlet-leg approver, scoped only to their own outlet)
     // has no authority over the supplier leg at all — `returns`' own location-scoped RLS (CONTRACTS.md
     // §1.14) hides the warehouse-origin row from their session entirely (a real `ERR_NOT_FOUND`, not a
     // silent allow) before the request could ever reach the approval-role check.
     await expect(
-      withRollbackAs({ role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] }, (client) => {
-        const { returnService } = buildKit();
-        return returnService.approve(client, spv, created.id, undefined);
-      }),
+      withRollbackAs(
+        { role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] },
+        (client) => {
+          const { returnService } = buildKit();
+          return returnService.approve(client, spv, created.id, undefined);
+        },
+      ),
     ).rejects.toMatchObject({ response: { code: ERR_NOT_FOUND } });
 
-    const approved = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.approve(client, kgd, created.id, undefined);
-    });
+    const approved = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.approve(client, kgd, created.id, undefined);
+      },
+    );
     expect(approved.status).toBe('approved');
 
     const proofShip = await createAttachment(fx.kepalaGudangUserId, 'return_proof');
     attachmentIds.push(proofShip);
-    const shipped = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.ship(client, kgd, created.id, { proofAttachmentIds: [proofShip] });
-    });
+    const shipped = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.ship(client, kgd, created.id, { proofAttachmentIds: [proofShip] });
+      },
+    );
     expect(shipped.status).toBe('in_transit');
 
-    const completed = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { returnService } = buildKit();
-      return returnService.complete(client, created.id, { creditNoteRef: 'CN-TEST-001' });
-    });
+    const completed = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { returnService } = buildKit();
+        return returnService.complete(client, created.id, { creditNoteRef: 'CN-TEST-001' });
+      },
+    );
     expect(completed.status).toBe('completed');
   });
 
   it('return without a supplierId for warehouse_to_supplier is rejected', async () => {
     const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
     await expect(
-      withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-        const { returnService } = buildKit();
-        return returnService.create(client, kgd, {
-          direction: ReturnDirection.WAREHOUSE_TO_SUPPLIER,
-          fromLocationId: fx.warehouseId,
-          lines: [{ itemId: fx.itemId, storageAreaId: fx.storageAreaWarehouse, qty: '1.000', condition: 'other' as never, reason: 'x' }],
-          photoAttachmentIds: [],
-        });
-      }),
+      withRollbackAs(
+        { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+        (client) => {
+          const { returnService } = buildKit();
+          return returnService.create(client, kgd, {
+            direction: ReturnDirection.WAREHOUSE_TO_SUPPLIER,
+            fromLocationId: fx.warehouseId,
+            lines: [
+              {
+                itemId: fx.itemId,
+                storageAreaId: fx.storageAreaWarehouse,
+                qty: '1.000',
+                condition: 'other' as never,
+                reason: 'x',
+              },
+            ],
+            photoAttachmentIds: [],
+          });
+        },
+      ),
     ).rejects.toMatchObject({ response: { code: ERR_VALIDATION } });
   });
 });

@@ -96,7 +96,9 @@ export interface RlsSessionContext {
 export async function setSessionContext(client: PoolClient, ctx: RlsSessionContext): Promise<void> {
   await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
   await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-  await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+  await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+    ctx.locationIds.join(','),
+  ]);
 }
 
 /**
@@ -106,7 +108,10 @@ export async function setSessionContext(client: PoolClient, ctx: RlsSessionConte
  * for any test whose assertion depends on what a NON-central role's own
  * Postgres session can and cannot see.
  */
-export async function withRollbackAs<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollbackAs<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
@@ -157,7 +162,8 @@ export async function loadFixtures(): Promise<Fixtures> {
       WHERE r.key = 'kepala_gudang'
       LIMIT 1`,
   );
-  if (!kgd.rows[0]) throw new Error('loadFixtures: no kepala_gudang with a user_locations assignment in the seed');
+  if (!kgd.rows[0])
+    throw new Error('loadFixtures: no kepala_gudang with a user_locations assignment in the seed');
 
   // A Supervisor and the Leader Outlet assigned to the SAME outlet (the seed pairs them 1:1, one pair per outlet).
   const pair = await pool.query<{ supervisor_id: string; leader_id: string; location_id: string }>(
@@ -170,10 +176,19 @@ export async function loadFixtures(): Promise<Fixtures> {
        JOIN roles ldr_r ON ldr_r.id = ldr_u.role_id AND ldr_r.key = 'leader_outlet'
       LIMIT 1`,
   );
-  if (!pair.rows[0]) throw new Error('loadFixtures: no (supervisor, leader_outlet) pair sharing one outlet in the seed');
+  if (!pair.rows[0])
+    throw new Error(
+      'loadFixtures: no (supervisor, leader_outlet) pair sharing one outlet in the seed',
+    );
 
-  const storageOutlet = await pool.query<{ id: string }>(`SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`, [pair.rows[0].location_id]);
-  const storageWarehouse = await pool.query<{ id: string }>(`SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`, [kgd.rows[0].location_id]);
+  const storageOutlet = await pool.query<{ id: string }>(
+    `SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`,
+    [pair.rows[0].location_id],
+  );
+  const storageWarehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`,
+    [kgd.rows[0].location_id],
+  );
   const item = await pool.query<{ id: string }>(`SELECT id FROM items LIMIT 1`);
 
   const usersByRole = {} as Record<RoleKey, string>;
@@ -182,7 +197,10 @@ export async function loadFixtures(): Promise<Fixtures> {
       `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
       [roleKey],
     );
-    if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`);
+    if (!res.rows[0])
+      throw new Error(
+        `Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`,
+      );
     usersByRole[roleKey] = res.rows[0].id;
   }
 
@@ -202,7 +220,10 @@ export async function loadFixtures(): Promise<Fixtures> {
 }
 
 /** A clean `(location, area, item)` triplet with no pre-existing `stock_balances` row — so a test's counted qty IS the whole variance, deterministically. Read over the OWNER pool BEFORE any transaction under test starts (a pre-check, not a write). */
-export async function pickUnusedStockKey(locationId: string, storageAreaId: string): Promise<string> {
+export async function pickUnusedStockKey(
+  locationId: string,
+  storageAreaId: string,
+): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
     `SELECT i.id FROM items i
       WHERE NOT EXISTS (
@@ -212,12 +233,20 @@ export async function pickUnusedStockKey(locationId: string, storageAreaId: stri
     [locationId, storageAreaId],
   );
   const id = res.rows[0]?.id;
-  if (!id) throw new Error('pickUnusedStockKey: no unused item found for this (location, area) — seed exhausted?');
+  if (!id)
+    throw new Error(
+      'pickUnusedStockKey: no unused item found for this (location, area) — seed exhausted?',
+    );
   return id;
 }
 
 /** Reads on the SAME `client` the test is writing through — a separate (owner-pool) connection would not see this transaction's uncommitted rows. */
-export async function readBalance(client: PoolClient, locationId: string, storageAreaId: string, itemId: string): Promise<string | null> {
+export async function readBalance(
+  client: PoolClient,
+  locationId: string,
+  storageAreaId: string,
+  itemId: string,
+): Promise<string | null> {
   const res = await client.query<{ qty_on_hand: string }>(
     `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
     [locationId, storageAreaId, itemId],
@@ -225,7 +254,11 @@ export async function readBalance(client: PoolClient, locationId: string, storag
   return res.rows[0]?.qty_on_hand ?? null;
 }
 
-export async function setSettingValue(client: PoolClient, key: string, value: unknown): Promise<void> {
+export async function setSettingValue(
+  client: PoolClient,
+  key: string,
+  value: unknown,
+): Promise<void> {
   await client.query(`UPDATE settings SET value = $2 WHERE key = $1`, [key, JSON.stringify(value)]);
 }
 
@@ -283,7 +316,10 @@ export const asRequest = withRollbackAs;
  * behavior under test; anything that IS the behavior under test should go
  * through the real service (and `withWrite`), not this.
  */
-export async function asCommittedRequest<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function asCommittedRequest<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');

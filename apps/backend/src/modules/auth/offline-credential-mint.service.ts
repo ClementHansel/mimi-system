@@ -58,7 +58,10 @@ import {
 } from '@mimi/shared';
 import { encKeyFromConfig, encryptBindingSecret } from '../../kernel/sync/binding-crypto';
 import { AuthRepository } from './auth.repository';
-import { encodeOfflineCredentialToken, type OfflineCredentialClaims } from './offline-credential-token.util';
+import {
+  encodeOfflineCredentialToken,
+  type OfflineCredentialClaims,
+} from './offline-credential-token.util';
 
 interface ScopeRule {
   key: 'void_refund.approve' | 'replenishment.supervisor_approve' | 'waste.approve';
@@ -68,7 +71,11 @@ interface ScopeRule {
 }
 
 const SCOPE_RULES: ScopeRule[] = [
-  { key: 'void_refund.approve', documentType: 'void_refund', eligible: (r) => can(r as RoleKey, 'pos.void.approve') },
+  {
+    key: 'void_refund.approve',
+    documentType: 'void_refund',
+    eligible: (r) => can(r as RoleKey, 'pos.void.approve'),
+  },
   {
     key: 'replenishment.supervisor_approve',
     documentType: 'replenishment_request',
@@ -116,7 +123,10 @@ export class OfflineCredentialMintService {
     const scopesWire: Record<string, { maxIdr?: Money }> = {};
     for (const rule of SCOPE_RULES) {
       if (!rule.eligible(input.roleKey)) continue;
-      const cap = input.roleKey === 'supervisor' ? await this.repo.nextStepMinAmount(client, rule.documentType, 'supervisor') : null;
+      const cap =
+        input.roleKey === 'supervisor'
+          ? await this.repo.nextStepMinAmount(client, rule.documentType, 'supervisor')
+          : null;
       scopesDb[rule.key] = cap ? { max_idr: cap } : {};
       scopesWire[rule.key] = cap ? { maxIdr: cap } : {};
     }
@@ -129,9 +139,15 @@ export class OfflineCredentialMintService {
     const encKey = encKeyFromConfig(this.config);
     const bindingSecretEnc = encryptBindingSecret(k, encKey);
 
-    const ttlHours = (await this.repo.getSettingValue<number>(client, 'auth.offline_credential_ttl_h')) ?? DEFAULT_OFFLINE_CREDENTIAL_TTL_HOURS;
-    const selfieAbove = (await this.repo.getSettingValue<Money>(client, 'offline.selfie_required_above')) ?? DEFAULT_OFFLINE_SELFIE_REQUIRED_ABOVE;
-    const volumeCap = (await this.repo.getSettingValue<number>(client, 'offline.approval_volume_cap')) ?? DEFAULT_OFFLINE_APPROVAL_VOLUME_CAP;
+    const ttlHours =
+      (await this.repo.getSettingValue<number>(client, 'auth.offline_credential_ttl_h')) ??
+      DEFAULT_OFFLINE_CREDENTIAL_TTL_HOURS;
+    const selfieAbove =
+      (await this.repo.getSettingValue<Money>(client, 'offline.selfie_required_above')) ??
+      DEFAULT_OFFLINE_SELFIE_REQUIRED_ABOVE;
+    const volumeCap =
+      (await this.repo.getSettingValue<number>(client, 'offline.approval_volume_cap')) ??
+      DEFAULT_OFFLINE_APPROVAL_VOLUME_CAP;
 
     const mintedAt = new Date();
     const expiresAt = new Date(mintedAt.getTime() + ttlHours * 3_600_000);

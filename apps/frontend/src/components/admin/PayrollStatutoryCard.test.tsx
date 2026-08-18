@@ -20,8 +20,14 @@ vi.mock('@/lib/api', async () => {
 function setPermissions(permissions: string[]) {
   useSessionStore.setState({
     user: {
-      id: 'u1', username: 'owner1', name: 'Owner Satu', roleKey: 'owner',
-      permissions, locations: [], employeeId: null, mustSetPin: false,
+      id: 'u1',
+      username: 'owner1',
+      name: 'Owner Satu',
+      roleKey: 'owner',
+      permissions,
+      locations: [],
+      employeeId: null,
+      mustSetPin: false,
     },
   });
 }
@@ -36,7 +42,10 @@ describe('PayrollStatutoryCard', () => {
   it('disables the enable action while the wizard reports not ready, and lists what is missing', async () => {
     setPermissions(['payroll.statutory.read', 'payroll.statutory.enable']);
     vi.mocked(api.get).mockResolvedValue({
-      enabled: false, ready: false, enabledAt: null, enabledBy: null,
+      enabled: false,
+      ready: false,
+      enabledAt: null,
+      enabledBy: null,
       missing: ['bpjs_configs', 'employee_tax_profiles'],
       profileCoverage: { withProfile: 2, total: 10 },
     });
@@ -53,8 +62,12 @@ describe('PayrollStatutoryCard', () => {
   it('enables the action once the wizard reports ready', async () => {
     setPermissions(['payroll.statutory.read', 'payroll.statutory.enable']);
     vi.mocked(api.get).mockResolvedValue({
-      enabled: false, ready: true, enabledAt: null, enabledBy: null,
-      missing: [], profileCoverage: { withProfile: 10, total: 10 },
+      enabled: false,
+      ready: true,
+      enabledAt: null,
+      enabledBy: null,
+      missing: [],
+      profileCoverage: { withProfile: 10, total: 10 },
     });
 
     render(<PayrollStatutoryCard />);
@@ -67,27 +80,39 @@ describe('PayrollStatutoryCard', () => {
   it('renders no enable/disable action at all without payroll.statutory.enable', async () => {
     setPermissions(['payroll.statutory.read']);
     vi.mocked(api.get).mockResolvedValue({
-      enabled: false, ready: true, enabledAt: null, enabledBy: null,
-      missing: [], profileCoverage: { withProfile: 10, total: 10 },
+      enabled: false,
+      ready: true,
+      enabledAt: null,
+      enabledBy: null,
+      missing: [],
+      profileCoverage: { withProfile: 10, total: 10 },
     });
 
     render(<PayrollStatutoryCard />);
 
     await screen.findByText('Siap Diaktifkan');
-    expect(screen.queryByRole('button', { name: 'Aktifkan Mode Statutori' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Aktifkan Mode Statutori' }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Nonaktifkan' })).not.toBeInTheDocument();
   });
 
   it('shows the disable action, not enable, once statutory mode is already enabled', async () => {
     setPermissions(['payroll.statutory.read', 'payroll.statutory.enable']);
     vi.mocked(api.get).mockResolvedValue({
-      enabled: true, ready: true, enabledAt: '2026-01-01T00:00:00Z', enabledBy: 'Owner Satu',
-      missing: [], profileCoverage: { withProfile: 10, total: 10 },
+      enabled: true,
+      ready: true,
+      enabledAt: '2026-01-01T00:00:00Z',
+      enabledBy: 'Owner Satu',
+      missing: [],
+      profileCoverage: { withProfile: 10, total: 10 },
     });
 
     render(<PayrollStatutoryCard />);
 
     expect(await screen.findByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Aktifkan Mode Statutori' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Aktifkan Mode Statutori' }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -92,7 +92,10 @@ async function resolveUnitConversion(
  * silently skipped — that is a valid master-data choice (`recipes` is
  * optional per product), not an error.
  */
-export async function explodeRecipeUsage(client: PoolClient, lines: readonly UsageLine[]): Promise<RecipeExplosionResult> {
+export async function explodeRecipeUsage(
+  client: PoolClient,
+  lines: readonly UsageLine[],
+): Promise<RecipeExplosionResult> {
   const scaledByItem = new Map<UUID, bigint>();
   const costByItem = new Map<UUID, Money>();
   const skipped: SkippedIngredient[] = [];
@@ -125,7 +128,12 @@ export async function explodeRecipeUsage(client: PoolClient, lines: readonly Usa
       if (row.recipe_unit_id === row.base_unit_id) {
         baseQty = totalInRecipeUnit;
       } else {
-        const factor = await resolveUnitConversion(client, row.item_id, row.recipe_unit_id, row.base_unit_id);
+        const factor = await resolveUnitConversion(
+          client,
+          row.item_id,
+          row.recipe_unit_id,
+          row.base_unit_id,
+        );
         if (!factor) {
           skipped.push({
             productId: line.productId,
@@ -143,14 +151,21 @@ export async function explodeRecipeUsage(client: PoolClient, lines: readonly Usa
   }
 
   const usages: IngredientUsage[] = [...scaledByItem.entries()]
-    .map(([itemId, scaled]) => ({ itemId, qty: formatQty(scaled), unitCost: costByItem.get(itemId)! }))
+    .map(([itemId, scaled]) => ({
+      itemId,
+      qty: formatQty(scaled),
+      unitCost: costByItem.get(itemId)!,
+    }))
     .filter((u) => parseQty(u.qty) > 0n);
 
   return { usages, skipped };
 }
 
 /** The outlet's `kitchen_line` storage area — where recipe-explosion usage is consumed from/returned to (CONTRACTS.md §1.6 comment). Picks the first active one; a location with none configured yields `null` (caller decides whether to skip posting). */
-export async function findKitchenLineAreaId(client: PoolClient, locationId: UUID): Promise<UUID | null> {
+export async function findKitchenLineAreaId(
+  client: PoolClient,
+  locationId: UUID,
+): Promise<UUID | null> {
   const res = await client.query<{ id: UUID }>(
     `SELECT id FROM storage_areas WHERE location_id = $1 AND type = 'kitchen_line' AND is_active ORDER BY sort_order LIMIT 1`,
     [locationId],

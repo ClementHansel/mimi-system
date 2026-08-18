@@ -36,7 +36,13 @@ import { StatutoryService } from './statutory/statutory.service';
  */
 @Module({
   imports: [ApprovalsModule, EventsModule, NotificationModule],
-  controllers: [PeriodsController, RunsController, ComponentsController, LoansController, StatutoryController],
+  controllers: [
+    PeriodsController,
+    RunsController,
+    ComponentsController,
+    LoansController,
+    StatutoryController,
+  ],
   providers: [PeriodsService, RunsService, ComponentsService, LoansService, StatutoryService],
 })
 export class PayrollModule {}

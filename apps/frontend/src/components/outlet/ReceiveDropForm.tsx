@@ -2,7 +2,17 @@
 
 import { useMemo, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { Button, Card, CardContent, PhotoCapture, SignaturePad, QtyInput, Select, Textarea, StatusBadge } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  PhotoCapture,
+  SignaturePad,
+  QtyInput,
+  Select,
+  Textarea,
+  StatusBadge,
+} from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import type { Drop, StorageArea } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
@@ -38,14 +48,26 @@ function lineNeedsReason(qtySent: Qty, draft: ReceiveLineDraft): boolean {
 }
 
 export function ReceiveDropForm({
-  drop, storageAreas, photoFile, onPhotoChange, signatureDataUrl, onSignatureChange, submitting, onSubmit,
+  drop,
+  storageAreas,
+  photoFile,
+  onPhotoChange,
+  signatureDataUrl,
+  onSignatureChange,
+  submitting,
+  onSubmit,
 }: ReceiveDropFormProps) {
   const { t } = useI18n();
   const [lines, setLines] = useState<Record<string, ReceiveLineDraft>>(() =>
     Object.fromEntries(
       drop.lines.map((l) => [
         l.id,
-        { lineId: l.id, qtyReceived: l.qty, receivedStorageAreaId: l.receivedStorageAreaId ?? '', discrepancyReason: '' },
+        {
+          lineId: l.id,
+          qtyReceived: l.qty,
+          receivedStorageAreaId: l.receivedStorageAreaId ?? '',
+          discrepancyReason: '',
+        },
       ]),
     ),
   );
@@ -124,7 +146,11 @@ export function ReceiveDropForm({
                           value={d.discrepancyReason}
                           onChange={(e) => updateLine(l.id, { discrepancyReason: e.target.value })}
                           placeholder={t('common.reasonPlaceholder')}
-                          error={d.discrepancyReason.trim() === '' ? t('validation.reasonRequired') : undefined}
+                          error={
+                            d.discrepancyReason.trim() === ''
+                              ? t('validation.reasonRequired')
+                              : undefined
+                          }
                           disabled={submitting}
                           wrapperClassName="w-56"
                         />

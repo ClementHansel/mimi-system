@@ -38,7 +38,12 @@ describe('offline-credentials (D-17 / SYNC-PROTOCOL §7)', () => {
   beforeEach(async () => {
     db = createTestDatabase();
     const claims = makeClaims();
-    await cacheCredential(db, { credentialId: claims.credentialId, token: encodeOfflineCredentialToken(claims), scopes: claims.scopes, expiresAt: claims.exp });
+    await cacheCredential(db, {
+      credentialId: claims.credentialId,
+      token: encodeOfflineCredentialToken(claims),
+      scopes: claims.scopes,
+      expiresAt: claims.exp,
+    });
   });
 
   const baseInput = {
@@ -53,7 +58,11 @@ describe('offline-credentials (D-17 / SYNC-PROTOCOL §7)', () => {
   };
 
   it('succeeds with the correct PIN and returns a binding HMAC + approver id', async () => {
-    const outcome = await authorizeOffline(db, { ...baseInput, pin: '123456' }, fakeVerifier('123456'));
+    const outcome = await authorizeOffline(
+      db,
+      { ...baseInput, pin: '123456' },
+      fakeVerifier('123456'),
+    );
     expect(outcome.ok).toBe(true);
     if (outcome.ok) {
       expect(outcome.meta.approverUserId).toBe('supervisor-1');
@@ -63,7 +72,14 @@ describe('offline-credentials (D-17 / SYNC-PROTOCOL §7)', () => {
   });
 
   it('binding HMAC is deterministic for identical inputs and changes if ANY field changes (tamper-evidence, §7.4 check 2)', async () => {
-    const fields = { eventId: 'evt-1', entity: 'void_refunds', entityId: 'vr-1', op: 'approved_offline', amountIdr: '100000.00', occurredAt: baseInput.occurredAt };
+    const fields = {
+      eventId: 'evt-1',
+      entity: 'void_refunds',
+      entityId: 'vr-1',
+      op: 'approved_offline',
+      amountIdr: '100000.00',
+      occurredAt: baseInput.occurredAt,
+    };
     const claims = makeClaims();
     const h1 = await computeBindingHmac(claims.k, fields);
     const h2 = await computeBindingHmac(claims.k, fields);
@@ -73,7 +89,11 @@ describe('offline-credentials (D-17 / SYNC-PROTOCOL §7)', () => {
   });
 
   it('rejects an invalid PIN and increments the attempt counter without granting authorization', async () => {
-    const outcome = await authorizeOffline(db, { ...baseInput, pin: 'wrong' }, fakeVerifier('123456'));
+    const outcome = await authorizeOffline(
+      db,
+      { ...baseInput, pin: 'wrong' },
+      fakeVerifier('123456'),
+    );
     expect(outcome).toEqual({ ok: false, reason: 'pin_invalid' });
   });
 
@@ -83,14 +103,22 @@ describe('offline-credentials (D-17 / SYNC-PROTOCOL §7)', () => {
     }
     expect(await isLockedOut(db, 'cred-1')).toBe(true);
 
-    const outcome = await authorizeOffline(db, { ...baseInput, pin: '123456' }, fakeVerifier('123456'));
+    const outcome = await authorizeOffline(
+      db,
+      { ...baseInput, pin: '123456' },
+      fakeVerifier('123456'),
+    );
     expect(outcome).toEqual({ ok: false, reason: 'locked_out' });
   });
 
   it('a successful verification resets the failure counter', async () => {
     await authorizeOffline(db, { ...baseInput, pin: 'wrong' }, fakeVerifier('123456'));
     await authorizeOffline(db, { ...baseInput, pin: 'wrong' }, fakeVerifier('123456'));
-    const success = await authorizeOffline(db, { ...baseInput, pin: '123456' }, fakeVerifier('123456'));
+    const success = await authorizeOffline(
+      db,
+      { ...baseInput, pin: '123456' },
+      fakeVerifier('123456'),
+    );
     expect(success.ok).toBe(true);
     if (success.ok) expect(success.meta.pinAttemptsBeforeSuccess).toBe(3);
   });
@@ -99,24 +127,42 @@ describe('offline-credentials (D-17 / SYNC-PROTOCOL §7)', () => {
     await db.runTransaction(['credential_crl'], 'readwrite', async (tx) => {
       await applyCrlRevocationWithinTx(tx, 'cred-1', new Date().toISOString());
     });
-    const outcome = await authorizeOffline(db, { ...baseInput, pin: '123456' }, fakeVerifier('123456'));
+    const outcome = await authorizeOffline(
+      db,
+      { ...baseInput, pin: '123456' },
+      fakeVerifier('123456'),
+    );
     expect(outcome).toEqual({ ok: false, reason: 'revoked' });
   });
 
   it('rejects an amount above the scope cap (advisory local pre-check mirroring §7.4 check 5)', async () => {
-    const outcome = await authorizeOffline(db, { ...baseInput, pin: '123456', amountIdr: '999999.00' }, fakeVerifier('123456'));
+    const outcome = await authorizeOffline(
+      db,
+      { ...baseInput, pin: '123456', amountIdr: '999999.00' },
+      fakeVerifier('123456'),
+    );
     expect(outcome).toEqual({ ok: false, reason: 'scope_exceeded' });
   });
 
   it('requires a selfie above the threshold', async () => {
-    const outcome = await authorizeOffline(db, { ...baseInput, pin: '123456', amountIdr: '250000.00' }, fakeVerifier('123456'));
+    const outcome = await authorizeOffline(
+      db,
+      { ...baseInput, pin: '123456', amountIdr: '250000.00' },
+      fakeVerifier('123456'),
+    );
     expect(outcome).toEqual({ ok: false, reason: 'selfie_required' });
   });
 
   it('accepts an above-threshold amount when a selfieRef is supplied', async () => {
     const outcome = await authorizeOffline(
       db,
-      { ...baseInput, pin: '123456', amountIdr: '250000.00', scopeKey: 'void_refund.approve', selfieRef: { sha256: 'abc', size: 100, mime: 'image/jpeg' } },
+      {
+        ...baseInput,
+        pin: '123456',
+        amountIdr: '250000.00',
+        scopeKey: 'void_refund.approve',
+        selfieRef: { sha256: 'abc', size: 100, mime: 'image/jpeg' },
+      },
       fakeVerifier('123456'),
     );
     // scope cap is 500000 so 250000 passes; only the selfie gate was the concern here
@@ -124,7 +170,11 @@ describe('offline-credentials (D-17 / SYNC-PROTOCOL §7)', () => {
   });
 
   it('rejects a credential id that was never cached on this device', async () => {
-    const outcome = await authorizeOffline(db, { ...baseInput, credentialId: 'unknown-cred', pin: '123456' }, fakeVerifier('123456'));
+    const outcome = await authorizeOffline(
+      db,
+      { ...baseInput, credentialId: 'unknown-cred', pin: '123456' },
+      fakeVerifier('123456'),
+    );
     expect(outcome).toEqual({ ok: false, reason: 'not_cached' });
   });
 });

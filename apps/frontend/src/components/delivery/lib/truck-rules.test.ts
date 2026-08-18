@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { allowedStorageTypesForShipment, isStorageTypeAllowed, partitionLinesByShipmentType } from './truck-rules';
+import {
+  allowedStorageTypesForShipment,
+  isStorageTypeAllowed,
+  partitionLinesByShipmentType,
+} from './truck-rules';
 
 describe('allowedStorageTypesForShipment — FR-LOG-02 truck split', () => {
   it('a frozen (cold-chain) truck carries both frozen AND chilled goods', () => {

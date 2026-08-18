@@ -26,7 +26,10 @@ describe('assertSystemContext', () => {
 
     expect(client.calls[0]).toEqual(['SET LOCAL ROLE app_user', undefined]);
     expect(client.calls[1]).toEqual([expect.stringContaining('app.role'), ['owner']]);
-    expect(client.calls[2]).toEqual([expect.stringContaining('app.user_id'), [SYSTEM_SENTINEL_USER_ID]]);
+    expect(client.calls[2]).toEqual([
+      expect.stringContaining('app.user_id'),
+      [SYSTEM_SENTINEL_USER_ID],
+    ]);
     expect(client.calls[3]).toEqual([expect.stringContaining('app.location_ids'), ['']]);
   });
 
@@ -48,7 +51,10 @@ describe('assertSystemContext', () => {
 
   it('joins locationIds with a comma when provided', async () => {
     const client = makeClient();
-    await assertSystemContext(client as never, { role: SYSTEM_CENTRAL_ROLE, locationIds: ['loc-1', 'loc-2'] });
+    await assertSystemContext(client as never, {
+      role: SYSTEM_CENTRAL_ROLE,
+      locationIds: ['loc-1', 'loc-2'],
+    });
     const locCall = client.calls.find(([sql]) => sql.includes('app.location_ids'));
     expect(locCall?.[1]).toEqual(['loc-1,loc-2']);
   });
@@ -91,7 +97,9 @@ describe('withSystemContext', () => {
       throw boom;
     });
 
-    await expect(withSystemContext(pool as never, { role: SYSTEM_CENTRAL_ROLE }, fn)).rejects.toThrow('boom');
+    await expect(
+      withSystemContext(pool as never, { role: SYSTEM_CENTRAL_ROLE }, fn),
+    ).rejects.toThrow('boom');
 
     expect(client.calls.some(([sql]) => sql === 'ROLLBACK')).toBe(true);
     expect(client.calls.some(([sql]) => sql === 'COMMIT')).toBe(false);
@@ -113,7 +121,9 @@ describe('withSystemContext', () => {
       throw new Error('fn failed');
     });
 
-    await expect(withSystemContext(pool as never, { role: SYSTEM_CENTRAL_ROLE }, fn)).rejects.toThrow('fn failed');
+    await expect(
+      withSystemContext(pool as never, { role: SYSTEM_CENTRAL_ROLE }, fn),
+    ).rejects.toThrow('fn failed');
     expect(client.release).toHaveBeenCalled();
   });
 });

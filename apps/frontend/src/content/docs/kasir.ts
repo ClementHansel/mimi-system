@@ -24,13 +24,11 @@ export const kasirManual: DocManual = {
         {
           type: 'callout',
           kind: 'rule',
-          text:
-            'Tidak bisa melayani transaksi tanpa shift yang terbuka. Selama belum ada shift, layar kasir hanya menampilkan formulir **Buka Kasir** — menu produk, keranjang, dan tombol pembayaran belum muncul sama sekali.',
+          text: 'Tidak bisa melayani transaksi tanpa shift yang terbuka. Selama belum ada shift, layar kasir hanya menampilkan formulir **Buka Kasir** — menu produk, keranjang, dan tombol pembayaran belum muncul sama sekali.',
         },
         {
           type: 'p',
-          text:
-            'Jika akun Anda terhubung ke lebih dari satu outlet, layar **Pilih Outlet** muncul lebih dulu. Ketuk outlet yang sesuai, lalu ketuk **Lanjutkan**.',
+          text: 'Jika akun Anda terhubung ke lebih dari satu outlet, layar **Pilih Outlet** muncul lebih dulu. Ketuk outlet yang sesuai, lalu ketuk **Lanjutkan**.',
         },
         {
           type: 'steps',
@@ -42,8 +40,7 @@ export const kasirManual: DocManual = {
         },
         {
           type: 'p',
-          text:
-            'Jika perangkat gagal menyiapkan penyimpanan lokal, layar menampilkan **"Gagal menyiapkan perangkat kasir"** dengan tombol **Coba Lagi** — hubungi Kepala Gudang/IT jika berulang.',
+          text: 'Jika perangkat gagal menyiapkan penyimpanan lokal, layar menampilkan **"Gagal menyiapkan perangkat kasir"** dengan tombol **Coba Lagi** — hubungi Kepala Gudang/IT jika berulang.',
         },
       ],
     },
@@ -53,13 +50,11 @@ export const kasirManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Layar kasir punya dua tab: **Kasir** untuk transaksi biasa dan **GoFood/ShopeeFood** untuk mencatat pesanan online secara manual (lihat catatan di bagian bawah halaman ini).',
+          text: 'Layar kasir punya dua tab: **Kasir** untuk transaksi biasa dan **GoFood/ShopeeFood** untuk mencatat pesanan online secara manual (lihat catatan di bagian bawah halaman ini).',
         },
         {
           type: 'p',
-          text:
-            'Di tab **Kasir**, gunakan baris kategori di atas katalog untuk menyaring produk (**Semua** menampilkan seluruh katalog). Ketuk kartu produk satu kali untuk menambah 1 unit ke keranjang — ketuk berkali-kali untuk menambah jumlahnya.',
+          text: 'Di tab **Kasir**, gunakan baris kategori di atas katalog untuk menyaring produk (**Semua** menampilkan seluruh katalog). Ketuk kartu produk satu kali untuk menambah 1 unit ke keranjang — ketuk berkali-kali untuk menambah jumlahnya.',
         },
         {
           type: 'list',
@@ -72,13 +67,11 @@ export const kasirManual: DocManual = {
         {
           type: 'callout',
           kind: 'note',
-          text:
-            'Jika katalog kosong atau belum pernah dimuat, layar menampilkan **"Katalog produk belum tersedia"** — sambungkan perangkat ke internet minimal sekali untuk mengunduhnya. Katalog yang tersimpan dari sesi sebelumnya tetap bisa dipakai offline; sistem menandainya dengan catatan "menampilkan katalog tersimpan terakhir".',
+          text: 'Jika katalog kosong atau belum pernah dimuat, layar menampilkan **"Katalog produk belum tersedia"** — sambungkan perangkat ke internet minimal sekali untuk mengunduhnya. Katalog yang tersimpan dari sesi sebelumnya tetap bisa dipakai offline; sistem menandainya dengan catatan "menampilkan katalog tersimpan terakhir".',
         },
         {
           type: 'p',
-          text:
-            'Setelah keranjang terisi, ketuk **Lanjut ke Pembayaran** (tombol ini nonaktif selama keranjang masih kosong).',
+          text: 'Setelah keranjang terisi, ketuk **Lanjut ke Pembayaran** (tombol ini nonaktif selama keranjang masih kosong).',
         },
       ],
     },
@@ -91,26 +84,35 @@ export const kasirManual: DocManual = {
           type: 'table',
           headers: ['Metode', 'Status setelah dipilih', 'Catatan'],
           rows: [
-            ['Tunai', 'Dibayar', 'Isi **Uang Diterima** — sistem menghitung **Kembalian** secara otomatis. Tombol selesai tetap nonaktif jika uang diterima kurang dari total.'],
-            ['QRIS', 'Terverifikasi', '"Pembayaran QRIS terverifikasi otomatis melalui gateway." Nomor referensi opsional.'],
-            ['Transfer', 'Belum Terverifikasi', '"Pembayaran transfer menunggu verifikasi Finance — belum dianggap lunas." Nomor referensi opsional.'],
+            [
+              'Tunai',
+              'Dibayar',
+              'Isi **Uang Diterima** — sistem menghitung **Kembalian** secara otomatis. Tombol selesai tetap nonaktif jika uang diterima kurang dari total.',
+            ],
+            [
+              'QRIS',
+              'Terverifikasi',
+              '"Pembayaran QRIS terverifikasi otomatis melalui gateway." Nomor referensi opsional.',
+            ],
+            [
+              'Transfer',
+              'Belum Terverifikasi',
+              '"Pembayaran transfer menunggu verifikasi Finance — belum dianggap lunas." Nomor referensi opsional.',
+            ],
           ],
         },
         {
           type: 'p',
-          text:
-            'Untuk QRIS dan Transfer, kolom **Jumlah Tagihan** menampilkan total transaksi (tidak bisa diubah) dan kolom **Nomor Referensi** boleh diisi mis. ID transaksi.',
+          text: 'Untuk QRIS dan Transfer, kolom **Jumlah Tagihan** menampilkan total transaksi (tidak bisa diubah) dan kolom **Nomor Referensi** boleh diisi mis. ID transaksi.',
         },
         {
           type: 'p',
-          text:
-            'Ketuk **Selesaikan & Cetak Struk** untuk menutup transaksi. Jika printer tidak tersedia, muncul peringatan **"Struk tidak dapat dicetak — printer tidak tersedia"** — transaksi tetap tersimpan, hanya struk fisiknya yang gagal dicetak. Notifikasi **"Transaksi berhasil"** menandai transaksi selesai.',
+          text: 'Ketuk **Selesaikan & Cetak Struk** untuk menutup transaksi. Jika printer tidak tersedia, muncul peringatan **"Struk tidak dapat dicetak — printer tidak tersedia"** — transaksi tetap tersimpan, hanya struk fisiknya yang gagal dicetak. Notifikasi **"Transaksi berhasil"** menandai transaksi selesai.',
         },
         {
           type: 'callout',
           kind: 'warning',
-          text:
-            'Saat koneksi tidak sepenuhnya online, muncul peringatan "Transaksi belum terlihat di tablet lain — akan muncul setelah tersambung kembali." Transaksi offline tetap sah, tapi jangan kaget bila tidak langsung muncul di tablet lain sebelum sinkron.',
+          text: 'Saat koneksi tidak sepenuhnya online, muncul peringatan "Transaksi belum terlihat di tablet lain — akan muncul setelah tersambung kembali." Transaksi offline tetap sah, tapi jangan kaget bila tidak langsung muncul di tablet lain sebelum sinkron.',
         },
       ],
     },
@@ -120,8 +122,7 @@ export const kasirManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Tombol **Void Transaksi Terakhir** hanya aktif untuk transaksi yang baru saja diselesaikan di sesi layar ini — bila halaman di-refresh setelah transaksi selesai, tombol ini kembali nonaktif dan void harus ditangani lewat jalur lain (mis. Finance/Approval).',
+          text: 'Tombol **Void Transaksi Terakhir** hanya aktif untuk transaksi yang baru saja diselesaikan di sesi layar ini — bila halaman di-refresh setelah transaksi selesai, tombol ini kembali nonaktif dan void harus ditangani lewat jalur lain (mis. Finance/Approval).',
         },
         {
           type: 'callout',
@@ -143,13 +144,11 @@ export const kasirManual: DocManual = {
         },
         {
           type: 'p',
-          text:
-            'Saat perangkat sedang offline/tanpa koneksi ke pusat, jendela menambahkan badge **"Otorisasi Offline — Sementara"** serta dua kolom tambahan: **Supervisor Penyetuju** (pilih dari kredensial supervisor tersimpan di perangkat) dan **Foto Selfie Supervisor** (wajib). Hasilnya tersimpan sebagai **"Void/refund tersimpan (sementara)"** dan akan diverifikasi ulang oleh sistem pusat begitu perangkat tersinkron.',
+          text: 'Saat perangkat sedang offline/tanpa koneksi ke pusat, jendela menambahkan badge **"Otorisasi Offline — Sementara"** serta dua kolom tambahan: **Supervisor Penyetuju** (pilih dari kredensial supervisor tersimpan di perangkat) dan **Foto Selfie Supervisor** (wajib). Hasilnya tersimpan sebagai **"Void/refund tersimpan (sementara)"** dan akan diverifikasi ulang oleh sistem pusat begitu perangkat tersinkron.',
         },
         {
           type: 'p',
-          text:
-            'Saat online, mengirim dengan PIN langsung menghasilkan **"Void/refund disetujui"**; mengirim tanpa PIN saat itu menghasilkan status menunggu, **"Void/refund diajukan"** ("Menunggu persetujuan supervisor").',
+          text: 'Saat online, mengirim dengan PIN langsung menghasilkan **"Void/refund disetujui"**; mengirim tanpa PIN saat itu menghasilkan status menunggu, **"Void/refund diajukan"** ("Menunggu persetujuan supervisor").',
         },
         {
           type: 'table',
@@ -173,8 +172,7 @@ export const kasirManual: DocManual = {
         {
           type: 'callout',
           kind: 'note',
-          text:
-            'Tidak ada layar "setoran kas" terpisah — menghitung dan mencocokkan uang tunai laci ADALAH proses Tutup Kasir di bawah ini.',
+          text: 'Tidak ada layar "setoran kas" terpisah — menghitung dan mencocokkan uang tunai laci ADALAH proses Tutup Kasir di bawah ini.',
         },
         {
           type: 'p',
@@ -198,8 +196,7 @@ export const kasirManual: DocManual = {
         },
         {
           type: 'p',
-          text:
-            'Notifikasi **"Kasir ditutup"** menandai shift selesai; laporan shift final baru tersedia setelah data tersinkron ke pusat. Layar kembali ke formulir Buka Kasir untuk shift berikutnya.',
+          text: 'Notifikasi **"Kasir ditutup"** menandai shift selesai; laporan shift final baru tersedia setelah data tersinkron ke pusat. Layar kembali ke formulir Buka Kasir untuk shift berikutnya.',
         },
       ],
     },

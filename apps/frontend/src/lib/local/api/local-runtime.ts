@@ -14,7 +14,13 @@ import type { UpstreamCandidate } from '../upstream/upstream-selector';
 import { SyncEngine, type ConnectivityReporter } from '../sync/sync-engine';
 import { commitFact, getOutboxDepth, type CommitFactResult } from '../idempotent-commit';
 import { ensureDeviceIdentity, applyRegistration, loadDeviceIdentity } from '../identity';
-import { getAllBalances, getBalance, recordSaleWithinTx, type StockKey, type ProjectedBalance } from '../stock/stock-cache';
+import {
+  getAllBalances,
+  getBalance,
+  recordSaleWithinTx,
+  type StockKey,
+  type ProjectedBalance,
+} from '../stock/stock-cache';
 import {
   authorizeOffline,
   cacheCredential,
@@ -46,7 +52,12 @@ export interface ActorMeta {
 }
 
 function toPayloadMeta(actor: ActorMeta): Omit<SyncPayloadMeta, 'clockOffsetMs' | 'rawDeviceTime'> {
-  return { actorUserId: actor.actorUserId, actorRole: actor.actorRole, appVersion: actor.appVersion, deviceLabel: actor.deviceLabel };
+  return {
+    actorUserId: actor.actorUserId,
+    actorRole: actor.actorRole,
+    appVersion: actor.appVersion,
+    deviceLabel: actor.deviceLabel,
+  };
 }
 
 export class LocalRuntime {
@@ -176,11 +187,23 @@ export class LocalRuntime {
   }
 
   async commitShiftOpened(shiftId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.POS_SHIFTS, op: 'opened', entityId: shiftId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.POS_SHIFTS,
+      op: 'opened',
+      entityId: shiftId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   async commitShiftClosed(shiftId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.POS_SHIFTS, op: 'closed', entityId: shiftId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.POS_SHIFTS,
+      op: 'closed',
+      entityId: shiftId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   /** §7 offline-provisional void/refund approval — gates on the cached credential + PIN, then commits `approved_offline` with the binding evidence attached. */
@@ -221,35 +244,77 @@ export class LocalRuntime {
   // ── HR / attendance (F11) ──────────────────────────────────────────────────
 
   async commitAttendanceCheckIn(attendanceId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.ATTENDANCE, op: 'checked_in', entityId: attendanceId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.ATTENDANCE,
+      op: 'checked_in',
+      entityId: attendanceId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   async commitAttendanceCheckOut(attendanceId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.ATTENDANCE, op: 'checked_out', entityId: attendanceId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.ATTENDANCE,
+      op: 'checked_out',
+      entityId: attendanceId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   // ── Driver (F13) ────────────────────────────────────────────────────────────
 
   async commitDropDeparted(dropId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.SJ_DROPS, op: 'departed', entityId: dropId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.SJ_DROPS,
+      op: 'departed',
+      entityId: dropId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   async commitDropArrived(dropId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.SJ_DROPS, op: 'arrived', entityId: dropId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.SJ_DROPS,
+      op: 'arrived',
+      entityId: dropId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   async commitDropReceived(dropId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.SJ_DROPS, op: 'received', entityId: dropId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.SJ_DROPS,
+      op: 'received',
+      entityId: dropId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   async commitTempLog(logId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.SJ_TEMPERATURE_LOGS, op: 'logged', entityId: logId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.SJ_TEMPERATURE_LOGS,
+      op: 'logged',
+      entityId: logId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   // ── Stock opname (F0x, D-16 territory) — class B, device-originable per authority-matrix.ts ──
 
   async commitOpnameOpened(opnameId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.STOCK_OPNAME, op: 'opened', entityId: opnameId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.STOCK_OPNAME,
+      op: 'opened',
+      entityId: opnameId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   /**
@@ -268,25 +333,55 @@ export class LocalRuntime {
    * correlate the fact back to its parent document once it lands.
    */
   async commitOpnameAreaCounted(areaCountId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.STOCK_OPNAME, op: 'area_counted', entityId: areaCountId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.STOCK_OPNAME,
+      op: 'area_counted',
+      entityId: areaCountId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   async commitOpnameSubmitted(opnameId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.STOCK_OPNAME, op: 'submitted', entityId: opnameId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.STOCK_OPNAME,
+      op: 'submitted',
+      entityId: opnameId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   async commitOpnameCancelled(opnameId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.STOCK_OPNAME, op: 'cancelled', entityId: opnameId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.STOCK_OPNAME,
+      op: 'cancelled',
+      entityId: opnameId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   // ── Replenishment requests (block 030-039) — class B, device-originable per authority-matrix.ts ──
 
   async commitReplenishmentSubmitted(requestId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.REPLENISHMENT_REQUESTS, op: 'submitted', entityId: requestId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.REPLENISHMENT_REQUESTS,
+      op: 'submitted',
+      entityId: requestId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   async commitReplenishmentCancelled(requestId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.REPLENISHMENT_REQUESTS, op: 'cancelled', entityId: requestId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.REPLENISHMENT_REQUESTS,
+      op: 'cancelled',
+      entityId: requestId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   /**
@@ -299,7 +394,13 @@ export class LocalRuntime {
    * step (`warehouse_approved`) is neither of these — it stays cloud-only.
    */
   async commitReplenishmentSupervisorApproved(requestId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.REPLENISHMENT_REQUESTS, op: 'supervisor_approved', entityId: requestId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.REPLENISHMENT_REQUESTS,
+      op: 'supervisor_approved',
+      entityId: requestId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   /**
@@ -343,7 +444,13 @@ export class LocalRuntime {
   }
 
   async commitReplenishmentSupervisorRejected(requestId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.REPLENISHMENT_REQUESTS, op: 'supervisor_rejected', entityId: requestId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.REPLENISHMENT_REQUESTS,
+      op: 'supervisor_rejected',
+      entityId: requestId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   // ── Petty cash (block 040-049) — class B, device-originable per authority-matrix.ts ──
@@ -357,13 +464,25 @@ export class LocalRuntime {
    * relies on for its photo/signature pair.
    */
   async commitPettyCashRecorded(pettyCashId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.PETTY_CASH, op: 'recorded', entityId: pettyCashId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.PETTY_CASH,
+      op: 'recorded',
+      entityId: pettyCashId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   // ── Waste records (block 080-089) — class B, device-originable per authority-matrix.ts ──
 
   async commitWasteReported(batchId: UUID, data: unknown, actor: ActorMeta) {
-    return commitFact(this.db, { entity: SyncEntity.WASTE_RECORDS, op: 'reported', entityId: batchId, data, meta: toPayloadMeta(actor) });
+    return commitFact(this.db, {
+      entity: SyncEntity.WASTE_RECORDS,
+      op: 'reported',
+      entityId: batchId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
   }
 
   /**

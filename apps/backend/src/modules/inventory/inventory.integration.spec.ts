@@ -15,7 +15,13 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ERR_LOCATION_OUT_OF_SCOPE, ERR_STOCK_INSUFFICIENT, ERR_VALIDATION, MovementType, RoleKey } from '@mimi/shared';
+import {
+  ERR_LOCATION_OUT_OF_SCOPE,
+  ERR_STOCK_INSUFFICIENT,
+  ERR_VALIDATION,
+  MovementType,
+  RoleKey,
+} from '@mimi/shared';
 
 import { EventBus } from '../../kernel/events/event-bus.service';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
@@ -81,9 +87,11 @@ afterAll(async () => {
 describe('InventoryService — GET /api/inventory/balances', () => {
   it('returns a real seeded balance row with the expected shape, scoped by locationId/storageAreaId/itemId', async () => {
     await withRollback(async (client) => {
-      const anyBalance = await client.query<{ location_id: string; storage_area_id: string; item_id: string }>(
-        `SELECT location_id, storage_area_id, item_id FROM stock_balances LIMIT 1`,
-      );
+      const anyBalance = await client.query<{
+        location_id: string;
+        storage_area_id: string;
+        item_id: string;
+      }>(`SELECT location_id, storage_area_id, item_id FROM stock_balances LIMIT 1`);
       const row = anyBalance.rows[0]!;
 
       const page = await service().getBalances(
@@ -107,16 +115,34 @@ describe('InventoryService — GET /api/inventory/balances', () => {
 
   it('includes `value` (qty × avgCost) only for a caller holding supplier.price.read — D-20/FR-SUP-06 role lock', async () => {
     await withRollback(async (client) => {
-      const anyBalance = await client.query<{ location_id: string; storage_area_id: string; item_id: string }>(
-        `SELECT location_id, storage_area_id, item_id FROM stock_balances LIMIT 1`,
-      );
+      const anyBalance = await client.query<{
+        location_id: string;
+        storage_area_id: string;
+        item_id: string;
+      }>(`SELECT location_id, storage_area_id, item_id FROM stock_balances LIMIT 1`);
       const row = anyBalance.rows[0]!;
-      const filters = { locationId: row.location_id, storageAreaId: row.storage_area_id, itemId: row.item_id };
+      const filters = {
+        locationId: row.location_id,
+        storageAreaId: row.storage_area_id,
+        itemId: row.item_id,
+      };
 
-      const withPrice = await service().getBalances(client, { ...CENTRAL, roleKey: RoleKey.KEPALA_GUDANG }, filters, 1, 1);
+      const withPrice = await service().getBalances(
+        client,
+        { ...CENTRAL, roleKey: RoleKey.KEPALA_GUDANG },
+        filters,
+        1,
+        1,
+      );
       expect(withPrice.rows[0]!.value).toBeDefined();
 
-      const withoutPrice = await service().getBalances(client, { ...CENTRAL, roleKey: RoleKey.LEADER_OUTLET }, filters, 1, 1);
+      const withoutPrice = await service().getBalances(
+        client,
+        { ...CENTRAL, roleKey: RoleKey.LEADER_OUTLET },
+        filters,
+        1,
+        1,
+      );
       expect(withoutPrice.rows[0]!.value).toBeUndefined();
     });
   }, 20_000);
@@ -134,16 +160,38 @@ describe('InventoryService — GET /api/inventory/balances', () => {
       await withRollback(async (client) => {
         await realStockLedger().post(
           client,
-          [{ ...key, movementType: MovementType.OPENING_BALANCE, qty: '10.000', unitCost: '1000.00', refType: 'test', refId: randomUUID(), actorId: null }],
+          [
+            {
+              ...key,
+              movementType: MovementType.OPENING_BALANCE,
+              qty: '10.000',
+              unitCost: '1000.00',
+              refType: 'test',
+              refId: randomUUID(),
+              actorId: null,
+            },
+          ],
           'fact',
         );
 
-        const below = await service().getBalances(client, CENTRAL, { locationId: key.locationId, itemId: key.itemId, belowMin: true }, 1, 50);
+        const below = await service().getBalances(
+          client,
+          CENTRAL,
+          { locationId: key.locationId, itemId: key.itemId, belowMin: true },
+          1,
+          50,
+        );
         expect(below.rows.some((r) => r.storageAreaId === key.storageAreaId)).toBe(true);
         expect(below.rows[0]!.belowMin).toBe(true);
         expect(below.rows[0]!.minQty).toBe('50.000');
 
-        const above = await service().getBalances(client, CENTRAL, { locationId: key.locationId, itemId: key.itemId, belowMin: false }, 1, 50);
+        const above = await service().getBalances(
+          client,
+          CENTRAL,
+          { locationId: key.locationId, itemId: key.itemId, belowMin: false },
+          1,
+          50,
+        );
         expect(above.rows.some((r) => r.storageAreaId === key.storageAreaId)).toBe(false);
       });
     } finally {
@@ -151,14 +199,22 @@ describe('InventoryService — GET /api/inventory/balances', () => {
     }
   }, 20_000);
 
-  it('rejects an explicit locationId outside the caller\'s scope with ERR_LOCATION_OUT_OF_SCOPE (not a silent empty page)', async () => {
+  it("rejects an explicit locationId outside the caller's scope with ERR_LOCATION_OUT_OF_SCOPE (not a silent empty page)", async () => {
     await withRollback(async (client) => {
-      const scoped: CallerContext = { userId: 'x', roleKey: RoleKey.LEADER_OUTLET, locationScope: [fx.outletId] };
-      await expect(service().getBalances(client, scoped, { locationId: fx.otherOutletId }, 1, 10)).rejects.toMatchObject({
+      const scoped: CallerContext = {
+        userId: 'x',
+        roleKey: RoleKey.LEADER_OUTLET,
+        locationScope: [fx.outletId],
+      };
+      await expect(
+        service().getBalances(client, scoped, { locationId: fx.otherOutletId }, 1, 10),
+      ).rejects.toMatchObject({
         response: { code: ERR_LOCATION_OUT_OF_SCOPE },
       });
       // The SAME caller against their OWN location is fine — proves the check isn't just "always reject".
-      await expect(service().getBalances(client, scoped, { locationId: fx.outletId }, 1, 10)).resolves.toBeDefined();
+      await expect(
+        service().getBalances(client, scoped, { locationId: fx.outletId }, 1, 10),
+      ).resolves.toBeDefined();
     });
   }, 20_000);
 });
@@ -178,7 +234,17 @@ describe('InventoryService — GET /api/inventory/summary', () => {
 
         await realStockLedger().post(
           client,
-          [{ ...key, movementType: MovementType.OPENING_BALANCE, qty: '1.000', unitCost: '500.00', refType: 'test', refId: randomUUID(), actorId: null }],
+          [
+            {
+              ...key,
+              movementType: MovementType.OPENING_BALANCE,
+              qty: '1.000',
+              unitCost: '500.00',
+              refType: 'test',
+              refId: randomUUID(),
+              actorId: null,
+            },
+          ],
           'fact',
         );
 
@@ -196,12 +262,24 @@ describe('InventoryService — GET /api/inventory/summary', () => {
 
 describe('InventoryService — GET /api/inventory/movements', () => {
   it('lists a just-posted movement, filterable by movementType/date range', async () => {
-    const key = await withRollback((client) => pickUnusedStockKey(client, { locationId: fx.outletId }));
+    const key = await withRollback((client) =>
+      pickUnusedStockKey(client, { locationId: fx.outletId }),
+    );
     await withRollback(async (client) => {
       const refId = randomUUID();
       await realStockLedger().post(
         client,
-        [{ ...key, movementType: MovementType.PURCHASE_IN, qty: '7.500', unitCost: '2500.00', refType: 'test', refId, actorId: null }],
+        [
+          {
+            ...key,
+            movementType: MovementType.PURCHASE_IN,
+            qty: '7.500',
+            unitCost: '2500.00',
+            refType: 'test',
+            refId,
+            actorId: null,
+          },
+        ],
         'fact',
       );
 
@@ -226,7 +304,12 @@ describe('InventoryService — GET /api/inventory/movements', () => {
       const wrongType = await service().getMovements(
         client,
         CENTRAL,
-        { locationId: key.locationId, itemId: key.itemId, storageAreaId: key.storageAreaId, movementType: MovementType.WASTE_OUT },
+        {
+          locationId: key.locationId,
+          itemId: key.itemId,
+          storageAreaId: key.storageAreaId,
+          movementType: MovementType.WASTE_OUT,
+        },
         1,
         50,
       );
@@ -245,10 +328,14 @@ describe('InventoryService — GET/PUT /api/inventory/min-stock', () => {
   }, 20_000);
 
   it('PUT bulk-upserts and the REAL commit path lands a durable row + emits a min_stock_rules.updated sync event', async () => {
-    const key = await withRollback((client) => pickUnusedStockKey(client, { locationId: fx.outletId }));
+    const key = await withRollback((client) =>
+      pickUnusedStockKey(client, { locationId: fx.outletId }),
+    );
     try {
       const rows = await withCommit((client) =>
-        service().upsertMinStock(client, CENTRAL, key.locationId, [{ itemId: key.itemId, minQty: '12.500', reorderQty: '20.000' }]),
+        service().upsertMinStock(client, CENTRAL, key.locationId, [
+          { itemId: key.itemId, minQty: '12.500', reorderQty: '20.000' },
+        ]),
       );
       expect(rows).toHaveLength(1);
       expect(rows[0]!.minQty).toBe('12.500');
@@ -262,7 +349,11 @@ describe('InventoryService — GET/PUT /api/inventory/min-stock', () => {
       );
       expect(persisted.rows[0]!.min_qty).toBe('12.500');
 
-      const events = await getOwnerPool().query<{ entity: string; op: string; location_id: string }>(
+      const events = await getOwnerPool().query<{
+        entity: string;
+        op: string;
+        location_id: string;
+      }>(
         `SELECT entity, op, location_id FROM sync_events WHERE entity = 'min_stock_rules' AND entity_id = $1`,
         [rows[0]!.id],
       );
@@ -272,7 +363,9 @@ describe('InventoryService — GET/PUT /api/inventory/min-stock', () => {
 
       // Upserting AGAIN updates in place (ON CONFLICT), not a duplicate row.
       const updated = await withCommit((client) =>
-        service().upsertMinStock(client, CENTRAL, key.locationId, [{ itemId: key.itemId, minQty: '30.000' }]),
+        service().upsertMinStock(client, CENTRAL, key.locationId, [
+          { itemId: key.itemId, minQty: '30.000' },
+        ]),
       );
       expect(updated).toHaveLength(1);
       expect(updated[0]!.minQty).toBe('30.000');
@@ -286,23 +379,29 @@ describe('InventoryService — GET/PUT /api/inventory/min-stock', () => {
     }
   }, 30_000);
 
-  it('rejects a locationId outside the caller\'s scope BEFORE writing anything', async () => {
+  it("rejects a locationId outside the caller's scope BEFORE writing anything", async () => {
     // `pickItemWithNoMinStockRule`, not `pickUnusedStockKey`: this test's own
     // assertion is "no rule exists afterward" — that's only meaningful proof
     // the write was blocked if no rule existed BEFORE either. The seed's
     // core items already carry a rule at every location by design, and
     // `pickUnusedStockKey` says nothing about `min_stock_rules` at all.
     const key = await withRollback((client) => pickItemWithNoMinStockRule(client, fx.outletId));
-    const scoped: CallerContext = { userId: 'x', roleKey: RoleKey.KEPALA_GUDANG, locationScope: [fx.warehouseId] };
+    const scoped: CallerContext = {
+      userId: 'x',
+      roleKey: RoleKey.KEPALA_GUDANG,
+      locationScope: [fx.warehouseId],
+    };
     await withRollback(async (client) => {
       await expect(
-        service().upsertMinStock(client, scoped, key.locationId, [{ itemId: key.itemId, minQty: '1.000' }]),
+        service().upsertMinStock(client, scoped, key.locationId, [
+          { itemId: key.itemId, minQty: '1.000' },
+        ]),
       ).rejects.toMatchObject({ response: { code: ERR_LOCATION_OUT_OF_SCOPE } });
     });
-    const persisted = await getOwnerPool().query(`SELECT 1 FROM min_stock_rules WHERE location_id = $1 AND item_id = $2`, [
-      key.locationId,
-      key.itemId,
-    ]);
+    const persisted = await getOwnerPool().query(
+      `SELECT 1 FROM min_stock_rules WHERE location_id = $1 AND item_id = $2`,
+      [key.locationId, key.itemId],
+    );
     expect(persisted.rowCount).toBe(0);
   }, 20_000);
 });
@@ -319,7 +418,17 @@ describe('InventoryService — GET /api/inventory/low-stock', () => {
       await withRollback(async (client) => {
         await realStockLedger().post(
           client,
-          [{ ...key, movementType: MovementType.OPENING_BALANCE, qty: '40.000', unitCost: '1000.00', refType: 'test', refId: randomUUID(), actorId: null }],
+          [
+            {
+              ...key,
+              movementType: MovementType.OPENING_BALANCE,
+              qty: '40.000',
+              unitCost: '1000.00',
+              refType: 'test',
+              refId: randomUUID(),
+              actorId: null,
+            },
+          ],
           'fact',
         );
 
@@ -332,7 +441,17 @@ describe('InventoryService — GET /api/inventory/low-stock', () => {
 
         await realStockLedger().post(
           client,
-          [{ ...key, movementType: MovementType.PURCHASE_IN, qty: '200.000', unitCost: '1000.00', refType: 'test', refId: randomUUID(), actorId: null }],
+          [
+            {
+              ...key,
+              movementType: MovementType.PURCHASE_IN,
+              qty: '200.000',
+              unitCost: '1000.00',
+              refType: 'test',
+              refId: randomUUID(),
+              actorId: null,
+            },
+          ],
           'fact',
         );
         const recovered = await service().getLowStock(client, CENTRAL, key.locationId);
@@ -346,7 +465,9 @@ describe('InventoryService — GET /api/inventory/low-stock', () => {
 
 describe('InventoryService — GET /api/inventory/suggestions', () => {
   it('falls back to reorder_qty basis when there is no recent usage history', async () => {
-    const key = await withRollback((client) => pickUnusedStockKey(client, { locationId: fx.outletId }));
+    const key = await withRollback((client) =>
+      pickUnusedStockKey(client, { locationId: fx.outletId }),
+    );
     await createMinStockRule(key.locationId, key.itemId, '10.000', '99.000');
     try {
       await withRollback(async (client) => {
@@ -363,14 +484,26 @@ describe('InventoryService — GET /api/inventory/suggestions', () => {
   }, 20_000);
 
   it('switches to usage_pattern basis once mv_item_usage_daily has recent usage_out for the key', async () => {
-    const key = await withRollback((client) => pickUnusedStockKey(client, { locationId: fx.outletId }));
+    const key = await withRollback((client) =>
+      pickUnusedStockKey(client, { locationId: fx.outletId }),
+    );
     await createMinStockRule(key.locationId, key.itemId, '10.000', '99.000');
     try {
       // usage_out must be COMMITTED before a matview refresh (a different snapshot) can see it.
       await seedMovementCommitted((client) =>
         realStockLedger().post(
           client,
-          [{ ...key, movementType: MovementType.USAGE_OUT, qty: '14.000', unitCost: '1000.00', refType: 'test', refId: randomUUID(), actorId: null }],
+          [
+            {
+              ...key,
+              movementType: MovementType.USAGE_OUT,
+              qty: '14.000',
+              unitCost: '1000.00',
+              refType: 'test',
+              refId: randomUUID(),
+              actorId: null,
+            },
+          ],
           'fact',
         ),
       );
@@ -393,11 +526,10 @@ describe('InventoryService — GET /api/inventory/suggestions', () => {
         `DELETE FROM stock_movements WHERE ref_type = 'test' AND location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
         [key.locationId, key.storageAreaId, key.itemId],
       );
-      await getOwnerPool().query(`DELETE FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [
-        key.locationId,
-        key.storageAreaId,
-        key.itemId,
-      ]);
+      await getOwnerPool().query(
+        `DELETE FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+        [key.locationId, key.storageAreaId, key.itemId],
+      );
       await refreshUsageMatview();
       await deleteMinStockRule(key.locationId, key.itemId);
     }
@@ -411,7 +543,9 @@ describe('InventoryService — POST /api/inventory/area-transfer', () => {
     // coincidentally equal whatever random area `pickUnusedStockKey` picked
     // as `fromAreaId`, tripping the "must differ" validation instead of the
     // insufficient-stock path this test means to exercise.
-    const pair = await withRollback((client) => pickUnusedTransferPairInLocation(client, fx.outletId));
+    const pair = await withRollback((client) =>
+      pickUnusedTransferPairInLocation(client, fx.outletId),
+    );
     await withRollback(async (client) => {
       await expect(
         service().postAreaTransfer(client, CENTRAL, {
@@ -450,7 +584,11 @@ describe('InventoryService — POST /api/inventory/area-transfer', () => {
   }, 20_000);
 
   it('a scoped caller (Kepala Gudang without this outlet) is rejected before any DB write', async () => {
-    const scoped: CallerContext = { userId: 'x', roleKey: RoleKey.KEPALA_GUDANG, locationScope: [fx.warehouseId] };
+    const scoped: CallerContext = {
+      userId: 'x',
+      roleKey: RoleKey.KEPALA_GUDANG,
+      locationScope: [fx.warehouseId],
+    };
     await withRollback(async (client) => {
       await expect(
         service().postAreaTransfer(client, scoped, {
@@ -465,7 +603,9 @@ describe('InventoryService — POST /api/inventory/area-transfer', () => {
   }, 20_000);
 
   it('a real transfer moves qty between two areas of the SAME location and commits durably', async () => {
-    const pair = await withRollback((client) => pickUnusedTransferPairInLocation(client, fx.outletId));
+    const pair = await withRollback((client) =>
+      pickUnusedTransferPairInLocation(client, fx.outletId),
+    );
 
     try {
       await seedMovementCommitted((client) =>
@@ -587,7 +727,9 @@ describe('InventoryService — GET /api/inventory/history/:itemId', () => {
 
   it('404s (ERR_NOT_FOUND) for an item that does not exist', async () => {
     await withRollback(async (client) => {
-      await expect(service().getHistory(client, CENTRAL, fx.outletId, randomUUID(), 30)).rejects.toThrow();
+      await expect(
+        service().getHistory(client, CENTRAL, fx.outletId, randomUUID(), 30),
+      ).rejects.toThrow();
     });
   }, 20_000);
 });

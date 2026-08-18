@@ -14,17 +14,35 @@ describe('clock discipline (SYNC-PROTOCOL §6)', () => {
   it('measures offset = server_time - device_now - rtt/2', () => {
     const state = initialClockState();
     const serverTime = new Date(1_000_000_000_000 + 5000).toISOString(); // server is 5s ahead net of RTT
-    const updated = recordOffsetSample(state, serverTime, 1_000_000_000_000, 0, new Date().toISOString());
+    const updated = recordOffsetSample(
+      state,
+      serverTime,
+      1_000_000_000_000,
+      0,
+      new Date().toISOString(),
+    );
     expect(updated.offsetMs).toBe(5000);
   });
 
   it('smooths over the last 5 samples (a single wild sample does not fully dominate)', () => {
     let state = initialClockState();
     for (let i = 0; i < 4; i++) {
-      state = recordOffsetSample(state, new Date(1000).toISOString(), 0, 0, new Date().toISOString());
+      state = recordOffsetSample(
+        state,
+        new Date(1000).toISOString(),
+        0,
+        0,
+        new Date().toISOString(),
+      );
     }
     // 4 samples of ~1000ms, then one wild 100000ms sample — average should be pulled toward 1000, not equal to 100000.
-    state = recordOffsetSample(state, new Date(100_000).toISOString(), 0, 0, new Date().toISOString());
+    state = recordOffsetSample(
+      state,
+      new Date(100_000).toISOString(),
+      0,
+      0,
+      new Date().toISOString(),
+    );
     expect(state.offsetMs).toBeLessThan(30_000);
     expect(state.offsetMs).toBeGreaterThan(1000);
   });
@@ -32,7 +50,13 @@ describe('clock discipline (SYNC-PROTOCOL §6)', () => {
   it('keeps only the last 5 samples in the window', () => {
     let state = initialClockState();
     for (let i = 1; i <= 7; i++) {
-      state = recordOffsetSample(state, new Date(i * 1000).toISOString(), 0, 0, new Date().toISOString());
+      state = recordOffsetSample(
+        state,
+        new Date(i * 1000).toISOString(),
+        0,
+        0,
+        new Date().toISOString(),
+      );
     }
     expect(state.samples).toHaveLength(5);
     expect(state.samples).toEqual([3000, 4000, 5000, 6000, 7000]);
@@ -97,7 +121,9 @@ describe('clock discipline (SYNC-PROTOCOL §6)', () => {
       const relayReceivedAt = new Date('2026-08-17T12:00:00.000Z').toISOString();
       const occurredAt = new Date('2026-08-15T12:00:00.000Z').toISOString(); // 48h before relay, default window is 24h
       const result = computeDefensibleAt(occurredAt, relayReceivedAt);
-      expect(new Date(result).getTime()).toBe(new Date(relayReceivedAt).getTime() - 24 * 60 * 60 * 1000);
+      expect(new Date(result).getTime()).toBe(
+        new Date(relayReceivedAt).getTime() - 24 * 60 * 60 * 1000,
+      );
     });
 
     it('clamps a future claim to relay_received_at itself (never lets a lying clock claim to be "later" than its first server sighting)', () => {

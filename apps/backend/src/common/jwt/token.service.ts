@@ -31,7 +31,9 @@ export class TokenService {
     });
     this.refreshJwt = new JwtService({
       secret: refreshSecret(config),
-      signOptions: { expiresIn: config.get<string>('JWT_REFRESH_EXPIRES_IN', '7d') as unknown as number },
+      signOptions: {
+        expiresIn: config.get<string>('JWT_REFRESH_EXPIRES_IN', '7d') as unknown as number,
+      },
     });
   }
 

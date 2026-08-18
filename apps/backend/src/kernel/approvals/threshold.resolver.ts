@@ -1,4 +1,10 @@
-import { ApprovalDocumentType, compareMoney, DEFAULT_APPROVAL_THRESHOLDS, type Money, type SettingsKey } from '@mimi/shared';
+import {
+  ApprovalDocumentType,
+  compareMoney,
+  DEFAULT_APPROVAL_THRESHOLDS,
+  type Money,
+  type SettingsKey,
+} from '@mimi/shared';
 import type { DbClient } from './types';
 
 /**
@@ -23,11 +29,21 @@ interface ThresholdMapping {
   field: string;
 }
 
-const THRESHOLD_MAPPINGS: Partial<Record<ApprovalDocumentType, Partial<Record<number, ThresholdMapping>>>> = {
-  [ApprovalDocumentType.VOID_REFUND]: { 2: { settingsKey: 'approval.threshold.void', field: 'managerAboveIdr' } },
-  [ApprovalDocumentType.STOCK_OPNAME]: { 2: { settingsKey: 'approval.threshold.opname', field: 'managerAboveIdr' } },
-  [ApprovalDocumentType.PURCHASE_ORDER]: { 2: { settingsKey: 'approval.threshold.po', field: 'ownerAboveIdr' } },
-  [ApprovalDocumentType.PAYMENT_VERIFICATION]: { 1: { settingsKey: 'approval.threshold.payment', field: 'ownerAboveIdr' } },
+const THRESHOLD_MAPPINGS: Partial<
+  Record<ApprovalDocumentType, Partial<Record<number, ThresholdMapping>>>
+> = {
+  [ApprovalDocumentType.VOID_REFUND]: {
+    2: { settingsKey: 'approval.threshold.void', field: 'managerAboveIdr' },
+  },
+  [ApprovalDocumentType.STOCK_OPNAME]: {
+    2: { settingsKey: 'approval.threshold.opname', field: 'managerAboveIdr' },
+  },
+  [ApprovalDocumentType.PURCHASE_ORDER]: {
+    2: { settingsKey: 'approval.threshold.po', field: 'ownerAboveIdr' },
+  },
+  [ApprovalDocumentType.PAYMENT_VERIFICATION]: {
+    1: { settingsKey: 'approval.threshold.payment', field: 'ownerAboveIdr' },
+  },
 };
 
 /** The static fallback table (mirrors `@mimi/shared`'s `DEFAULT_APPROVAL_THRESHOLDS`) used when `settings` has no row or an unreadable shape. */
@@ -66,8 +82,14 @@ export async function resolveStepWindow(
   return { minAmount: fallback ?? seeded.minAmount, maxAmount: seeded.maxAmount };
 }
 
-async function readThresholdField(client: DbClient, settingsKey: string, field: string): Promise<Money | undefined> {
-  const res = await client.query<{ value: unknown }>(`SELECT value FROM settings WHERE key = $1`, [settingsKey]);
+async function readThresholdField(
+  client: DbClient,
+  settingsKey: string,
+  field: string,
+): Promise<Money | undefined> {
+  const res = await client.query<{ value: unknown }>(`SELECT value FROM settings WHERE key = $1`, [
+    settingsKey,
+  ]);
   const value = res.rows[0]?.value;
   if (value == null || typeof value !== 'object') return undefined;
   const raw = (value as Record<string, unknown>)[field];

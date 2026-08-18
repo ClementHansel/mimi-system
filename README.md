@@ -31,9 +31,10 @@ bash scripts/dev.sh
 
 `scripts/dev.sh` installs dependencies, brings up postgres/redis/minio/n8n/
 backend/frontend, waits for postgres to report healthy, and runs migrations
-+ seed once `database/migrations` has files in it (it is empty until
-`senior-db` / Wave 1-C lands the schema — this is expected early in the
-build).
+
+- seed once `database/migrations` has files in it (it is empty until
+  `senior-db` / Wave 1-C lands the schema — this is expected early in the
+  build).
 
 Or step by step:
 
@@ -45,12 +46,12 @@ pnpm db:seed
 
 Services:
 
-| Service | URL |
-|---|---|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:4000/health |
-| MinIO console | http://localhost:9001 |
-| n8n | http://localhost:5678 |
+| Service       | URL                          |
+| ------------- | ---------------------------- |
+| Frontend      | http://localhost:3000        |
+| Backend API   | http://localhost:4000/health |
+| MinIO console | http://localhost:9001        |
+| n8n           | http://localhost:5678        |
 
 ## Optional: branch-node (Tier 2, hardware-free)
 
@@ -64,18 +65,18 @@ curl -sf http://localhost:4010/health
 
 ## Scripts
 
-| Command | Description |
-|---|---|
-| `pnpm dev` | Start backend + frontend in watch mode (outside Docker) |
-| `pnpm build` | Build every workspace package |
-| `pnpm lint` | Lint every workspace package |
-| `pnpm format` / `format:check` | Prettier write / check |
-| `pnpm test` | Run every workspace's test suite (Vitest) |
-| `pnpm db:migrate` | Apply pending SQL migrations |
-| `pnpm db:migrate:status` | Show migration status |
-| `pnpm db:seed` | Load the realistic seed (1 gudang, 20 outlets, ~120 items, 130 employees, ...) |
-| `pnpm db:reset` | **Destructive** — drop and rebuild the database |
-| `pnpm e2e` | Run the Playwright E2E suite (`e2e/`) |
+| Command                        | Description                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `pnpm dev`                     | Start backend + frontend in watch mode (outside Docker)                        |
+| `pnpm build`                   | Build every workspace package                                                  |
+| `pnpm lint`                    | Lint every workspace package                                                   |
+| `pnpm format` / `format:check` | Prettier write / check                                                         |
+| `pnpm test`                    | Run every workspace's test suite (Vitest)                                      |
+| `pnpm db:migrate`              | Apply pending SQL migrations                                                   |
+| `pnpm db:migrate:status`       | Show migration status                                                          |
+| `pnpm db:seed`                 | Load the realistic seed (1 gudang, 20 outlets, ~120 items, 130 employees, ...) |
+| `pnpm db:reset`                | **Destructive** — drop and rebuild the database                                |
+| `pnpm e2e`                     | Run the Playwright E2E suite (`e2e/`)                                          |
 
 ## Database — two connection identities (D-21 / D-22)
 

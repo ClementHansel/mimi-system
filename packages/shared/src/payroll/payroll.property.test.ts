@@ -47,7 +47,10 @@ function inputsArb() {
       positionAllowanceAmount: null,
       otherEarningAmounts: [],
       stockShortfallShares: [],
-      loans: r.loanOutstanding === '0.00' ? [] : [{ loanId: 'loan-1', outstanding: r.loanOutstanding, monthlyInstallment: '500000.00' }],
+      loans:
+        r.loanOutstanding === '0.00'
+          ? []
+          : [{ loanId: 'loan-1', outstanding: r.loanOutstanding, monthlyInstallment: '500000.00' }],
       cashVarianceAmounts: r.cashVariance === '0.00' ? [] : [r.cashVariance],
       otherDeductionAmounts: [],
     }));
@@ -74,34 +77,44 @@ describe('property: statutory OFF ≡ base result', () => {
 describe('property: never a negative net without an explicit deduction', () => {
   it('with all deduction-producing inputs at zero, net === gross exactly (never negative, never manufactured)', () => {
     fc.assert(
-      fc.property(moneyString(20_000_000), fc.integer({ min: 0, max: 3000 }), (baseSalaryAmount, overtimeMinutes) => {
-        const inputs: BasePayrollInputs = {
-          employee: { joinDate: '2020-01-01' },
-          periodEndDate: '2026-08-31',
-          daysInMonth: 31,
-          baseSalary: baseSalaryAmount,
-          overtimeMinutesTotal: overtimeMinutes,
-          overtimeRatePerHour: '20000.00',
-          attendance: { sickDays: 0, permissionDays: 0, absentDays: 0, lateMinutesTotal: 0, hasPerfectAttendance: false },
-          sickPaid: true,
-          permissionPaid: true,
-          perLateMinuteRate: '500.00',
-          attendanceAllowanceAmount: '0.00', // no perfect-attendance bonus either, to isolate the claim
-          leave: { daysTakenThisYear: 0, quotaDays: 12 },
-          tenureTiers: [],
-          performanceIncentiveAmount: null,
-          positionAllowanceAmount: null,
-          otherEarningAmounts: [],
-          stockShortfallShares: [],
-          loans: [],
-          cashVarianceAmounts: [],
-          otherDeductionAmounts: [],
-        };
-        const result = calculateBasePayslip(inputs);
-        expect(result.deductions).toBe('0.00');
-        expect(result.net).toBe(result.gross);
-        expect(isNegativeMoney(result.net)).toBe(false);
-      }),
+      fc.property(
+        moneyString(20_000_000),
+        fc.integer({ min: 0, max: 3000 }),
+        (baseSalaryAmount, overtimeMinutes) => {
+          const inputs: BasePayrollInputs = {
+            employee: { joinDate: '2020-01-01' },
+            periodEndDate: '2026-08-31',
+            daysInMonth: 31,
+            baseSalary: baseSalaryAmount,
+            overtimeMinutesTotal: overtimeMinutes,
+            overtimeRatePerHour: '20000.00',
+            attendance: {
+              sickDays: 0,
+              permissionDays: 0,
+              absentDays: 0,
+              lateMinutesTotal: 0,
+              hasPerfectAttendance: false,
+            },
+            sickPaid: true,
+            permissionPaid: true,
+            perLateMinuteRate: '500.00',
+            attendanceAllowanceAmount: '0.00', // no perfect-attendance bonus either, to isolate the claim
+            leave: { daysTakenThisYear: 0, quotaDays: 12 },
+            tenureTiers: [],
+            performanceIncentiveAmount: null,
+            positionAllowanceAmount: null,
+            otherEarningAmounts: [],
+            stockShortfallShares: [],
+            loans: [],
+            cashVarianceAmounts: [],
+            otherDeductionAmounts: [],
+          };
+          const result = calculateBasePayslip(inputs);
+          expect(result.deductions).toBe('0.00');
+          expect(result.net).toBe(result.gross);
+          expect(isNegativeMoney(result.net)).toBe(false);
+        },
+      ),
     );
   });
 
@@ -120,7 +133,10 @@ describe('property: monotonicity', () => {
     fc.assert(
       fc.property(inputsArb(), fc.integer({ min: 1, max: 500 }), (inputs, extraMinutes) => {
         const before = calculateBasePayslip(inputs);
-        const after = calculateBasePayslip({ ...inputs, overtimeMinutesTotal: inputs.overtimeMinutesTotal + extraMinutes });
+        const after = calculateBasePayslip({
+          ...inputs,
+          overtimeMinutesTotal: inputs.overtimeMinutesTotal + extraMinutes,
+        });
         expect(compareMoney(after.gross, before.gross)).toBeGreaterThanOrEqual(0);
       }),
     );
@@ -132,7 +148,10 @@ describe('property: monotonicity', () => {
         const before = calculateBasePayslip(inputs);
         const after = calculateBasePayslip({
           ...inputs,
-          attendance: { ...inputs.attendance, absentDays: inputs.attendance.absentDays + extraAbsentDays },
+          attendance: {
+            ...inputs.attendance,
+            absentDays: inputs.attendance.absentDays + extraAbsentDays,
+          },
         });
         expect(compareMoney(after.deductions, before.deductions)).toBeGreaterThanOrEqual(0);
       }),
@@ -143,7 +162,10 @@ describe('property: monotonicity', () => {
     fc.assert(
       fc.property(inputsArb(), moneyString(200_000), (inputs, extra) => {
         const before = calculateBasePayslip(inputs);
-        const after = calculateBasePayslip({ ...inputs, cashVarianceAmounts: [...inputs.cashVarianceAmounts, extra] });
+        const after = calculateBasePayslip({
+          ...inputs,
+          cashVarianceAmounts: [...inputs.cashVarianceAmounts, extra],
+        });
         expect(compareMoney(after.deductions, before.deductions)).toBeGreaterThanOrEqual(0);
       }),
     );

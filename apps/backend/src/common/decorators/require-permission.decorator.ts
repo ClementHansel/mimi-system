@@ -21,4 +21,5 @@ export const REQUIRE_PERMISSION_KEY = 'require_permission';
  *   @Patch(':id')
  *   update(...) { ... }
  */
-export const RequirePermission = (...keys: PermissionKey[]) => SetMetadata(REQUIRE_PERMISSION_KEY, keys);
+export const RequirePermission = (...keys: PermissionKey[]) =>
+  SetMetadata(REQUIRE_PERMISSION_KEY, keys);

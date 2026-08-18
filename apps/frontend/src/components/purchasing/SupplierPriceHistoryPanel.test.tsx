@@ -20,8 +20,14 @@ vi.mock('@/lib/api', async () => {
 function setPermissions(permissions: string[]) {
   useSessionStore.setState({
     user: {
-      id: 'u1', username: 'fin1', name: 'Finance Satu', roleKey: 'finance',
-      permissions, locations: [], employeeId: null, mustSetPin: false,
+      id: 'u1',
+      username: 'fin1',
+      name: 'Finance Satu',
+      roleKey: 'finance',
+      permissions,
+      locations: [],
+      employeeId: null,
+      mustSetPin: false,
     },
   });
 }
@@ -56,7 +62,9 @@ describe('SupplierPriceHistoryPanel — role-locked pricing (D-20)', () => {
 
     render(<SupplierPriceHistoryPanel />);
 
-    await waitFor(() => expect(screen.getByText('Pilih supplier untuk melihat riwayat harga.')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Pilih supplier untuk melihat riwayat harga.')).toBeInTheDocument(),
+    );
     expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('/price-history'));
   });
 });

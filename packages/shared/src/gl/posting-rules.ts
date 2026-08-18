@@ -17,7 +17,10 @@ import { JournalEventType, JournalSystemEventType } from '../enums';
 
 export type AccountSelector = string | { by: string; cases: Record<string, string> };
 
-export function resolvePostingAccount(selector: AccountSelector, condition: Record<string, unknown> | undefined): string {
+export function resolvePostingAccount(
+  selector: AccountSelector,
+  condition: Record<string, unknown> | undefined,
+): string {
   if (typeof selector === 'string') return selector;
   const value = condition?.[selector.by];
   const resolved = value === undefined ? undefined : selector.cases[String(value)];

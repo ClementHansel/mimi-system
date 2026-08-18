@@ -56,12 +56,19 @@ export function UsersPanel() {
   const [sort, setSort] = useState<DataTableSort | undefined>(undefined);
 
   const { data, loading, error, reload } = useApiList<UserRow>('/users', {
-    q, roleKey: roleFilter, active: statusFilter, page, pageSize,
+    q,
+    roleKey: roleFilter,
+    active: statusFilter,
+    page,
+    pageSize,
   });
 
   const [locations, setLocations] = useState<Location[]>([]);
   useEffect(() => {
-    api.get<{ rows: Location[] }>('/locations?active=true&pageSize=200').then((res) => setLocations(res.rows)).catch(() => {});
+    api
+      .get<{ rows: Location[] }>('/locations?active=true&pageSize=200')
+      .then((res) => setLocations(res.rows))
+      .catch(() => {});
   }, []);
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -76,7 +83,11 @@ export function UsersPanel() {
       header: t('admin.users.columnLocations'),
       render: (r) => (r.locations.length ? r.locations.map((l) => l.name).join(', ') : '—'),
     },
-    { key: 'isActive', header: t('admin.users.columnStatus'), render: (r) => <ActiveBadge active={r.isActive} /> },
+    {
+      key: 'isActive',
+      header: t('admin.users.columnStatus'),
+      render: (r) => <ActiveBadge active={r.isActive} />,
+    },
     {
       key: 'lastLoginAt',
       header: t('admin.users.columnLastLogin'),
@@ -91,19 +102,28 @@ export function UsersPanel() {
           <Input
             placeholder={t('admin.users.searchPlaceholder')}
             value={q}
-            onChange={(e) => { setQ(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
             wrapperClassName="w-64"
           />
           <Select
             value={roleFilter}
-            onValueChange={(v) => { setRoleFilter(v); setPage(1); }}
+            onValueChange={(v) => {
+              setRoleFilter(v);
+              setPage(1);
+            }}
             placeholder={t('admin.users.filterRole')}
             options={ROLE_SENIORITY.map((r) => ({ value: r, label: roleLabel(r) }))}
             wrapperClassName="w-44"
           />
           <Select
             value={statusFilter}
-            onValueChange={(v) => { setStatusFilter(v); setPage(1); }}
+            onValueChange={(v) => {
+              setStatusFilter(v);
+              setPage(1);
+            }}
             placeholder={t('admin.users.filterStatus')}
             options={[
               { value: 'true', label: t('admin.users.statusActive') },
@@ -129,10 +149,16 @@ export function UsersPanel() {
         onRowClick={(r) => setSelected(r)}
         sort={sort}
         onSortChange={(key) =>
-          setSort((s) => ({ key, direction: s?.key === key && s.direction === 'asc' ? 'desc' : 'asc' }))
+          setSort((s) => ({
+            key,
+            direction: s?.key === key && s.direction === 'asc' ? 'desc' : 'asc',
+          }))
         }
         onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
       />
 
       {createOpen && (
@@ -140,7 +166,11 @@ export function UsersPanel() {
           locations={locations}
           callerRoleKey={roleKey}
           onClose={() => setCreateOpen(false)}
-          onCreated={() => { setCreateOpen(false); reload(); toast({ title: t('admin.users.createSuccess'), variant: 'success' }); }}
+          onCreated={() => {
+            setCreateOpen(false);
+            reload();
+            toast({ title: t('admin.users.createSuccess'), variant: 'success' });
+          }}
         />
       )}
 
@@ -155,8 +185,14 @@ export function UsersPanel() {
           canResetPassword={can('user.password.reset')}
           canDeactivate={can('user.deactivate')}
           onClose={() => setSelected(null)}
-          onChanged={(updated) => { setSelected(updated); reload(); }}
-          onDeactivated={() => { setSelected(null); reload(); }}
+          onChanged={(updated) => {
+            setSelected(updated);
+            reload();
+          }}
+          onDeactivated={() => {
+            setSelected(null);
+            reload();
+          }}
         />
       )}
     </div>
@@ -164,7 +200,10 @@ export function UsersPanel() {
 }
 
 function CreateUserModal({
-  locations, callerRoleKey, onClose, onCreated,
+  locations,
+  callerRoleKey,
+  onClose,
+  onCreated,
 }: {
   locations: Location[];
   callerRoleKey: string | null;
@@ -188,8 +227,13 @@ function CreateUserModal({
     setSubmitting(true);
     try {
       await api.post('/users', {
-        username, name, email: email || undefined, phone: phone || undefined,
-        password, roleKey: role, locationIds,
+        username,
+        name,
+        email: email || undefined,
+        phone: phone || undefined,
+        password,
+        roleKey: role,
+        locationIds,
       });
       onCreated();
     } catch (err) {
@@ -207,8 +251,14 @@ function CreateUserModal({
       size="lg"
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button onClick={submit} loading={submitting} disabled={!username || !name || !password || !role}>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            onClick={submit}
+            loading={submitting}
+            disabled={!username || !name || !password || !role}
+          >
             {t('common.save')}
           </Button>
         </>
@@ -217,11 +267,36 @@ function CreateUserModal({
       <div className="flex flex-col gap-4">
         {error && <p className="text-sm text-danger-600">{error}</p>}
         <div className="grid grid-cols-2 gap-3">
-          <Input label={t('admin.users.username')} value={username} onChange={(e) => setUsername(e.target.value)} required />
-          <Input label={t('admin.users.name')} value={name} onChange={(e) => setName(e.target.value)} required />
-          <Input label={t('admin.users.email')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Input label={t('admin.users.phone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <Input label={t('admin.users.password')} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <Input
+            label={t('admin.users.username')}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+          <Input
+            label={t('admin.users.name')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+          <Input
+            label={t('admin.users.email')}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Input
+            label={t('admin.users.phone')}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <Input
+            label={t('admin.users.password')}
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
           <Select
             label={t('admin.users.role')}
             value={role}
@@ -231,7 +306,9 @@ function CreateUserModal({
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-text-primary">{t('admin.users.locations')}</span>
+          <span className="text-sm font-medium text-text-primary">
+            {t('admin.users.locations')}
+          </span>
           <span className="text-sm text-text-muted">{t('admin.users.selectLocationsHint')}</span>
           <div className="max-h-40 overflow-y-auto rounded-md border border-border-strong p-2">
             {locations.map((loc) => (
@@ -240,7 +317,9 @@ function CreateUserModal({
                 label={`${loc.name} (${loc.code})`}
                 checked={locationIds.includes(loc.id)}
                 onCheckedChange={(checked) =>
-                  setLocationIds((ids) => (checked ? [...ids, loc.id] : ids.filter((id) => id !== loc.id)))
+                  setLocationIds((ids) =>
+                    checked ? [...ids, loc.id] : ids.filter((id) => id !== loc.id),
+                  )
                 }
               />
             ))}
@@ -252,8 +331,17 @@ function CreateUserModal({
 }
 
 function UserDrawer({
-  user, locations, callerRoleKey, canUpdate, canAssignRole, canAssignLocations, canResetPassword, canDeactivate,
-  onClose, onChanged, onDeactivated,
+  user,
+  locations,
+  callerRoleKey,
+  canUpdate,
+  canAssignRole,
+  canAssignLocations,
+  canResetPassword,
+  canDeactivate,
+  onClose,
+  onChanged,
+  onDeactivated,
 }: {
   user: UserRow;
   locations: Location[];
@@ -281,9 +369,14 @@ function UserDrawer({
   const [error, setError] = useState<string | null>(null);
 
   async function saveProfile() {
-    setBusy('profile'); setError(null);
+    setBusy('profile');
+    setError(null);
     try {
-      const updated = await api.patch<UserRow>(`/users/${user.id}`, { name, email: email || null, phone: phone || null });
+      const updated = await api.patch<UserRow>(`/users/${user.id}`, {
+        name,
+        email: email || null,
+        phone: phone || null,
+      });
       onChanged(updated);
       toast({ title: t('admin.users.updateSuccess'), variant: 'success' });
     } catch (err) {
@@ -294,7 +387,8 @@ function UserDrawer({
   }
 
   async function saveRole() {
-    setBusy('role'); setError(null);
+    setBusy('role');
+    setError(null);
     try {
       const updated = await api.put<UserRow>(`/users/${user.id}/role`, { roleKey: role });
       onChanged(updated);
@@ -307,7 +401,8 @@ function UserDrawer({
   }
 
   async function saveLocations() {
-    setBusy('locations'); setError(null);
+    setBusy('locations');
+    setError(null);
     try {
       const updated = await api.put<UserRow>(`/users/${user.id}/locations`, { locationIds });
       onChanged(updated);
@@ -320,7 +415,8 @@ function UserDrawer({
   }
 
   async function resetPassword() {
-    setBusy('password'); setError(null);
+    setBusy('password');
+    setError(null);
     try {
       await api.post(`/users/${user.id}/reset-password`, { newPassword });
       setNewPassword('');
@@ -333,7 +429,8 @@ function UserDrawer({
   }
 
   async function deactivate() {
-    setBusy('deactivate'); setError(null);
+    setBusy('deactivate');
+    setError(null);
     try {
       await api.delete(`/users/${user.id}`);
       toast({ title: t('admin.users.deactivateSuccess'), variant: 'success' });
@@ -352,11 +449,31 @@ function UserDrawer({
         <section className="flex flex-col gap-3">
           <h3 className="text-sm font-semibold text-text-primary">{t('admin.users.editTitle')}</h3>
           <Input label={t('admin.users.username')} value={user.username} disabled />
-          <Input label={t('admin.users.name')} value={name} onChange={(e) => setName(e.target.value)} disabled={!canUpdate} />
-          <Input label={t('admin.users.email')} value={email} onChange={(e) => setEmail(e.target.value)} disabled={!canUpdate} />
-          <Input label={t('admin.users.phone')} value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!canUpdate} />
+          <Input
+            label={t('admin.users.name')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={!canUpdate}
+          />
+          <Input
+            label={t('admin.users.email')}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={!canUpdate}
+          />
+          <Input
+            label={t('admin.users.phone')}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            disabled={!canUpdate}
+          />
           {canUpdate && (
-            <Button size="sm" onClick={saveProfile} loading={busy === 'profile'} className="self-start">
+            <Button
+              size="sm"
+              onClick={saveProfile}
+              loading={busy === 'profile'}
+              className="self-start"
+            >
               {t('common.save')}
             </Button>
           )}
@@ -364,17 +481,27 @@ function UserDrawer({
 
         {canAssignRole && (
           <section className="flex flex-col gap-2 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text-primary">{t('admin.users.assignRole')}</h3>
+            <h3 className="text-sm font-semibold text-text-primary">
+              {t('admin.users.assignRole')}
+            </h3>
             <Select
               value={role}
               onValueChange={setRole}
               options={[
-                ...(assignable.some((r) => r === user.roleKey) ? [] : [{ value: user.roleKey, label: roleLabel(user.roleKey), disabled: true }]),
+                ...(assignable.some((r) => r === user.roleKey)
+                  ? []
+                  : [{ value: user.roleKey, label: roleLabel(user.roleKey), disabled: true }]),
                 ...assignable.map((r) => ({ value: r, label: roleLabel(r) })),
               ]}
               hint={t('admin.users.rankWarning')}
             />
-            <Button size="sm" onClick={saveRole} loading={busy === 'role'} disabled={role === user.roleKey} className="self-start">
+            <Button
+              size="sm"
+              onClick={saveRole}
+              loading={busy === 'role'}
+              disabled={role === user.roleKey}
+              className="self-start"
+            >
               {t('common.save')}
             </Button>
           </section>
@@ -382,7 +509,9 @@ function UserDrawer({
 
         {canAssignLocations && (
           <section className="flex flex-col gap-2 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text-primary">{t('admin.users.assignLocations')}</h3>
+            <h3 className="text-sm font-semibold text-text-primary">
+              {t('admin.users.assignLocations')}
+            </h3>
             <div className="max-h-40 overflow-y-auto rounded-md border border-border-strong p-2">
               {locations.map((loc) => (
                 <Checkbox
@@ -390,12 +519,19 @@ function UserDrawer({
                   label={`${loc.name} (${loc.code})`}
                   checked={locationIds.includes(loc.id)}
                   onCheckedChange={(checked) =>
-                    setLocationIds((ids) => (checked ? [...ids, loc.id] : ids.filter((id) => id !== loc.id)))
+                    setLocationIds((ids) =>
+                      checked ? [...ids, loc.id] : ids.filter((id) => id !== loc.id),
+                    )
                   }
                 />
               ))}
             </div>
-            <Button size="sm" onClick={saveLocations} loading={busy === 'locations'} className="self-start">
+            <Button
+              size="sm"
+              onClick={saveLocations}
+              loading={busy === 'locations'}
+              className="self-start"
+            >
               {t('common.save')}
             </Button>
           </section>
@@ -403,14 +539,22 @@ function UserDrawer({
 
         {canResetPassword && (
           <section className="flex flex-col gap-2 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text-primary">{t('admin.users.resetPassword')}</h3>
+            <h3 className="text-sm font-semibold text-text-primary">
+              {t('admin.users.resetPassword')}
+            </h3>
             <Input
               label={t('admin.users.newPassword')}
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
             />
-            <Button size="sm" onClick={resetPassword} loading={busy === 'password'} disabled={!newPassword} className="self-start">
+            <Button
+              size="sm"
+              onClick={resetPassword}
+              loading={busy === 'password'}
+              disabled={!newPassword}
+              className="self-start"
+            >
               {t('admin.users.resetPassword')}
             </Button>
           </section>
@@ -418,7 +562,12 @@ function UserDrawer({
 
         {canDeactivate && user.isActive && (
           <section className="flex flex-col gap-2 border-t border-border pt-4">
-            <Button variant="danger" size="sm" onClick={() => setDeactivateOpen(true)} className="self-start">
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setDeactivateOpen(true)}
+              className="self-start"
+            >
               {t('admin.users.deactivate')}
             </Button>
           </section>
@@ -433,15 +582,20 @@ function UserDrawer({
           description={t('admin.users.deactivateDescription', { name: user.name })}
           footer={
             <>
-              <Button variant="outline" onClick={() => setDeactivateOpen(false)}>{t('common.cancel')}</Button>
-              <Button variant="danger" onClick={deactivate} loading={busy === 'deactivate'}>{t('admin.users.deactivate')}</Button>
+              <Button variant="outline" onClick={() => setDeactivateOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button variant="danger" onClick={deactivate} loading={busy === 'deactivate'}>
+                {t('admin.users.deactivate')}
+              </Button>
             </>
           }
         >
-          <p className="text-sm text-text-secondary">{t('admin.users.deactivateDescription', { name: user.name })}</p>
+          <p className="text-sm text-text-secondary">
+            {t('admin.users.deactivateDescription', { name: user.name })}
+          </p>
         </Modal>
       )}
     </Drawer>
   );
 }
-

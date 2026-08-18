@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   addMoney,
@@ -26,8 +31,17 @@ import { ApprovalService } from '../../kernel/approvals/approvals.service';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { PaymentVerificationsService } from '../accounting/payment-verifications.service';
 import { withWrite } from './db-tx';
-import type { CreatePoReceiptDto, CreatePurchaseOrderDto, ListPurchaseOrderQueryDto, UpdatePurchaseOrderDto } from './dto/purchase-order.dto';
-import { PurchaseOrderRepository, type PoHeaderRow, type PoLineRow } from './purchase-order.repository';
+import type {
+  CreatePoReceiptDto,
+  CreatePurchaseOrderDto,
+  ListPurchaseOrderQueryDto,
+  UpdatePurchaseOrderDto,
+} from './dto/purchase-order.dto';
+import {
+  PurchaseOrderRepository,
+  type PoHeaderRow,
+  type PoLineRow,
+} from './purchase-order.repository';
 import { PurchaseRequestService } from './purchase-request.service';
 import type { ActorContext } from './purchase-request.service';
 
@@ -71,7 +85,17 @@ export interface PurchaseOrderDetail extends PurchaseOrderListRow {
   prId: UUID | null;
   cancelReason: string | null;
   notes: string | null;
-  lines: { id: UUID; itemId: UUID; itemName: string; unitCode: string; qtyOrdered: string; unitPrice: string; lineTotal: string; qtyReceived: string; qtyDifference: string }[];
+  lines: {
+    id: UUID;
+    itemId: UUID;
+    itemName: string;
+    unitCode: string;
+    qtyOrdered: string;
+    unitPrice: string;
+    lineTotal: string;
+    qtyReceived: string;
+    qtyDifference: string;
+  }[];
 }
 
 /**
@@ -98,11 +122,19 @@ export class PurchaseOrderService {
     private readonly prService: PurchaseRequestService,
   ) {}
 
-  async list(client: PoolClient, query: ListPurchaseOrderQueryDto): Promise<Paginated<PurchaseOrderListRow>> {
+  async list(
+    client: PoolClient,
+    query: ListPurchaseOrderQueryDto,
+  ): Promise<Paginated<PurchaseOrderListRow>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
     const { rows, total } = await this.repo.listHeaders(client, {
-      supplierId: query.supplierId, status: query.status, from: query.from, to: query.to, page, pageSize,
+      supplierId: query.supplierId,
+      status: query.status,
+      from: query.from,
+      to: query.to,
+      page,
+      pageSize,
     });
     return { rows: rows.map((r) => this.toListRow(r)), total, page, pageSize };
   }
@@ -113,9 +145,16 @@ export class PurchaseOrderService {
     return this.toDetail(client, header, lines);
   }
 
-  async create(client: PoolClient, actor: ActorContext, dto: CreatePurchaseOrderDto): Promise<PurchaseOrderDetail> {
+  async create(
+    client: PoolClient,
+    actor: ActorContext,
+    dto: CreatePurchaseOrderDto,
+  ): Promise<PurchaseOrderDetail> {
     if (dto.lines.length === 0) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'A purchase order needs at least one line' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'A purchase order needs at least one line',
+      });
     }
 
     return withWrite(client, async () => {
@@ -155,19 +194,35 @@ export class PurchaseOrderService {
     });
   }
 
-  async update(client: PoolClient, id: UUID, dto: UpdatePurchaseOrderDto): Promise<PurchaseOrderDetail> {
+  async update(
+    client: PoolClient,
+    id: UUID,
+    dto: UpdatePurchaseOrderDto,
+  ): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
     if (header.status !== PurchaseOrderStatus.DRAFT) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id} is '${header.status}' — only a draft PO can be edited` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}' — only a draft PO can be edited`,
+      });
     }
 
     return withWrite(client, async () => {
       if (dto.orderDate || dto.expectedDate !== undefined) {
-        await client.query(`UPDATE purchase_orders SET order_date = COALESCE($2, order_date), expected_date = $3, notes = COALESCE($4, notes), updated_at = NOW() WHERE id = $1`, [
-          id, dto.orderDate ?? null, dto.expectedDate ?? header.expected_date, dto.notes ?? header.notes,
-        ]);
+        await client.query(
+          `UPDATE purchase_orders SET order_date = COALESCE($2, order_date), expected_date = $3, notes = COALESCE($4, notes), updated_at = NOW() WHERE id = $1`,
+          [
+            id,
+            dto.orderDate ?? null,
+            dto.expectedDate ?? header.expected_date,
+            dto.notes ?? header.notes,
+          ],
+        );
       } else if (dto.notes !== undefined) {
-        await client.query(`UPDATE purchase_orders SET notes = $2, updated_at = NOW() WHERE id = $1`, [id, dto.notes]);
+        await client.query(
+          `UPDATE purchase_orders SET notes = $2, updated_at = NOW() WHERE id = $1`,
+          [id, dto.notes],
+        );
       }
 
       if (dto.lines) {
@@ -176,7 +231,14 @@ export class PurchaseOrderService {
         for (const line of dto.lines) {
           const lineTotal = mulMoneyByQty(line.unitPrice as Money, line.qtyOrdered as Qty);
           subtotal = addMoney(subtotal, lineTotal);
-          await this.repo.insertLine(client, { poId: id, itemId: line.itemId, unitId: line.unitId, qtyOrdered: line.qtyOrdered as Qty, unitPrice: line.unitPrice as Money, lineTotal });
+          await this.repo.insertLine(client, {
+            poId: id,
+            itemId: line.itemId,
+            unitId: line.unitId,
+            qtyOrdered: line.qtyOrdered as Qty,
+            unitPrice: line.unitPrice as Money,
+            lineTotal,
+          });
         }
         await this.repo.setTotals(client, id, subtotal, '0.00' as Money, subtotal);
       }
@@ -188,7 +250,10 @@ export class PurchaseOrderService {
   async submit(client: PoolClient, actor: ActorContext, id: UUID): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
     if (header.status !== PurchaseOrderStatus.DRAFT) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id} is '${header.status}', not 'draft'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}', not 'draft'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -205,10 +270,18 @@ export class PurchaseOrderService {
     });
   }
 
-  async approve(client: PoolClient, actor: ActorContext, id: UUID, note: string | undefined): Promise<PurchaseOrderDetail> {
+  async approve(
+    client: PoolClient,
+    actor: ActorContext,
+    id: UUID,
+    note: string | undefined,
+  ): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
     if (header.status !== PurchaseOrderStatus.PENDING_APPROVAL) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id} is '${header.status}', not 'pending_approval'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}', not 'pending_approval'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -226,10 +299,18 @@ export class PurchaseOrderService {
     });
   }
 
-  async reject(client: PoolClient, actor: ActorContext, id: UUID, reason: string): Promise<PurchaseOrderDetail> {
+  async reject(
+    client: PoolClient,
+    actor: ActorContext,
+    id: UUID,
+    reason: string,
+  ): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
     if (header.status !== PurchaseOrderStatus.PENDING_APPROVAL) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id} is '${header.status}', not 'pending_approval'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}', not 'pending_approval'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -250,7 +331,10 @@ export class PurchaseOrderService {
   async issue(client: PoolClient, id: UUID): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
     if (header.status !== PurchaseOrderStatus.APPROVED) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id} is '${header.status}', not 'approved'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}', not 'approved'`,
+      });
     }
     return withWrite(client, async () => {
       await this.repo.setStatus(client, id, PurchaseOrderStatus.ISSUED);
@@ -260,8 +344,15 @@ export class PurchaseOrderService {
 
   async cancel(client: PoolClient, id: UUID, reason: string): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
-    if (header.status === PurchaseOrderStatus.RECEIVED || header.status === PurchaseOrderStatus.CLOSED || header.status === PurchaseOrderStatus.CANCELLED) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id} is '${header.status}' — only a pre-received PO can be cancelled` });
+    if (
+      header.status === PurchaseOrderStatus.RECEIVED ||
+      header.status === PurchaseOrderStatus.CLOSED ||
+      header.status === PurchaseOrderStatus.CANCELLED
+    ) {
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}' — only a pre-received PO can be cancelled`,
+      });
     }
     return withWrite(client, async () => {
       await this.repo.setCancelled(client, id, reason);
@@ -272,14 +363,26 @@ export class PurchaseOrderService {
   async close(client: PoolClient, id: UUID): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
     if (header.status !== PurchaseOrderStatus.RECEIVED) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id} is '${header.status}', not 'received'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}', not 'received'`,
+      });
     }
     if (!header.payment_verification_id) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `PO ${id} has no payment verification yet` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `PO ${id} has no payment verification yet`,
+      });
     }
-    const pvRes = await client.query<{ status: string }>(`SELECT status FROM payment_verifications WHERE id = $1`, [header.payment_verification_id]);
+    const pvRes = await client.query<{ status: string }>(
+      `SELECT status FROM payment_verifications WHERE id = $1`,
+      [header.payment_verification_id],
+    );
     if (pvRes.rows[0]?.status !== 'paid') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id}'s payment verification is not 'paid' yet` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id}'s payment verification is not 'paid' yet`,
+      });
     }
     return withWrite(client, async () => {
       await this.repo.setStatus(client, id, PurchaseOrderStatus.CLOSED);
@@ -289,60 +392,109 @@ export class PurchaseOrderService {
 
   // ── FR-PO-02/03/04: receiving ────────────────────────────────────────────
 
-  async receive(client: PoolClient, actor: ActorContext, id: UUID, dto: CreatePoReceiptDto): Promise<PurchaseOrderDetail> {
+  async receive(
+    client: PoolClient,
+    actor: ActorContext,
+    id: UUID,
+    dto: CreatePoReceiptDto,
+  ): Promise<PurchaseOrderDetail> {
     const header = await this.requireHeader(client, id);
-    if (header.status !== PurchaseOrderStatus.ISSUED && header.status !== PurchaseOrderStatus.PARTIALLY_RECEIVED) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PO ${id} is '${header.status}' — only issued/partially_received POs can be received` });
+    if (
+      header.status !== PurchaseOrderStatus.ISSUED &&
+      header.status !== PurchaseOrderStatus.PARTIALLY_RECEIVED
+    ) {
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}' — only issued/partially_received POs can be received`,
+      });
     }
     if (dto.photoAttachmentIds.length === 0) {
-      throw new BadRequestException({ code: ERR_PHOTO_REQUIRED, message: 'At least one receiving photo is wajib (FR-PO-04)' });
+      throw new BadRequestException({
+        code: ERR_PHOTO_REQUIRED,
+        message: 'At least one receiving photo is wajib (FR-PO-04)',
+      });
     }
 
     return withWrite(client, async () => {
       const receiptNumber = await this.repo.nextReceiptNumber(client);
-      const receiptId = await this.repo.insertReceipt(client, { receiptNumber, poId: id, receivedBy: actor.userId, notes: dto.notes ?? null });
+      const receiptId = await this.repo.insertReceipt(client, {
+        receiptNumber,
+        poId: id,
+        receivedBy: actor.userId,
+        notes: dto.notes ?? null,
+      });
 
       for (const line of dto.lines) {
         const poLine = await this.repo.findLineById(client, id, line.poLineId);
-        if (!poLine) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `PO line ${line.poLineId} not found on PO ${id}` });
+        if (!poLine)
+          throw new NotFoundException({
+            code: ERR_NOT_FOUND,
+            message: `PO line ${line.poLineId} not found on PO ${id}`,
+          });
 
         if (isNegativeQty(line.qtyReceived)) {
-          throw new BadRequestException({ code: ERR_VALIDATION, message: `qtyReceived must be >= 0 for line ${line.poLineId}` });
+          throw new BadRequestException({
+            code: ERR_VALIDATION,
+            message: `qtyReceived must be >= 0 for line ${line.poLineId}`,
+          });
         }
         const remaining = subMoneyLikeQty(poLine.qty_ordered, poLine.qty_received);
         const discrepancy = compareQty(line.qtyReceived, remaining) !== 0;
         if (discrepancy && !line.conditionNotes?.trim()) {
-          throw new BadRequestException({ code: ERR_VARIANCE_REASON_REQUIRED, message: `conditionNotes is required when qtyReceived differs from qty still due for line ${line.poLineId} (FR-PO-03)` });
+          throw new BadRequestException({
+            code: ERR_VARIANCE_REASON_REQUIRED,
+            message: `conditionNotes is required when qtyReceived differs from qty still due for line ${line.poLineId} (FR-PO-03)`,
+          });
         }
 
         const area = await this.repo.storageAreaCheck(client, line.storageAreaId);
-        if (!area) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Storage area ${line.storageAreaId} not found or inactive` });
+        if (!area)
+          throw new NotFoundException({
+            code: ERR_NOT_FOUND,
+            message: `Storage area ${line.storageAreaId} not found or inactive`,
+          });
 
-        await this.repo.insertReceiptLine(client, { poReceiptId: receiptId, poLineId: line.poLineId, storageAreaId: line.storageAreaId, qtyReceived: line.qtyReceived as Qty, conditionNotes: line.conditionNotes ?? null });
+        await this.repo.insertReceiptLine(client, {
+          poReceiptId: receiptId,
+          poLineId: line.poLineId,
+          storageAreaId: line.storageAreaId,
+          qtyReceived: line.qtyReceived as Qty,
+          conditionNotes: line.conditionNotes ?? null,
+        });
 
         if (!isZeroQty(line.qtyReceived)) {
           const costing = await this.repo.getItemCosting(client, poLine.item_id);
           await this.ledger.post(
             client,
-            [{
-              locationId: header.location_id,
-              storageAreaId: line.storageAreaId,
-              itemId: poLine.item_id,
-              movementType: MovementType.PURCHASE_IN,
-              qty: line.qtyReceived as Qty,
-              unitCost: poLine.unit_price,
-              refType: 'po_receipt',
-              refId: receiptId,
-              actorId: actor.userId,
-            }],
+            [
+              {
+                locationId: header.location_id,
+                storageAreaId: line.storageAreaId,
+                itemId: poLine.item_id,
+                movementType: MovementType.PURCHASE_IN,
+                qty: line.qtyReceived as Qty,
+                unitCost: poLine.unit_price,
+                refType: 'po_receipt',
+                refId: receiptId,
+                actorId: actor.userId,
+              },
+            ],
             'strict',
           );
 
-          const newAvgCost = this.computeMovingAverage(costing.qtyOnHand, costing.avgCost, line.qtyReceived as Qty, poLine.unit_price);
+          const newAvgCost = this.computeMovingAverage(
+            costing.qtyOnHand,
+            costing.avgCost,
+            line.qtyReceived as Qty,
+            poLine.unit_price,
+          );
           await this.repo.updateItemCost(client, poLine.item_id, newAvgCost, poLine.unit_price);
           await this.repo.appendPriceHistory(client, {
-            supplierId: header.supplier_id, itemId: poLine.item_id, price: poLine.unit_price,
-            effectiveDate: formatDateOnly(new Date()), recordedBy: actor.userId,
+            supplierId: header.supplier_id,
+            itemId: poLine.item_id,
+            price: poLine.unit_price,
+            effectiveDate: formatDateOnly(new Date()),
+            recordedBy: actor.userId,
           });
 
           await this.repo.incrementLineReceived(client, poLine.id, line.qtyReceived as Qty);
@@ -352,7 +504,11 @@ export class PurchaseOrderService {
       // Recompute PO status from the fully up-to-date lines (post-increment).
       const lines = await this.repo.findLines(client, id);
       const fullyReceived = lines.every((l) => compareQty(l.qty_received, l.qty_ordered) >= 0);
-      await this.repo.setStatus(client, id, fullyReceived ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED);
+      await this.repo.setStatus(
+        client,
+        id,
+        fullyReceived ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED,
+      );
 
       if (!header.payment_verification_id) {
         const pvId = await this.payments.createSystemVerification(
@@ -373,14 +529,22 @@ export class PurchaseOrderService {
       }
 
       for (const attachmentId of dto.photoAttachmentIds) {
-        await client.query(`UPDATE attachments SET entity_type = 'po_receipt', entity_id = $2 WHERE id = $1 AND entity_id IS NULL`, [attachmentId, receiptId]);
+        await client.query(
+          `UPDATE attachments SET entity_type = 'po_receipt', entity_id = $2 WHERE id = $1 AND entity_id IS NULL`,
+          [attachmentId, receiptId],
+        );
       }
 
       return this.getDetail(client, id);
     });
   }
 
-  private computeMovingAverage(existingQty: Qty, existingAvgCost: Money, receivedQty: Qty, unitPrice: Money): Money {
+  private computeMovingAverage(
+    existingQty: Qty,
+    existingAvgCost: Money,
+    receivedQty: Qty,
+    unitPrice: Money,
+  ): Money {
     const existing = Number(existingQty);
     if (existing <= 0) return unitPrice;
     const received = Number(receivedQty);
@@ -393,7 +557,11 @@ export class PurchaseOrderService {
 
   private async requireHeader(client: PoolClient, id: UUID): Promise<PoHeaderRow> {
     const header = await this.repo.findHeader(client, id);
-    if (!header) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Purchase order ${id} not found` });
+    if (!header)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Purchase order ${id} not found`,
+      });
     return header;
   }
 
@@ -413,7 +581,11 @@ export class PurchaseOrderService {
     };
   }
 
-  private async toDetail(client: PoolClient, header: PoHeaderRow, lines: PoLineRow[]): Promise<PurchaseOrderDetail> {
+  private async toDetail(
+    client: PoolClient,
+    header: PoHeaderRow,
+    lines: PoLineRow[],
+  ): Promise<PurchaseOrderDetail> {
     const approval = await this.loadApprovalDetail(client, header);
     return {
       ...this.toListRow(header),
@@ -447,10 +619,17 @@ export class PurchaseOrderService {
    * resubmitted still HAS an approval_id (§5.3 reject returns the doc to
    * 'draft', not a terminal state) whose chain the UI can legitimately show.
    */
-  private async loadApprovalDetail(client: PoolClient, header: PoHeaderRow): Promise<ApprovalDetail | null> {
+  private async loadApprovalDetail(
+    client: PoolClient,
+    header: PoHeaderRow,
+  ): Promise<ApprovalDetail | null> {
     if (!header.approval_id) return null;
     try {
-      const detail = await this.approvals.getDetail(client, ApprovalDocumentType.PURCHASE_ORDER, header.id);
+      const detail = await this.approvals.getDetail(
+        client,
+        ApprovalDocumentType.PURCHASE_ORDER,
+        header.id,
+      );
       return {
         approvalId: detail.approvalId,
         state: detail.state,

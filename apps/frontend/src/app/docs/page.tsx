@@ -33,7 +33,9 @@ export default function DocsIndexPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium text-brand-600">{t('docs.kicker')}</p>
-        <h1 className="font-display text-2xl font-semibold text-text-primary sm:text-3xl">{t('docs.title')}</h1>
+        <h1 className="font-display text-2xl font-semibold text-text-primary sm:text-3xl">
+          {t('docs.title')}
+        </h1>
         <p className="max-w-2xl text-sm text-text-secondary">{t('docs.subtitle')}</p>
       </div>
 
@@ -48,7 +50,9 @@ export default function DocsIndexPage() {
 
       {groups.map((group) => (
         <div key={group.audience} className="flex flex-col gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">{group.audience}</h2>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+            {group.audience}
+          </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {group.manuals.map((manual) => (
               <DocCard key={manual.slug} manual={manual} />

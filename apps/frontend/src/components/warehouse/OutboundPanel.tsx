@@ -11,7 +11,11 @@ import { SuratJalanStatus } from '@/lib/shared-types';
 import { listSuratJalan } from './lib/warehouse-api';
 import type { SuratJalan } from './lib/types';
 
-const STAGED = new Set<string>([SuratJalanStatus.DRAFT, SuratJalanStatus.READY, SuratJalanStatus.LOADING]);
+const STAGED = new Set<string>([
+  SuratJalanStatus.DRAFT,
+  SuratJalanStatus.READY,
+  SuratJalanStatus.LOADING,
+]);
 const IN_TRANSIT = new Set<string>([SuratJalanStatus.IN_TRANSIT]);
 
 /**
@@ -40,7 +44,10 @@ export function OutboundPanel() {
     setError(undefined);
     listSuratJalan()
       .then((res) => !cancelled && setRows(res.rows))
-      .catch((err: unknown) => !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch(
+        (err: unknown) =>
+          !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')),
+      )
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -59,7 +66,9 @@ export function OutboundPanel() {
             <Route className="mt-0.5 size-5 flex-none text-brand-600" aria-hidden />
             <div>
               <p className="font-medium text-text-primary">{t('warehouse.outbound.movedTitle')}</p>
-              <p className="text-sm text-text-secondary">{t('warehouse.outbound.movedDescription')}</p>
+              <p className="text-sm text-text-secondary">
+                {t('warehouse.outbound.movedDescription')}
+              </p>
             </div>
           </div>
           <Link
@@ -76,7 +85,11 @@ export function OutboundPanel() {
         <EmptyState
           title={error}
           size="sm"
-          action={<Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>{t('common.retry')}</Button>}
+          action={
+            <Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          }
         />
       )}
 
@@ -89,7 +102,9 @@ export function OutboundPanel() {
               <CardContent className="flex items-center gap-3 p-4">
                 <PackageCheck className="size-6 text-brand-600" aria-hidden />
                 <div>
-                  <p className="text-2xl font-semibold text-text-primary tabular-nums">{stagedCount}</p>
+                  <p className="text-2xl font-semibold text-text-primary tabular-nums">
+                    {stagedCount}
+                  </p>
                   <p className="text-sm text-text-muted">{t('warehouse.outbound.staged')}</p>
                 </div>
               </CardContent>
@@ -98,7 +113,9 @@ export function OutboundPanel() {
               <CardContent className="flex items-center gap-3 p-4">
                 <Truck className="size-6 text-brand-600" aria-hidden />
                 <div>
-                  <p className="text-2xl font-semibold text-text-primary tabular-nums">{inTransitCount}</p>
+                  <p className="text-2xl font-semibold text-text-primary tabular-nums">
+                    {inTransitCount}
+                  </p>
                   <p className="text-sm text-text-muted">{t('warehouse.outbound.inTransit')}</p>
                 </div>
               </CardContent>
@@ -129,7 +146,9 @@ export function OutboundPanel() {
                         <td className="px-4 py-2.5">{r.vehicle.plateNumber}</td>
                         <td className="px-4 py-2.5 text-right tabular-nums">{r.drops.length}</td>
                         <td className="px-4 py-2.5">{fmtDate(r.plannedDate)}</td>
-                        <td className="px-4 py-2.5"><StatusBadge domain="suratJalan" status={r.status} size="sm" /></td>
+                        <td className="px-4 py-2.5">
+                          <StatusBadge domain="suratJalan" status={r.status} size="sm" />
+                        </td>
                       </tr>
                     ))}
                   </tbody>

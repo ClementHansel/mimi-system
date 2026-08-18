@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ArgumentsHost, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ERR_FORBIDDEN } from '@mimi/shared';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
@@ -9,7 +14,11 @@ function makeHost() {
   const response = { status };
   const request = { method: 'GET', originalUrl: '/api/items', url: '/api/items' };
   const host = {
-    switchToHttp: () => ({ getResponse: () => response, getRequest: () => request, getNext: () => ({}) }),
+    switchToHttp: () => ({
+      getResponse: () => response,
+      getRequest: () => request,
+      getNext: () => ({}),
+    }),
   } as unknown as ArgumentsHost;
   return { host, status, json };
 }
@@ -19,7 +28,11 @@ describe('AllExceptionsFilter', () => {
     const { host, status, json } = makeHost();
     const filter = new AllExceptionsFilter();
     filter.catch(
-      new ForbiddenException({ code: ERR_FORBIDDEN, message: 'nope', details: { required: ['x'] } }),
+      new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: 'nope',
+        details: { required: ['x'] },
+      }),
       host,
     );
     expect(status).toHaveBeenCalledWith(403);
@@ -42,7 +55,10 @@ describe('AllExceptionsFilter', () => {
   it('overrides an unrecognized code that is not a real ErrorCode with the status-derived default', () => {
     const { host, status, json } = makeHost();
     const filter = new AllExceptionsFilter();
-    filter.catch(new ForbiddenException({ code: 'ERR_PERMISSION_DENIED', message: 'stale code' }), host);
+    filter.catch(
+      new ForbiddenException({ code: 'ERR_PERMISSION_DENIED', message: 'stale code' }),
+      host,
+    );
     expect(status).toHaveBeenCalledWith(403);
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ statusCode: 403, code: ERR_FORBIDDEN, message: 'stale code' }),
@@ -55,7 +71,11 @@ describe('AllExceptionsFilter', () => {
     filter.catch(new NotFoundException('Item not found'), host);
     expect(status).toHaveBeenCalledWith(404);
     expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: 404, code: 'ERR_NOT_FOUND', message: 'Item not found' }),
+      expect.objectContaining({
+        statusCode: 404,
+        code: 'ERR_NOT_FOUND',
+        message: 'Item not found',
+      }),
     );
   });
 
@@ -63,7 +83,10 @@ describe('AllExceptionsFilter', () => {
     const { host, status, json } = makeHost();
     const filter = new AllExceptionsFilter();
     filter.catch(
-      new BadRequestException({ code: 'ERR_VALIDATION', message: ['name should not be empty', 'sku must be a string'] }),
+      new BadRequestException({
+        code: 'ERR_VALIDATION',
+        message: ['name should not be empty', 'sku must be a string'],
+      }),
       host,
     );
     expect(status).toHaveBeenCalledWith(400);
@@ -80,7 +103,11 @@ describe('AllExceptionsFilter', () => {
     const filter = new AllExceptionsFilter();
     filter.catch(new Error('unexpected'), host);
     expect(status).toHaveBeenCalledWith(500);
-    expect(json).toHaveBeenCalledWith({ statusCode: 500, code: 'ERR_INTERNAL', message: 'unexpected' });
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 500,
+      code: 'ERR_INTERNAL',
+      message: 'unexpected',
+    });
   });
 
   it('shapes a non-Error throw as a 500 ERR_INTERNAL with a generic message', () => {
@@ -88,6 +115,10 @@ describe('AllExceptionsFilter', () => {
     const filter = new AllExceptionsFilter();
     filter.catch('a string throw', host);
     expect(status).toHaveBeenCalledWith(500);
-    expect(json).toHaveBeenCalledWith({ statusCode: 500, code: 'ERR_INTERNAL', message: 'Internal server error' });
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 500,
+      code: 'ERR_INTERNAL',
+      message: 'Internal server error',
+    });
   });
 });

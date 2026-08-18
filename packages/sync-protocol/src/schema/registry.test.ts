@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { AUTHORITY, wireEligibleEntities } from '../authority-matrix';
-import { PAYLOAD_SCHEMA_KEYS, getPayloadSchema, isRegisteredPayloadKey, validatePayloadData } from './index';
+import {
+  PAYLOAD_SCHEMA_KEYS,
+  getPayloadSchema,
+  isRegisteredPayloadKey,
+  validatePayloadData,
+} from './index';
 
 describe('payload schema coverage vs. the authority matrix', () => {
   it('has a registered payload schema for EVERY (entity, op) pair the authority matrix declares wire-eligible (class M/F/B)', () => {
@@ -19,7 +24,8 @@ describe('payload schema coverage vs. the authority matrix', () => {
     for (const [entityName, meta] of Object.entries(AUTHORITY)) {
       if (meta.class === 'M' || meta.class === 'F' || meta.class === 'B') continue;
       for (const op of meta.ops) {
-        if (isRegisteredPayloadKey(entityName, op)) spuriouslyRegistered.push(`${entityName}.${op}`);
+        if (isRegisteredPayloadKey(entityName, op))
+          spuriouslyRegistered.push(`${entityName}.${op}`);
       }
     }
     expect(spuriouslyRegistered).toEqual([]);
@@ -32,7 +38,8 @@ describe('payload schema coverage vs. the authority matrix', () => {
       const entity = key.slice(0, dotIndex);
       const op = key.slice(dotIndex + 1);
       const meta = AUTHORITY[entity];
-      const validOp = meta !== undefined && (meta.ops.includes(op) || (meta.pushExceptionOps ?? []).includes(op));
+      const validOp =
+        meta !== undefined && (meta.ops.includes(op) || (meta.pushExceptionOps ?? []).includes(op));
       if (!validOp) orphans.push(key);
     }
     expect(orphans).toEqual([]);
@@ -70,7 +77,9 @@ describe('validatePayloadData — spot checks against realistic payloads', () =>
       locationId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890',
       shiftId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890',
       occurredAt: '2026-08-17T05:00:00.000Z',
-      lines: [{ productId: 'd1b2c3d4-e5f6-7890-abcd-ef1234567890', qty: '2.000', unitPrice: '45000.00' }],
+      lines: [
+        { productId: 'd1b2c3d4-e5f6-7890-abcd-ef1234567890', qty: '2.000', unitPrice: '45000.00' },
+      ],
       payments: [{ method: 'cash', amount: '90000.00' }],
     });
     expect(result.ok).toBe(true);
@@ -82,7 +91,13 @@ describe('validatePayloadData — spot checks against realistic payloads', () =>
       locationId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890',
       shiftId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890',
       occurredAt: '2026-08-17T05:00:00.000Z',
-      lines: [{ productId: 'd1b2c3d4-e5f6-7890-abcd-ef1234567890', qty: '2.000', unitPrice: '45000.000' /* 3dp exceeds Money's 2dp scale */ }],
+      lines: [
+        {
+          productId: 'd1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          qty: '2.000',
+          unitPrice: '45000.000' /* 3dp exceeds Money's 2dp scale */,
+        },
+      ],
       payments: [{ method: 'cash', amount: '90000.00' }],
     });
     expect(result.ok).toBe(false);
@@ -123,7 +138,13 @@ describe('validatePayloadData — spot checks against realistic payloads', () =>
   it('accepts a sj_drops.received payload (photo/signature wajib, FR-LOG-15)', () => {
     const result = validatePayloadData('sj_drops', 'received', {
       dropId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-      lines: [{ lineId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890', qtyReceived: '10.000', receivedStorageAreaId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890' }],
+      lines: [
+        {
+          lineId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          qtyReceived: '10.000',
+          receivedStorageAreaId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        },
+      ],
       photoAttachmentIds: ['d1b2c3d4-e5f6-7890-abcd-ef1234567890'],
       signatureAttachmentId: 'e1b2c3d4-e5f6-7890-abcd-ef1234567890',
     });
@@ -158,7 +179,13 @@ describe('validatePayloadData — spot checks against realistic payloads', () =>
       locationId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890',
       neededBy: null,
       source: 'manual',
-      lines: [{ itemId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890', qtyRequested: '5.000', unitId: 'd1b2c3d4-e5f6-7890-abcd-ef1234567890' }],
+      lines: [
+        {
+          itemId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          qtyRequested: '5.000',
+          unitId: 'd1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        },
+      ],
     });
     expect(result.ok).toBe(true);
   });

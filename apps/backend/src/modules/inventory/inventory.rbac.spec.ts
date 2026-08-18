@@ -36,7 +36,11 @@ type AnyHandler = (...args: any[]) => unknown; // eslint-disable-line @typescrip
 function contextFor(handler: AnyHandler, roleKey: RoleKey): ExecutionContext {
   const request = { user: { sub: 'test-user', roleKey } };
   return {
-    switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}), getNext: () => ({}) }),
+    switchToHttp: () => ({
+      getRequest: () => request,
+      getResponse: () => ({}),
+      getNext: () => ({}),
+    }),
     getHandler: () => handler,
     getClass: () => InventoryController,
   } as unknown as ExecutionContext;
@@ -74,27 +78,30 @@ describe('M07 inventory controller — RBAC wiring against the real matrix (CONT
     ['upsertMinStock', 'inventory.minstock.manage'],
     ['areaTransfer', 'inventory.area_transfer.create'],
     ['suggestions', 'inventory.suggestion.read'],
-  ] as const)('%s (@RequirePermission(%s)) — every one of the 9 roles, both directions', (methodName, permissionKey) => {
-    const handler = methodsOf(InventoryController)[methodName]!;
+  ] as const)(
+    '%s (@RequirePermission(%s)) — every one of the 9 roles, both directions',
+    (methodName, permissionKey) => {
+      const handler = methodsOf(InventoryController)[methodName]!;
 
-    it.each(ALL_ROLES)('role %s matches CONTRACTS §3 exactly', (roleKey) => {
-      const expectedAllowed = RBAC_MATRIX[permissionKey][roleKey];
-      const ctx = contextFor(handler, roleKey);
+      it.each(ALL_ROLES)('role %s matches CONTRACTS §3 exactly', (roleKey) => {
+        const expectedAllowed = RBAC_MATRIX[permissionKey][roleKey];
+        const ctx = contextFor(handler, roleKey);
 
-      if (expectedAllowed) {
-        expect(guard.canActivate(ctx)).toBe(true);
-      } else {
-        expect(() => guard.canActivate(ctx)).toThrow();
-        try {
-          guard.canActivate(ctx);
-          throw new Error('unreachable — canActivate should have thrown above');
-        } catch (err) {
-          const response = (err as { getResponse?: () => { code?: string } }).getResponse?.();
-          expect(response?.code).toBe('ERR_FORBIDDEN');
+        if (expectedAllowed) {
+          expect(guard.canActivate(ctx)).toBe(true);
+        } else {
+          expect(() => guard.canActivate(ctx)).toThrow();
+          try {
+            guard.canActivate(ctx);
+            throw new Error('unreachable — canActivate should have thrown above');
+          } catch (err) {
+            const response = (err as { getResponse?: () => { code?: string } }).getResponse?.();
+            expect(response?.code).toBe('ERR_FORBIDDEN');
+          }
         }
-      }
-    });
-  });
+      });
+    },
+  );
 
   it('sanity: inventory.area_transfer.create is denied for Owner/Manager/Kasir but allowed for Kepala Gudang/Supervisor/Leader Outlet (CONTRACTS §3 exact row)', () => {
     const handler = methodsOf(InventoryController).areaTransfer!;

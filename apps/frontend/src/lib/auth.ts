@@ -33,5 +33,7 @@ export function isAuthenticated(): boolean {
 
 /** True when the API rejected a login attempt with a credentials error (as opposed to a network/server fault). */
 export function isInvalidCredentials(err: unknown): boolean {
-  return err instanceof ApiError && (err.statusCode === 401 || err.code === ERR_AUTH_INVALID_CREDENTIALS);
+  return (
+    err instanceof ApiError && (err.statusCode === 401 || err.code === ERR_AUTH_INVALID_CREDENTIALS)
+  );
 }

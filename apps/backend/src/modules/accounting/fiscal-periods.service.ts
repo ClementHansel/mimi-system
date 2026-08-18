@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION } from '@mimi/shared';
 import { toFiscalPeriod, type FiscalPeriod, type FiscalPeriodRow } from './accounting.types';
@@ -30,14 +35,21 @@ export class FiscalPeriodsService {
   async get(client: PoolClient, id: string): Promise<FiscalPeriodRow> {
     const res = await client.query<FiscalPeriodRow>(`${PERIOD_SELECT} WHERE id = $1`, [id]);
     const row = res.rows[0];
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Fiscal period ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Fiscal period ${id} not found`,
+      });
     return row;
   }
 
   /** `entryDate` -> its period, auto-creating the calendar-month period if this is the first entry to ever touch it (never auto-creates a CLOSED/LOCKED period — those states are only ever reached by an explicit close). */
   async findOrCreateForDate(client: PoolClient, entryDate: string): Promise<FiscalPeriodRow> {
     const periodCode = entryDate.slice(0, 7); // 'YYYY-MM'
-    const existing = await client.query<FiscalPeriodRow>(`${PERIOD_SELECT} WHERE period_code = $1`, [periodCode]);
+    const existing = await client.query<FiscalPeriodRow>(
+      `${PERIOD_SELECT} WHERE period_code = $1`,
+      [periodCode],
+    );
     if (existing.rows[0]) return existing.rows[0];
 
     const [year, month] = periodCode.split('-').map(Number);
@@ -53,10 +65,18 @@ export class FiscalPeriodsService {
     return inserted.rows[0]!;
   }
 
-  async close(client: PoolClient, id: string, closedBy: string, _note: string | undefined): Promise<FiscalPeriod> {
+  async close(
+    client: PoolClient,
+    id: string,
+    closedBy: string,
+    _note: string | undefined,
+  ): Promise<FiscalPeriod> {
     const period = await this.get(client, id);
     if (period.status !== 'open') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Fiscal period ${period.period_code} is '${period.status}', not 'open'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Fiscal period ${period.period_code} is '${period.status}', not 'open'`,
+      });
     }
 
     // "Blocks when unposted applied events exist for the period" (§4.17) — the only unposted-but-
@@ -77,13 +97,23 @@ export class FiscalPeriodsService {
   }
 
   async reopen(client: PoolClient, id: string, reason: string): Promise<FiscalPeriod> {
-    if (!reason) throw new BadRequestException({ code: ERR_VALIDATION, message: 'reason is required to reopen a fiscal period' });
+    if (!reason)
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'reason is required to reopen a fiscal period',
+      });
     const period = await this.get(client, id);
     if (period.status === 'locked') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Fiscal period ${period.period_code} is 'locked' and can never be reopened` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Fiscal period ${period.period_code} is 'locked' and can never be reopened`,
+      });
     }
     if (period.status !== 'closed') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Fiscal period ${period.period_code} is '${period.status}', not 'closed'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Fiscal period ${period.period_code} is '${period.status}', not 'closed'`,
+      });
     }
     return withWrite(client, async () => {
       const res = await client.query<FiscalPeriodRow>(

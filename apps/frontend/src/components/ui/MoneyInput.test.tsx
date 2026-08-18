@@ -4,7 +4,13 @@ import { useState } from 'react';
 import { MoneyInput } from './MoneyInput';
 import type { Money } from '@/lib/shared-types';
 
-function Controlled({ initial, onChange }: { initial: Money | null; onChange: (v: Money | null) => void }) {
+function Controlled({
+  initial,
+  onChange,
+}: {
+  initial: Money | null;
+  onChange: (v: Money | null) => void;
+}) {
   const [value, setValue] = useState<Money | null>(initial);
   return (
     <MoneyInput

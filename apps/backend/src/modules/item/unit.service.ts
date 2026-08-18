@@ -59,12 +59,18 @@ export class UnitService {
 
   private async ensureItemExists(client: PoolClient, itemId: string): Promise<void> {
     const res = await client.query(`SELECT 1 FROM items WHERE id = $1`, [itemId]);
-    if (res.rowCount === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item not found' });
+    if (res.rowCount === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item not found' });
   }
 
   async getConversions(client: PoolClient, itemId: string): Promise<UnitConversion[]> {
     await this.ensureItemExists(client, itemId);
-    const res = await client.query<{ id: string; from_unit: string; to_unit: string; factor: string }>(
+    const res = await client.query<{
+      id: string;
+      from_unit: string;
+      to_unit: string;
+      factor: string;
+    }>(
       `SELECT uc.id, fu.code AS from_unit, tu.code AS to_unit, uc.factor
        FROM unit_conversions uc
        JOIN units fu ON fu.id = uc.from_unit_id
@@ -73,7 +79,12 @@ export class UnitService {
        ORDER BY fu.code ASC, tu.code ASC`,
       [itemId],
     );
-    return res.rows.map((r) => ({ id: r.id, fromUnit: r.from_unit, toUnit: r.to_unit, factor: r.factor }));
+    return res.rows.map((r) => ({
+      id: r.id,
+      fromUnit: r.from_unit,
+      toUnit: r.to_unit,
+      factor: r.factor,
+    }));
   }
 
   /** Full replace of the item's conversion set (CONTRACTS.md §4.4 `PUT .../conversions`). */

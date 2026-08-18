@@ -60,7 +60,10 @@ export function witaMidnightUtc(date: ISODate): ISODateTime {
 }
 
 /** `[startUtc, endUtc)` — the UTC instant range covering one WITA calendar day. */
-export function businessDayBoundaries(date: ISODate): { startUtc: ISODateTime; endUtc: ISODateTime } {
+export function businessDayBoundaries(date: ISODate): {
+  startUtc: ISODateTime;
+  endUtc: ISODateTime;
+} {
   const startUtc = witaMidnightUtc(date);
   const endUtc = new Date(new Date(startUtc).getTime() + 24 * 60 * 60 * 1000).toISOString();
   return { startUtc, endUtc };
@@ -85,7 +88,12 @@ export function shiftWindow(
   startTime: string,
   endTime: string,
   breakMinutes = 0,
-): { startUtc: ISODateTime; endUtc: ISODateTime; wrapsMidnight: boolean; scheduledMinutes: number } {
+): {
+  startUtc: ISODateTime;
+  endUtc: ISODateTime;
+  wrapsMidnight: boolean;
+  scheduledMinutes: number;
+} {
   const dayStart = new Date(witaMidnightUtc(date)).getTime();
   const start = parseHHmm(startTime);
   const end = parseHHmm(endTime);
@@ -102,7 +110,10 @@ export function shiftWindow(
 }
 
 /** `'YYYY-MM'` → `{ startDate, endDate }` (inclusive), the payroll period boundary. */
-export function payrollPeriodBoundaries(periodCode: string): { startDate: ISODate; endDate: ISODate } {
+export function payrollPeriodBoundaries(periodCode: string): {
+  startDate: ISODate;
+  endDate: ISODate;
+} {
   const match = /^(\d{4})-(\d{2})$/.exec(periodCode);
   if (!match) throw new RangeError(`Expected 'YYYY-MM', got ${JSON.stringify(periodCode)}`);
   const year = Number.parseInt(match[1]!, 10);
@@ -126,7 +137,9 @@ export function lateMinutes(
   actualCheckInUtc: ISODateTime,
   graceMinutes = 5,
 ): number {
-  const diffMinutes = Math.round((toDate(actualCheckInUtc).getTime() - toDate(scheduledStartUtc).getTime()) / 60_000);
+  const diffMinutes = Math.round(
+    (toDate(actualCheckInUtc).getTime() - toDate(scheduledStartUtc).getTime()) / 60_000,
+  );
   return Math.max(0, diffMinutes - graceMinutes);
 }
 
@@ -140,12 +153,20 @@ export function overtimeMinutes(
   actualCheckOutUtc: ISODateTime,
   minMinutesThreshold = 30,
 ): number {
-  const diffMinutes = Math.round((toDate(actualCheckOutUtc).getTime() - toDate(scheduledEndUtc).getTime()) / 60_000);
+  const diffMinutes = Math.round(
+    (toDate(actualCheckOutUtc).getTime() - toDate(scheduledEndUtc).getTime()) / 60_000,
+  );
   return diffMinutes >= minMinutesThreshold ? diffMinutes : 0;
 }
 
 /** Raw worked minutes between check-in and check-out, minus the shift's unpaid break. */
-export function workedMinutes(checkInUtc: ISODateTime, checkOutUtc: ISODateTime, breakMinutes = 0): number {
-  const diffMinutes = Math.round((toDate(checkOutUtc).getTime() - toDate(checkInUtc).getTime()) / 60_000);
+export function workedMinutes(
+  checkInUtc: ISODateTime,
+  checkOutUtc: ISODateTime,
+  breakMinutes = 0,
+): number {
+  const diffMinutes = Math.round(
+    (toDate(checkOutUtc).getTime() - toDate(checkInUtc).getTime()) / 60_000,
+  );
   return Math.max(0, diffMinutes - breakMinutes);
 }

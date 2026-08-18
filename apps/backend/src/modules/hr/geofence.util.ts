@@ -13,7 +13,12 @@ function toRadians(deg: number): number {
 }
 
 /** Great-circle distance between two lat/lng points, in meters (haversine). */
-export function haversineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+export function haversineDistanceMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
   const dLat = toRadians(lat2 - lat1);
   const dLng = toRadians(lng2 - lng1);
   const a =

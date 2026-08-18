@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import {
-  Modal, Button, Card, CardContent, PhotoCapture, SignaturePad, QtyInput, Select, Textarea, TempInput, toast,
+  Modal,
+  Button,
+  Card,
+  CardContent,
+  PhotoCapture,
+  SignaturePad,
+  QtyInput,
+  Select,
+  Textarea,
+  TempInput,
+  toast,
 } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { dataUrlToFile } from './lib/attachments';
@@ -58,12 +68,19 @@ export function DropReceiveModal({ open, onClose, drop, onDone }: DropReceiveMod
 
   useEffect(() => {
     if (!open) return;
-    getStorageAreas(drop.locationId).then(setAreas).catch(() => setAreas([]));
+    getStorageAreas(drop.locationId)
+      .then(setAreas)
+      .catch(() => setAreas([]));
     setLines(
       Object.fromEntries(
         drop.lines.map((l) => [
           l.id,
-          { lineId: l.id, qtyReceived: l.qty, receivedStorageAreaId: l.receivedStorageAreaId ?? '', discrepancyReason: '' },
+          {
+            lineId: l.id,
+            qtyReceived: l.qty,
+            receivedStorageAreaId: l.receivedStorageAreaId ?? '',
+            discrepancyReason: '',
+          },
         ]),
       ),
     );
@@ -77,7 +94,10 @@ export function DropReceiveModal({ open, onClose, drop, onDone }: DropReceiveMod
   }, [open, drop.id, drop.locationId]);
 
   const areaOptions = useMemo(() => areas.map((a) => ({ value: a.id, label: a.name })), [areas]);
-  const draftList = useMemo(() => drop.lines.map((l) => lines[l.id]).filter((d): d is LineDraft => !!d), [drop.lines, lines]);
+  const draftList = useMemo(
+    () => drop.lines.map((l) => lines[l.id]).filter((d): d is LineDraft => !!d),
+    [drop.lines, lines],
+  );
 
   function updateLine(lineId: string, patch: Partial<LineDraft>) {
     setLines((prev) => ({ ...prev, [lineId]: { ...prev[lineId]!, ...patch } }));
@@ -100,9 +120,17 @@ export function DropReceiveModal({ open, onClose, drop, onDone }: DropReceiveMod
     setSubmitting(true);
     try {
       const runtime = await getDriverRuntime();
-      const photoRef = await runtime.captureEvidence(photoFile, photoFile.type || 'image/jpeg', 'delivery_receiving_photo');
+      const photoRef = await runtime.captureEvidence(
+        photoFile,
+        photoFile.type || 'image/jpeg',
+        'delivery_receiving_photo',
+      );
       const signatureFile = dataUrlToFile(signature, 'signature.png');
-      const signatureRef = await runtime.captureEvidence(signatureFile, signatureFile.type, 'delivery_receiving_signature');
+      const signatureRef = await runtime.captureEvidence(
+        signatureFile,
+        signatureFile.type,
+        'delivery_receiving_signature',
+      );
 
       await runtime.commitDropReceived(
         drop.id,
@@ -133,7 +161,12 @@ export function DropReceiveModal({ open, onClose, drop, onDone }: DropReceiveMod
         lines: drop.lines.map((l) => {
           const d = lines[l.id];
           return d
-            ? { ...l, qtyReceived: d.qtyReceived, receivedStorageAreaId: d.receivedStorageAreaId || null, discrepancyReason: d.discrepancyReason || null }
+            ? {
+                ...l,
+                qtyReceived: d.qtyReceived,
+                receivedStorageAreaId: d.receivedStorageAreaId || null,
+                discrepancyReason: d.discrepancyReason || null,
+              }
             : l;
         }),
       });
@@ -145,7 +178,12 @@ export function DropReceiveModal({ open, onClose, drop, onDone }: DropReceiveMod
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={t('driver.receive.title', { location: drop.locationName })} size="xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('driver.receive.title', { location: drop.locationName })}
+      size="xl"
+    >
       <div className="flex flex-col gap-4">
         <Card>
           <CardContent className="flex flex-col gap-3 p-0">
@@ -194,9 +232,15 @@ export function DropReceiveModal({ open, onClose, drop, onDone }: DropReceiveMod
                           <Textarea
                             rows={1}
                             value={d.discrepancyReason}
-                            onChange={(e) => updateLine(l.id, { discrepancyReason: e.target.value })}
+                            onChange={(e) =>
+                              updateLine(l.id, { discrepancyReason: e.target.value })
+                            }
                             placeholder={t('common.reasonPlaceholder')}
-                            error={d.discrepancyReason.trim() === '' ? t('validation.reasonRequired') : undefined}
+                            error={
+                              d.discrepancyReason.trim() === ''
+                                ? t('validation.reasonRequired')
+                                : undefined
+                            }
                             disabled={submitting}
                             wrapperClassName="w-56"
                           />
@@ -236,7 +280,14 @@ export function DropReceiveModal({ open, onClose, drop, onDone }: DropReceiveMod
           />
         </div>
 
-        <Button type="button" size="touch-lg" fullWidth loading={submitting} disabled={!canSubmit} onClick={handleSubmit}>
+        <Button
+          type="button"
+          size="touch-lg"
+          fullWidth
+          loading={submitting}
+          disabled={!canSubmit}
+          onClick={handleSubmit}
+        >
           {t('driver.receive.confirm')}
         </Button>
       </div>

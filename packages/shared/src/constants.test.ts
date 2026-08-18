@@ -12,7 +12,7 @@ describe('SettingsKey — closed literal union, same discipline as PermissionKey
     expect(SETTINGS_KEY_LIST).toContain('pos.cash_variance_propose_above');
   });
 
-  it('rejects a typo\'d key at COMPILE time', () => {
+  it("rejects a typo'd key at COMPILE time", () => {
     // @ts-expect-error - 'aproval.threshold.void' is not a member of SettingsKey; this must fail to compile.
     const typo: SettingsKey = 'aproval.threshold.void';
     expect(typo).toBeDefined();

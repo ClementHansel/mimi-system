@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import {
-  AlertTriangle, Truck, ClipboardCheck, Receipt, WifiOff, GitPullRequestClosed, Thermometer, Wrench,
+  AlertTriangle,
+  Truck,
+  ClipboardCheck,
+  Receipt,
+  WifiOff,
+  GitPullRequestClosed,
+  Thermometer,
+  Wrench,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -36,14 +43,44 @@ export function OpsStatusPanel() {
     };
   }, [t]);
 
-  const tiles: { key: keyof OpsStatusResponse; label: string; icon: typeof AlertTriangle; alert?: boolean }[] = [
-    { key: 'lowStockOutlets', label: t('dashboard.ops.lowStockOutlets'), icon: AlertTriangle, alert: true },
+  const tiles: {
+    key: keyof OpsStatusResponse;
+    label: string;
+    icon: typeof AlertTriangle;
+    alert?: boolean;
+  }[] = [
+    {
+      key: 'lowStockOutlets',
+      label: t('dashboard.ops.lowStockOutlets'),
+      icon: AlertTriangle,
+      alert: true,
+    },
     { key: 'sjInTransit', label: t('dashboard.ops.sjInTransit'), icon: Truck },
-    { key: 'pendingApprovals', label: t('dashboard.ops.pendingApprovals'), icon: ClipboardCheck, alert: true },
-    { key: 'pendingPayments', label: t('dashboard.ops.pendingPayments'), icon: Receipt, alert: true },
+    {
+      key: 'pendingApprovals',
+      label: t('dashboard.ops.pendingApprovals'),
+      icon: ClipboardCheck,
+      alert: true,
+    },
+    {
+      key: 'pendingPayments',
+      label: t('dashboard.ops.pendingPayments'),
+      icon: Receipt,
+      alert: true,
+    },
     { key: 'offlineOutlets', label: t('dashboard.ops.offlineOutlets'), icon: WifiOff, alert: true },
-    { key: 'openConflicts', label: t('dashboard.ops.openConflicts'), icon: GitPullRequestClosed, alert: true },
-    { key: 'coldChainBreaches24h', label: t('dashboard.ops.coldChainBreaches24h'), icon: Thermometer, alert: true },
+    {
+      key: 'openConflicts',
+      label: t('dashboard.ops.openConflicts'),
+      icon: GitPullRequestClosed,
+      alert: true,
+    },
+    {
+      key: 'coldChainBreaches24h',
+      label: t('dashboard.ops.coldChainBreaches24h'),
+      icon: Thermometer,
+      alert: true,
+    },
     { key: 'maintenanceDue', label: t('dashboard.ops.maintenanceDue'), icon: Wrench },
   ];
 
@@ -62,14 +99,24 @@ export function OpsStatusPanel() {
               flagged ? 'border-warning-200 bg-warning-50' : 'border-border bg-surface-raised',
             )}
           >
-            <span className={cn('flex size-8 flex-none items-center justify-center rounded-full', flagged ? 'bg-warning-100 text-warning-700' : 'bg-stone-100 text-stone-600')}>
+            <span
+              className={cn(
+                'flex size-8 flex-none items-center justify-center rounded-full',
+                flagged ? 'bg-warning-100 text-warning-700' : 'bg-stone-100 text-stone-600',
+              )}
+            >
               <Icon className="size-4" aria-hidden />
             </span>
             <div className="flex flex-col">
               {loading ? (
                 <div className="h-5 w-8 animate-pulse rounded bg-surface-sunken" />
               ) : (
-                <span className={cn('font-display text-lg font-semibold', flagged ? 'text-warning-800' : 'text-text-primary')}>
+                <span
+                  className={cn(
+                    'font-display text-lg font-semibold',
+                    flagged ? 'text-warning-800' : 'text-text-primary',
+                  )}
+                >
                   {formatNumber(value)}
                 </span>
               )}

@@ -52,9 +52,15 @@ export class LeaveSyncProjector implements SyncProjector {
 
   constructor(private readonly leaves: LeavesService) {}
 
-  async project(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<void> {
+  async project(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<void> {
     if (context.isConflictLoser) {
-      this.logger.warn(`skipping conflict-loser leave_requests event ${event.eventId} (${event.op})`);
+      this.logger.warn(
+        `skipping conflict-loser leave_requests event ${event.eventId} (${event.op})`,
+      );
       return;
     }
 

@@ -46,7 +46,9 @@ describe('nextActionForDrop — per-drop gating (D-14 multi-drop sequence)', () 
   });
 
   it('requires arrive once departed', () => {
-    expect(nextActionForDrop({ ...BASE_DROP, status: 'en_route', departedAt: '2026-08-17T01:00:00Z' })).toBe('arrive');
+    expect(
+      nextActionForDrop({ ...BASE_DROP, status: 'en_route', departedAt: '2026-08-17T01:00:00Z' }),
+    ).toBe('arrive');
   });
 
   it('requires serah-terima (receive) once arrived', () => {
@@ -60,9 +62,14 @@ describe('nextActionForDrop — per-drop gating (D-14 multi-drop sequence)', () 
     ).toBe('receive');
   });
 
-  it.each(['completed', 'completed_discrepancy', 'failed'] as const)('offers no further action once terminal (%s)', (status) => {
-    expect(nextActionForDrop({ ...BASE_DROP, status, departedAt: 'x', arrivedAt: 'y' })).toBe('none');
-  });
+  it.each(['completed', 'completed_discrepancy', 'failed'] as const)(
+    'offers no further action once terminal (%s)',
+    (status) => {
+      expect(nextActionForDrop({ ...BASE_DROP, status, departedAt: 'x', arrivedAt: 'y' })).toBe(
+        'none',
+      );
+    },
+  );
 
   it('never blocks drop N+1 on drop N — gating is per-drop status only, not dropSeq order', () => {
     const laterDrop: Drop = { ...BASE_DROP, id: 'drop-2', dropSeq: 2, status: 'pending' };
@@ -75,15 +82,38 @@ describe('nextActionForDrop — per-drop gating (D-14 multi-drop sequence)', () 
 describe('sealForDrop / tempLogsForDrop', () => {
   it('prefers a drop-specific seal over an SJ-wide one', () => {
     const seals: Seal[] = [
-      { id: 'seal-wide', dropId: null, sealNumber: 'WIDE-1', status: 'applied', checkedBy: null, checkedAt: null },
-      { id: 'seal-specific', dropId: 'drop-1', sealNumber: 'SPEC-1', status: 'applied', checkedBy: null, checkedAt: null },
+      {
+        id: 'seal-wide',
+        dropId: null,
+        sealNumber: 'WIDE-1',
+        status: 'applied',
+        checkedBy: null,
+        checkedAt: null,
+      },
+      {
+        id: 'seal-specific',
+        dropId: 'drop-1',
+        sealNumber: 'SPEC-1',
+        status: 'applied',
+        checkedBy: null,
+        checkedAt: null,
+      },
     ];
     const sj = makeSj({ seals });
     expect(sealForDrop(sj, 'drop-1')?.id).toBe('seal-specific');
   });
 
   it('falls back to the SJ-wide seal when no drop-specific one exists', () => {
-    const seals: Seal[] = [{ id: 'seal-wide', dropId: null, sealNumber: 'WIDE-1', status: 'applied', checkedBy: null, checkedAt: null }];
+    const seals: Seal[] = [
+      {
+        id: 'seal-wide',
+        dropId: null,
+        sealNumber: 'WIDE-1',
+        status: 'applied',
+        checkedBy: null,
+        checkedAt: null,
+      },
+    ];
     const sj = makeSj({ seals });
     expect(sealForDrop(sj, 'drop-1')?.id).toBe('seal-wide');
   });
@@ -95,9 +125,33 @@ describe('sealForDrop / tempLogsForDrop', () => {
   it('returns temp logs for one drop, most recent first', () => {
     const sj = makeSj({
       tempLogs: [
-        { id: 'l1', dropId: 'drop-1', stage: 'depart', tempC: '-18.0', isBreach: false, loggedBy: 'driver-1', loggedAt: '2026-08-17T01:00:00Z' },
-        { id: 'l2', dropId: 'drop-1', stage: 'arrive', tempC: '-19.0', isBreach: false, loggedBy: 'driver-1', loggedAt: '2026-08-17T03:00:00Z' },
-        { id: 'l3', dropId: 'drop-2', stage: 'depart', tempC: '-17.0', isBreach: false, loggedBy: 'driver-1', loggedAt: '2026-08-17T01:30:00Z' },
+        {
+          id: 'l1',
+          dropId: 'drop-1',
+          stage: 'depart',
+          tempC: '-18.0',
+          isBreach: false,
+          loggedBy: 'driver-1',
+          loggedAt: '2026-08-17T01:00:00Z',
+        },
+        {
+          id: 'l2',
+          dropId: 'drop-1',
+          stage: 'arrive',
+          tempC: '-19.0',
+          isBreach: false,
+          loggedBy: 'driver-1',
+          loggedAt: '2026-08-17T03:00:00Z',
+        },
+        {
+          id: 'l3',
+          dropId: 'drop-2',
+          stage: 'depart',
+          tempC: '-17.0',
+          isBreach: false,
+          loggedBy: 'driver-1',
+          loggedAt: '2026-08-17T01:30:00Z',
+        },
       ],
     });
     const logs = tempLogsForDrop(sj, 'drop-1');
@@ -121,9 +175,33 @@ describe('sealForDrop / tempLogsForDrop', () => {
   it('surfaces exactly the server-provided isBreach per log — no re-evaluation, even for a legitimate chiller-range reading', () => {
     const sj = makeSj({
       tempLogs: [
-        { id: 'chiller-ok', dropId: 'drop-1', stage: 'depart', tempC: '3.0', isBreach: false, loggedBy: 'driver-1', loggedAt: '2026-08-17T01:00:00Z' },
-        { id: 'freezer-ok', dropId: 'drop-1', stage: 'depart', tempC: '-18.0', isBreach: false, loggedBy: 'driver-1', loggedAt: '2026-08-17T01:00:01Z' },
-        { id: 'freezer-breach', dropId: 'drop-1', stage: 'arrive', tempC: '-8.0', isBreach: true, loggedBy: 'driver-1', loggedAt: '2026-08-17T03:00:00Z' },
+        {
+          id: 'chiller-ok',
+          dropId: 'drop-1',
+          stage: 'depart',
+          tempC: '3.0',
+          isBreach: false,
+          loggedBy: 'driver-1',
+          loggedAt: '2026-08-17T01:00:00Z',
+        },
+        {
+          id: 'freezer-ok',
+          dropId: 'drop-1',
+          stage: 'depart',
+          tempC: '-18.0',
+          isBreach: false,
+          loggedBy: 'driver-1',
+          loggedAt: '2026-08-17T01:00:01Z',
+        },
+        {
+          id: 'freezer-breach',
+          dropId: 'drop-1',
+          stage: 'arrive',
+          tempC: '-8.0',
+          isBreach: true,
+          loggedBy: 'driver-1',
+          loggedAt: '2026-08-17T03:00:00Z',
+        },
       ],
     });
     const logs = tempLogsForDrop(sj, 'drop-1');

@@ -20,7 +20,11 @@ import { REQUIRE_PERMISSION_KEY } from '../decorators/require-permission.decorat
 function makeContext(user: unknown, required?: string[]): ExecutionContext {
   const request = { user };
   return {
-    switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}), getNext: () => ({}) }),
+    switchToHttp: () => ({
+      getRequest: () => request,
+      getResponse: () => ({}),
+      getNext: () => ({}),
+    }),
     getHandler: () => ({ [REQUIRE_PERMISSION_KEY]: required }),
     getClass: () => ({}),
   } as unknown as ExecutionContext;
@@ -71,9 +75,13 @@ describe('PermissionsGuard', () => {
   });
 
   it('passes when any ONE of multiple required keys is held (OR semantics)', () => {
-    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['pos.void.approve', 'replenishment.approve.supervisor']);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue([
+      'pos.void.approve',
+      'replenishment.approve.supervisor',
+    ]);
     vi.mocked(can).mockImplementation(
-      (roleKey: string, key: string) => roleKey === 'supervisor' && key === 'replenishment.approve.supervisor',
+      (roleKey: string, key: string) =>
+        roleKey === 'supervisor' && key === 'replenishment.approve.supervisor',
     );
     const ctx = makeContext({ sub: 'u1', roleKey: 'supervisor' });
     expect(guard.canActivate(ctx)).toBe(true);

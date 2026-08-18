@@ -40,19 +40,44 @@ function addDays(base: Date, days: number): ISODate {
   return toDateInput(d);
 }
 
-export function DateRangePicker({ label, value, onChange, disabled, className }: DateRangePickerProps) {
+export function DateRangePicker({
+  label,
+  value,
+  onChange,
+  disabled,
+  className,
+}: DateRangePickerProps) {
   const { t } = useI18n();
   const today = witaToday();
 
   const presets: { key: string; labelKey: string; range: DateRangeValue }[] = [
-    { key: 'today', labelKey: 'dateRange.presetToday', range: { from: addDays(today, 0), to: addDays(today, 0) } },
-    { key: 'yesterday', labelKey: 'dateRange.presetYesterday', range: { from: addDays(today, -1), to: addDays(today, -1) } },
-    { key: 'last7', labelKey: 'dateRange.presetLast7', range: { from: addDays(today, -6), to: addDays(today, 0) } },
-    { key: 'last30', labelKey: 'dateRange.presetLast30', range: { from: addDays(today, -29), to: addDays(today, 0) } },
+    {
+      key: 'today',
+      labelKey: 'dateRange.presetToday',
+      range: { from: addDays(today, 0), to: addDays(today, 0) },
+    },
+    {
+      key: 'yesterday',
+      labelKey: 'dateRange.presetYesterday',
+      range: { from: addDays(today, -1), to: addDays(today, -1) },
+    },
+    {
+      key: 'last7',
+      labelKey: 'dateRange.presetLast7',
+      range: { from: addDays(today, -6), to: addDays(today, 0) },
+    },
+    {
+      key: 'last30',
+      labelKey: 'dateRange.presetLast30',
+      range: { from: addDays(today, -29), to: addDays(today, 0) },
+    },
     {
       key: 'thisMonth',
       labelKey: 'dateRange.presetThisMonth',
-      range: { from: toDateInput(new Date(today.getFullYear(), today.getMonth(), 1)), to: addDays(today, 0) },
+      range: {
+        from: toDateInput(new Date(today.getFullYear(), today.getMonth(), 1)),
+        to: addDays(today, 0),
+      },
     },
     {
       key: 'lastMonth',
@@ -64,7 +89,9 @@ export function DateRangePicker({ label, value, onChange, disabled, className }:
     },
   ];
 
-  const activePreset = presets.find((p) => p.range.from === value.from && p.range.to === value.to)?.key;
+  const activePreset = presets.find(
+    (p) => p.range.from === value.from && p.range.to === value.to,
+  )?.key;
 
   return (
     <div className={cn('flex flex-col gap-2', className)}>

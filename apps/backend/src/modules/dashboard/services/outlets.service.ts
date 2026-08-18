@@ -34,7 +34,11 @@ export class OutletsService {
    * this is the exact same `scopeClause` every other endpoint here applies,
    * not an exemption (see ticket header).
    */
-  async listOutlets(client: PoolClient, locationScope: LocationScope, date: string): Promise<OutletTile[]> {
+  async listOutlets(
+    client: PoolClient,
+    locationScope: LocationScope,
+    date: string,
+  ): Promise<OutletTile[]> {
     const params: unknown[] = [date];
     const scope = scopeClause(locationScope, 'l.id', params);
 
@@ -118,7 +122,11 @@ export class OutletsService {
 
     const tiles = await this.listOutletsUnfiltered(client, locationId, date);
     const tile = tiles[0];
-    if (!tile) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Outlet ${locationId} not found` });
+    if (!tile)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Outlet ${locationId} not found`,
+      });
 
     const [hourlyTrend, topProducts, staffOnShift] = await Promise.all([
       this.hourlyTrend(client, locationId, date),
@@ -130,7 +138,11 @@ export class OutletsService {
   }
 
   /** Same tile shape as `listOutlets`, but for exactly one already-scope-checked location — no `scopeClause` needed since the caller already asserted it. */
-  private async listOutletsUnfiltered(client: PoolClient, locationId: string, date: string): Promise<OutletTile[]> {
+  private async listOutletsUnfiltered(
+    client: PoolClient,
+    locationId: string,
+    date: string,
+  ): Promise<OutletTile[]> {
     const params: unknown[] = [date, locationId];
     const res = await client.query<{
       location_id: string;
@@ -198,7 +210,11 @@ export class OutletsService {
     }));
   }
 
-  private async hourlyTrend(client: PoolClient, locationId: string, date: string): Promise<{ hour: number; revenue: Money }[]> {
+  private async hourlyTrend(
+    client: PoolClient,
+    locationId: string,
+    date: string,
+  ): Promise<{ hour: number; revenue: Money }[]> {
     const res = await client.query<{ hour: string; revenue: string }>(
       `SELECT EXTRACT(HOUR FROM (occurred_at AT TIME ZONE 'Asia/Makassar'))::int AS hour,
               COALESCE(SUM(total), 0)::text AS revenue
@@ -212,8 +228,17 @@ export class OutletsService {
     return res.rows.map((r) => ({ hour: parseInt(r.hour, 10), revenue: r.revenue as Money }));
   }
 
-  private async topProductsForDay(client: PoolClient, locationId: string, date: string): Promise<{ productId: string; name: string; qty: Qty; revenue: Money }[]> {
-    const res = await client.query<{ product_id: string; name: string; qty: string; revenue: string }>(
+  private async topProductsForDay(
+    client: PoolClient,
+    locationId: string,
+    date: string,
+  ): Promise<{ productId: string; name: string; qty: Qty; revenue: Money }[]> {
+    const res = await client.query<{
+      product_id: string;
+      name: string;
+      qty: string;
+      revenue: string;
+    }>(
       `SELECT p.id AS product_id, p.name, SUM(sl.qty)::text AS qty, SUM(sl.line_total)::text AS revenue
          FROM sale_lines sl
          JOIN sales s ON s.id = sl.sale_id
@@ -225,10 +250,19 @@ export class OutletsService {
         LIMIT 10`,
       [locationId, date],
     );
-    return res.rows.map((r) => ({ productId: r.product_id, name: r.name, qty: r.qty as Qty, revenue: r.revenue as Money }));
+    return res.rows.map((r) => ({
+      productId: r.product_id,
+      name: r.name,
+      qty: r.qty as Qty,
+      revenue: r.revenue as Money,
+    }));
   }
 
-  private async staffOnShift(client: PoolClient, locationId: string, date: string): Promise<{ employeeId: string; name: string; position: string }[]> {
+  private async staffOnShift(
+    client: PoolClient,
+    locationId: string,
+    date: string,
+  ): Promise<{ employeeId: string; name: string; position: string }[]> {
     const res = await client.query<{ employee_id: string; name: string; position: string }>(
       `SELECT DISTINCT e.id AS employee_id, e.name, e.position
          FROM shift_assignments sa

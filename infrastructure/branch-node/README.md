@@ -5,6 +5,7 @@ self-updating Docker image + install script that W5-07 (branch-node
 hardening) packages for on-prem deployment at an outlet.
 
 Expected eventual contents:
+
 - `install.sh` — pulls the signed `mimi-branch-node` image, writes a local
   `.env` (cloud URL, pairing token), starts it via a minimal compose file,
   registers it as a system service so it survives a reboot of the mini-PC.

@@ -28,7 +28,10 @@ export function allowedStorageTypesForShipment(shipmentType: ShipmentTypeKey): S
 }
 
 /** True when an item of the given storage type may legally ride this shipment's truck. */
-export function isStorageTypeAllowed(shipmentType: ShipmentTypeKey, storageType: StorageTypeKey): boolean {
+export function isStorageTypeAllowed(
+  shipmentType: ShipmentTypeKey,
+  storageType: StorageTypeKey,
+): boolean {
   return allowedStorageTypesForShipment(shipmentType).includes(storageType);
 }
 

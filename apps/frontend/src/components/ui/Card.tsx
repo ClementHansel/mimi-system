@@ -11,11 +11,18 @@ export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
 }
 
 export function CardHeader({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex flex-col gap-1 border-b border-border p-4', className)} {...rest} />;
+  return (
+    <div className={cn('flex flex-col gap-1 border-b border-border p-4', className)} {...rest} />
+  );
 }
 
 export function CardTitle({ className, ...rest }: HTMLAttributes<HTMLHeadingElement>) {
-  return <h3 className={cn('font-display text-lg font-semibold text-text-primary', className)} {...rest} />;
+  return (
+    <h3
+      className={cn('font-display text-lg font-semibold text-text-primary', className)}
+      {...rest}
+    />
+  );
 }
 
 export function CardDescription({ className, ...rest }: HTMLAttributes<HTMLParagraphElement>) {
@@ -27,5 +34,10 @@ export function CardContent({ className, ...rest }: HTMLAttributes<HTMLDivElemen
 }
 
 export function CardFooter({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex items-center gap-2 border-t border-border p-4', className)} {...rest} />;
+  return (
+    <div
+      className={cn('flex items-center gap-2 border-t border-border p-4', className)}
+      {...rest}
+    />
+  );
 }

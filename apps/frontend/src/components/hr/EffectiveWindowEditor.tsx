@@ -3,8 +3,23 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { CalendarClock } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Button, Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, PermissionGate } from '@/components/ui';
-import { isoToday, sortByEffectiveFromDesc, validateNewEffectiveFrom, windowState } from './lib/effective-window';
+import {
+  Button,
+  Badge,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  EmptyState,
+  PermissionGate,
+} from '@/components/ui';
+import {
+  isoToday,
+  sortByEffectiveFromDesc,
+  validateNewEffectiveFrom,
+  windowState,
+} from './lib/effective-window';
 import type { EffectiveDatedRow } from './lib/types';
 
 /**
@@ -46,8 +61,19 @@ export interface EffectiveWindowEditorProps<T extends EffectiveDatedRow> {
 }
 
 export function EffectiveWindowEditor<T extends EffectiveDatedRow>({
-  title, description, rows, loading, historyColumns, renderHistoryRow, formFields,
-  effectiveFrom, onEffectiveFromChange, onSubmit, submitting, submitDisabled, error,
+  title,
+  description,
+  rows,
+  loading,
+  historyColumns,
+  renderHistoryRow,
+  formFields,
+  effectiveFrom,
+  onEffectiveFromChange,
+  onSubmit,
+  submitting,
+  submitDisabled,
+  error,
 }: EffectiveWindowEditorProps<T>) {
   const { t } = useI18n();
   const [showForm, setShowForm] = useState(false);
@@ -73,7 +99,11 @@ export function EffectiveWindowEditor<T extends EffectiveDatedRow>({
          * routes (`StatutoryController`).
          */}
         <PermissionGate permission="payroll.statutory.config">
-          <Button size="sm" variant={showForm ? 'outline' : 'primary'} onClick={() => setShowForm((v) => !v)}>
+          <Button
+            size="sm"
+            variant={showForm ? 'outline' : 'primary'}
+            onClick={() => setShowForm((v) => !v)}
+          >
             {showForm ? t('common.cancel') : t('hr.statutory.addVintage')}
           </Button>
         </PermissionGate>
@@ -124,7 +154,9 @@ export function EffectiveWindowEditor<T extends EffectiveDatedRow>({
                 <tr className="border-b border-border bg-surface-sunken text-left text-text-secondary">
                   <th className="px-3 py-2">{t('hr.statutory.window')}</th>
                   {historyColumns.map((h) => (
-                    <th key={h} className="px-3 py-2">{h}</th>
+                    <th key={h} className="px-3 py-2">
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -135,7 +167,16 @@ export function EffectiveWindowEditor<T extends EffectiveDatedRow>({
                     <tr key={i} className="border-b border-border last:border-0 align-top">
                       <td className="whitespace-nowrap px-3 py-2.5">
                         <div className="flex flex-col gap-1">
-                          <Badge variant={state === 'active' ? 'success' : state === 'future' ? 'info' : 'neutral'} size="sm">
+                          <Badge
+                            variant={
+                              state === 'active'
+                                ? 'success'
+                                : state === 'future'
+                                  ? 'info'
+                                  : 'neutral'
+                            }
+                            size="sm"
+                          >
                             {t(`hr.statutory.windowState.${state}`)}
                           </Badge>
                           <span className="text-xs text-text-muted">

@@ -15,7 +15,6 @@ import { InAppNotificationRow } from './channels/in-app-channel.service';
  */
 @Controller('notifications')
 export class NotificationController {
-
   @Get()
   @RequirePermission('notification.read.own')
   async list(
@@ -58,7 +57,10 @@ export class NotificationController {
 
   @Post(':id/read')
   @RequirePermission('notification.read.own')
-  async markRead(@Req() req: RequestWithDbContext, @Param('id') id: string): Promise<{ id: string; readAt: string }> {
+  async markRead(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+  ): Promise<{ id: string; readAt: string }> {
     const client = req.dbClient!;
     const result = await client.query(
       `UPDATE notifications SET read_at = NOW() WHERE id = $1 AND user_id = $2 AND read_at IS NULL
@@ -71,7 +73,9 @@ export class NotificationController {
     // Already read or not the caller's row (RLS would have hidden the latter
     // anyway) — return the current state rather than erroring, matching
     // idempotent "mark as read" semantics.
-    const existing = await client.query('SELECT id, read_at FROM notifications WHERE id = $1', [id]);
+    const existing = await client.query('SELECT id, read_at FROM notifications WHERE id = $1', [
+      id,
+    ]);
     const row = existing.rows[0];
     return { id, readAt: row?.read_at ? row.read_at.toISOString() : new Date().toISOString() };
   }

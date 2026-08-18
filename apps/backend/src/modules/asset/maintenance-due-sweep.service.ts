@@ -1,8 +1,18 @@
-import { Inject, Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+} from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
 import { formatCloudDocNumber, type UUID } from '@mimi/shared';
 import { DATABASE_POOL } from '../../common/database/database-pool.provider';
-import { SYSTEM_CENTRAL_ROLE, SYSTEM_SENTINEL_USER_ID, withSystemContext } from '../../common/database/system-context';
+import {
+  SYSTEM_CENTRAL_ROLE,
+  SYSTEM_SENTINEL_USER_ID,
+  withSystemContext,
+} from '../../common/database/system-context';
 import { NotificationService } from '../../kernel/notification/notification.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { pgDateToIso } from './pg-date.util';
@@ -57,9 +67,13 @@ export class MaintenanceDueSweepService implements OnApplicationBootstrap, OnApp
   ) {}
 
   onApplicationBootstrap(): void {
-    void this.runSweep().catch((err) => this.logger.error(`initial maintenance-due sweep failed: ${(err as Error).message}`));
+    void this.runSweep().catch((err) =>
+      this.logger.error(`initial maintenance-due sweep failed: ${(err as Error).message}`),
+    );
     this.timer = setInterval(() => {
-      void this.runSweep().catch((err) => this.logger.error(`maintenance-due sweep tick failed: ${(err as Error).message}`));
+      void this.runSweep().catch((err) =>
+        this.logger.error(`maintenance-due sweep tick failed: ${(err as Error).message}`),
+      );
     }, MAINTENANCE_SWEEP_INTERVAL_MS);
   }
 
@@ -86,7 +100,9 @@ export class MaintenanceDueSweepService implements OnApplicationBootstrap, OnApp
 
       for (const row of dueRes.rows) {
         await this.createDueJobAndNotify(client, row).catch((err) =>
-          this.logger.error(`maintenance-due handling failed for schedule ${row.id}: ${err instanceof Error ? err.message : String(err)}`),
+          this.logger.error(
+            `maintenance-due handling failed for schedule ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
+          ),
         );
       }
     });
@@ -124,11 +140,21 @@ export class MaintenanceDueSweepService implements OnApplicationBootstrap, OnApp
         actorUserId: SYSTEM_SENTINEL_USER_ID,
         data: { id: jobId, assetId: row.asset_id, scheduleId: row.id, type: 'scheduled', dueDate },
       })
-      .catch((err: Error) => this.logger.warn(`sync-emit for maintenance job ${jobId} failed (non-fatal): ${err.message}`));
+      .catch((err: Error) =>
+        this.logger.warn(
+          `sync-emit for maintenance job ${jobId} failed (non-fatal): ${err.message}`,
+        ),
+      );
 
-    const recipientIds = await this.resolveRecipients(client, row.location_id, row.assigned_user_id);
+    const recipientIds = await this.resolveRecipients(
+      client,
+      row.location_id,
+      row.assigned_user_id,
+    );
     if (recipientIds.length === 0) {
-      this.logger.warn(`maintenance_due for schedule ${row.id} (asset ${row.asset_id}) has no recipient to notify`);
+      this.logger.warn(
+        `maintenance_due for schedule ${row.id} (asset ${row.asset_id}) has no recipient to notify`,
+      );
       return;
     }
 
@@ -141,7 +167,11 @@ export class MaintenanceDueSweepService implements OnApplicationBootstrap, OnApp
   }
 
   /** The asset's assigned employee's user (if any) UNION every active user at the location holding `asset.job.execute` (manager/kepala_gudang/supervisor/leader_outlet — CONTRACTS.md §3). */
-  private async resolveRecipients(client: PoolClient, locationId: UUID, assignedUserId: UUID | null): Promise<UUID[]> {
+  private async resolveRecipients(
+    client: PoolClient,
+    locationId: UUID,
+    assignedUserId: UUID | null,
+  ): Promise<UUID[]> {
     const res = await client.query<{ id: UUID }>(
       `SELECT DISTINCT u.id
          FROM users u

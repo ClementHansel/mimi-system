@@ -22,7 +22,8 @@ import { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
  * the three session vars) so this suite exercises the actual production
  * code path, not a privileged shortcut.
  */
-const DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://mimi_app:mimi_app_secret@localhost:55433/mimi';
+const DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? 'postgres://mimi_app:mimi_app_secret@localhost:55433/mimi';
 
 function fakeConfigService() {
   const values: Record<string, string> = {
@@ -47,13 +48,19 @@ async function makeJpegWithExif(): Promise<Buffer> {
 }
 
 /** Reproduces `RlsContextGuard`'s phase 0/1/2 for one request's worth of work. Caller commits/releases via `endRequest`. */
-async function openRequestClient(pool: Pool, user: JwtAccessPayload, locationScope: string[] | null): Promise<PoolClient> {
+async function openRequestClient(
+  pool: Pool,
+  user: JwtAccessPayload,
+  locationScope: string[] | null,
+): Promise<PoolClient> {
   const client = await pool.connect();
   await client.query('BEGIN');
   await client.query('SET LOCAL ROLE app_user');
   await client.query(`SELECT set_config('app.user_id', $1, true)`, [user.sub]);
   await client.query(`SELECT set_config('app.role', $1, true)`, [user.roleKey]);
-  await client.query(`SELECT set_config('app.location_ids', $1, true)`, [(locationScope ?? []).join(',')]);
+  await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+    (locationScope ?? []).join(','),
+  ]);
   return client;
 }
 
@@ -67,7 +74,12 @@ describe('StorageService (integration, live Postgres as mimi_app + MinIO)', () =
   let service: StorageService;
   let dbAvailable = true;
   let managerId: string;
-  const user = (): JwtAccessPayload => ({ sub: managerId, username: 'manager1', roleKey: 'manager', locationIds: [] });
+  const user = (): JwtAccessPayload => ({
+    sub: managerId,
+    username: 'manager1',
+    roleKey: 'manager',
+    locationIds: [],
+  });
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: DATABASE_URL });
@@ -76,7 +88,12 @@ describe('StorageService (integration, live Postgres as mimi_app + MinIO)', () =
       // this pool — a central-role request client covers it.
       const setupClient = await openRequestClient(
         pool,
-        { sub: '00000000-0000-0000-0000-000000000000', username: 'setup', roleKey: 'owner', locationIds: [] },
+        {
+          sub: '00000000-0000-0000-0000-000000000000',
+          username: 'setup',
+          roleKey: 'owner',
+          locationIds: [],
+        },
         null,
       );
       const u = await setupClient.query(`SELECT id FROM users WHERE username = 'manager1' LIMIT 1`);
@@ -143,7 +160,12 @@ describe('StorageService (integration, live Postgres as mimi_app + MinIO)', () =
     expect(putResponse.ok).toBe(true);
 
     const confirmClient = await openRequestClient(pool, user(), null);
-    const confirmed = await service.confirm(confirmClient, user(), presign.attachmentId, 'client-side-hash-hint');
+    const confirmed = await service.confirm(
+      confirmClient,
+      user(),
+      presign.attachmentId,
+      'client-side-hash-hint',
+    );
     await endRequest(confirmClient);
     expect(confirmed.mimeType).toBe('image/jpeg');
     expect(confirmed.sizeBytes).toBeLessThan(original.length);
@@ -167,8 +189,12 @@ describe('StorageService (integration, live Postgres as mimi_app + MinIO)', () =
     if (!dbAvailable) return;
 
     const lookupClient = await openRequestClient(pool, user(), null);
-    const outletLocation = await lookupClient.query(`SELECT id FROM locations WHERE code = 'BPP01' LIMIT 1`);
-    const otherLocation = await lookupClient.query(`SELECT id FROM locations WHERE code = 'BPP02' LIMIT 1`);
+    const outletLocation = await lookupClient.query(
+      `SELECT id FROM locations WHERE code = 'BPP01' LIMIT 1`,
+    );
+    const otherLocation = await lookupClient.query(
+      `SELECT id FROM locations WHERE code = 'BPP02' LIMIT 1`,
+    );
     await endRequest(lookupClient);
     if (outletLocation.rows.length === 0 || otherLocation.rows.length === 0) return;
 
@@ -190,15 +216,27 @@ describe('StorageService (integration, live Postgres as mimi_app + MinIO)', () =
       locationIds: [],
     };
 
-    const outOfScopeClient = await openRequestClient(pool, scopedOutOfRangeUser, [otherLocation.rows[0].id]);
+    const outOfScopeClient = await openRequestClient(pool, scopedOutOfRangeUser, [
+      otherLocation.rows[0].id,
+    ]);
     await expect(
-      service.getUrl(outOfScopeClient, scopedOutOfRangeUser, [otherLocation.rows[0].id], presign.attachmentId),
+      service.getUrl(
+        outOfScopeClient,
+        scopedOutOfRangeUser,
+        [otherLocation.rows[0].id],
+        presign.attachmentId,
+      ),
     ).rejects.toMatchObject({ response: { code: 'ERR_LOCATION_OUT_OF_SCOPE' } });
     await endRequest(outOfScopeClient);
 
     // A central role always passes, regardless of scope.
     const centralClient = await openRequestClient(pool, user(), [otherLocation.rows[0].id]);
-    const url = await service.getUrl(centralClient, user(), [otherLocation.rows[0].id], presign.attachmentId);
+    const url = await service.getUrl(
+      centralClient,
+      user(),
+      [otherLocation.rows[0].id],
+      presign.attachmentId,
+    );
     await endRequest(centralClient);
     expect(url.url).toContain('http');
   });
@@ -213,7 +251,12 @@ describe('StorageService (integration, live Postgres as mimi_app + MinIO)', () =
     const presign = await service.presign(
       presignClient,
       user(),
-      { fileName: 'device-capture.jpg', mimeType: 'image/jpeg', sizeBytes: original.length, kind: 'receiving_photo' },
+      {
+        fileName: 'device-capture.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: original.length,
+        kind: 'receiving_photo',
+      },
       deviceAttachmentId,
     );
     await endRequest(presignClient);
@@ -299,7 +342,12 @@ describe('StorageService (integration, live Postgres as mimi_app + MinIO)', () =
     if (!dbAvailable) return;
 
     const deviceAttachmentId = randomUUID();
-    const dto = { fileName: 'retry.jpg', mimeType: 'image/jpeg', sizeBytes: 100, kind: 'receiving_photo' };
+    const dto = {
+      fileName: 'retry.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 100,
+      kind: 'receiving_photo',
+    };
 
     const firstClient = await openRequestClient(pool, user(), null);
     const first = await service.presign(firstClient, user(), dto, deviceAttachmentId);

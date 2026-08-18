@@ -16,7 +16,9 @@ export class AreaTransferDto {
   @IsUUID()
   toAreaId!: string;
 
-  @Matches(QTY_PATTERN, { message: 'qty must be a positive decimal string with up to 3 fractional digits, e.g. "5.000"' })
+  @Matches(QTY_PATTERN, {
+    message: 'qty must be a positive decimal string with up to 3 fractional digits, e.g. "5.000"',
+  })
   qty!: string;
 
   @IsOptional()

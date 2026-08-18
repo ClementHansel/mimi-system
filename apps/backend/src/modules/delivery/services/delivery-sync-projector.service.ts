@@ -171,7 +171,11 @@ export class DeliverySyncProjector implements SyncProjector {
     private readonly dropService: DropService,
   ) {}
 
-  async project(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<void> {
+  async project(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<void> {
     // Read the defensible, server-witnessed time back from the SAME transaction's `sync_events` row —
     // never trust `event.relayReceivedAt` (unreliable on the in-memory envelope) and never compute a fresh
     // `new Date()` (would move forward on every re-projection retry). One query, shared by every op below.
@@ -190,7 +194,9 @@ export class DeliverySyncProjector implements SyncProjector {
       case 'goods_receipts.recorded':
         return this.projectGoodsReceipt(client, event, context);
       default:
-        throw new Error(`DeliverySyncProjector: no handler registered for '${key}' — 'handles' and this switch have drifted`);
+        throw new Error(
+          `DeliverySyncProjector: no handler registered for '${key}' — 'handles' and this switch have drifted`,
+        );
     }
   }
 
@@ -199,14 +205,21 @@ export class DeliverySyncProjector implements SyncProjector {
     if (!row) {
       // Should be impossible — `SyncIngestService` always inserts the `sync_events` row before calling
       // `runApplyHooks` in the SAME transaction — but fail loudly rather than silently reaching for `now()`.
-      throw new Error(`DeliverySyncProjector: no sync_events row found for event ${eventId} in the current transaction`);
+      throw new Error(
+        `DeliverySyncProjector: no sync_events row found for event ${eventId} in the current transaction`,
+      );
     }
     return row.relay_received_at ?? row.received_at;
   }
 
   // ── sj_drops.departed ────────────────────────────────────────────────
 
-  private async projectDeparted(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext, loggedAt: string): Promise<void> {
+  private async projectDeparted(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+    loggedAt: string,
+  ): Promise<void> {
     if (context.isConflictLoser) return;
     const data = event.payload.data as DepartedPayload;
 
@@ -216,35 +229,57 @@ export class DeliverySyncProjector implements SyncProjector {
       { loggedAt },
     );
     if (!result.applied && result.reason === 'not_found') {
-      this.logger.warn(`sj_drops.departed for unknown drop ${data.dropId} (event ${event.eventId}) — dropping silently`);
+      this.logger.warn(
+        `sj_drops.departed for unknown drop ${data.dropId} (event ${event.eventId}) — dropping silently`,
+      );
     }
     // `wrong_status` is the expected, silent idempotent-replay outcome — nothing to log.
   }
 
   // ── sj_drops.arrived ─────────────────────────────────────────────────
 
-  private async projectArrived(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext, loggedAt: string): Promise<void> {
+  private async projectArrived(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+    loggedAt: string,
+  ): Promise<void> {
     if (context.isConflictLoser) return;
     const data = event.payload.data as ArrivedPayload;
 
     const result = await this.dropService.applyArrive(
       client,
-      { dropId: data.dropId, at: data.at, tempC: data.tempC, sealCheck: data.sealCheck, actorUserId: event.actorUserId },
+      {
+        dropId: data.dropId,
+        at: data.at,
+        tempC: data.tempC,
+        sealCheck: data.sealCheck,
+        actorUserId: event.actorUserId,
+      },
       { loggedAt },
     );
     if (!result.applied && result.reason === 'not_found') {
-      this.logger.warn(`sj_drops.arrived for unknown drop ${data.dropId} (event ${event.eventId}) — dropping silently`);
+      this.logger.warn(
+        `sj_drops.arrived for unknown drop ${data.dropId} (event ${event.eventId}) — dropping silently`,
+      );
     }
   }
 
   // ── sj_drops.received — the important one (FR-LOG-14/15/16, JOUT-01) ──
 
-  private async projectReceived(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext, loggedAt: string): Promise<void> {
+  private async projectReceived(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+    loggedAt: string,
+  ): Promise<void> {
     if (context.isConflictLoser) {
       // C2: this event lost to an earlier `received` for the same drop — SYNC-PROTOCOL §5.2: "no stock
       // effect... second → sync_conflicts (duplicate_receipt)". The conflict row is already recorded by
       // `ConflictDetectorService.detectAtApply`; this projector's only job for the loser is to do nothing.
-      this.logger.warn(`sj_drops.received event ${event.eventId} is a C2 conflict loser — skipping stock/business effect`);
+      this.logger.warn(
+        `sj_drops.received event ${event.eventId} is a C2 conflict loser — skipping stock/business effect`,
+      );
       return;
     }
     const data = event.payload.data as ReceivedPayload;
@@ -272,7 +307,9 @@ export class DeliverySyncProjector implements SyncProjector {
 
     if (!result.applied) {
       if (result.reason === 'not_found') {
-        this.logger.warn(`sj_drops.received for unknown drop ${data.dropId} (event ${event.eventId}) — dropping silently`);
+        this.logger.warn(
+          `sj_drops.received for unknown drop ${data.dropId} (event ${event.eventId}) — dropping silently`,
+        );
       }
       // `wrong_status` / `duplicate_client_id` are expected, silent idempotent-replay outcomes.
       return;
@@ -281,13 +318,20 @@ export class DeliverySyncProjector implements SyncProjector {
 
   // ── sj_temperature_logs.logged ───────────────────────────────────────
 
-  private async projectTempLogged(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext, loggedAt: string): Promise<void> {
+  private async projectTempLogged(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+    loggedAt: string,
+  ): Promise<void> {
     if (context.isConflictLoser) return;
     const data = event.payload.data as TempLoggedPayload;
 
     const sjHeader = await selectSuratJalanHeader(client, data.sjId);
     if (!sjHeader) {
-      this.logger.warn(`sj_temperature_logs.logged for unknown Surat Jalan ${data.sjId} (event ${event.eventId}) — dropping silently`);
+      this.logger.warn(
+        `sj_temperature_logs.logged for unknown Surat Jalan ${data.sjId} (event ${event.eventId}) — dropping silently`,
+      );
       return;
     }
 
@@ -303,7 +347,10 @@ export class DeliverySyncProjector implements SyncProjector {
       }
     }
 
-    const shipmentTypeIdRes = await client.query<{ shipment_type_id: string }>(`SELECT shipment_type_id FROM surat_jalan WHERE id = $1`, [data.sjId]);
+    const shipmentTypeIdRes = await client.query<{ shipment_type_id: string }>(
+      `SELECT shipment_type_id FROM surat_jalan WHERE id = $1`,
+      [data.sjId],
+    );
     const shipmentTypeId = shipmentTypeIdRes.rows[0]?.shipment_type_id;
     if (!shipmentTypeId) return;
 
@@ -312,7 +359,10 @@ export class DeliverySyncProjector implements SyncProjector {
     // non-duplicated wrapper over `logTemperature`; this projector calls the same underlying method
     // directly (both are just consumers of `ColdChainService`, injected here like any other module service).
     const shipmentType = await this.coldChain.loadShipmentType(client, shipmentTypeId);
-    const recipients = await this.coldChain.resolveBreachRecipients(client, sjHeader.origin_location_id);
+    const recipients = await this.coldChain.resolveBreachRecipients(
+      client,
+      sjHeader.origin_location_id,
+    );
     await this.coldChain.logTemperature(client, {
       sjId: data.sjId,
       dropId: data.dropId ?? null,
@@ -332,11 +382,18 @@ export class DeliverySyncProjector implements SyncProjector {
 
   // ── goods_receipts.recorded ──────────────────────────────────────────
 
-  private async projectGoodsReceipt(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<void> {
+  private async projectGoodsReceipt(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<void> {
     if (context.isConflictLoser) return;
     const data = event.payload.data as GoodsReceiptPayload;
 
-    const existing = await client.query<{ id: string }>(`SELECT id FROM goods_receipts WHERE id = $1`, [data.id]);
+    const existing = await client.query<{ id: string }>(
+      `SELECT id FROM goods_receipts WHERE id = $1`,
+      [data.id],
+    );
     if (existing.rows[0]) return; // idempotent no-op — this exact client-minted receipt already landed
 
     const period = businessDateOf(event.occurredAt).slice(0, 7).replace('-', '');
@@ -356,7 +413,14 @@ export class DeliverySyncProjector implements SyncProjector {
     await client.query(
       `INSERT INTO goods_receipts (id, receipt_number, receipt_type, location_id, received_by, received_at, notes, client_id)
        VALUES ($1, $2, 'unmatched_delivery', $3, $4, $5, $6, $1)`,
-      [data.id, receiptNumber, data.locationId, event.actorUserId, event.occurredAt, data.notes ?? null],
+      [
+        data.id,
+        receiptNumber,
+        data.locationId,
+        event.actorUserId,
+        event.occurredAt,
+        data.notes ?? null,
+      ],
     );
 
     const movements: PostMovementInput[] = [];

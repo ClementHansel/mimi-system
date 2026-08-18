@@ -74,7 +74,10 @@ const APPROVAL_OUTCOME_LABELS: Record<string, string> = {
   cancelled: 'dibatalkan',
 };
 
-export function renderNotificationText(templateKey: string, params: Record<string, string>): NotificationText {
+export function renderNotificationText(
+  templateKey: string,
+  params: Record<string, string>,
+): NotificationText {
   const entry = ID_ID_NOTIFICATION_TEXT[templateKey];
   if (!entry) {
     return { title: templateKey, body: '' };

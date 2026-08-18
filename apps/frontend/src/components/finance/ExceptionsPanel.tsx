@@ -38,45 +38,97 @@ export function ExceptionsPanel() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const { data, loading, error, reload } = useApiList<OfflineAuthCase>('/accounting/exceptions', {
-    status, class: cls, page, pageSize,
+    status,
+    class: cls,
+    page,
+    pageSize,
   });
   const [selected, setSelected] = useState<OfflineAuthCase | null>(null);
 
   const columns: DataTableColumn<OfflineAuthCase>[] = [
     {
-      key: 'class', header: t('finance.exceptions.columnClass'),
+      key: 'class',
+      header: t('finance.exceptions.columnClass'),
       render: (r) => (
         <span className="inline-flex items-center gap-1.5">
-          {r.physicalEffectSuspected && <AlertTriangle className="size-3.5 text-danger-600" aria-label={t('finance.exceptions.physicalEffectSuspected')} />}
+          {r.physicalEffectSuspected && (
+            <AlertTriangle
+              className="size-3.5 text-danger-600"
+              aria-label={t('finance.exceptions.physicalEffectSuspected')}
+            />
+          )}
           <StatusBadge domain="offlineAuthOutcome" status={r.outcome} />
         </span>
       ),
     },
-    { key: 'documentType', header: t('finance.exceptions.columnDocument'), render: (r) => r.documentType },
-    { key: 'amount', header: t('finance.exceptions.columnAmount'), align: 'right', render: (r) => formatMoney(r.amount, { cents: 'always' }) },
-    { key: 'approverName', header: t('finance.exceptions.columnApprover'), render: (r) => r.approverName || '—' },
-    { key: 'outletName', header: t('finance.exceptions.columnOutlet'), render: (r) => r.outletName || '—' },
-    { key: 'occurredAt', header: t('finance.exceptions.columnOccurredAt'), render: (r) => fmtDateTime(r.occurredAt) },
     {
-      key: 'verdict', header: t('finance.exceptions.columnVerdict'),
-      render: (r) => r.verdict ? t(`finance.exceptions.verdict.${r.verdict}`) : <span className="text-warning-700">{t('finance.exceptions.pendingVerdict')}</span>,
+      key: 'documentType',
+      header: t('finance.exceptions.columnDocument'),
+      render: (r) => r.documentType,
+    },
+    {
+      key: 'amount',
+      header: t('finance.exceptions.columnAmount'),
+      align: 'right',
+      render: (r) => formatMoney(r.amount, { cents: 'always' }),
+    },
+    {
+      key: 'approverName',
+      header: t('finance.exceptions.columnApprover'),
+      render: (r) => r.approverName || '—',
+    },
+    {
+      key: 'outletName',
+      header: t('finance.exceptions.columnOutlet'),
+      render: (r) => r.outletName || '—',
+    },
+    {
+      key: 'occurredAt',
+      header: t('finance.exceptions.columnOccurredAt'),
+      render: (r) => fmtDateTime(r.occurredAt),
+    },
+    {
+      key: 'verdict',
+      header: t('finance.exceptions.columnVerdict'),
+      render: (r) =>
+        r.verdict ? (
+          t(`finance.exceptions.verdict.${r.verdict}`)
+        ) : (
+          <span className="text-warning-700">{t('finance.exceptions.pendingVerdict')}</span>
+        ),
     },
   ];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-2">
-        <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }} placeholder={t('finance.exceptions.filterStatusAll')}
+        <Select
+          value={status}
+          onValueChange={(v) => {
+            setStatus(v);
+            setPage(1);
+          }}
+          placeholder={t('finance.exceptions.filterStatusAll')}
           options={[
             { value: 'open', label: t('finance.exceptions.statusOpen') },
             { value: 'resolved', label: t('finance.exceptions.statusResolved') },
             { value: 'dismissed', label: t('finance.exceptions.statusDismissed') },
-          ]} wrapperClassName="w-40" />
-        <Select value={cls} onValueChange={(v) => { setCls(v); setPage(1); }} placeholder={t('finance.exceptions.filterClassAll')}
+          ]}
+          wrapperClassName="w-40"
+        />
+        <Select
+          value={cls}
+          onValueChange={(v) => {
+            setCls(v);
+            setPage(1);
+          }}
+          placeholder={t('finance.exceptions.filterClassAll')}
           options={[
             { value: 'offline_auth_failed', label: t('finance.exceptions.classFailed') },
             { value: 'offline_auth_unprovable', label: t('finance.exceptions.classUnprovable') },
-          ]} wrapperClassName="w-52" />
+          ]}
+          wrapperClassName="w-52"
+        />
       </div>
 
       <DataTable
@@ -88,7 +140,10 @@ export function ExceptionsPanel() {
         emptyDescription={t('finance.exceptions.empty')}
         onRowClick={(r) => setSelected(r)}
         onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
       />
 
       {selected && (
@@ -103,8 +158,16 @@ export function ExceptionsPanel() {
   );
 }
 
-function ExceptionDrawer({ exception, canReview, onClose, onChanged }: {
-  exception: OfflineAuthCase; canReview: boolean; onClose: () => void; onChanged: () => void;
+function ExceptionDrawer({
+  exception,
+  canReview,
+  onClose,
+  onChanged,
+}: {
+  exception: OfflineAuthCase;
+  canReview: boolean;
+  onClose: () => void;
+  onChanged: () => void;
 }) {
   const { t } = useI18n();
   const [verdict, setVerdict] = useState<'upheld' | 'rejected'>('rejected');
@@ -114,14 +177,22 @@ function ExceptionDrawer({ exception, canReview, onClose, onChanged }: {
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
-      await api.post(`/accounting/exceptions/${exception.id}/verdict`, { verdict, reason, routeToPayrollDeduction: routeToPayroll });
+      await api.post(`/accounting/exceptions/${exception.id}/verdict`, {
+        verdict,
+        reason,
+        routeToPayrollDeduction: routeToPayroll,
+      });
       toast({ title: t('finance.exceptions.verdictSuccess'), variant: 'success' });
-      onChanged(); onClose();
+      onChanged();
+      onClose();
     } catch (err) {
       setError(errMsg(err, t('auth.genericError')));
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -134,11 +205,17 @@ function ExceptionDrawer({ exception, canReview, onClose, onChanged }: {
         )}
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
           <dt className="text-text-muted">{t('finance.exceptions.columnClass')}</dt>
-          <dd><StatusBadge domain="offlineAuthOutcome" status={exception.outcome} /></dd>
+          <dd>
+            <StatusBadge domain="offlineAuthOutcome" status={exception.outcome} />
+          </dd>
           <dt className="text-text-muted">{t('finance.exceptions.columnDocument')}</dt>
-          <dd className="text-text-primary">{exception.documentType} ({exception.documentId})</dd>
+          <dd className="text-text-primary">
+            {exception.documentType} ({exception.documentId})
+          </dd>
           <dt className="text-text-muted">{t('finance.exceptions.columnAmount')}</dt>
-          <dd className="text-text-primary">{formatMoney(exception.amount, { cents: 'always' })}</dd>
+          <dd className="text-text-primary">
+            {formatMoney(exception.amount, { cents: 'always' })}
+          </dd>
           <dt className="text-text-muted">{t('finance.exceptions.columnApprover')}</dt>
           <dd className="text-text-primary">{exception.approverName || '—'}</dd>
           <dt className="text-text-muted">{t('finance.exceptions.columnDevice')}</dt>
@@ -155,18 +232,25 @@ function ExceptionDrawer({ exception, canReview, onClose, onChanged }: {
 
         {exception.evidence.selfieUrl && (
           // Presigned object-storage URL, not a Next-optimizable local asset — a plain `<img>` is correct here.
-          <img src={exception.evidence.selfieUrl} alt={t('finance.exceptions.selfieAlt')} className="max-h-64 rounded-md border border-border object-contain" />
+          <img
+            src={exception.evidence.selfieUrl}
+            alt={t('finance.exceptions.selfieAlt')}
+            className="max-h-64 rounded-md border border-border object-contain"
+          />
         )}
 
         {exception.verdict && (
           <p className="text-sm font-medium text-text-primary">
-            {t('finance.exceptions.columnVerdict')}: {t(`finance.exceptions.verdict.${exception.verdict}`)}
+            {t('finance.exceptions.columnVerdict')}:{' '}
+            {t(`finance.exceptions.verdict.${exception.verdict}`)}
           </p>
         )}
 
         {!exception.verdict && canReview && (
           <section className="flex flex-col gap-3 border-t border-border pt-4">
-            <h3 className="text-sm font-semibold text-text-primary">{t('finance.exceptions.recordVerdictTitle')}</h3>
+            <h3 className="text-sm font-semibold text-text-primary">
+              {t('finance.exceptions.recordVerdictTitle')}
+            </h3>
             {error && <p className="text-sm text-danger-600">{error}</p>}
             <Select
               label={t('finance.exceptions.verdictLabel')}
@@ -177,11 +261,22 @@ function ExceptionDrawer({ exception, canReview, onClose, onChanged }: {
                 { value: 'upheld', label: t('finance.exceptions.verdict.upheld') },
               ]}
             />
-            <Textarea label={t('finance.exceptions.reasonLabel')} value={reason} onChange={(e) => setReason(e.target.value)} required />
+            <Textarea
+              label={t('finance.exceptions.reasonLabel')}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              required
+            />
             {verdict === 'rejected' && exception.physicalEffectSuspected && (
-              <Checkbox label={t('finance.exceptions.routeToPayrollDeduction')} checked={routeToPayroll} onCheckedChange={setRouteToPayroll} />
+              <Checkbox
+                label={t('finance.exceptions.routeToPayrollDeduction')}
+                checked={routeToPayroll}
+                onCheckedChange={setRouteToPayroll}
+              />
             )}
-            <Button onClick={submit} loading={busy} disabled={!reason} className="self-start">{t('finance.exceptions.submitVerdict')}</Button>
+            <Button onClick={submit} loading={busy} disabled={!reason} className="self-start">
+              {t('finance.exceptions.submitVerdict')}
+            </Button>
           </section>
         )}
       </div>

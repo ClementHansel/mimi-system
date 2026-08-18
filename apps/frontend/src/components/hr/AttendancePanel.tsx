@@ -4,7 +4,19 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
-import { Button, Card, CardContent, DataTable, Modal, Input, Select, StatusBadge, Badge, Textarea, PermissionGate } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  DataTable,
+  Modal,
+  Input,
+  Select,
+  StatusBadge,
+  Badge,
+  Textarea,
+  PermissionGate,
+} from '@/components/ui';
 import { usePermissions } from '@/lib/permissions';
 import { useSessionStore } from '@/stores/session-store';
 import { fmtDateTime } from '@/lib/dates';
@@ -26,13 +38,22 @@ export function AttendancePanel() {
   const [locationId, setLocationId] = useState('');
   const [date, setDate] = useState('');
   const [suspectOnly, setSuspectOnly] = useState(false);
-  const [data, setData] = useState<Paginated<AttendanceRow>>({ rows: [], total: 0, page: 1, pageSize: 50 });
+  const [data, setData] = useState<Paginated<AttendanceRow>>({
+    rows: [],
+    total: 0,
+    page: 1,
+    pageSize: 50,
+  });
   const [loading, setLoading] = useState(true);
   const [correcting, setCorrecting] = useState<AttendanceRow | null>(null);
 
   function reload() {
     setLoading(true);
-    listAttendance({ locationId: locationId || undefined, date: date || undefined, page: data.page })
+    listAttendance({
+      locationId: locationId || undefined,
+      date: date || undefined,
+      page: data.page,
+    })
       .then(setData)
       .finally(() => setLoading(false));
   }
@@ -50,17 +71,30 @@ export function AttendancePanel() {
             label={t('hr.attendance.location')}
             value={locationId}
             onValueChange={setLocationId}
-            options={[{ value: '', label: t('hr.attendance.allLocations') }, ...locations.map((l) => ({ value: l.id, label: l.name }))]}
+            options={[
+              { value: '', label: t('hr.attendance.allLocations') },
+              ...locations.map((l) => ({ value: l.id, label: l.name })),
+            ]}
             wrapperClassName="w-56"
           />
-          <Input type="date" label={t('hr.attendance.date')} value={date} onChange={(e) => setDate(e.target.value)} wrapperClassName="w-40" />
+          <Input
+            type="date"
+            label={t('hr.attendance.date')}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            wrapperClassName="w-40"
+          />
           <Button
             variant={suspectOnly ? 'primary' : 'outline'}
             leftIcon={<AlertTriangle className="size-4" />}
             onClick={() => setSuspectOnly((v) => !v)}
           >
             {t('hr.attendance.suspectFilter')}
-            {suspectCount > 0 && <Badge variant="warning" size="sm" className="ml-1">{suspectCount}</Badge>}
+            {suspectCount > 0 && (
+              <Badge variant="warning" size="sm" className="ml-1">
+                {suspectCount}
+              </Badge>
+            )}
           </Button>
         </CardContent>
       </Card>
@@ -69,14 +103,31 @@ export function AttendancePanel() {
         columns={[
           { key: 'employeeName', header: t('hr.attendance.columnEmployee') },
           { key: 'date', header: t('hr.attendance.columnDate') },
-          { key: 'checkInAt', header: t('hr.attendance.columnCheckIn'), render: (r) => (r.checkInAt ? fmtDateTime(r.checkInAt) : '—') },
-          { key: 'checkOutAt', header: t('hr.attendance.columnCheckOut'), render: (r) => (r.checkOutAt ? fmtDateTime(r.checkOutAt) : '—') },
+          {
+            key: 'checkInAt',
+            header: t('hr.attendance.columnCheckIn'),
+            render: (r) => (r.checkInAt ? fmtDateTime(r.checkInAt) : '—'),
+          },
+          {
+            key: 'checkOutAt',
+            header: t('hr.attendance.columnCheckOut'),
+            render: (r) => (r.checkOutAt ? fmtDateTime(r.checkOutAt) : '—'),
+          },
           { key: 'lateMinutes', header: t('hr.attendance.columnLate'), align: 'right' },
           { key: 'overtimeMinutes', header: t('hr.attendance.columnOvertime'), align: 'right' },
           {
             key: 'geofenceOk',
             header: t('hr.attendance.columnGeofence'),
-            render: (r) => (r.geofenceOk ? <Badge variant="success" size="sm">{t('hr.attendance.geofenceOk')}</Badge> : <Badge variant="danger" size="sm">{t('hr.attendance.geofenceOut')}</Badge>),
+            render: (r) =>
+              r.geofenceOk ? (
+                <Badge variant="success" size="sm">
+                  {t('hr.attendance.geofenceOk')}
+                </Badge>
+              ) : (
+                <Badge variant="danger" size="sm">
+                  {t('hr.attendance.geofenceOut')}
+                </Badge>
+              ),
           },
           {
             key: 'status',
@@ -118,7 +169,15 @@ export function AttendancePanel() {
   );
 }
 
-function CorrectionModal({ row, onClose, onSaved }: { row: AttendanceRow; onClose: () => void; onSaved: () => void }) {
+function CorrectionModal({
+  row,
+  onClose,
+  onSaved,
+}: {
+  row: AttendanceRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const { t } = useI18n();
   const [status, setStatus] = useState(row.status);
   const [reason, setReason] = useState('');
@@ -143,19 +202,32 @@ function CorrectionModal({ row, onClose, onSaved }: { row: AttendanceRow; onClos
       open
       onClose={onClose}
       title={t('hr.attendance.correctTitle', { name: row.employeeName })}
-      footer={<><Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button><Button onClick={submit} loading={busy} disabled={!reason.trim()}>{t('common.save')}</Button></>}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={!reason.trim()}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
     >
       <div className="flex flex-col gap-3">
         {row.timeSuspect && (
           <div className="rounded-md border border-warning-600/30 bg-warning-50 p-3 text-sm text-warning-700">
-            <AlertTriangle className="mb-1 size-4" aria-hidden /> {t('hr.attendance.timeSuspectHint')}
+            <AlertTriangle className="mb-1 size-4" aria-hidden />{' '}
+            {t('hr.attendance.timeSuspectHint')}
           </div>
         )}
         <Select
           label={t('hr.attendance.columnStatus')}
           value={status}
           onValueChange={setStatus}
-          options={['present', 'late', 'absent', 'sick', 'permission', 'leave'].map((s) => ({ value: s, label: t(`status.attendance.${s}`) }))}
+          options={['present', 'late', 'absent', 'sick', 'permission', 'leave'].map((s) => ({
+            value: s,
+            label: t(`status.attendance.${s}`),
+          }))}
         />
         <Textarea
           label={t('hr.attendance.correctionReason')}

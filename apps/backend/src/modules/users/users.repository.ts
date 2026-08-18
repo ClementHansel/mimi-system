@@ -48,7 +48,11 @@ export class UsersRepository {
     }
     if (filter.roleKey) push(`r.key = $$`, filter.roleKey);
     if (filter.active !== undefined) push(`u.is_active = $$`, filter.active);
-    if (filter.locationId) push(`EXISTS (SELECT 1 FROM user_locations ul WHERE ul.user_id = u.id AND ul.location_id = $$)`, filter.locationId);
+    if (filter.locationId)
+      push(
+        `EXISTS (SELECT 1 FROM user_locations ul WHERE ul.user_id = u.id AND ul.location_id = $$)`,
+        filter.locationId,
+      );
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -118,8 +122,14 @@ export class UsersRepository {
     }));
   }
 
-  async findRoleByKey(client: PoolClient, key: string): Promise<{ id: UUID; key: string } | undefined> {
-    const res = await client.query<{ id: UUID; key: string }>(`SELECT id, key FROM roles WHERE key = $1`, [key]);
+  async findRoleByKey(
+    client: PoolClient,
+    key: string,
+  ): Promise<{ id: UUID; key: string } | undefined> {
+    const res = await client.query<{ id: UUID; key: string }>(
+      `SELECT id, key FROM roles WHERE key = $1`,
+      [key],
+    );
     return res.rows[0];
   }
 
@@ -130,7 +140,14 @@ export class UsersRepository {
 
   async insertUser(
     client: PoolClient,
-    row: { username: string; name: string; email: string | null; phone: string | null; passwordHash: string; roleId: UUID },
+    row: {
+      username: string;
+      name: string;
+      email: string | null;
+      phone: string | null;
+      passwordHash: string;
+      roleId: UUID;
+    },
   ): Promise<UUID> {
     const res = await client.query<{ id: UUID }>(
       `INSERT INTO users (username, name, email, phone, password_hash, role_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
@@ -139,7 +156,11 @@ export class UsersRepository {
     return res.rows[0]!.id;
   }
 
-  async updateProfile(client: PoolClient, id: UUID, patch: { name?: string; email?: string | null; phone?: string | null }): Promise<void> {
+  async updateProfile(
+    client: PoolClient,
+    id: UUID,
+    patch: { name?: string; email?: string | null; phone?: string | null },
+  ): Promise<void> {
     const sets: string[] = [];
     const params: unknown[] = [];
     const set = (col: string, val: unknown) => {
@@ -167,29 +188,46 @@ export class UsersRepository {
   }
 
   async currentLocationIds(client: PoolClient, userId: UUID): Promise<UUID[]> {
-    const res = await client.query<{ location_id: UUID }>(`SELECT location_id FROM user_locations WHERE user_id = $1`, [userId]);
+    const res = await client.query<{ location_id: UUID }>(
+      `SELECT location_id FROM user_locations WHERE user_id = $1`,
+      [userId],
+    );
     return res.rows.map((r) => r.location_id);
   }
 
   async setLocations(client: PoolClient, userId: UUID, add: UUID[], remove: UUID[]): Promise<void> {
     if (remove.length > 0) {
-      await client.query(`DELETE FROM user_locations WHERE user_id = $1 AND location_id = ANY($2::uuid[])`, [userId, remove]);
+      await client.query(
+        `DELETE FROM user_locations WHERE user_id = $1 AND location_id = ANY($2::uuid[])`,
+        [userId, remove],
+      );
     }
     for (const locationId of add) {
-      await client.query(`INSERT INTO user_locations (user_id, location_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [userId, locationId]);
+      await client.query(
+        `INSERT INTO user_locations (user_id, location_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [userId, locationId],
+      );
     }
   }
 
   async revokeAllSessions(client: PoolClient, userId: UUID): Promise<void> {
-    await client.query(`UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    await client.query(
+      `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId],
+    );
   }
 
   async revokeAllOfflineCredentials(client: PoolClient, userId: UUID): Promise<void> {
-    await client.query(`UPDATE offline_credentials SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    await client.query(
+      `UPDATE offline_credentials SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId],
+    );
   }
 
   async listRoles(client: PoolClient): Promise<{ key: string; name: string }[]> {
-    const res = await client.query<{ key: string; name: string }>(`SELECT key, name FROM roles ORDER BY name`);
+    const res = await client.query<{ key: string; name: string }>(
+      `SELECT key, name FROM roles ORDER BY name`,
+    );
     return res.rows;
   }
 }

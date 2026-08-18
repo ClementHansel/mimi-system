@@ -25,10 +25,14 @@ import type { RequestWithDbContext } from '../../common/guards/rls-context.guard
  * started the stack (CI/dev-box parity handled by whoever wires the test
  * script to `docker compose up -d postgres` first).
  */
-const DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://mimi_app:mimi_app_secret@localhost:55433/mimi';
+const DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? 'postgres://mimi_app:mimi_app_secret@localhost:55433/mimi';
 
 /** Central-role request context for this test's OWN setup/assertion queries (not the interceptor's own connections). */
-async function withRequestContext<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+async function withRequestContext<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -151,7 +155,10 @@ describe('AuditInterceptor (integration, live Postgres)', () => {
         defer(() =>
           from(
             (async () => {
-              await client.query('UPDATE locations SET name = $1 WHERE id = $2', [newName, locationId]);
+              await client.query('UPDATE locations SET name = $1 WHERE id = $2', [
+                newName,
+                locationId,
+              ]);
               const updated = await client.query(
                 'SELECT id, code, name, type FROM locations WHERE id = $1',
                 [locationId],

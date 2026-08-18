@@ -5,13 +5,26 @@ import { summarizeCart } from './cart-store';
 import type { PosCartLine } from './types';
 
 const LINES: PosCartLine[] = [
-  { productId: 'p1', productName: 'Ayam Goreng', unitPrice: '15000.00', qty: '2', discount: '0.00' },
+  {
+    productId: 'p1',
+    productName: 'Ayam Goreng',
+    unitPrice: '15000.00',
+    qty: '2',
+    discount: '0.00',
+  },
   { productId: 'p2', productName: 'Es Teh', unitPrice: '5000.00', qty: '3', discount: '1000.00' },
 ];
 
 describe('Cart', () => {
   it('renders an empty state with no lines', () => {
-    render(<Cart lines={[]} summary={summarizeCart([], '0.00')} saleDiscount="0.00" onSaleDiscountChange={() => {}} />);
+    render(
+      <Cart
+        lines={[]}
+        summary={summarizeCart([], '0.00')}
+        saleDiscount="0.00"
+        onSaleDiscountChange={() => {}}
+      />,
+    );
     expect(screen.getByText('Keranjang masih kosong')).toBeInTheDocument();
   });
 
@@ -22,7 +35,9 @@ describe('Cart', () => {
     expect(summary.lines[1]!.lineTotal).toBe('14000.00');
     expect(summary.subtotal).toBe('44000.00');
 
-    render(<Cart lines={LINES} summary={summary} saleDiscount="0.00" onSaleDiscountChange={() => {}} />);
+    render(
+      <Cart lines={LINES} summary={summary} saleDiscount="0.00" onSaleDiscountChange={() => {}} />,
+    );
     expect(screen.getByText('Ayam Goreng')).toBeInTheDocument();
     expect(screen.getByText('Es Teh')).toBeInTheDocument();
     expect(screen.getByText('Rp30.000')).toBeInTheDocument();
@@ -38,7 +53,14 @@ describe('Cart', () => {
 
   it('shows the grand total, not a per-line sum a screen might compute independently', () => {
     const summary = summarizeCart(LINES, '4000.00');
-    render(<Cart lines={LINES} summary={summary} saleDiscount="4000.00" onSaleDiscountChange={() => {}} />);
+    render(
+      <Cart
+        lines={LINES}
+        summary={summary}
+        saleDiscount="4000.00"
+        onSaleDiscountChange={() => {}}
+      />,
+    );
     expect(summary.total).toBe('40000.00');
     expect(screen.getByText('Rp40.000')).toBeInTheDocument();
   });

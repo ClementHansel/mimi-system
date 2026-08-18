@@ -12,12 +12,22 @@ import { allowedStorageTypesForShipment, type ShipmentTypeKey } from './lib/truc
  * separate ambient truck (dry goods only) — never rendered as a bare status
  * word, always paired with the icon + which goods classes ride it.
  */
-export function TruckTypeBadge({ shipmentType, size = 'md' }: { shipmentType: ShipmentTypeKey; size?: 'sm' | 'md' }) {
+export function TruckTypeBadge({
+  shipmentType,
+  size = 'md',
+}: {
+  shipmentType: ShipmentTypeKey;
+  size?: 'sm' | 'md';
+}) {
   const { t } = useI18n();
   const isChiller = shipmentType === 'frozen';
   return (
     <Badge variant={isChiller ? 'info' : 'default'} size={size}>
-      {isChiller ? <Snowflake className="size-3.5" aria-hidden /> : <Package className="size-3.5" aria-hidden />}
+      {isChiller ? (
+        <Snowflake className="size-3.5" aria-hidden />
+      ) : (
+        <Package className="size-3.5" aria-hidden />
+      )}
       {isChiller ? t('delivery.truckChiller') : t('delivery.truckDry')}
     </Badge>
   );

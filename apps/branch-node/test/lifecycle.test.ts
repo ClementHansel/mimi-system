@@ -107,7 +107,9 @@ describe('branch-node lifecycle (G2 harness, SIMULATE=true)', () => {
   it('discovers synthetic devices in SIMULATE mode and reports them to the cloud', async () => {
     await startNode();
     await waitUntil(() => fakeCloud.discoveryReportsReceived.length >= 1);
-    const report = fakeCloud.discoveryReportsReceived[0]!.payload as { devices: { ipAddress: string }[] };
+    const report = fakeCloud.discoveryReportsReceived[0]!.payload as {
+      devices: { ipAddress: string }[];
+    };
     expect(report.devices.length).toBeGreaterThanOrEqual(2); // simulatedDevices(): one printer, one router
 
     const discovered = await store.listDiscoveredDevices();
@@ -122,9 +124,16 @@ describe('branch-node lifecycle (G2 harness, SIMULATE=true)', () => {
     const port = engine.getLanServerPort()!;
 
     const health = await fetchJson<Record<string, unknown>>(`http://localhost:${port}/health`);
-    expect(health).toMatchObject({ status: 'ok', service: 'branch-node', simulate: true, cloudConnected: true });
+    expect(health).toMatchObject({
+      status: 'ok',
+      service: 'branch-node',
+      simulate: true,
+      cloudConnected: true,
+    });
 
-    const syncHealth = await fetchJson<Record<string, unknown>>(`http://localhost:${port}/sync/v1/health`);
+    const syncHealth = await fetchJson<Record<string, unknown>>(
+      `http://localhost:${port}/sync/v1/health`,
+    );
     expect(syncHealth).toMatchObject({ ok: true, protocolV: 1, tier: 'node' });
   });
 
@@ -204,7 +213,9 @@ describe('branch-node lifecycle (G2 harness, SIMULATE=true)', () => {
 
     // The pushed sale is also visible to a second LAN device polling the node's own pull endpoint
     // (intra-outlet visibility, SYNC-PROTOCOL §1.4 whitelist).
-    const pullResult = await fetchJson<PullResultWire>(`http://localhost:${port}/sync/v1/pull?cursor=0&limit=10`);
+    const pullResult = await fetchJson<PullResultWire>(
+      `http://localhost:${port}/sync/v1/pull?cursor=0&limit=10`,
+    );
     expect(pullResult.events.some((e) => e.eventId === event.eventId)).toBe(true);
   });
 
@@ -220,7 +231,11 @@ describe('branch-node lifecycle (G2 harness, SIMULATE=true)', () => {
       entity: 'sales',
       entityId: randomUUID(),
       op: 'completed',
-      payload: { v: 1, data: {}, meta: { actorUserId: randomUUID(), actorRole: 'kasir', appVersion: '1.0.0' } },
+      payload: {
+        v: 1,
+        data: {},
+        meta: { actorUserId: randomUUID(), actorRole: 'kasir', appVersion: '1.0.0' },
+      },
       clientSeq: '1',
       occurredAt: new Date().toISOString(),
       receivedAt: new Date().toISOString(),
@@ -233,11 +248,18 @@ describe('branch-node lifecycle (G2 harness, SIMULATE=true)', () => {
     const ack = await fetchJson<PushAckWire>(`http://localhost:${port}/sync/v1/push`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ batchId: randomUUID(), sentAt: new Date().toISOString(), events: [wrongLocationEvent] }),
+      body: JSON.stringify({
+        batchId: randomUUID(),
+        sentAt: new Date().toISOString(),
+        events: [wrongLocationEvent],
+      }),
     });
 
     expect(ack.rejected).toHaveLength(1);
-    expect(ack.rejected[0]).toMatchObject({ eventId: wrongLocationEvent.eventId, code: 'authority_violation' });
+    expect(ack.rejected[0]).toMatchObject({
+      eventId: wrongLocationEvent.eventId,
+      code: 'authority_violation',
+    });
   });
 
   it('rejects a structurally malformed envelope, but never on business/authority grounds (§3.4: nodes check rule 1-lite + 3 only)', async () => {
@@ -252,7 +274,11 @@ describe('branch-node lifecycle (G2 harness, SIMULATE=true)', () => {
       entity: 'sales',
       entityId: randomUUID(),
       op: 'completed',
-      payload: { v: 1, data: {}, meta: { actorUserId: randomUUID(), actorRole: 'kasir', appVersion: '1.0.0' } },
+      payload: {
+        v: 1,
+        data: {},
+        meta: { actorUserId: randomUUID(), actorRole: 'kasir', appVersion: '1.0.0' },
+      },
       clientSeq: undefined, // missing — structurally broken, not a business-authority question
       occurredAt: new Date().toISOString(),
       actorUserId: randomUUID(),
@@ -262,19 +288,34 @@ describe('branch-node lifecycle (G2 harness, SIMULATE=true)', () => {
     const ack = await fetchJson<PushAckWire>(`http://localhost:${port}/sync/v1/push`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ batchId: randomUUID(), sentAt: new Date().toISOString(), events: [malformedEvent] }),
+      body: JSON.stringify({
+        batchId: randomUUID(),
+        sentAt: new Date().toISOString(),
+        events: [malformedEvent],
+      }),
     });
 
-    expect(ack.rejected).toEqual([{ eventId: malformedEvent.eventId, code: 'malformed', detail: expect.any(String) }]);
+    expect(ack.rejected).toEqual([
+      { eventId: malformedEvent.eventId, code: 'malformed', detail: expect.any(String) },
+    ]);
 
     // A future/unrecognized (entity, op) this node's own `@mimi/sync-protocol` copy has never heard of —
     // e.g. from a newer device that shipped after this node's last fleet update — must NOT be rejected
     // locally (that call belongs to the cloud alone, per §3.4's closing note).
-    const futureEntityEvent = { ...malformedEvent, clientSeq: '1', entity: 'some_future_entity_v99', op: 'did_a_new_thing' };
+    const futureEntityEvent = {
+      ...malformedEvent,
+      clientSeq: '1',
+      entity: 'some_future_entity_v99',
+      op: 'did_a_new_thing',
+    };
     const ack2 = await fetchJson<PushAckWire>(`http://localhost:${port}/sync/v1/push`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ batchId: randomUUID(), sentAt: new Date().toISOString(), events: [futureEntityEvent] }),
+      body: JSON.stringify({
+        batchId: randomUUID(),
+        sentAt: new Date().toISOString(),
+        events: [futureEntityEvent],
+      }),
     });
     expect(ack2.rejected).toEqual([]);
     expect(ack2.acceptedThrough[futureEntityEvent.originDeviceId]).toBe(1);

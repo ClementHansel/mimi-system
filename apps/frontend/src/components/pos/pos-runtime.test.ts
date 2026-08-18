@@ -22,11 +22,25 @@ vi.mock('@/lib/api', async () => {
 
 const mockedGet = vi.mocked(api.get);
 
-function setUser(locations: { id: string; code: string; name: string; type: 'warehouse' | 'outlet'; city: string }[]) {
+function setUser(
+  locations: {
+    id: string;
+    code: string;
+    name: string;
+    type: 'warehouse' | 'outlet';
+    city: string;
+  }[],
+) {
   useSessionStore.setState({
     user: {
-      id: 'u1', username: 'owner1', name: 'Owner Satu', roleKey: 'owner',
-      permissions: ['location.read'], locations, employeeId: null, mustSetPin: false,
+      id: 'u1',
+      username: 'owner1',
+      name: 'Owner Satu',
+      roleKey: 'owner',
+      permissions: ['location.read'],
+      locations,
+      employeeId: null,
+      mustSetPin: false,
     },
   });
 }
@@ -39,7 +53,9 @@ describe('usePosLocation', () => {
   });
 
   it('behaves exactly as today when the user has exactly one assigned location: ready immediately, not changeable, no fetch', () => {
-    setUser([{ id: 'loc1', code: 'OUT1', name: 'Outlet Cempaka', type: 'outlet', city: 'Denpasar' }]);
+    setUser([
+      { id: 'loc1', code: 'OUT1', name: 'Outlet Cempaka', type: 'outlet', city: 'Denpasar' },
+    ]);
 
     const { result } = renderHook(() => usePosLocation());
 
@@ -77,19 +93,31 @@ describe('usePosLocation', () => {
       if (result.current.status === 'choose') result.current.select('out2');
     });
 
-    expect(result.current).toMatchObject({ status: 'ready', location: { id: 'out2', name: 'Outlet Sanur' }, canChange: true });
+    expect(result.current).toMatchObject({
+      status: 'ready',
+      location: { id: 'out2', name: 'Outlet Sanur' },
+      canChange: true,
+    });
     expect(window.localStorage.getItem('pos.selectedOutletId')).toBe('out2');
   });
 
   it('persists the chosen outlet across remounts (reload) instead of re-prompting', async () => {
     setUser([]);
     window.localStorage.setItem('pos.selectedOutletId', 'out1');
-    mockedGet.mockResolvedValue({ rows: [{ id: 'out1', name: 'Outlet Cempaka' }, { id: 'out2', name: 'Outlet Sanur' }] });
+    mockedGet.mockResolvedValue({
+      rows: [
+        { id: 'out1', name: 'Outlet Cempaka' },
+        { id: 'out2', name: 'Outlet Sanur' },
+      ],
+    });
 
     const { result } = renderHook(() => usePosLocation());
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(result.current).toMatchObject({ status: 'ready', location: { id: 'out1', name: 'Outlet Cempaka' } });
+    expect(result.current).toMatchObject({
+      status: 'ready',
+      location: { id: 'out1', name: 'Outlet Cempaka' },
+    });
   });
 
   it('surfaces a terminal, retryable error instead of an indefinite spinner when the outlet list fails to load', async () => {

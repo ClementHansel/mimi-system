@@ -22,7 +22,11 @@ const DUPLICATE_KEY_SQLSTATE = '23505';
 const MAX_ATTEMPTS = 5;
 
 function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { code?: string }).code === DUPLICATE_KEY_SQLSTATE;
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: string }).code === DUPLICATE_KEY_SQLSTATE
+  );
 }
 
 async function withNumberRetry(
@@ -44,7 +48,9 @@ async function withNumberRetry(
       lastErr = err;
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error('Failed to allocate a unique document number after retries');
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error('Failed to allocate a unique document number after retries');
 }
 
 /**
@@ -58,9 +64,15 @@ export async function allocateShiftNumber(
   deviceCode: string,
   insertWithNumber: (shiftNumber: string) => Promise<void>,
 ): Promise<string> {
-  const countRes = await client.query<{ count: string }>(`SELECT COUNT(*)::int AS count FROM pos_shifts`);
+  const countRes = await client.query<{ count: string }>(
+    `SELECT COUNT(*)::int AS count FROM pos_shifts`,
+  );
   const base = Number.parseInt(countRes.rows[0]?.count ?? '0', 10);
-  return withNumberRetry(client, (attempt) => formatShiftNumber(locationCode, deviceCode, base + 1 + attempt), insertWithNumber);
+  return withNumberRetry(
+    client,
+    (attempt) => formatShiftNumber(locationCode, deviceCode, base + 1 + attempt),
+    insertWithNumber,
+  );
 }
 
 export async function allocateReceiptNumber(
@@ -69,7 +81,13 @@ export async function allocateReceiptNumber(
   deviceCode: string,
   insertWithNumber: (receiptNumber: string) => Promise<void>,
 ): Promise<string> {
-  const countRes = await client.query<{ count: string }>(`SELECT COUNT(*)::int AS count FROM sales`);
+  const countRes = await client.query<{ count: string }>(
+    `SELECT COUNT(*)::int AS count FROM sales`,
+  );
   const base = Number.parseInt(countRes.rows[0]?.count ?? '0', 10);
-  return withNumberRetry(client, (attempt) => formatDeviceDocNumber(locationCode, deviceCode, base + 1 + attempt), insertWithNumber);
+  return withNumberRetry(
+    client,
+    (attempt) => formatDeviceDocNumber(locationCode, deviceCode, base + 1 + attempt),
+    insertWithNumber,
+  );
 }

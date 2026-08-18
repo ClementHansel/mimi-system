@@ -59,7 +59,8 @@ export class OverviewService {
     const prevFrom = addDays(prevTo, -(lengthDays - 1));
     const previous = await this.periodAgg(client, locationScope, prevFrom, prevTo);
 
-    const avgTicket = current.txCount > 0 ? divMoney(current.revenue, `${current.txCount}.00`) : ZERO_MONEY;
+    const avgTicket =
+      current.txCount > 0 ? divMoney(current.revenue, `${current.txCount}.00`) : ZERO_MONEY;
 
     return {
       revenue: current.revenue,

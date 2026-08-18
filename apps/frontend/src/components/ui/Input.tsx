@@ -22,7 +22,19 @@ const SIZE_CLASSES: Record<NonNullable<InputProps['size']>, string> = {
 };
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, error, hint, leftIcon, rightIcon, size = 'md', required, id, className, wrapperClassName, ...rest },
+  {
+    label,
+    error,
+    hint,
+    leftIcon,
+    rightIcon,
+    size = 'md',
+    required,
+    id,
+    className,
+    wrapperClassName,
+    ...rest
+  },
   ref,
 ) {
   const autoId = useId();
@@ -39,7 +51,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         </label>
       )}
       <div className="relative flex items-center">
-        {leftIcon && <span className="pointer-events-none absolute left-3 text-text-muted">{leftIcon}</span>}
+        {leftIcon && (
+          <span className="pointer-events-none absolute left-3 text-text-muted">{leftIcon}</span>
+        )}
         <input
           ref={ref}
           id={inputId}
@@ -58,12 +72,18 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           )}
           {...rest}
         />
-        {rightIcon && <span className="pointer-events-none absolute right-3 text-text-muted">{rightIcon}</span>}
+        {rightIcon && (
+          <span className="pointer-events-none absolute right-3 text-text-muted">{rightIcon}</span>
+        )}
       </div>
       {error ? (
-        <p id={errorId} className="text-sm text-danger-600">{error}</p>
+        <p id={errorId} className="text-sm text-danger-600">
+          {error}
+        </p>
       ) : hint ? (
-        <p id={hintId} className="text-sm text-text-muted">{hint}</p>
+        <p id={hintId} className="text-sm text-text-muted">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

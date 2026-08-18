@@ -25,7 +25,9 @@ export function groupByOrigin<T extends SequencedEvent>(events: readonly T[]): M
 
 /** Ascending by `client_seq` — the order the upstream must apply one origin's events in (§4.4). */
 export function sortByClientSeq<T extends SequencedEvent>(events: readonly T[]): T[] {
-  return [...events].sort((a, b) => (a.clientSeq < b.clientSeq ? -1 : a.clientSeq > b.clientSeq ? 1 : 0));
+  return [...events].sort((a, b) =>
+    a.clientSeq < b.clientSeq ? -1 : a.clientSeq > b.clientSeq ? 1 : 0,
+  );
 }
 
 export interface OriginBatchResult<T extends SequencedEvent> {
@@ -94,11 +96,23 @@ export function processOriginBatch<T extends SequencedEvent>(
     }
   }
 
-  return { originDeviceId, duplicates, applied, newHighWater: highWater, gapAt, parked, seqConflicts };
+  return {
+    originDeviceId,
+    duplicates,
+    applied,
+    newHighWater: highWater,
+    gapAt,
+    parked,
+    seqConflicts,
+  };
 }
 
 /** `true` past 60 minutes of a persisting gap (§4.4/§5.5 R9 — "possible data loss / cloned store"). */
-export function isStaleGap(gapDetectedAtMs: number, nowMs: number, thresholdMs = 60 * 60 * 1000): boolean {
+export function isStaleGap(
+  gapDetectedAtMs: number,
+  nowMs: number,
+  thresholdMs = 60 * 60 * 1000,
+): boolean {
   return nowMs - gapDetectedAtMs > thresholdMs;
 }
 
@@ -120,7 +134,9 @@ export const MAX_BATCH_BYTES = 1_000_000; // 1 MB serialized
  * estimate is immaterial.
  */
 export function estimateEventBytes(event: unknown): number {
-  return JSON.stringify(event, (_key, value) => (typeof value === 'bigint' ? value.toString() : value)).length;
+  return JSON.stringify(event, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value,
+  ).length;
 }
 
 /**
@@ -157,7 +173,11 @@ export function assembleBatches<T>(
 // ── Retry backoff (§4.3) ───────────────────────────────────────────────────────
 
 /** `1s → 2s → 4s → … capped at 5 min`, ±20% jitter. `attempt` is 0-based. `jitterFn` defaults to a mid-range deterministic value for pure testability. */
-export function retryBackoffMs(attempt: number, jitterFn: () => number = () => 0.5, capMs = 5 * 60 * 1000): number {
+export function retryBackoffMs(
+  attempt: number,
+  jitterFn: () => number = () => 0.5,
+  capMs = 5 * 60 * 1000,
+): number {
   if (attempt < 0) throw new RangeError(`attempt must be >= 0, got ${attempt}`);
   const base = Math.min(1000 * 2 ** attempt, capMs);
   const jitter = jitterFn(); // expected in [0, 1)

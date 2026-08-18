@@ -33,7 +33,12 @@ describe('WhatsAppChannelService', () => {
       outbox,
     );
 
-    const result = await service.send('628123456789', 'low_stock', { itemName: 'Ayam' }, 'Stok Ayam menipis');
+    const result = await service.send(
+      '628123456789',
+      'low_stock',
+      { itemName: 'Ayam' },
+      'Stok Ayam menipis',
+    );
 
     expect(service.isEnabled()).toBe(false);
     expect(result.success).toBe(false);
@@ -62,7 +67,12 @@ describe('WhatsAppChannelService', () => {
       outbox,
     );
 
-    const result = await service.send('628123456789', 'low_stock', { itemName: 'Ayam' }, 'Stok Ayam menipis');
+    const result = await service.send(
+      '628123456789',
+      'low_stock',
+      { itemName: 'Ayam' },
+      'Stok Ayam menipis',
+    );
 
     expect(result.success).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -75,7 +85,9 @@ describe('WhatsAppChannelService', () => {
   });
 
   it('WA_ENABLED=true but the webhook call fails: marks the outbox row failed', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }) as never;
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }) as never;
 
     const outbox = {
       create: vi.fn().mockResolvedValue('outbox-3'),

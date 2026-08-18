@@ -67,7 +67,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
-      caches.keys().then((keys) => Promise.all(keys.filter((k) => !ALL_CACHES.includes(k)).map((k) => caches.delete(k)))),
+      caches
+        .keys()
+        .then((keys) =>
+          Promise.all(keys.filter((k) => !ALL_CACHES.includes(k)).map((k) => caches.delete(k))),
+        ),
       self.clients.claim(),
     ]),
   );
@@ -101,7 +105,14 @@ async function staleWhileRevalidate(request, cacheName) {
       return response;
     })
     .catch(() => undefined);
-  return cached ?? (await network) ?? new Response(JSON.stringify({ offline: true }), { status: 503, headers: { 'Content-Type': 'application/json' } });
+  return (
+    cached ??
+    (await network) ??
+    new Response(JSON.stringify({ offline: true }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  );
 }
 
 /** Network-first for navigations; falls back to the cached shell so an offline reload still renders the app instead of the browser's own error page. */

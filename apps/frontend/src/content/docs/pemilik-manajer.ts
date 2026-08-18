@@ -24,8 +24,7 @@ export const pemilikManajerManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Setiap tampilan Dasbor selalu dibuka dengan pita cakupan yang jelas: **"Seluruh Perusahaan (Semua Outlet)"** untuk Pemilik/Manajer, dengan keterangan "Angka ini mencakup semua outlet — bukan satu outlet saja." Tidak ada dropdown filter outlet terpisah — cakupannya memang selalu seluruh perusahaan untuk peran ini.',
+          text: 'Setiap tampilan Dasbor selalu dibuka dengan pita cakupan yang jelas: **"Seluruh Perusahaan (Semua Outlet)"** untuk Pemilik/Manajer, dengan keterangan "Angka ini mencakup semua outlet — bukan satu outlet saja." Tidak ada dropdown filter outlet terpisah — cakupannya memang selalu seluruh perusahaan untuk peran ini.',
         },
         {
           type: 'p',
@@ -53,8 +52,7 @@ export const pemilikManajerManual: DocManual = {
         {
           type: 'callout',
           kind: 'note',
-          text:
-            'Laporan akuntansi (Neraca Saldo, Laba Rugi, Neraca, Nilai Stok) tidak ada di menu Dasbor — laporan-laporan ini ada di tab **Laporan** pada menu **Keuangan**. Lihat Panduan Keuangan §4 untuk rinciannya. Saat ini laporan hanya bisa dilihat di layar; belum ada tombol ekspor/unduh di aplikasi.',
+          text: 'Laporan akuntansi (Neraca Saldo, Laba Rugi, Neraca, Nilai Stok) tidak ada di menu Dasbor — laporan-laporan ini ada di tab **Laporan** pada menu **Keuangan**. Lihat Panduan Keuangan §4 untuk rinciannya. Saat ini laporan hanya bisa dilihat di layar; belum ada tombol ekspor/unduh di aplikasi.',
         },
       ],
     },
@@ -83,19 +81,16 @@ export const pemilikManajerManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Buka **Persetujuan Menunggu** (`/approvals`) — daftar ini sudah disaring server sehingga Anda hanya melihat dokumen yang memang wewenang Anda: Permintaan Barang, Permintaan Pembelian, Pesanan Pembelian, Stock Opname, Retur, Proses Payroll, Pengajuan Cuti, Pinjaman Karyawan, Selisih Kas, dan Waste.',
+          text: 'Buka **Persetujuan Menunggu** (`/approvals`) — daftar ini sudah disaring server sehingga Anda hanya melihat dokumen yang memang wewenang Anda: Permintaan Barang, Permintaan Pembelian, Pesanan Pembelian, Stock Opname, Retur, Proses Payroll, Pengajuan Cuti, Pinjaman Karyawan, Selisih Kas, dan Waste.',
         },
         {
           type: 'p',
-          text:
-            'Menolak selalu wajib mengisi **Alasan Penolakan** sebelum **Konfirmasi Tolak** aktif. Menyetujui butuh Catatan opsional — kecuali untuk **Selisih Kas**, di mana catatan wajib diisi bahkan untuk menyetujui.',
+          text: 'Menolak selalu wajib mengisi **Alasan Penolakan** sebelum **Konfirmasi Tolak** aktif. Menyetujui butuh Catatan opsional — kecuali untuk **Selisih Kas**, di mana catatan wajib diisi bahkan untuk menyetujui.',
         },
         {
           type: 'callout',
           kind: 'note',
-          text:
-            'Dua jenis dokumen tidak bisa disetujui dari layar ini: **Void/Refund** (persetujuannya memakai PIN di modul Kasir/POS) dan **Verifikasi Pembayaran** (keputusannya menyatu dengan aksi "Bayar" di modul Keuangan). Untuk keduanya, layar ini hanya menyediakan tombol Tolak.',
+          text: 'Dua jenis dokumen tidak bisa disetujui dari layar ini: **Void/Refund** (persetujuannya memakai PIN di modul Kasir/POS) dan **Verifikasi Pembayaran** (keputusannya menyatu dengan aksi "Bayar" di modul Keuangan). Untuk keduanya, layar ini hanya menyediakan tombol Tolak.',
         },
       ],
     },

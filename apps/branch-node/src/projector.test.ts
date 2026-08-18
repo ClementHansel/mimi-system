@@ -14,7 +14,11 @@ function makeEvent(overrides: Partial<SyncEventEnvelope>): SyncEventEnvelope {
     entity: SyncEntity.SALES,
     entityId: 'sale-1' as UUID,
     op: 'completed',
-    payload: { v: 1, data: {}, meta: { actorUserId: 'user-1' as UUID, actorRole: 'kasir', appVersion: '1.0.0' } },
+    payload: {
+      v: 1,
+      data: {},
+      meta: { actorUserId: 'user-1' as UUID, actorRole: 'kasir', appVersion: '1.0.0' },
+    },
     clientSeq: 1n,
     occurredAt: '2026-08-17T01:00:00.000Z',
     actorUserId: 'user-1' as UUID,
@@ -31,13 +35,27 @@ describe('deriveMovements', () => {
       op: 'received',
       payload: {
         v: 1,
-        data: { lines: [{ storageAreaId: 'area-1', itemId: 'item-1', qtyReceived: '10.000', unitCost: '5000.00' }] },
+        data: {
+          lines: [
+            {
+              storageAreaId: 'area-1',
+              itemId: 'item-1',
+              qtyReceived: '10.000',
+              unitCost: '5000.00',
+            },
+          ],
+        },
         meta: { actorUserId: 'user-1' as UUID, actorRole: 'leader_outlet', appVersion: '1.0.0' },
       },
     });
     const movements = deriveMovements(event);
     expect(movements).toHaveLength(1);
-    expect(movements[0]).toMatchObject({ movementType: 'transfer_in', qty: '10.000', unitCost: '5000.00', itemId: 'item-1' });
+    expect(movements[0]).toMatchObject({
+      movementType: 'transfer_in',
+      qty: '10.000',
+      unitCost: '5000.00',
+      itemId: 'item-1',
+    });
   });
 
   it('derives a waste_out movement from waste_records.approved', () => {
@@ -47,13 +65,19 @@ describe('deriveMovements', () => {
       op: 'approved',
       payload: {
         v: 1,
-        data: { lines: [{ storage_area_id: 'area-1', item_id: 'item-2', qty: 2, unit_cost: 3000 }] },
+        data: {
+          lines: [{ storage_area_id: 'area-1', item_id: 'item-2', qty: 2, unit_cost: 3000 }],
+        },
         meta: { actorUserId: 'user-1' as UUID, actorRole: 'supervisor', appVersion: '1.0.0' },
       },
     });
     const movements = deriveMovements(event);
     expect(movements).toHaveLength(1);
-    expect(movements[0]).toMatchObject({ movementType: 'waste_out', qty: '2.000', unitCost: '3000.00' });
+    expect(movements[0]).toMatchObject({
+      movementType: 'waste_out',
+      qty: '2.000',
+      unitCost: '3000.00',
+    });
   });
 
   it('derives an adjustment movement from stock_adjustments.posted', () => {
@@ -63,7 +87,13 @@ describe('deriveMovements', () => {
       op: 'posted',
       payload: {
         v: 1,
-        data: { storageAreaId: 'area-1', itemId: 'item-1', qty: '1.500', unitCost: '5000.00', direction: 'shortage' },
+        data: {
+          storageAreaId: 'area-1',
+          itemId: 'item-1',
+          qty: '1.500',
+          unitCost: '5000.00',
+          direction: 'shortage',
+        },
         meta: { actorUserId: 'user-1' as UUID, actorRole: 'kepala_gudang', appVersion: '1.0.0' },
       },
     });
@@ -75,7 +105,11 @@ describe('deriveMovements', () => {
     const event = makeEvent({
       entity: SyncEntity.SJ_DROPS,
       op: 'received',
-      payload: { v: 1, data: { somethingElse: true }, meta: { actorUserId: 'user-1' as UUID, actorRole: 'x', appVersion: '1.0.0' } },
+      payload: {
+        v: 1,
+        data: { somethingElse: true },
+        meta: { actorUserId: 'user-1' as UUID, actorRole: 'x', appVersion: '1.0.0' },
+      },
     });
     expect(() => deriveMovements(event)).not.toThrow();
     expect(deriveMovements(event)).toEqual([]);
@@ -95,10 +129,16 @@ describe('applyWhitelistedEvent', () => {
       entityId: 'prod-1' as UUID,
       op: 'created',
       locationId: null,
-      payload: { v: 1, data: { name: 'Ayam Geprek' }, meta: { actorUserId: 'user-1' as UUID, actorRole: 'admin', appVersion: '1.0.0' } },
+      payload: {
+        v: 1,
+        data: { name: 'Ayam Geprek' },
+        meta: { actorUserId: 'user-1' as UUID, actorRole: 'admin', appVersion: '1.0.0' },
+      },
     });
     await applyWhitelistedEvent(store, event);
-    expect(await store.getMasterData('products', 'prod-1' as UUID)).toEqual({ name: 'Ayam Geprek' });
+    expect(await store.getMasterData('products', 'prod-1' as UUID)).toEqual({
+      name: 'Ayam Geprek',
+    });
   });
 
   it('projects a whitelisted F/B entity for LAN fan-out visibility', async () => {
@@ -107,7 +147,11 @@ describe('applyWhitelistedEvent', () => {
       entity: SyncEntity.POS_SHIFTS,
       entityId: 'shift-1' as UUID,
       op: 'opened',
-      payload: { v: 1, data: { openingFloat: '500000.00' }, meta: { actorUserId: 'user-1' as UUID, actorRole: 'kasir', appVersion: '1.0.0' } },
+      payload: {
+        v: 1,
+        data: { openingFloat: '500000.00' },
+        meta: { actorUserId: 'user-1' as UUID, actorRole: 'kasir', appVersion: '1.0.0' },
+      },
     });
     await applyWhitelistedEvent(store, event);
     const rows = await store.listProjections('pos_shifts', 'loc-1' as UUID);
@@ -130,12 +174,18 @@ describe('applyWhitelistedEvent', () => {
       op: 'recorded',
       payload: {
         v: 1,
-        data: { lines: [{ storageAreaId: 'area-1', itemId: 'item-9', qty: '4.000', unitCost: '1000.00' }] },
+        data: {
+          lines: [{ storageAreaId: 'area-1', itemId: 'item-9', qty: '4.000', unitCost: '1000.00' }],
+        },
         meta: { actorUserId: 'user-1' as UUID, actorRole: 'leader_outlet', appVersion: '1.0.0' },
       },
     });
     await applyWhitelistedEvent(store, event);
-    const balance = await store.getBalance({ locationId: 'loc-1' as UUID, storageAreaId: 'area-1' as UUID, itemId: 'item-9' as UUID });
+    const balance = await store.getBalance({
+      locationId: 'loc-1' as UUID,
+      storageAreaId: 'area-1' as UUID,
+      itemId: 'item-9' as UUID,
+    });
     expect(balance).toBe('4.000');
   });
 });

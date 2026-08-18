@@ -36,7 +36,9 @@ import {
 } from './test-support/live-db';
 
 /** Minimal `ConfigService` stand-in — every constructor below only calls `.get(key, default)`; no NestJS DI container is spun up (matches `modules/hr/leaves/leaves.integration.spec.ts`'s manual-construction pattern). */
-const stubConfig = { get: (key: string, def?: unknown) => process.env[key] ?? def } as unknown as ConfigService;
+const stubConfig = {
+  get: (key: string, def?: unknown) => process.env[key] ?? def,
+} as unknown as ConfigService;
 
 /**
  * Full asset lifecycle proof against the LIVE database (this ticket's
@@ -84,7 +86,10 @@ describe('asset lifecycle (integration, live Postgres)', () => {
       await pool.query('SELECT 1');
 
       const eventsRepo = new SyncEventsRepository(pool);
-      const conflictDetector = new ConflictDetectorService(eventsRepo, new SyncConflictsRepository(pool));
+      const conflictDetector = new ConflictDetectorService(
+        eventsRepo,
+        new SyncConflictsRepository(pool),
+      );
       const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
 
       const outbox = new NotificationOutboxRepository(pool);
@@ -122,7 +127,11 @@ describe('asset lifecycle (integration, live Postgres)', () => {
     if (!dbAvailable || !assetId) return;
     const supervisor = fixtures.usersByRole[RoleKey.SUPERVISOR]!;
     const owner = fixtures.usersByRole[RoleKey.OWNER]!;
-    const spvCtx = { role: RoleKey.SUPERVISOR, userId: supervisor, locationIds: [fixtures.outletId] };
+    const spvCtx = {
+      role: RoleKey.SUPERVISOR,
+      userId: supervisor,
+      locationIds: [fixtures.outletId],
+    };
     const ownerCtx = { role: RoleKey.OWNER, userId: owner, locationIds: [] };
     const today = await serverToday(); // anchor to the DB's own CURRENT_DATE — see `serverToday()`'s doc comment.
 
@@ -133,8 +142,19 @@ describe('asset lifecycle (integration, live Postgres)', () => {
         supervisor,
         fixtures.outletId,
         assetId!,
-        { name: 'Ganti Oli', intervalType: 'days', intervalValue: 90, nextDueAt: today, reminderDaysBefore: 7 },
-        { sub: supervisor, username: 'spv', roleKey: RoleKey.SUPERVISOR, locationIds: [fixtures.outletId] },
+        {
+          name: 'Ganti Oli',
+          intervalType: 'days',
+          intervalValue: 90,
+          nextDueAt: today,
+          reminderDaysBefore: 7,
+        },
+        {
+          sub: supervisor,
+          username: 'spv',
+          roleKey: RoleKey.SUPERVISOR,
+          locationIds: [fixtures.outletId],
+        },
         [fixtures.outletId],
       ),
     );
@@ -159,13 +179,25 @@ describe('asset lifecycle (integration, live Postgres)', () => {
     // Re-running the sweep must NOT create a second job for the same cycle (idempotent).
     await sweep.runSweep();
     const jobRowAfterSecondSweep = await withRollbackAs(ownerCtx, (client) =>
-      client.query<{ id: string }>(`SELECT id FROM maintenance_jobs WHERE schedule_id = $1`, [scheduleId]),
+      client.query<{ id: string }>(`SELECT id FROM maintenance_jobs WHERE schedule_id = $1`, [
+        scheduleId,
+      ]),
     );
     expect(jobRowAfterSecondSweep.rows.length).toBe(1);
 
     // ── 3. start the job ────────────────────────────────────────────────
     const started = await withRollbackAs(spvCtx, (client) =>
-      jobsService.start(client, jobId!, { sub: supervisor, username: 'spv', roleKey: RoleKey.SUPERVISOR, locationIds: [fixtures.outletId] }, [fixtures.outletId]),
+      jobsService.start(
+        client,
+        jobId!,
+        {
+          sub: supervisor,
+          username: 'spv',
+          roleKey: RoleKey.SUPERVISOR,
+          locationIds: [fixtures.outletId],
+        },
+        [fixtures.outletId],
+      ),
     );
     expect(started.status).toBe('in_progress');
 
@@ -179,8 +211,19 @@ describe('asset lifecycle (integration, live Postgres)', () => {
         client,
         supervisor,
         jobId!,
-        { proofAttachmentIds: [att1, att2], cost: '150000.00', vendor: 'PT Servis Motor', conditionAfter: 'good', notes: 'Ganti oli selesai' },
-        { sub: supervisor, username: 'spv', roleKey: RoleKey.SUPERVISOR, locationIds: [fixtures.outletId] },
+        {
+          proofAttachmentIds: [att1, att2],
+          cost: '150000.00',
+          vendor: 'PT Servis Motor',
+          conditionAfter: 'good',
+          notes: 'Ganti oli selesai',
+        },
+        {
+          sub: supervisor,
+          username: 'spv',
+          roleKey: RoleKey.SUPERVISOR,
+          locationIds: [fixtures.outletId],
+        },
         [fixtures.outletId],
       ),
     );
@@ -198,11 +241,21 @@ describe('asset lifecycle (integration, live Postgres)', () => {
     const expectedNextDue = new Date(`${today}T00:00:00.000Z`);
     expectedNextDue.setUTCDate(expectedNextDue.getUTCDate() + 90);
     expect(pgDateToIso(scheduleAfter.rows[0]!.last_done_at)).toBe(today);
-    expect(pgDateToIso(scheduleAfter.rows[0]!.next_due_at)).toBe(expectedNextDue.toISOString().slice(0, 10));
+    expect(pgDateToIso(scheduleAfter.rows[0]!.next_due_at)).toBe(
+      expectedNextDue.toISOString().slice(0, 10),
+    );
 
     // service_history appended
     const historyRes = await withRollbackAs(ownerCtx, (client) =>
-      jobsService.history(client, fixtures.outletId, assetId!, 1, 10, { sub: owner, username: 'owner', roleKey: RoleKey.OWNER, locationIds: [] }, null),
+      jobsService.history(
+        client,
+        fixtures.outletId,
+        assetId!,
+        1,
+        10,
+        { sub: owner, username: 'owner', roleKey: RoleKey.OWNER, locationIds: [] },
+        null,
+      ),
     );
     expect(historyRes.total).toBe(1);
     expect(historyRes.rows[0]!.vendor).toBe('PT Servis Motor');
@@ -237,7 +290,12 @@ describe('asset lifecycle (integration, live Postgres)', () => {
 
     // ── 6. asset detail reflects the outcome: condition synced, no open jobs left, schedule visible ──
     const detail = await withRollbackAs(ownerCtx, (client) =>
-      assetsService.getById(client, assetId!, { sub: owner, username: 'owner', roleKey: RoleKey.OWNER, locationIds: [] }, null),
+      assetsService.getById(
+        client,
+        assetId!,
+        { sub: owner, username: 'owner', roleKey: RoleKey.OWNER, locationIds: [] },
+        null,
+      ),
     );
     expect(detail.condition).toBe('good'); // was seeded 'fair'; complete()'s conditionAfter synced it.
     expect(detail.openJobs.find((j) => j.id === jobId)).toBeUndefined(); // 'verified' is terminal, not open.

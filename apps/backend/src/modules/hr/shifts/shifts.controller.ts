@@ -12,21 +12,31 @@ export class ShiftsController {
 
   @Get('shifts')
   @RequirePermission('hr.shift.read')
-  async listShifts(@Req() req: RequestWithDbContext, @Query('locationId') locationId?: string): Promise<ShiftDto[]> {
+  async listShifts(
+    @Req() req: RequestWithDbContext,
+    @Query('locationId') locationId?: string,
+  ): Promise<ShiftDto[]> {
     return this.service.listShifts(req.dbClient!, locationId);
   }
 
   @Post('shifts')
   @RequirePermission('hr.shift.manage')
   @Audited({ module: 'hr', entityType: 'work_shifts', action: 'hr.shift.manage' })
-  async createShift(@Req() req: RequestWithDbContext, @Body() dto: CreateShiftDto): Promise<ShiftDto> {
+  async createShift(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: CreateShiftDto,
+  ): Promise<ShiftDto> {
     return this.service.createShift(req.dbClient!, req.user!.sub, dto);
   }
 
   @Patch('shifts/:id')
   @RequirePermission('hr.shift.manage')
   @Audited({ module: 'hr', entityType: 'work_shifts', action: 'hr.shift.manage' })
-  async updateShift(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: UpdateShiftDto): Promise<ShiftDto> {
+  async updateShift(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateShiftDto,
+  ): Promise<ShiftDto> {
     return this.service.updateShift(req.dbClient!, req.user!.sub, id, dto);
   }
 
@@ -45,7 +55,10 @@ export class ShiftsController {
   @Put('roster')
   @RequirePermission('hr.shift.manage')
   @Audited({ module: 'hr', entityType: 'shift_assignments', action: 'hr.shift.manage' })
-  async upsertRoster(@Req() req: RequestWithDbContext, @Body() dto: UpsertRosterDto): Promise<{ updated: number }> {
+  async upsertRoster(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: UpsertRosterDto,
+  ): Promise<{ updated: number }> {
     return this.service.upsertRoster(req.dbClient!, req.user!.sub, dto);
   }
 }

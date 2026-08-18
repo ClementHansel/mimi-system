@@ -44,15 +44,22 @@ export class DashboardGateway implements OnGatewayConnection {
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
-    const token = (client.handshake.auth?.token as string | undefined) ?? this.extractBearer(client);
+    const token =
+      (client.handshake.auth?.token as string | undefined) ?? this.extractBearer(client);
     if (!token) {
       client.disconnect(true);
       return;
     }
     try {
       const payload = this.tokens.verifyAccessToken(token);
-      const locationScope = await withSystemContext(this.pool, { role: SYSTEM_CENTRAL_ROLE }, (systemClient) =>
-        this.scope.resolveLocationIds(systemClient, { sub: payload.sub, roleKey: payload.roleKey }),
+      const locationScope = await withSystemContext(
+        this.pool,
+        { role: SYSTEM_CENTRAL_ROLE },
+        (systemClient) =>
+          this.scope.resolveLocationIds(systemClient, {
+            sub: payload.sub,
+            roleKey: payload.roleKey,
+          }),
       );
 
       if (locationScope === null) {
@@ -81,9 +88,13 @@ export class DashboardGateway implements OnGatewayConnection {
    */
   pushUpdate(scope: 'all' | string, payload: unknown): void {
     try {
-      this.server?.to(scope === 'all' ? 'dashboard:all' : `dashboard:${scope}`).emit('dashboard:update', payload);
+      this.server
+        ?.to(scope === 'all' ? 'dashboard:all' : `dashboard:${scope}`)
+        .emit('dashboard:update', payload);
     } catch (err) {
-      this.logger.warn(`Failed to push dashboard update for scope ${scope}: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(
+        `Failed to push dashboard update for scope ${scope}: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 }

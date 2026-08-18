@@ -9,7 +9,10 @@ function bytes(...values: number[]): Uint8Array {
 
 describe('formatUuidV7', () => {
   it('produces a string matching the UUIDv7 shape (version 7, RFC 9562 variant)', () => {
-    const id = formatUuidV7(Date.parse('2026-08-17T00:00:00.000Z'), bytes(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+    const id = formatUuidV7(
+      Date.parse('2026-08-17T00:00:00.000Z'),
+      bytes(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+    );
     expect(isUuidV7(id)).toBe(true);
     expect(id[14]).toBe('7'); // version nibble
     expect(['8', '9', 'a', 'b']).toContain(id[19]!.toLowerCase()); // variant bits

@@ -114,7 +114,8 @@ export class LocationService {
 
   async getById(client: PoolClient, id: string): Promise<Location> {
     const res = await client.query<LocationRow>(`${this.baseSelect} WHERE l.id = $1`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Location not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Location not found' });
     return this.map(res.rows[0]);
   }
 
@@ -150,7 +151,12 @@ export class LocationService {
     });
   }
 
-  async update(client: PoolClient, id: string, dto: UpdateLocationDto, actorUserId: string): Promise<Location> {
+  async update(
+    client: PoolClient,
+    id: string,
+    dto: UpdateLocationDto,
+    actorUserId: string,
+  ): Promise<Location> {
     return withWrite(client, async () => {
       const sets: string[] = [];
       const params: unknown[] = [];
@@ -170,8 +176,12 @@ export class LocationService {
 
       if (sets.length > 0) {
         params.push(id);
-        const res = await client.query(`UPDATE locations SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
-        if (res.rowCount === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Location not found' });
+        const res = await client.query(
+          `UPDATE locations SET ${sets.join(', ')} WHERE id = $${params.length}`,
+          params,
+        );
+        if (res.rowCount === 0)
+          throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Location not found' });
       } else {
         await this.getById(client, id); // 404 if missing, otherwise no-op update
       }
@@ -189,10 +199,15 @@ export class LocationService {
     });
   }
 
-  async deactivate(client: PoolClient, id: string, actorUserId: string): Promise<{ id: string; deactivated: true }> {
+  async deactivate(
+    client: PoolClient,
+    id: string,
+    actorUserId: string,
+  ): Promise<{ id: string; deactivated: true }> {
     return withWrite(client, async () => {
       const res = await client.query(`UPDATE locations SET is_active = false WHERE id = $1`, [id]);
-      if (res.rowCount === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Location not found' });
+      if (res.rowCount === 0)
+        throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Location not found' });
       await this.sync.emit(client, {
         entity: SyncEntity.LOCATIONS,
         op: 'deactivated',

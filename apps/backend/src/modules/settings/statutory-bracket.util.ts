@@ -17,7 +17,10 @@ export interface BracketLike {
  * (when `requireOpenEndedTop`) the last row's `bracketMax` is `null`.
  * Returns a human-diagnostic error list — empty means valid.
  */
-export function validateContiguousBrackets(rows: BracketLike[], opts: { requireOpenEndedTop: boolean }): string[] {
+export function validateContiguousBrackets(
+  rows: BracketLike[],
+  opts: { requireOpenEndedTop: boolean },
+): string[] {
   if (rows.length === 0) return ['at least one bracket is required'];
 
   const sorted = [...rows].sort((a, b) => compareMoney(a.bracketMin, b.bracketMin));
@@ -31,17 +34,23 @@ export function validateContiguousBrackets(rows: BracketLike[], opts: { requireO
     const current = sorted[i]!;
     const next = sorted[i + 1]!;
     if (current.bracketMax === null) {
-      errors.push(`bracket starting at ${current.bracketMin} is open-ended but is not the last bracket`);
+      errors.push(
+        `bracket starting at ${current.bracketMin} is open-ended but is not the last bracket`,
+      );
       continue;
     }
     if (compareMoney(current.bracketMax, next.bracketMin) !== 0) {
-      errors.push(`gap or overlap between bracket [${current.bracketMin}, ${current.bracketMax}) and the next bracket starting at ${next.bracketMin}`);
+      errors.push(
+        `gap or overlap between bracket [${current.bracketMin}, ${current.bracketMax}) and the next bracket starting at ${next.bracketMin}`,
+      );
     }
   }
 
   const last = sorted[sorted.length - 1]!;
   if (opts.requireOpenEndedTop && last.bracketMax !== null) {
-    errors.push(`the top bracket (starting at ${last.bracketMin}) must be open-ended (bracketMax = null)`);
+    errors.push(
+      `the top bracket (starting at ${last.bracketMin}) must be open-ended (bracketMax = null)`,
+    );
   }
 
   return errors;

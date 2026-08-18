@@ -155,7 +155,9 @@ describe('AttendanceService (integration, live Postgres)', () => {
       // A GENUINELY separate connection — never sees `checkIn`'s connection's uncommitted state,
       // only what it actually COMMITted (BE-TXN-ROLLBACK regression guard).
       const raw = await asRequest(rls, (client) =>
-        client.query('SELECT check_in_distance_m, geofence_ok FROM attendance WHERE id = $1', [row.id]),
+        client.query('SELECT check_in_distance_m, geofence_ok FROM attendance WHERE id = $1', [
+          row.id,
+        ]),
       );
       // The number itself is on the row — a supervisor adjudicating a dispute needs the distance,
       // not just true/false (ticket instruction).
@@ -186,14 +188,20 @@ describe('AttendanceService (integration, live Postgres)', () => {
         expect(service.checkIn(client, user, dto)).rejects.toMatchObject({
           response: {
             code: 'ERR_GEOFENCE_OUT_OF_RANGE',
-            details: expect.objectContaining({ distanceM: expect.any(Number), radiusM: fixtures.outletRadiusM }),
+            details: expect.objectContaining({
+              distanceM: expect.any(Number),
+              radiusM: fixtures.outletRadiusM,
+            }),
           },
         }),
       );
 
       // Separate connection: proves the rejected attempt never committed a row either.
       const noRow = await asRequest(rls, (client) =>
-        client.query('SELECT id FROM attendance WHERE employee_id = $1 AND client_id = $2', [kasir.employeeId, dto.clientId]),
+        client.query('SELECT id FROM attendance WHERE employee_id = $1 AND client_id = $2', [
+          kasir.employeeId,
+          dto.clientId,
+        ]),
       );
       expect(noRow.rows.length).toBe(0); // rejected attempt — no silent accept, no row created either
     });
@@ -236,7 +244,8 @@ describe('AttendanceService (integration, live Postgres)', () => {
     // safely in the recent PAST of the moment this test runs, regardless of wall-clock time.
     const now = new Date();
     const wallWita = new Date(now.getTime() + 8 * 60 * 60_000);
-    const hhmm = (d: Date) => `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    const hhmm = (d: Date) =>
+      `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 
     // QA-ATTENDANCE-LEAK: the original version derived the shift's calendar DATE from `wallWita`
     // (i.e. "now"'s own WITA date) while deriving the shift's START from "wallWita - 3h" — two
@@ -271,13 +280,20 @@ describe('AttendanceService (integration, live Postgres)', () => {
     const shiftDate = shiftStartWita.toISOString().slice(0, 10);
     const toRealInstant = (witaWall: Date) => new Date(witaWall.getTime() - 8 * 60 * 60_000);
 
-    const shiftId = await createWorkShift(fixtures.outletId, hhmm(shiftStartWita), hhmm(shiftEndWita), 30);
+    const shiftId = await createWorkShift(
+      fixtures.outletId,
+      hhmm(shiftStartWita),
+      hhmm(shiftEndWita),
+      30,
+    );
     try {
       await assignShift(kasir.employeeId, shiftId, fixtures.outletId, shiftDate, kasir.userId);
 
       await withCleanSlate(kasir.employeeId, async () => {
         // Check in 20 minutes after shift start — beyond the 5-min grace.
-        const checkInAt = new Date(toRealInstant(shiftStartWita).getTime() + 20 * 60_000).toISOString();
+        const checkInAt = new Date(
+          toRealInstant(shiftStartWita).getTime() + 20 * 60_000,
+        ).toISOString();
         const inDto: CheckAttendanceDto = {
           clientId: nextClientId(),
           locationId: fixtures.outletId,
@@ -296,7 +312,9 @@ describe('AttendanceService (integration, live Postgres)', () => {
         // A GENUINELY SEPARATE connection from check-in above — `checkIn`'s `withWrite` already
         // committed the row for real, so this new connection sees it (BE-TXN-ROLLBACK: two real
         // requests, never one shared transaction chaining two mutating calls).
-        const checkOutAt = new Date(toRealInstant(shiftEndWita).getTime() + 45 * 60_000).toISOString();
+        const checkOutAt = new Date(
+          toRealInstant(shiftEndWita).getTime() + 45 * 60_000,
+        ).toISOString();
         const outDto: CheckAttendanceDto = {
           clientId: nextClientId(),
           locationId: fixtures.outletId,
@@ -385,7 +403,9 @@ describe('AttendanceService (integration, live Postgres)', () => {
       const row = await asRequest(rls, (client) => service.checkIn(client, user, dto));
       expect(row.timeSuspect).toBe(true);
 
-      const raw = await asRequest(rls, (client) => client.query('SELECT time_disputed FROM attendance WHERE id = $1', [row.id]));
+      const raw = await asRequest(rls, (client) =>
+        client.query('SELECT time_disputed FROM attendance WHERE id = $1', [row.id]),
+      );
       expect(raw.rows[0].time_disputed).toBe(true);
     });
   });
@@ -418,7 +438,9 @@ describe('AttendanceService (integration, live Postgres)', () => {
         // A GENUINELY separate connection/transaction — never sees `checkIn`'s connection's
         // uncommitted state, only what it actually COMMITted. If `checkIn` had never called
         // `withWrite` (the original bug), this list would come back empty.
-        const listed = await asRequest(rls, (client) => service.listMe(client, user, todayWita().slice(0, 7)));
+        const listed = await asRequest(rls, (client) =>
+          service.listMe(client, user, todayWita().slice(0, 7)),
+        );
         expect(listed.some((r) => r.id === created.id)).toBe(true);
       });
     });

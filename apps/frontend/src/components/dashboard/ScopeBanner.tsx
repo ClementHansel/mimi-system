@@ -42,13 +42,21 @@ export function ScopeBanner({ scope, outletName, outletCity, className }: ScopeB
           isCompany ? 'bg-brand-100 text-brand-700' : 'bg-warning-100 text-warning-700',
         )}
       >
-        {isCompany ? <Building2 className="size-5" aria-hidden /> : <Store className="size-5" aria-hidden />}
+        {isCompany ? (
+          <Building2 className="size-5" aria-hidden />
+        ) : (
+          <Store className="size-5" aria-hidden />
+        )}
       </span>
       <div className="flex flex-col">
-        <span className={cn('text-sm font-semibold', isCompany ? 'text-brand-800' : 'text-warning-800')}>
+        <span
+          className={cn('text-sm font-semibold', isCompany ? 'text-brand-800' : 'text-warning-800')}
+        >
           {isCompany
             ? t('dashboard.scope.companyTitle')
-            : t('dashboard.scope.outletTitle', { name: outletName || t('dashboard.scope.unknownOutlet') })}
+            : t('dashboard.scope.outletTitle', {
+                name: outletName || t('dashboard.scope.unknownOutlet'),
+              })}
         </span>
         <span className="text-xs text-text-secondary">
           {isCompany

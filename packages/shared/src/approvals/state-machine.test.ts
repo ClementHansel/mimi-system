@@ -28,7 +28,11 @@ describe('replenishment request (§5.1)', () => {
       actorRole: RoleKey.SUPERVISOR,
       offlineAttempt: true,
     });
-    expect(spvApprove).toMatchObject({ ok: true, nextState: 'awaiting_approval', offlineEligible: true });
+    expect(spvApprove).toMatchObject({
+      ok: true,
+      nextState: 'awaiting_approval',
+      offlineEligible: true,
+    });
 
     const kgdApprove = transition({
       documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
@@ -305,22 +309,46 @@ describe('findApplicableRule / isActorEligibleForAction / eligibleActorsForActio
       currentState: 'submitted',
       action: 'approve',
     });
-    expect(rule).toMatchObject({ to: 'awaiting_approval', roles: [RoleKey.SUPERVISOR], offlineEligible: true });
+    expect(rule).toMatchObject({
+      to: 'awaiting_approval',
+      roles: [RoleKey.SUPERVISOR],
+      offlineEligible: true,
+    });
   });
 
   it('findApplicableRule returns undefined for a nonexistent transition', () => {
-    expect(findApplicableRule({ documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST, currentState: 'completed', action: 'approve' })).toBeUndefined();
+    expect(
+      findApplicableRule({
+        documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
+        currentState: 'completed',
+        action: 'approve',
+      }),
+    ).toBeUndefined();
   });
 
   it('findApplicableRule prefers the variant-specific rule over a variant-agnostic one sharing the same lookup', () => {
-    const outlet = findApplicableRule({ documentType: ApprovalDocumentType.WASTE, variant: 'outlet', currentState: 'pending', action: 'approve' });
-    const warehouse = findApplicableRule({ documentType: ApprovalDocumentType.WASTE, variant: 'warehouse', currentState: 'pending', action: 'approve' });
+    const outlet = findApplicableRule({
+      documentType: ApprovalDocumentType.WASTE,
+      variant: 'outlet',
+      currentState: 'pending',
+      action: 'approve',
+    });
+    const warehouse = findApplicableRule({
+      documentType: ApprovalDocumentType.WASTE,
+      variant: 'warehouse',
+      currentState: 'pending',
+      action: 'approve',
+    });
     expect(outlet?.roles).toEqual([RoleKey.SUPERVISOR]);
     expect(warehouse?.roles).toEqual([RoleKey.KEPALA_GUDANG]);
   });
 
   it('isActorEligibleForAction is a pure yes/no pre-check matching isRoleAuthorized against the resolved rule', () => {
-    const lookup = { documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST, currentState: 'submitted', action: 'approve' } as const;
+    const lookup = {
+      documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
+      currentState: 'submitted',
+      action: 'approve',
+    } as const;
     expect(isActorEligibleForAction({ ...lookup, actorRole: RoleKey.SUPERVISOR })).toBe(true);
     expect(isActorEligibleForAction({ ...lookup, actorRole: RoleKey.KASIR })).toBe(false);
     // Rank override applies here too: OWNER isn't listed but outranks SUPERVISOR.
@@ -329,12 +357,21 @@ describe('findApplicableRule / isActorEligibleForAction / eligibleActorsForActio
 
   it('isActorEligibleForAction is false for a nonexistent transition regardless of role', () => {
     expect(
-      isActorEligibleForAction({ documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST, currentState: 'completed', action: 'approve', actorRole: RoleKey.OWNER }),
+      isActorEligibleForAction({
+        documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
+        currentState: 'completed',
+        action: 'approve',
+        actorRole: RoleKey.OWNER,
+      }),
     ).toBe(false);
   });
 
   it('eligibleActorsForAction returns the explicit role plus every rank-qualified override, and nothing else', () => {
-    const actors = eligibleActorsForAction({ documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST, currentState: 'submitted', action: 'approve' });
+    const actors = eligibleActorsForAction({
+      documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
+      currentState: 'submitted',
+      action: 'approve',
+    });
     expect(actors).toContain(RoleKey.SUPERVISOR); // explicitly listed
     expect(actors).toContain(RoleKey.MANAGER); // rank override
     expect(actors).toContain(RoleKey.OWNER); // rank override
@@ -344,17 +381,32 @@ describe('findApplicableRule / isActorEligibleForAction / eligibleActorsForActio
   });
 
   it('eligibleActorsForAction returns exactly [system] for a system-only transition', () => {
-    const actors = eligibleActorsForAction({ documentType: ApprovalDocumentType.CASH_VARIANCE_PROPOSAL, currentState: NONE_STATE, action: 'auto_create' });
+    const actors = eligibleActorsForAction({
+      documentType: ApprovalDocumentType.CASH_VARIANCE_PROPOSAL,
+      currentState: NONE_STATE,
+      action: 'auto_create',
+    });
     expect(actors).toEqual([SYSTEM_ACTOR]);
   });
 
   it('eligibleActorsForAction returns [] for a nonexistent transition', () => {
-    expect(eligibleActorsForAction({ documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST, currentState: 'completed', action: 'approve' })).toEqual([]);
+    expect(
+      eligibleActorsForAction({
+        documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
+        currentState: 'completed',
+        action: 'approve',
+      }),
+    ).toEqual([]);
   });
 
   it('eligibleActorsForAction agrees with isRoleAuthorized for every actor, for every real rule', () => {
     for (const rule of APPROVAL_TRANSITIONS) {
-      const actors = eligibleActorsForAction({ documentType: rule.documentType, variant: rule.variant, currentState: rule.from, action: rule.action });
+      const actors = eligibleActorsForAction({
+        documentType: rule.documentType,
+        variant: rule.variant,
+        currentState: rule.from,
+        action: rule.action,
+      });
       for (const actor of [...Object.values(RoleKey), SYSTEM_ACTOR]) {
         expect(actors.includes(actor)).toBe(isRoleAuthorized(rule.roles, actor));
       }

@@ -34,7 +34,16 @@ export class DiscoveredDevicesRepository {
   async upsert(
     client: DbClient,
     nodeId: UUID,
-    item: { source: string; ipAddress: string; macAddress: string | null; vendor: string | null; model: string | null; suggestedCategory: string | null; suggestedName: string | null; raw?: Record<string, unknown> },
+    item: {
+      source: string;
+      ipAddress: string;
+      macAddress: string | null;
+      vendor: string | null;
+      model: string | null;
+      suggestedCategory: string | null;
+      suggestedName: string | null;
+      raw?: Record<string, unknown>;
+    },
   ): Promise<DiscoveredDeviceRow> {
     const res = await client.query<DiscoveredDeviceRow>(
       `INSERT INTO discovered_devices (node_id, source, ip_address, mac_address, vendor, model, suggested_category, suggested_name, raw, last_seen_at)
@@ -47,16 +56,33 @@ export class DiscoveredDevicesRepository {
          -- nothing already 'confirmed' (that link must be broken explicitly, not by a rescan).
          status = discovered_devices.status
        RETURNING *`,
-      [nodeId, item.source, item.ipAddress, item.macAddress, item.vendor, item.model, item.suggestedCategory, item.suggestedName, JSON.stringify(item.raw ?? {})],
+      [
+        nodeId,
+        item.source,
+        item.ipAddress,
+        item.macAddress,
+        item.vendor,
+        item.model,
+        item.suggestedCategory,
+        item.suggestedName,
+        JSON.stringify(item.raw ?? {}),
+      ],
     );
     return res.rows[0]!;
   }
 
   /** Rows for this node not present in the latest scan's `stillPresentIds` are NOT deleted (they may reappear) — this only matters for a future "flag as gone" UX; V1 keeps `last_seen_at` as the presence signal and leaves `status` untouched. */
-  async listByNode(client: DbClient, nodeId: UUID, status?: string): Promise<DiscoveredDeviceRow[]> {
+  async listByNode(
+    client: DbClient,
+    nodeId: UUID,
+    status?: string,
+  ): Promise<DiscoveredDeviceRow[]> {
     const conds = ['node_id = $1'];
     const args: unknown[] = [nodeId];
-    if (status) { conds.push(`status = $2`); args.push(status); }
+    if (status) {
+      conds.push(`status = $2`);
+      args.push(status);
+    }
     const res = await client.query<DiscoveredDeviceRow>(
       `SELECT * FROM discovered_devices WHERE ${conds.join(' AND ')} ORDER BY last_seen_at DESC`,
       args,
@@ -65,12 +91,18 @@ export class DiscoveredDevicesRepository {
   }
 
   async findById(client: DbClient, id: UUID): Promise<DiscoveredDeviceRow | undefined> {
-    const res = await client.query<DiscoveredDeviceRow>(`SELECT * FROM discovered_devices WHERE id = $1`, [id]);
+    const res = await client.query<DiscoveredDeviceRow>(
+      `SELECT * FROM discovered_devices WHERE id = $1`,
+      [id],
+    );
     return res.rows[0];
   }
 
   async markConfirmed(client: DbClient, id: UUID, deviceId: UUID): Promise<void> {
-    await client.query(`UPDATE discovered_devices SET status = 'confirmed', confirmed_device_id = $2 WHERE id = $1`, [id, deviceId]);
+    await client.query(
+      `UPDATE discovered_devices SET status = 'confirmed', confirmed_device_id = $2 WHERE id = $1`,
+      [id, deviceId],
+    );
   }
 
   async markIgnored(client: DbClient, id: UUID): Promise<void> {

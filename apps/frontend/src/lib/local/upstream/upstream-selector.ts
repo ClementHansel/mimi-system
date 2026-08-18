@@ -68,7 +68,12 @@ export class UpstreamSelector {
     this.candidates = candidates;
     this.probe = probe;
     this.now = now;
-    for (const c of candidates) this.tracking.set(this.key(c), { consecutiveFailures: 0, firstFailureAt: null, continuousHealthySince: null });
+    for (const c of candidates)
+      this.tracking.set(this.key(c), {
+        consecutiveFailures: 0,
+        firstFailureAt: null,
+        continuousHealthySince: null,
+      });
   }
 
   private key(c: UpstreamCandidate): string {
@@ -80,7 +85,11 @@ export class UpstreamSelector {
     this.candidates = candidates;
     for (const c of candidates) {
       if (!this.tracking.has(this.key(c))) {
-        this.tracking.set(this.key(c), { consecutiveFailures: 0, firstFailureAt: null, continuousHealthySince: null });
+        this.tracking.set(this.key(c), {
+          consecutiveFailures: 0,
+          firstFailureAt: null,
+          continuousHealthySince: null,
+        });
       }
     }
     if (this.current && !candidates.some((c) => this.key(c) === this.key(this.current!))) {
@@ -150,8 +159,13 @@ export class UpstreamSelector {
       track.consecutiveFailures += 1;
       if (track.firstFailureAt === null) track.firstFailureAt = now;
       const span = now - track.firstFailureAt;
-      if (track.consecutiveFailures >= FAIL_AWAY_CONSECUTIVE_FAILURES && span >= FAIL_AWAY_MIN_SPAN_MS) {
-        const alternative = this.candidates.find((c) => this.key(c) !== currentKey && healthy.get(this.key(c)));
+      if (
+        track.consecutiveFailures >= FAIL_AWAY_CONSECUTIVE_FAILURES &&
+        span >= FAIL_AWAY_MIN_SPAN_MS
+      ) {
+        const alternative = this.candidates.find(
+          (c) => this.key(c) !== currentKey && healthy.get(this.key(c)),
+        );
         track.consecutiveFailures = 0;
         track.firstFailureAt = null;
         this.setCurrent(alternative ?? null);

@@ -67,7 +67,9 @@ async function tryRefresh(): Promise<boolean> {
     });
     if (!res.ok) return false;
     const data = (await res.json()) as { accessToken: string; refreshToken: string };
-    useSessionStore.getState().setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    useSessionStore
+      .getState()
+      .setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
     return true;
   } catch {
     return false;
@@ -104,7 +106,8 @@ export async function apiFetch<T = unknown>(
   if (!res.ok) {
     const statusCode = typeof body?.statusCode === 'number' ? body.statusCode : res.status;
     const code = typeof body?.code === 'string' ? body.code : 'ERR_UNKNOWN';
-    const message = typeof body?.message === 'string' ? body.message : `Request failed (${res.status})`;
+    const message =
+      typeof body?.message === 'string' ? body.message : `Request failed (${res.status})`;
     throw new ApiError(statusCode, code, message, body?.details);
   }
 
@@ -114,11 +117,20 @@ export async function apiFetch<T = unknown>(
 export const api = {
   get: <T = unknown>(path: string) => apiFetch<T>(path, { method: 'GET' }),
   post: <T = unknown>(path: string, data?: unknown) =>
-    apiFetch<T>(path, { method: 'POST', body: data !== undefined ? JSON.stringify(data) : undefined }),
+    apiFetch<T>(path, {
+      method: 'POST',
+      body: data !== undefined ? JSON.stringify(data) : undefined,
+    }),
   put: <T = unknown>(path: string, data?: unknown) =>
-    apiFetch<T>(path, { method: 'PUT', body: data !== undefined ? JSON.stringify(data) : undefined }),
+    apiFetch<T>(path, {
+      method: 'PUT',
+      body: data !== undefined ? JSON.stringify(data) : undefined,
+    }),
   patch: <T = unknown>(path: string, data?: unknown) =>
-    apiFetch<T>(path, { method: 'PATCH', body: data !== undefined ? JSON.stringify(data) : undefined }),
+    apiFetch<T>(path, {
+      method: 'PATCH',
+      body: data !== undefined ? JSON.stringify(data) : undefined,
+    }),
   delete: <T = unknown>(path: string) => apiFetch<T>(path, { method: 'DELETE' }),
   /** Multipart upload (attachment presign confirm, CSV import, …). */
   upload: <T = unknown>(path: string, formData: FormData, method: 'PUT' | 'POST' = 'POST') =>

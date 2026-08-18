@@ -7,7 +7,12 @@ import { ApiError } from '@/lib/api';
 import { Modal, Card, CardContent, toast } from '@/components/ui';
 import { SjCreateForm, type CreateSjPayload } from '@/components/warehouse/SjCreateForm';
 import type { Replenishment, Driver, Vehicle } from './lib/types';
-import { createSuratJalan, getDrivers, getVehicles, listApprovedRequests } from './lib/delivery-api';
+import {
+  createSuratJalan,
+  getDrivers,
+  getVehicles,
+  listApprovedRequests,
+} from './lib/delivery-api';
 
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -30,7 +35,13 @@ function errMsg(err: unknown, fallback: string): string {
  * this call site stays checked against the form's real contract rather than
  * an assumed-compatible duplicate.
  */
-export function CreateSuratJalanModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+export function CreateSuratJalanModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const { t } = useI18n();
   const [requests, setRequests] = useState<Replenishment[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -39,9 +50,15 @@ export function CreateSuratJalanModal({ onClose, onCreated }: { onClose: () => v
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listApprovedRequests().then((res) => setRequests(res.rows)).catch(() => {});
-    getDrivers().then(setDrivers).catch(() => {});
-    getVehicles().then(setVehicles).catch(() => {});
+    listApprovedRequests()
+      .then((res) => setRequests(res.rows))
+      .catch(() => {});
+    getDrivers()
+      .then(setDrivers)
+      .catch(() => {});
+    getVehicles()
+      .then(setVehicles)
+      .catch(() => {});
   }, []);
 
   async function handleSubmit(payload: CreateSjPayload) {
@@ -79,7 +96,13 @@ export function CreateSuratJalanModal({ onClose, onCreated }: { onClose: () => v
           </CardContent>
         </Card>
         {error && <p className="text-sm text-danger-600">{error}</p>}
-        <SjCreateForm requests={requests} drivers={drivers} vehicles={vehicles} submitting={submitting} onSubmit={handleSubmit} />
+        <SjCreateForm
+          requests={requests}
+          drivers={drivers}
+          vehicles={vehicles}
+          submitting={submitting}
+          onSubmit={handleSubmit}
+        />
       </div>
     </Modal>
   );

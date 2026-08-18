@@ -1,6 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { ERR_NOT_FOUND, payrollPeriodBoundaries, subMoney, sumMoney, type ISODate, type Money, type UUID } from '@mimi/shared';
+import {
+  ERR_NOT_FOUND,
+  payrollPeriodBoundaries,
+  subMoney,
+  sumMoney,
+  type ISODate,
+  type Money,
+  type UUID,
+} from '@mimi/shared';
 import { assertLocationInScope } from '../scope.util';
 import type { ReportCallerContext } from '../report.types';
 
@@ -74,7 +82,12 @@ export class HrReportService {
       empWhere += ` AND e.location_id = ANY($${empParams.length}::uuid[])`;
     }
 
-    const empRes = await client.query<{ id: string; name: string; location_id: string; location_name: string }>(
+    const empRes = await client.query<{
+      id: string;
+      name: string;
+      location_id: string;
+      location_name: string;
+    }>(
       `SELECT e.id, e.name, e.location_id, l.name AS location_name
          FROM employees e
          JOIN locations l ON l.id = e.location_id
@@ -98,15 +111,26 @@ export class HrReportService {
       [employeeIds, startDate, endDate],
     );
 
-    const byEmployee = new Map<string, Map<string, { status: string; lateMinutes: number; overtimeMinutes: number }>>();
+    const byEmployee = new Map<
+      string,
+      Map<string, { status: string; lateMinutes: number; overtimeMinutes: number }>
+    >();
     for (const r of attRes.rows) {
       const m = byEmployee.get(r.employee_id) ?? new Map();
-      m.set(r.date, { status: r.status, lateMinutes: Number(r.late_minutes), overtimeMinutes: Number(r.overtime_minutes) });
+      m.set(r.date, {
+        status: r.status,
+        lateMinutes: Number(r.late_minutes),
+        overtimeMinutes: Number(r.overtime_minutes),
+      });
       byEmployee.set(r.employee_id, m);
     }
 
     const dates: ISODate[] = [];
-    for (let d = new Date(`${startDate}T00:00:00Z`); d <= new Date(`${endDate}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+    for (
+      let d = new Date(`${startDate}T00:00:00Z`);
+      d <= new Date(`${endDate}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 1)
+    ) {
       dates.push(d.toISOString().slice(0, 10));
     }
 
@@ -119,14 +143,23 @@ export class HrReportService {
         locationName: e.location_name,
         days: dates.map((date) => {
           const entry = attByDate.get(date);
-          return { date, status: entry?.status ?? null, lateMinutes: entry?.lateMinutes ?? 0, overtimeMinutes: entry?.overtimeMinutes ?? 0 };
+          return {
+            date,
+            status: entry?.status ?? null,
+            lateMinutes: entry?.lateMinutes ?? 0,
+            overtimeMinutes: entry?.overtimeMinutes ?? 0,
+          };
         }),
       };
     });
   }
 
   // ── GET /payroll/:runId — register (all employees x components) ─────────
-  async getPayrollRegister(client: PoolClient, _caller: ReportCallerContext, runId: UUID): Promise<PayrollRegisterReport> {
+  async getPayrollRegister(
+    client: PoolClient,
+    _caller: ReportCallerContext,
+    runId: UUID,
+  ): Promise<PayrollRegisterReport> {
     const runRes = await client.query<{
       id: string;
       run_number: string;
@@ -144,7 +177,11 @@ export class HrReportService {
       [runId],
     );
     const run = runRes.rows[0];
-    if (!run) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Payroll run ${runId} not found` });
+    if (!run)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Payroll run ${runId} not found`,
+      });
 
     // `payroll_runs` carries no `location_id` (it is a company-wide period, not scoped to one outlet/
     // warehouse) — HR reporting roles that hold `report.hr.read` (Owner, Manager, HR Admin, per
@@ -168,26 +205,39 @@ export class HrReportService {
       [runId],
     );
 
-    const byEmployee = new Map<string, { employeeName: string; components: PayrollRegisterComponent[] }>();
+    const byEmployee = new Map<
+      string,
+      { employeeName: string; components: PayrollRegisterComponent[] }
+    >();
     for (const r of lineRes.rows) {
-      const bucket = byEmployee.get(r.employee_id) ?? { employeeName: r.employee_name, components: [] };
-      bucket.components.push({ code: r.code, name: r.component_name, type: r.component_type, amount: r.amount });
+      const bucket = byEmployee.get(r.employee_id) ?? {
+        employeeName: r.employee_name,
+        components: [],
+      };
+      bucket.components.push({
+        code: r.code,
+        name: r.component_name,
+        type: r.component_type,
+        amount: r.amount,
+      });
       byEmployee.set(r.employee_id, bucket);
     }
 
-    const employees: PayrollRegisterEmployeeRow[] = [...byEmployee.entries()].map(([employeeId, bucket]) => {
-      const gross = this.sumByType(bucket.components, 'earning');
-      const deductions = this.sumByType(bucket.components, 'deduction');
-      const net = subMoney(gross, deductions);
-      return {
-        employeeId,
-        employeeName: bucket.employeeName,
-        components: bucket.components,
-        grossEarnings: gross,
-        totalDeductions: deductions,
-        netPay: net,
-      };
-    });
+    const employees: PayrollRegisterEmployeeRow[] = [...byEmployee.entries()].map(
+      ([employeeId, bucket]) => {
+        const gross = this.sumByType(bucket.components, 'earning');
+        const deductions = this.sumByType(bucket.components, 'deduction');
+        const net = subMoney(gross, deductions);
+        return {
+          employeeId,
+          employeeName: bucket.employeeName,
+          components: bucket.components,
+          grossEarnings: gross,
+          totalDeductions: deductions,
+          netPay: net,
+        };
+      },
+    );
 
     return {
       runId: run.id,

@@ -24,7 +24,13 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { Inject } from '@nestjs/common';
-import { DeviceCategory, PairingTargetType, ERR_NOT_FOUND, ERR_VALIDATION, ERR_AUTH_TOKEN_INVALID } from '@mimi/shared';
+import {
+  DeviceCategory,
+  PairingTargetType,
+  ERR_NOT_FOUND,
+  ERR_VALIDATION,
+  ERR_AUTH_TOKEN_INVALID,
+} from '@mimi/shared';
 import type { UUID } from '@mimi/shared';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -101,7 +107,8 @@ export class DevicesController {
     @Req() req: RequestWithDbContext,
     @Body() body: { locationId: UUID; targetType?: 'device'; suggestedCategory?: string },
   ) {
-    if (!body?.locationId) throw new BadRequestException({ code: ERR_VALIDATION, message: 'locationId is required' });
+    if (!body?.locationId)
+      throw new BadRequestException({ code: ERR_VALIDATION, message: 'locationId is required' });
     const client = (req.dbClient ?? this.pool) as PoolClient;
     // BE-TXN-ROLLBACK: this mint is a real write on `req.dbClient` — without `withWrite`,
     // `RlsCleanupInterceptor`'s unconditional post-request ROLLBACK silently discarded it.
@@ -137,17 +144,27 @@ export class DevicesController {
     },
   ) {
     if (!body?.token || !body?.fingerprint || !body?.category || !body?.appVersion) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'token, fingerprint, category and appVersion are required' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'token, fingerprint, category and appVersion are required',
+      });
     }
     if (!Object.values(DeviceCategory).includes(body.category as DeviceCategory)) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `unknown category '${body.category}'` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `unknown category '${body.category}'`,
+      });
     }
 
     const deviceToken = randomBytes(32).toString('hex');
     const deviceTokenHash = hashDeviceToken(deviceToken);
 
     const result = await withSystemContext(this.pool, async (client) => {
-      const redeemed = await this.pairingTokens.redeem(client, body.token, PairingTargetType.DEVICE);
+      const redeemed = await this.pairingTokens.redeem(
+        client,
+        body.token,
+        PairingTargetType.DEVICE,
+      );
       if (!redeemed) return undefined;
 
       const nodeRes = await client.query<{ id: UUID; settings: Record<string, unknown> }>(
@@ -182,7 +199,12 @@ export class DevicesController {
         entityId: created.id,
         locationId: created.location_id,
         actorUserId: redeemed.createdBy,
-        data: { fingerprint: created.fingerprint, category: created.category, locationId: created.location_id, replacesDeviceId: created.replaces_device_id ?? undefined },
+        data: {
+          fingerprint: created.fingerprint,
+          category: created.category,
+          locationId: created.location_id,
+          replacesDeviceId: created.replaces_device_id ?? undefined,
+        },
       });
       await this.syncEmit.emit(client, {
         entity: 'devices',
@@ -190,13 +212,24 @@ export class DevicesController {
         entityId: created.id,
         locationId: created.location_id,
         actorUserId: redeemed.createdBy,
-        data: { locationId: created.location_id, nodeLanUrl: (node?.settings?.lanUrl as string | undefined) ?? null },
+        data: {
+          locationId: created.location_id,
+          nodeLanUrl: (node?.settings?.lanUrl as string | undefined) ?? null,
+        },
       });
 
-      return { created, location, nodeLanUrl: (node?.settings?.lanUrl as string | undefined) ?? null };
+      return {
+        created,
+        location,
+        nodeLanUrl: (node?.settings?.lanUrl as string | undefined) ?? null,
+      };
     });
 
-    if (!result) throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Invalid or expired pairing token' });
+    if (!result)
+      throw new UnauthorizedException({
+        code: ERR_AUTH_TOKEN_INVALID,
+        message: 'Invalid or expired pairing token',
+      });
 
     return {
       deviceId: result.created.id,
@@ -217,7 +250,10 @@ export class DevicesController {
   async heartbeat(@Req() req: RequestWithDeviceIdentity, @Body() body: DeviceHeartbeatBody) {
     const device = req.device!;
     if (!body?.appVersion || typeof body.queueDepth !== 'number') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'appVersion and queueDepth are required' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'appVersion and queueDepth are required',
+      });
     }
 
     await withSystemContext(this.pool, async (client) => {
@@ -233,17 +269,34 @@ export class DevicesController {
         queueDepth: body.queueDepth,
         clientTime: body.at ?? new Date().toISOString(),
         batteryPct: body.batteryPct,
-        storageFreeMb: body.storage ? Math.max(0, body.storage.quotaMb - body.storage.usedMb) : undefined,
+        storageFreeMb: body.storage
+          ? Math.max(0, body.storage.quotaMb - body.storage.usedMb)
+          : undefined,
         networkType: body.networkType,
         payload: body as unknown as Record<string, unknown>,
       });
 
       if (wasDown && before) {
-        await this.devices.insertDeviceEvent(client, { deviceId: device.id, locationId: device.locationId, type: 'online' });
+        await this.devices.insertDeviceEvent(client, {
+          deviceId: device.id,
+          locationId: device.locationId,
+          type: 'online',
+        });
         await this.syncEmit
-          .emit(client, { entity: 'device_events', op: 'went_online', entityId: device.id, locationId: device.locationId, actorUserId: CLOUD_ORIGIN_ACTOR, data: {} })
+          .emit(client, {
+            entity: 'device_events',
+            op: 'went_online',
+            entityId: device.id,
+            locationId: device.locationId,
+            actorUserId: CLOUD_ORIGIN_ACTOR,
+            data: {},
+          })
           .catch(() => undefined); // best-effort telemetry — never fail the heartbeat ack over it
-        this.topologyGateway.emitUpdate({ locationId: device.locationId, deviceId: device.id, status: 'online' });
+        this.topologyGateway.emitUpdate({
+          locationId: device.locationId,
+          deviceId: device.id,
+          status: 'online',
+        });
       }
     });
 
@@ -279,14 +332,20 @@ export class DevicesController {
   async detail(@Req() req: RequestWithDbContext, @Param('id') id: UUID) {
     const client = req.dbClient ?? this.pool;
     const device = await this.devices.findById(client, id);
-    if (!device) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
+    if (!device)
+      throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
     const [recentHeartbeats, events] = await Promise.all([
       this.devices.recentHeartbeats(client, id),
       this.devices.recentEvents(client, id),
     ]);
     return {
       ...toDeviceDto(device),
-      recentHeartbeats: recentHeartbeats.map((h) => ({ at: h.at, queueDepth: h.queue_depth, appVersion: h.app_version, batteryPct: h.battery_pct })),
+      recentHeartbeats: recentHeartbeats.map((h) => ({
+        at: h.at,
+        queueDepth: h.queue_depth,
+        appVersion: h.app_version,
+        batteryPct: h.battery_pct,
+      })),
       events: events.map((e) => ({ type: e.type, detail: e.detail, createdAt: e.created_at })),
     };
   }
@@ -301,16 +360,21 @@ export class DevicesController {
   ) {
     const client = (req.dbClient ?? this.pool) as PoolClient;
     const before = await this.devices.findById(client, id);
-    if (!before) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
+    if (!before)
+      throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
     if (body.category && !Object.values(DeviceCategory).includes(body.category as DeviceCategory)) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `unknown category '${body.category}'` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `unknown category '${body.category}'`,
+      });
     }
 
     // BE-TXN-ROLLBACK: validation reads stay outside; once committed to writing, the entire
     // rest of this method's writes + response-building runs inside one `withWrite` call.
     return withWrite(client, async () => {
       const updated = await this.devices.update(client, id, body);
-      if (!updated) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
+      if (!updated)
+        throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
 
       await this.syncEmit.emit(client, {
         entity: 'devices',
@@ -329,14 +393,24 @@ export class DevicesController {
   @RequirePermission('device.manage')
   @Audited({ entityType: 'devices', action: 'device.manage' })
   @Post(':id/unpair')
-  async unpair(@Req() req: RequestWithDbContext, @Param('id') id: UUID, @Body() body: { reason?: string }) {
+  async unpair(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: UUID,
+    @Body() body: { reason?: string },
+  ) {
     const client = (req.dbClient ?? this.pool) as PoolClient;
     const existing = await this.devices.findById(client, id);
-    if (!existing) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
+    if (!existing)
+      throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
 
     return withWrite(client, async () => {
       await this.devices.unpair(client, id);
-      await this.devices.insertDeviceEvent(client, { deviceId: id, locationId: existing.location_id, type: 'unpaired', detail: { reason: body?.reason } });
+      await this.devices.insertDeviceEvent(client, {
+        deviceId: id,
+        locationId: existing.location_id,
+        type: 'unpaired',
+        detail: { reason: body?.reason },
+      });
       // SYNC-PROTOCOL §3.3 group 12: unpairing is the KILL SWITCH described for `revoked` — "must
       // stop pushing and wipe credentials" — the AUTHORITY op vocabulary has no separate `unpaired` op.
       await this.syncEmit.emit(client, {
@@ -355,14 +429,24 @@ export class DevicesController {
   @RequirePermission('device.manage')
   @Audited({ entityType: 'devices', action: 'device.manage' })
   @Post(':id/retire')
-  async retire(@Req() req: RequestWithDbContext, @Param('id') id: UUID, @Body() body: { replacedByDeviceId?: UUID }) {
+  async retire(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: UUID,
+    @Body() body: { replacedByDeviceId?: UUID },
+  ) {
     const client = (req.dbClient ?? this.pool) as PoolClient;
     const existing = await this.devices.findById(client, id);
-    if (!existing) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
+    if (!existing)
+      throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Device not found' });
 
     return withWrite(client, async () => {
       await this.devices.retire(client, id);
-      await this.devices.insertDeviceEvent(client, { deviceId: id, locationId: existing.location_id, type: 'unpaired', detail: { retired: true, replacedByDeviceId: body?.replacedByDeviceId } });
+      await this.devices.insertDeviceEvent(client, {
+        deviceId: id,
+        locationId: existing.location_id,
+        type: 'unpaired',
+        detail: { retired: true, replacedByDeviceId: body?.replacedByDeviceId },
+      });
       await this.syncEmit.emit(client, {
         entity: 'devices',
         op: 'retired',

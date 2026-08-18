@@ -4,7 +4,15 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, CalendarClock } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { useSessionStore } from '@/stores/session-store';
-import { Card, CardContent, Select, Button, EmptyState, PermissionGate, toast } from '@/components/ui';
+import {
+  Card,
+  CardContent,
+  Select,
+  Button,
+  EmptyState,
+  PermissionGate,
+  toast,
+} from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
 import { cn } from '@/lib/utils';
 import { getMaintenanceDue, startJob, createJob } from './lib/assets-api';
@@ -57,28 +65,55 @@ export function MaintenanceDuePanel() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
-        <Select label={t('assets.due.windowLabel')} value={String(windowDays)} onValueChange={(v) => setWindowDays(Number(v))}
-          options={WINDOW_OPTIONS.map((d) => ({ value: String(d), label: t('assets.due.windowDays', { days: d }) }))} wrapperClassName="w-48" />
-        <Select label={t('common.location')} value={locationId} onValueChange={setLocationId}
-          options={locations.map((l) => ({ value: l.id, label: l.name }))} placeholder={t('common.all')} wrapperClassName="w-44" />
+        <Select
+          label={t('assets.due.windowLabel')}
+          value={String(windowDays)}
+          onValueChange={(v) => setWindowDays(Number(v))}
+          options={WINDOW_OPTIONS.map((d) => ({
+            value: String(d),
+            label: t('assets.due.windowDays', { days: d }),
+          }))}
+          wrapperClassName="w-48"
+        />
+        <Select
+          label={t('common.location')}
+          value={locationId}
+          onValueChange={setLocationId}
+          options={locations.map((l) => ({ value: l.id, label: l.name }))}
+          placeholder={t('common.all')}
+          wrapperClassName="w-44"
+        />
       </div>
 
-      {!loading && rows.length === 0 && <EmptyState icon={CalendarClock} title={t('assets.due.empty')} size="lg" />}
+      {!loading && rows.length === 0 && (
+        <EmptyState icon={CalendarClock} title={t('assets.due.empty')} size="lg" />
+      )}
 
       <div className="flex flex-col gap-3">
         {rows.map((item) => (
           <Card key={item.scheduleId} className={cn(item.overdue && 'border-danger-600/40')}>
             <CardContent className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="font-medium text-text-primary">{item.name} — {item.assetName}</p>
+                <p className="font-medium text-text-primary">
+                  {item.name} — {item.assetName}
+                </p>
                 <p className="text-sm text-text-muted">{item.locationName}</p>
-                <p className={cn('mt-1 inline-flex items-center gap-1 text-sm', item.overdue ? 'font-medium text-danger-600' : 'text-text-secondary')}>
+                <p
+                  className={cn(
+                    'mt-1 inline-flex items-center gap-1 text-sm',
+                    item.overdue ? 'font-medium text-danger-600' : 'text-text-secondary',
+                  )}
+                >
                   {item.overdue && <AlertTriangle className="size-4" aria-hidden />}
                   {t('assets.due.dueDate')}: {fmtDate(item.dueDate)}
                 </p>
               </div>
               <PermissionGate permission="asset.job.execute">
-                <Button size="touch" loading={starting === item.scheduleId} onClick={() => handleStart(item)}>
+                <Button
+                  size="touch"
+                  loading={starting === item.scheduleId}
+                  onClick={() => handleStart(item)}
+                >
                   {t('assets.due.startButton')}
                 </Button>
               </PermissionGate>
@@ -88,7 +123,14 @@ export function MaintenanceDuePanel() {
       </div>
 
       {pendingJob && (
-        <CompleteJobModal job={pendingJob} onClose={() => setPendingJob(null)} onDone={() => { setPendingJob(null); reload(); }} />
+        <CompleteJobModal
+          job={pendingJob}
+          onClose={() => setPendingJob(null)}
+          onDone={() => {
+            setPendingJob(null);
+            reload();
+          }}
+        />
       )}
     </div>
   );

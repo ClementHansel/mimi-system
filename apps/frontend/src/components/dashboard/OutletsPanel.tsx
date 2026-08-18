@@ -49,23 +49,65 @@ export function OutletsPanel() {
   }, [date, t]);
 
   const columns: DataTableColumn<OutletTile>[] = [
-    { key: 'name', header: t('dashboard.outlets.columnName'), render: (r) => (
-      <div className="flex flex-col">
-        <span className="font-medium text-text-primary">{r.name}</span>
-        <span className="text-xs text-text-muted">{r.city}</span>
-      </div>
-    ) },
-    { key: 'revenue', header: t('dashboard.overview.revenue'), align: 'right', render: (r) => formatMoney(r.revenue) },
-    { key: 'txCount', header: t('dashboard.overview.txCount'), align: 'right', render: (r) => formatNumber(r.txCount) },
-    { key: 'onlineNet', header: t('dashboard.overview.revenueOnline'), align: 'right', render: (r) => formatMoney(r.onlineNet) },
-    { key: 'openShifts', header: t('dashboard.outlets.openShifts'), align: 'right', render: (r) => formatNumber(r.openShifts) },
     {
-      key: 'lowStockCount', header: t('dashboard.outlets.lowStockCount'), align: 'center',
-      render: (r) => (r.lowStockCount > 0 ? <Badge variant="warning" size="sm">{formatNumber(r.lowStockCount)}</Badge> : '—'),
+      key: 'name',
+      header: t('dashboard.outlets.columnName'),
+      render: (r) => (
+        <div className="flex flex-col">
+          <span className="font-medium text-text-primary">{r.name}</span>
+          <span className="text-xs text-text-muted">{r.city}</span>
+        </div>
+      ),
     },
     {
-      key: 'offlineDevices', header: t('dashboard.outlets.offlineDevices'), align: 'center',
-      render: (r) => (r.offlineDevices > 0 ? <Badge variant="danger" size="sm">{formatNumber(r.offlineDevices)}</Badge> : '—'),
+      key: 'revenue',
+      header: t('dashboard.overview.revenue'),
+      align: 'right',
+      render: (r) => formatMoney(r.revenue),
+    },
+    {
+      key: 'txCount',
+      header: t('dashboard.overview.txCount'),
+      align: 'right',
+      render: (r) => formatNumber(r.txCount),
+    },
+    {
+      key: 'onlineNet',
+      header: t('dashboard.overview.revenueOnline'),
+      align: 'right',
+      render: (r) => formatMoney(r.onlineNet),
+    },
+    {
+      key: 'openShifts',
+      header: t('dashboard.outlets.openShifts'),
+      align: 'right',
+      render: (r) => formatNumber(r.openShifts),
+    },
+    {
+      key: 'lowStockCount',
+      header: t('dashboard.outlets.lowStockCount'),
+      align: 'center',
+      render: (r) =>
+        r.lowStockCount > 0 ? (
+          <Badge variant="warning" size="sm">
+            {formatNumber(r.lowStockCount)}
+          </Badge>
+        ) : (
+          '—'
+        ),
+    },
+    {
+      key: 'offlineDevices',
+      header: t('dashboard.outlets.offlineDevices'),
+      align: 'center',
+      render: (r) =>
+        r.offlineDevices > 0 ? (
+          <Badge variant="danger" size="sm">
+            {formatNumber(r.offlineDevices)}
+          </Badge>
+        ) : (
+          '—'
+        ),
     },
   ];
 
@@ -91,7 +133,12 @@ export function OutletsPanel() {
         onRowClick={(r) => setSelected(r)}
       />
 
-      <Drawer open={!!selected} onClose={() => setSelected(null)} title={selected?.name ?? ''} size="lg">
+      <Drawer
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        title={selected?.name ?? ''}
+        size="lg"
+      >
         {selected && <OutletDrilldownContent locationId={selected.locationId} date={date} />}
       </Drawer>
     </div>

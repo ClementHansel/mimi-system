@@ -46,12 +46,25 @@ const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
 const devicesRepo = new DeviceRegistryRepository();
 
 const notifyCalls: unknown[] = [];
-const fakeNotifications = { notify: async (req: unknown) => { notifyCalls.push(req); return { inApp: [], email: [], whatsapp: [] }; } } as unknown as NotificationService;
+const fakeNotifications = {
+  notify: async (req: unknown) => {
+    notifyCalls.push(req);
+    return { inApp: [], email: [], whatsapp: [] };
+  },
+} as unknown as NotificationService;
 
 const topologyUpdates: unknown[] = [];
-const fakeTopologyGateway = { emitUpdate: (p: unknown) => topologyUpdates.push(p) } as unknown as TopologyGateway;
+const fakeTopologyGateway = {
+  emitUpdate: (p: unknown) => topologyUpdates.push(p),
+} as unknown as TopologyGateway;
 
-const sweep = new StalenessSweepService(pool, devicesRepo, syncEmit, fakeNotifications, fakeTopologyGateway);
+const sweep = new StalenessSweepService(
+  pool,
+  devicesRepo,
+  syncEmit,
+  fakeNotifications,
+  fakeTopologyGateway,
+);
 
 describe('StalenessSweepService — live database (Wave 3 gate item)', () => {
   const createdNodeIds: string[] = [];
@@ -65,7 +78,11 @@ describe('StalenessSweepService — live database (Wave 3 gate item)', () => {
   const createdLocationIds: string[] = [];
 
   afterEach(async () => {
-    await cleanupNodesAndDevices({ nodeIds: createdNodeIds, deviceIds: createdDeviceIds, locationIds: createdLocationIds });
+    await cleanupNodesAndDevices({
+      nodeIds: createdNodeIds,
+      deviceIds: createdDeviceIds,
+      locationIds: createdLocationIds,
+    });
     for (const id of createdLocationIds) await deleteLocation(id);
     createdNodeIds.length = 0;
     createdDeviceIds.length = 0;
@@ -92,7 +109,9 @@ describe('StalenessSweepService — live database (Wave 3 gate item)', () => {
     expect(await readNodeStatus(node.id)).toBe('offline');
     const events = await deviceEventsFor({ nodeId: node.id });
     expect(events.map((e) => e.type)).toContain('offline');
-    expect(topologyUpdates).toContainEqual(expect.objectContaining({ nodeId: node.id, status: 'offline' }));
+    expect(topologyUpdates).toContainEqual(
+      expect.objectContaining({ nodeId: node.id, status: 'offline' }),
+    );
   });
 
   it('a node past its 90s stale threshold (but not yet 300s) flips to stale, not offline', async () => {
@@ -112,7 +131,11 @@ describe('StalenessSweepService — live database (Wave 3 gate item)', () => {
     createdLocationIds.push(locationId);
     const node = await insertTestNode(locationId);
     createdNodeIds.push(node.id);
-    const deviceId = await insertTestDeviceForNode(locationId, node.id, randomBytes(16).toString('hex'));
+    const deviceId = await insertTestDeviceForNode(
+      locationId,
+      node.id,
+      randomBytes(16).toString('hex'),
+    );
     createdDeviceIds.push(deviceId);
     await backdateDeviceLastSeen(deviceId, 601);
 
@@ -134,8 +157,16 @@ describe('StalenessSweepService — live database (Wave 3 gate item)', () => {
       const locationId = await insertIsolatedOutletLocation();
       const node = await insertTestNode(locationId);
       createdNodeIds.push(node.id);
-      const deviceA = await insertTestDeviceForNode(locationId, node.id, randomBytes(16).toString('hex'));
-      const deviceB = await insertTestDeviceForNode(locationId, node.id, randomBytes(16).toString('hex'));
+      const deviceA = await insertTestDeviceForNode(
+        locationId,
+        node.id,
+        randomBytes(16).toString('hex'),
+      );
+      const deviceB = await insertTestDeviceForNode(
+        locationId,
+        node.id,
+        randomBytes(16).toString('hex'),
+      );
       createdDeviceIds.push(deviceA, deviceB);
 
       try {
@@ -184,7 +215,11 @@ describe('StalenessSweepService — live database (Wave 3 gate item)', () => {
         // its own teardown, and it must run after that cleanup (FK: device_events/pairing_tokens
         // reference it) — hence deleting it in a follow-up `afterEach`-adjacent step here via a
         // direct, ordered cleanup rather than relying on ordering between two separate hooks.
-        await cleanupNodesAndDevices({ nodeIds: [node.id], deviceIds: [deviceA, deviceB], locationIds: [locationId] });
+        await cleanupNodesAndDevices({
+          nodeIds: [node.id],
+          deviceIds: [deviceA, deviceB],
+          locationIds: [locationId],
+        });
         createdNodeIds.length = 0;
         createdDeviceIds.length = 0;
         await deleteLocation(locationId);
@@ -197,7 +232,11 @@ describe('StalenessSweepService — live database (Wave 3 gate item)', () => {
     createdLocationIds.push(locationId);
     const node = await insertTestNode(locationId);
     createdNodeIds.push(node.id);
-    const deviceId = await insertTestDeviceForNode(locationId, node.id, randomBytes(16).toString('hex'));
+    const deviceId = await insertTestDeviceForNode(
+      locationId,
+      node.id,
+      randomBytes(16).toString('hex'),
+    );
     createdDeviceIds.push(deviceId);
     await backdateDeviceLastSeen(deviceId, 700);
 

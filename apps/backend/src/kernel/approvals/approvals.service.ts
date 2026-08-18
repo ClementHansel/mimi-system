@@ -1,4 +1,13 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException, ConflictException, Optional, Inject, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  ConflictException,
+  Optional,
+  Inject,
+  Logger,
+} from '@nestjs/common';
 import type { Pool } from 'pg';
 import {
   ApprovalDocumentType,
@@ -19,7 +28,11 @@ import {
 import { DATABASE_POOL } from '../../common/database/database-pool.provider';
 import { NotificationService } from '../notification/notification.service';
 import { ApprovalsRepository, type ChainStepConfigRow } from './approvals.repository';
-import { resolveDocumentContext, resolveDocumentContextsBatch, resolveEligibleRoles } from './document-context.resolver';
+import {
+  resolveDocumentContext,
+  resolveDocumentContextsBatch,
+  resolveEligibleRoles,
+} from './document-context.resolver';
 import { resolveApproverUserIds } from './notification-recipients';
 import { isAmountInWindow, resolveStepWindow } from './threshold.resolver';
 import type {
@@ -98,7 +111,10 @@ export class ApprovalService {
   async submit(client: DbClient, input: SubmitApprovalInput): Promise<SubmitResult> {
     const existing = await this.repo.findApproval(client, input.documentType, input.documentId);
     if (existing) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `An approval already exists for ${input.documentType}/${input.documentId}` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `An approval already exists for ${input.documentType}/${input.documentId}`,
+      });
     }
 
     const amount = input.amount ?? null;
@@ -121,7 +137,12 @@ export class ApprovalService {
     }
 
     const ctx = await resolveDocumentContext(client, input.documentType, input.documentId);
-    const { activeStep, skipped } = await this.selectFirstActiveStep(client, input.documentType, chainSteps, amount);
+    const { activeStep, skipped } = await this.selectFirstActiveStep(
+      client,
+      input.documentType,
+      chainSteps,
+      amount,
+    );
 
     const approval = await this.repo.insertApproval(client, {
       documentType: input.documentType,
@@ -140,10 +161,21 @@ export class ApprovalService {
       // Every configured step's window excludes this document's amount (e.g. below every escalation threshold) —
       // nothing gates it; the approval is immediately final.
       const finalized = await this.repo.finalizeApproval(client, approval.id, 'approved');
-      return { approvalId: approval.id, approvalState: finalized.state, currentStep: null, stepState: ApprovalStepState.SKIPPED, mode };
+      return {
+        approvalId: approval.id,
+        approvalState: finalized.state,
+        currentStep: null,
+        stepState: ApprovalStepState.SKIPPED,
+        mode,
+      };
     }
 
-    const eligible = resolveEligibleRoles(input.documentType, activeStep.stepNo, activeStep.approverRole as RoleKey, ctx);
+    const eligible = resolveEligibleRoles(
+      input.documentType,
+      activeStep.stepNo,
+      activeStep.approverRole as RoleKey,
+      ctx,
+    );
     const stepRow = await this.repo.insertStep(client, {
       approvalId: approval.id,
       stepNo: activeStep.stepNo,
@@ -154,7 +186,16 @@ export class ApprovalService {
     // B-07 — step 1's approvers are told there is something waiting. Never for `submitWithModeOff`
     // above (no pending step ever exists there — off notifies nobody) and never when the amount
     // window skipped every step (the `!activeStep` branch above returns before reaching here).
-    await this.notifyStepPending(client, input.documentType, input.documentId, activeStep.stepNo, activeStep.approverRole as RoleKey, ctx, input.locationId ?? null, mode);
+    await this.notifyStepPending(
+      client,
+      input.documentType,
+      input.documentId,
+      activeStep.stepNo,
+      activeStep.approverRole as RoleKey,
+      ctx,
+      input.locationId ?? null,
+      mode,
+    );
 
     return {
       approvalId: approval.id,
@@ -172,7 +213,11 @@ export class ApprovalService {
    * a chain-shape decision, so it must work even for a type whose chain was
    * never configured (or was configured and is simply being bypassed).
    */
-  private async submitWithModeOff(client: DbClient, input: SubmitApprovalInput, amount: Money | null): Promise<SubmitResult> {
+  private async submitWithModeOff(
+    client: DbClient,
+    input: SubmitApprovalInput,
+    amount: Money | null,
+  ): Promise<SubmitResult> {
     const approval = await this.repo.insertApproval(client, {
       documentType: input.documentType,
       documentId: input.documentId,
@@ -222,7 +267,10 @@ export class ApprovalService {
    * — kept exposed publicly for any external caller/test that wants the
    * resolved channel set without re-deriving it.
    */
-  async resolveNotificationChannels(client: DbClient, documentType: ApprovalDocumentType): Promise<ApprovalNotificationChannel[]> {
+  async resolveNotificationChannels(
+    client: DbClient,
+    documentType: ApprovalDocumentType,
+  ): Promise<ApprovalNotificationChannel[]> {
     const mode = await this.repo.getApprovalMode(client, documentType);
     return channelsForMode(mode);
   }
@@ -244,7 +292,12 @@ export class ApprovalService {
 
   /** FR-LOG-13 / FR-SO-02: an "amend" is an approve that changed the requested quantity/lines — the reason gate is `transition()`'s `on_amend` rule. */
   async amend(client: DbClient, input: NamedDecisionInput): Promise<DecisionResult> {
-    return this.decide(client, { ...input, action: 'approve', outcome: 'approved', isAmendment: true });
+    return this.decide(client, {
+      ...input,
+      action: 'approve',
+      outcome: 'approved',
+      isAmendment: true,
+    });
   }
 
   async cancel(client: DbClient, input: NamedDecisionInput): Promise<DecisionResult> {
@@ -263,10 +316,16 @@ export class ApprovalService {
   async decide(client: DbClient, input: DecideApprovalInput): Promise<DecisionResult> {
     const approval = await this.repo.findApproval(client, input.documentType, input.documentId);
     if (!approval) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `No approval found for ${input.documentType}/${input.documentId}` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `No approval found for ${input.documentType}/${input.documentId}`,
+      });
     }
     if (approval.state !== 'pending') {
-      throw new ConflictException({ code: ERR_APPROVAL_ALREADY_DECIDED, message: `Approval ${approval.id} is already ${approval.state}` });
+      throw new ConflictException({
+        code: ERR_APPROVAL_ALREADY_DECIDED,
+        message: `Approval ${approval.id} is already ${approval.state}`,
+      });
     }
     // `approvals.current_step` is nullable (migration 216 — NULL means "chain finished"), but the
     // guard above just confirmed `state === 'pending'`, which invariantly means a step IS active.
@@ -278,7 +337,10 @@ export class ApprovalService {
     // B-07 — read live only when a notify hook could actually fire (this service is wired with
     // `notifications`/`pool`); skips a `settings` round-trip entirely for the ~10 domain-module test
     // suites that construct `ApprovalService` bare (see the constructor's doc comment).
-    const mode = this.notifications && this.pool ? await this.repo.getApprovalMode(client, input.documentType) : null;
+    const mode =
+      this.notifications && this.pool
+        ? await this.repo.getApprovalMode(client, input.documentType)
+        : null;
 
     if (input.outcome !== 'cancelled') {
       const stepCfg = chainSteps.find((s) => s.stepNo === currentStep);
@@ -288,7 +350,12 @@ export class ApprovalService {
           message: `No approval_chain_steps row for ${input.documentType} step ${currentStep}`,
         });
       }
-      const eligible = resolveEligibleRoles(input.documentType, currentStep, stepCfg.approverRole as RoleKey, ctx);
+      const eligible = resolveEligibleRoles(
+        input.documentType,
+        currentStep,
+        stepCfg.approverRole as RoleKey,
+        ctx,
+      );
       if (!isRoleAuthorized(eligible, input.actorRole)) {
         throw new ForbiddenException({
           code: ERR_APPROVAL_STEP_ROLE,
@@ -314,7 +381,16 @@ export class ApprovalService {
     if (input.outcome === 'cancelled') {
       const finalized = await this.repo.finalizeApproval(client, approval.id, 'cancelled');
       const currentStepRow = await this.repo.findStep(client, approval.id, currentStep);
-      await this.notifyDecision(client, input.documentType, input.documentId, approval.requestedBy, approval.locationId, 'cancelled', input.reason ?? null, mode);
+      await this.notifyDecision(
+        client,
+        input.documentType,
+        input.documentId,
+        approval.requestedBy,
+        approval.locationId,
+        'cancelled',
+        input.reason ?? null,
+        mode,
+      );
       return {
         approvalId: approval.id,
         approvalState: finalized.state,
@@ -337,43 +413,116 @@ export class ApprovalService {
     if (!decidedStep) {
       // Someone else decided this exact step between our read and our write (approval.state was still 'pending' at
       // read time but the guarded UPDATE matched zero rows) — a genuine race, not a client bug.
-      throw new ConflictException({ code: ERR_APPROVAL_ALREADY_DECIDED, message: `Step ${currentStep} of approval ${approval.id} was already decided` });
+      throw new ConflictException({
+        code: ERR_APPROVAL_ALREADY_DECIDED,
+        message: `Step ${currentStep} of approval ${approval.id} was already decided`,
+      });
     }
 
     if (input.outcome === 'rejected') {
       const finalized = await this.repo.finalizeApproval(client, approval.id, 'rejected');
       // FR-LOG-13/FR-SO-02's reason gate already made `transition()` require a reason for this edge —
       // `input.reason` is never empty here, but `notifyDecision` still defends against `null` uniformly.
-      await this.notifyDecision(client, input.documentType, input.documentId, approval.requestedBy, approval.locationId, 'rejected', input.reason ?? null, mode);
-      return { approvalId: approval.id, approvalState: finalized.state, nextState: result.nextState, currentStep: null, stepState: decidedStep.state };
+      await this.notifyDecision(
+        client,
+        input.documentType,
+        input.documentId,
+        approval.requestedBy,
+        approval.locationId,
+        'rejected',
+        input.reason ?? null,
+        mode,
+      );
+      return {
+        approvalId: approval.id,
+        approvalState: finalized.state,
+        nextState: result.nextState,
+        currentStep: null,
+        stepState: decidedStep.state,
+      };
     }
 
     // approved / amended — advance to the next active step, or finalize.
-    const { activeStep, skipped } = await this.selectNextActiveStep(client, input.documentType, chainSteps, currentStep, approval.amount);
+    const { activeStep, skipped } = await this.selectNextActiveStep(
+      client,
+      input.documentType,
+      chainSteps,
+      currentStep,
+      approval.amount,
+    );
     for (const step of skipped) {
       await this.repo.markStepSkipped(client, approval.id, step.stepNo, step.approverRole);
     }
 
     if (activeStep) {
-      const eligible = resolveEligibleRoles(input.documentType, activeStep.stepNo, activeStep.approverRole as RoleKey, ctx);
-      await this.repo.insertStep(client, { approvalId: approval.id, stepNo: activeStep.stepNo, approverRole: eligible[0]!, state: 'pending' });
+      const eligible = resolveEligibleRoles(
+        input.documentType,
+        activeStep.stepNo,
+        activeStep.approverRole as RoleKey,
+        ctx,
+      );
+      await this.repo.insertStep(client, {
+        approvalId: approval.id,
+        stepNo: activeStep.stepNo,
+        approverRole: eligible[0]!,
+        state: 'pending',
+      });
       const advanced = await this.repo.advanceApproval(client, approval.id, activeStep.stepNo);
       // B-07 — the NEXT step's approvers are told (step advance).
-      await this.notifyStepPending(client, input.documentType, input.documentId, activeStep.stepNo, activeStep.approverRole as RoleKey, ctx, approval.locationId, mode);
+      await this.notifyStepPending(
+        client,
+        input.documentType,
+        input.documentId,
+        activeStep.stepNo,
+        activeStep.approverRole as RoleKey,
+        ctx,
+        approval.locationId,
+        mode,
+      );
       // An amendment changed the requester's own document (FR-LOG-13/FR-SO-02 — "someone whose order
       // was silently halved needs to know") even though the CHAIN isn't finished yet — tell the
       // requester now rather than only once the whole chain eventually finalizes.
       if (input.isAmendment) {
-        await this.notifyDecision(client, input.documentType, input.documentId, approval.requestedBy, approval.locationId, 'approved', input.reason ?? null, mode);
+        await this.notifyDecision(
+          client,
+          input.documentType,
+          input.documentId,
+          approval.requestedBy,
+          approval.locationId,
+          'approved',
+          input.reason ?? null,
+          mode,
+        );
       }
-      return { approvalId: approval.id, approvalState: advanced.state, nextState: result.nextState, currentStep: activeStep.stepNo, stepState: decidedStep.state };
+      return {
+        approvalId: approval.id,
+        approvalState: advanced.state,
+        nextState: result.nextState,
+        currentStep: activeStep.stepNo,
+        stepState: decidedStep.state,
+      };
     }
 
     const finalized = await this.repo.finalizeApproval(client, approval.id, 'approved');
     // B-07 — chain finished: the requester is told the (final) outcome. Covers the plain terminal
     // approve case; the amendment-mid-chain case above already notified separately.
-    await this.notifyDecision(client, input.documentType, input.documentId, approval.requestedBy, approval.locationId, 'approved', input.reason ?? null, mode);
-    return { approvalId: approval.id, approvalState: finalized.state, nextState: result.nextState, currentStep: null, stepState: decidedStep.state };
+    await this.notifyDecision(
+      client,
+      input.documentType,
+      input.documentId,
+      approval.requestedBy,
+      approval.locationId,
+      'approved',
+      input.reason ?? null,
+      mode,
+    );
+    return {
+      approvalId: approval.id,
+      approvalState: finalized.state,
+      nextState: result.nextState,
+      currentStep: null,
+      stepState: decidedStep.state,
+    };
   }
 
   // ── step selection helpers (threshold-aware) ─────────────────────────────
@@ -386,7 +535,10 @@ export class ApprovalService {
   ): Promise<{ activeStep: ChainStepConfigRow | null; skipped: ChainStepConfigRow[] }> {
     const skipped: ChainStepConfigRow[] = [];
     for (const step of chainSteps) {
-      const window = await resolveStepWindow(client, documentType, step.stepNo, { minAmount: step.minAmount, maxAmount: step.maxAmount });
+      const window = await resolveStepWindow(client, documentType, step.stepNo, {
+        minAmount: step.minAmount,
+        maxAmount: step.maxAmount,
+      });
       if (isAmountInWindow(amount, window)) return { activeStep: step, skipped };
       skipped.push(step);
     }
@@ -403,7 +555,10 @@ export class ApprovalService {
     const skipped: ChainStepConfigRow[] = [];
     for (const step of chainSteps) {
       if (step.stepNo <= afterStepNo) continue;
-      const window = await resolveStepWindow(client, documentType, step.stepNo, { minAmount: step.minAmount, maxAmount: step.maxAmount });
+      const window = await resolveStepWindow(client, documentType, step.stepNo, {
+        minAmount: step.minAmount,
+        maxAmount: step.maxAmount,
+      });
       if (isAmountInWindow(amount, window)) return { activeStep: step, skipped };
       skipped.push(step);
     }
@@ -412,9 +567,17 @@ export class ApprovalService {
 
   // ── reads ────────────────────────────────────────────────────────────────
 
-  async getDetail(client: DbClient, documentType: ApprovalDocumentType, documentId: string): Promise<ApprovalDetailRow> {
+  async getDetail(
+    client: DbClient,
+    documentType: ApprovalDocumentType,
+    documentId: string,
+  ): Promise<ApprovalDetailRow> {
     const approval = await this.repo.findApproval(client, documentType, documentId);
-    if (!approval) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `No approval found for ${documentType}/${documentId}` });
+    if (!approval)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `No approval found for ${documentType}/${documentId}`,
+      });
     const steps = await this.repo.listSteps(client, approval.id);
     return {
       approvalId: approval.id,
@@ -443,7 +606,11 @@ export class ApprovalService {
   }
 
   /** "My pending approvals" — CONTRACTS.md §4.0 `GET /api/approvals/pending`, scoped by role AND location (BUILD-PLAN W2-B brief). */
-  async getPending(client: DbClient, caller: CallerScope, query: PendingApprovalsQuery): Promise<Paginated<PendingApprovalRow>> {
+  async getPending(
+    client: DbClient,
+    caller: CallerScope,
+    query: PendingApprovalsQuery,
+  ): Promise<Paginated<PendingApprovalRow>> {
     const candidates = await this.repo.findPendingCandidates(client, {
       documentType: query.documentType,
       locationIds: caller.locationIds,
@@ -462,12 +629,25 @@ export class ApprovalService {
       // Sequential, not `Promise.all` — a single `PoolClient` runs one query at a time (BUILD-PLAN
       // §2 raw `pg`, no connection-per-call pooling trick here); concurrent queries on one client
       // is a deprecated pg pattern that will become a hard error.
-      const contexts = await resolveDocumentContextsBatch(client, documentType as ApprovalDocumentType, docIds);
-      const numbers = await this.repo.loadDocumentNumbers(client, documentType as ApprovalDocumentType, docIds);
+      const contexts = await resolveDocumentContextsBatch(
+        client,
+        documentType as ApprovalDocumentType,
+        docIds,
+      );
+      const numbers = await this.repo.loadDocumentNumbers(
+        client,
+        documentType as ApprovalDocumentType,
+        docIds,
+      );
 
       for (const row of rows) {
         const ctx: DocumentContext = contexts.get(row.documentId) ?? {};
-        const eligible = resolveEligibleRoles(documentType as ApprovalDocumentType, row.stepNo, row.approverRole as RoleKey, ctx);
+        const eligible = resolveEligibleRoles(
+          documentType as ApprovalDocumentType,
+          row.stepNo,
+          row.approverRole as RoleKey,
+          ctx,
+        );
         if (!isRoleAuthorized(eligible, caller.roleKey)) continue;
 
         eligibleRows.push({
@@ -507,10 +687,17 @@ export class ApprovalService {
    * accounting module owns writing to (`sync_conflicts`, queue='finance').
    * Callers pass the outcome already computed by that pipeline.
    */
-  async reverifyOfflineStep(client: DbClient, approvalStepId: string, outcome: ReverificationStatus): Promise<OfflineReverificationResult> {
+  async reverifyOfflineStep(
+    client: DbClient,
+    approvalStepId: string,
+    outcome: ReverificationStatus,
+  ): Promise<OfflineReverificationResult> {
     const updated = await this.repo.updateStepReverification(client, approvalStepId, outcome);
     if (!updated) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `No approval step found with id ${approvalStepId}` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `No approval step found with id ${approvalStepId}`,
+      });
     }
     return {
       approvalId: updated.approvalId,
@@ -606,7 +793,11 @@ export class ApprovalService {
   }
 
   /** `documentNumber` param for a notify call, falling back to the raw `documentId` for the 3 document types with no human-facing number column (`DOCUMENT_NUMBER_SOURCE` in `approvals.repository.ts`: void_refund, leave_request, cash_variance_proposal). */
-  private async documentNumberFor(client: DbClient, documentType: ApprovalDocumentType, documentId: string): Promise<string> {
+  private async documentNumberFor(
+    client: DbClient,
+    documentType: ApprovalDocumentType,
+    documentId: string,
+  ): Promise<string> {
     const numbers = await this.repo.loadDocumentNumbers(client, documentType, [documentId]);
     return numbers.get(documentId) ?? documentId;
   }

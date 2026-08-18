@@ -32,7 +32,12 @@ import { OutletNodeSettingController } from './outlet-node-setting.controller';
 @Module({
   imports: [SyncEngineModule, DeviceRegistryModule],
   controllers: [NodesController, OutletNodeSettingController],
-  providers: [BranchNodesRepository, DiscoveredDevicesRepository, BridgeGateway, OutletNodeSettingRepository],
+  providers: [
+    BranchNodesRepository,
+    DiscoveredDevicesRepository,
+    BridgeGateway,
+    OutletNodeSettingRepository,
+  ],
   exports: [BranchNodesRepository, BridgeGateway, OutletNodeSettingRepository],
 })
 export class NodeGatewayModule {}

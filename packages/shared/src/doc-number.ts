@@ -10,7 +10,12 @@
 
 const CLOUD_DOC_NUMBER_RE = /^([A-Z]+)\/(\d{6})\/(\d+)$/;
 
-export function formatCloudDocNumber(prefix: string, periodYYYYMM: string, seq: number, pad = 4): string {
+export function formatCloudDocNumber(
+  prefix: string,
+  periodYYYYMM: string,
+  seq: number,
+  pad = 4,
+): string {
   if (!/^\d{6}$/.test(periodYYYYMM)) {
     throw new RangeError(`period must be 'YYYYMM', got ${JSON.stringify(periodYYYYMM)}`);
   }
@@ -30,7 +35,11 @@ export function parseCloudDocNumber(
 }
 
 /** Device-born document number, e.g. a POS receipt or shift number. */
-export function formatDeviceDocNumber(locationCode: string, deviceCode: string, localSeq: number): string {
+export function formatDeviceDocNumber(
+  locationCode: string,
+  deviceCode: string,
+  localSeq: number,
+): string {
   if (!Number.isInteger(localSeq) || localSeq < 1) {
     throw new RangeError(`localSeq must be a positive integer, got ${localSeq}`);
   }
@@ -38,7 +47,11 @@ export function formatDeviceDocNumber(locationCode: string, deviceCode: string, 
 }
 
 /** POS shift number specifically prefixes the local sequence with `S` per CONTRACTS.md §1.6. */
-export function formatShiftNumber(locationCode: string, deviceCode: string, localSeq: number): string {
+export function formatShiftNumber(
+  locationCode: string,
+  deviceCode: string,
+  localSeq: number,
+): string {
   return formatDeviceDocNumber(locationCode, deviceCode, localSeq).replace(
     /-(\d+)$/,
     (_m, n: string) => `-S${n}`,

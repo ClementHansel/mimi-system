@@ -24,7 +24,16 @@ const SIZE_CLASSES: Record<NonNullable<ModalProps['size']>, string> = {
 };
 
 /** Centered modal dialog: focus-trapped, Escape-to-close, scroll-locked. Use `Drawer` for edge-anchored panels. */
-export function Modal({ open, onClose, title, description, children, footer, size = 'md', closeOnOverlayClick = true }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  size = 'md',
+  closeOnOverlayClick = true,
+}: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -101,7 +110,11 @@ export function Modal({ open, onClose, title, description, children, footer, siz
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">{children}</div>
-        {footer && <div className="flex items-center justify-end gap-2 border-t border-border p-4">{footer}</div>}
+        {footer && (
+          <div className="flex items-center justify-end gap-2 border-t border-border p-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

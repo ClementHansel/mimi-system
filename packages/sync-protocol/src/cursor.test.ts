@@ -12,7 +12,11 @@ import {
 } from './cursor';
 import type { SyncEventEnvelope } from './types';
 
-function ev(originDeviceId: string, clientSeq: number, eventId = `${originDeviceId}-${clientSeq}`): SequencedEvent {
+function ev(
+  originDeviceId: string,
+  clientSeq: number,
+  eventId = `${originDeviceId}-${clientSeq}`,
+): SequencedEvent {
   return { originDeviceId, clientSeq: BigInt(clientSeq), eventId };
 }
 
@@ -70,7 +74,9 @@ describe('processOriginBatch — seq_conflict (§2.2 rule 4)', () => {
   it('flags a same-seq, different-event_id arrival as a conflict, not a duplicate', () => {
     const knownEventIdAtSeq = (seq: bigint) => (seq === 1n ? 'original-event-id' : undefined);
     const result = processOriginBatch([ev('a', 1, 'a-different-event-id')], 1n, knownEventIdAtSeq);
-    expect(result.seqConflicts).toEqual([{ incoming: ev('a', 1, 'a-different-event-id'), conflictsWithSeq: 1n }]);
+    expect(result.seqConflicts).toEqual([
+      { incoming: ev('a', 1, 'a-different-event-id'), conflictsWithSeq: 1n },
+    ]);
     expect(result.duplicates).toHaveLength(0);
   });
 
@@ -124,7 +130,11 @@ describe('estimateEventBytes — must survive a REAL envelope, not just hand-bui
       entity: SyncEntity.SALES,
       entityId: 'sale-1',
       op: 'completed',
-      payload: { v: 1, data: { total: '135000.00' }, meta: { actorUserId: 'user-1', actorRole: 'kasir', appVersion: '1.4.2' } },
+      payload: {
+        v: 1,
+        data: { total: '135000.00' },
+        meta: { actorUserId: 'user-1', actorRole: 'kasir', appVersion: '1.4.2' },
+      },
       clientSeq,
       occurredAt: '2026-08-17T05:00:00.000Z',
       actorUserId: 'user-1',

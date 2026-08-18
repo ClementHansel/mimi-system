@@ -153,7 +153,10 @@ export interface SystemContextOptions {
  * call even if a connection were, in some misconfigured environment, still
  * a superuser (matching `RlsContextGuard`'s own defensive posture).
  */
-export async function assertSystemContext(client: PoolClient, options: SystemContextOptions): Promise<void> {
+export async function assertSystemContext(
+  client: PoolClient,
+  options: SystemContextOptions,
+): Promise<void> {
   await client.query('SET LOCAL ROLE app_user');
   await client.query(`SELECT set_config('app.role', $1, true)`, [options.role]);
   await client.query(`SELECT set_config('app.user_id', $1, true)`, [

@@ -13,7 +13,12 @@
  * a connected/disconnected answer.
  */
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { ERR_FORBIDDEN, ERR_NODE_QUEUE_PENDING, ERR_NODE_UNREACHABLE, ERR_VALIDATION } from '@mimi/shared';
+import {
+  ERR_FORBIDDEN,
+  ERR_NODE_QUEUE_PENDING,
+  ERR_NODE_UNREACHABLE,
+  ERR_VALIDATION,
+} from '@mimi/shared';
 import type { UUID } from '@mimi/shared';
 import { withSystemContext } from '../../kernel/sync/system-rls-context';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
@@ -53,14 +58,25 @@ const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
 /** Only the two methods the controller actually calls on a real `BridgeGateway`. */
 class FakeBridge {
   private readonly connected = new Set<UUID>();
-  connect(nodeId: UUID) { this.connected.add(nodeId); }
-  disconnect(nodeId: UUID) { this.connected.delete(nodeId); }
-  isConnected(nodeId: UUID) { return this.connected.has(nodeId); }
-  sendRevoked(nodeId: UUID) { this.connected.delete(nodeId); return true; }
+  connect(nodeId: UUID) {
+    this.connected.add(nodeId);
+  }
+  disconnect(nodeId: UUID) {
+    this.connected.delete(nodeId);
+  }
+  isConnected(nodeId: UUID) {
+    return this.connected.has(nodeId);
+  }
+  sendRevoked(nodeId: UUID) {
+    this.connected.delete(nodeId);
+    return true;
+  }
 }
 
 function reqAs(roleKey: string, sub: string) {
-  return { user: { sub, roleKey, username: 'test', locationIds: [] } } as unknown as Parameters<OutletNodeSettingController['setEnabled']>[0];
+  return { user: { sub, roleKey, username: 'test', locationIds: [] } } as unknown as Parameters<
+    OutletNodeSettingController['setEnabled']
+  >[0];
 }
 
 describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), live database', () => {
@@ -84,29 +100,49 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
     const ownerId = await fetchOneUserId('owner');
     const managerId = await fetchOneUserId('manager');
     const bridge = new FakeBridge();
-    const controller = new OutletNodeSettingController(outletSetting, branchNodes, deviceRegistry, bridge as never, syncEmit, pool);
+    const controller = new OutletNodeSettingController(
+      outletSetting,
+      branchNodes,
+      deviceRegistry,
+      bridge as never,
+      syncEmit,
+      pool,
+    );
 
-    const initial = await withSystemContext(pool, (client) => controller.get({ dbClient: client } as never, locationId));
+    const initial = await withSystemContext(pool, (client) =>
+      controller.get({ dbClient: client } as never, locationId),
+    );
     expect(initial.nodeEnabled).toBe(false);
     expect(initial.node).toBeNull();
 
     // Manager holds `node.manage` in the RBAC matrix (CONTRACTS §3) but D-26 requires Owner specifically.
     await expect(
       withSystemContext(pool, (client) =>
-        controller.setEnabled({ ...reqAs('manager', managerId), dbClient: client } as never, locationId, { nodeEnabled: true }),
+        controller.setEnabled(
+          { ...reqAs('manager', managerId), dbClient: client } as never,
+          locationId,
+          { nodeEnabled: true },
+        ),
       ),
     ).rejects.toMatchObject({ response: { code: ERR_FORBIDDEN } });
 
-    const afterManagerAttempt = await withSystemContext(pool, (client) => controller.get({ dbClient: client } as never, locationId));
+    const afterManagerAttempt = await withSystemContext(pool, (client) =>
+      controller.get({ dbClient: client } as never, locationId),
+    );
     expect(afterManagerAttempt.nodeEnabled).toBe(false); // rejected attempt changed nothing
 
     const turnedOn = await withSystemContext(pool, (client) =>
-      controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, { nodeEnabled: true }),
+      controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, {
+        nodeEnabled: true,
+      }),
     );
     expect(turnedOn.nodeEnabled).toBe(true);
     expect(turnedOn.node).toBeNull(); // ON is the flag alone — no PC has paired yet
 
-    const row = await assertPool.query<{ settings: { nodeEnabled?: boolean } }>(`SELECT settings FROM locations WHERE id = $1`, [locationId]);
+    const row = await assertPool.query<{ settings: { nodeEnabled?: boolean } }>(
+      `SELECT settings FROM locations WHERE id = $1`,
+      [locationId],
+    );
     expect(row.rows[0]!.settings.nodeEnabled).toBe(true);
   });
 
@@ -115,24 +151,44 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
     createdLocationIds.push(locationId);
     const ownerId = await fetchOneUserId('owner');
     const bridge = new FakeBridge();
-    const controller = new OutletNodeSettingController(outletSetting, branchNodes, deviceRegistry, bridge as never, syncEmit, pool);
+    const controller = new OutletNodeSettingController(
+      outletSetting,
+      branchNodes,
+      deviceRegistry,
+      bridge as never,
+      syncEmit,
+      pool,
+    );
 
     await withSystemContext(pool, (client) => outletSetting.setEnabled(client, locationId, true));
     const node = await insertTestNode(locationId);
     createdNodeIds.push(node.id);
     bridge.connect(node.id);
     // A fresh heartbeat reporting 7 events still on this node's relay outbox.
-    await withSystemContext(pool, (client) => branchNodes.recordHeartbeat(client, node.id, { version: '1.0.0', relayQueueDepth: 7 }));
+    await withSystemContext(pool, (client) =>
+      branchNodes.recordHeartbeat(client, node.id, { version: '1.0.0', relayQueueDepth: 7 }),
+    );
 
     const req = { ...reqAs('owner', ownerId) } as never;
     await expect(
-      withSystemContext(pool, (client) => controller.setEnabled({ ...req, dbClient: client } as never, locationId, { nodeEnabled: false })),
-    ).rejects.toMatchObject({ response: { code: ERR_NODE_QUEUE_PENDING, details: { pendingCount: 7 } } });
+      withSystemContext(pool, (client) =>
+        controller.setEnabled({ ...req, dbClient: client } as never, locationId, {
+          nodeEnabled: false,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      response: { code: ERR_NODE_QUEUE_PENDING, details: { pendingCount: 7 } },
+    });
 
     // Refused — the node is untouched (still paired) and the setting is still ON.
-    const nodeStatus = await assertPool.query<{ status: string }>(`SELECT status FROM branch_nodes WHERE id = $1`, [node.id]);
+    const nodeStatus = await assertPool.query<{ status: string }>(
+      `SELECT status FROM branch_nodes WHERE id = $1`,
+      [node.id],
+    );
     expect(nodeStatus.rows[0]!.status).toBe('online');
-    const setting = await withSystemContext(pool, (client) => outletSetting.find(client, locationId));
+    const setting = await withSystemContext(pool, (client) =>
+      outletSetting.find(client, locationId),
+    );
     expect(setting!.node_enabled).toBe(true);
   });
 
@@ -141,7 +197,14 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
     createdLocationIds.push(locationId);
     const ownerId = await fetchOneUserId('owner');
     const bridge = new FakeBridge(); // deliberately never `.connect()`ed for this node
-    const controller = new OutletNodeSettingController(outletSetting, branchNodes, deviceRegistry, bridge as never, syncEmit, pool);
+    const controller = new OutletNodeSettingController(
+      outletSetting,
+      branchNodes,
+      deviceRegistry,
+      bridge as never,
+      syncEmit,
+      pool,
+    );
 
     await withSystemContext(pool, (client) => outletSetting.setEnabled(client, locationId, true));
     const node = await insertTestNode(locationId);
@@ -149,15 +212,24 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
     // Even though its LAST reported reading was zero, the node is not connected right now — that
     // stale "was empty" fact cannot be trusted as "is empty now" (it may have accepted more LAN-device
     // events since disconnecting), so this must still refuse.
-    await withSystemContext(pool, (client) => branchNodes.recordHeartbeat(client, node.id, { version: '1.0.0', relayQueueDepth: 0 }));
+    await withSystemContext(pool, (client) =>
+      branchNodes.recordHeartbeat(client, node.id, { version: '1.0.0', relayQueueDepth: 0 }),
+    );
 
     await expect(
       withSystemContext(pool, (client) =>
-        controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, { nodeEnabled: false }),
+        controller.setEnabled(
+          { ...reqAs('owner', ownerId), dbClient: client } as never,
+          locationId,
+          { nodeEnabled: false },
+        ),
       ),
     ).rejects.toMatchObject({ response: { code: ERR_NODE_UNREACHABLE } });
 
-    const nodeStatus = await assertPool.query<{ status: string }>(`SELECT status FROM branch_nodes WHERE id = $1`, [node.id]);
+    const nodeStatus = await assertPool.query<{ status: string }>(
+      `SELECT status FROM branch_nodes WHERE id = $1`,
+      [node.id],
+    );
     expect(nodeStatus.rows[0]!.status).toBe('online'); // untouched
   });
 
@@ -166,7 +238,14 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
     createdLocationIds.push(locationId);
     const ownerId = await fetchOneUserId('owner');
     const bridge = new FakeBridge();
-    const controller = new OutletNodeSettingController(outletSetting, branchNodes, deviceRegistry, bridge as never, syncEmit, pool);
+    const controller = new OutletNodeSettingController(
+      outletSetting,
+      branchNodes,
+      deviceRegistry,
+      bridge as never,
+      syncEmit,
+      pool,
+    );
 
     await withSystemContext(pool, (client) => outletSetting.setEnabled(client, locationId, true));
     const node = await insertTestNode(locationId); // fixture never calls recordHeartbeat — no relayQueueDepth ever set
@@ -175,9 +254,15 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
 
     await expect(
       withSystemContext(pool, (client) =>
-        controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, { nodeEnabled: false }),
+        controller.setEnabled(
+          { ...reqAs('owner', ownerId), dbClient: client } as never,
+          locationId,
+          { nodeEnabled: false },
+        ),
       ),
-    ).rejects.toMatchObject({ response: { code: ERR_NODE_UNREACHABLE, details: { pendingCount: null } } });
+    ).rejects.toMatchObject({
+      response: { code: ERR_NODE_UNREACHABLE, details: { pendingCount: null } },
+    });
   });
 
   it('a drained, reachable node lets OFF succeed: unpairs the node, falls devices back to cloud-direct, and flips the setting', async () => {
@@ -185,16 +270,27 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
     createdLocationIds.push(locationId);
     const ownerId = await fetchOneUserId('owner');
     const bridge = new FakeBridge();
-    const controller = new OutletNodeSettingController(outletSetting, branchNodes, deviceRegistry, bridge as never, syncEmit, pool);
+    const controller = new OutletNodeSettingController(
+      outletSetting,
+      branchNodes,
+      deviceRegistry,
+      bridge as never,
+      syncEmit,
+      pool,
+    );
 
     await withSystemContext(pool, (client) => outletSetting.setEnabled(client, locationId, true));
     const node = await insertTestNode(locationId);
     createdNodeIds.push(node.id);
     bridge.connect(node.id);
-    await withSystemContext(pool, (client) => branchNodes.recordHeartbeat(client, node.id, { version: '1.0.0', relayQueueDepth: 0 }));
+    await withSystemContext(pool, (client) =>
+      branchNodes.recordHeartbeat(client, node.id, { version: '1.0.0', relayQueueDepth: 0 }),
+    );
 
     const result = await withSystemContext(pool, (client) =>
-      controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, { nodeEnabled: false }),
+      controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, {
+        nodeEnabled: false,
+      }),
     );
     expect(result.nodeEnabled).toBe(false);
     expect(result.node).toBeNull();
@@ -223,12 +319,21 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
     createdLocationIds.push(locationId);
     const ownerId = await fetchOneUserId('owner');
     const bridge = new FakeBridge();
-    const controller = new OutletNodeSettingController(outletSetting, branchNodes, deviceRegistry, bridge as never, syncEmit, pool);
+    const controller = new OutletNodeSettingController(
+      outletSetting,
+      branchNodes,
+      deviceRegistry,
+      bridge as never,
+      syncEmit,
+      pool,
+    );
 
     await withSystemContext(pool, (client) => outletSetting.setEnabled(client, locationId, true));
 
     const result = await withSystemContext(pool, (client) =>
-      controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, { nodeEnabled: false }),
+      controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, {
+        nodeEnabled: false,
+      }),
     );
     expect(result.nodeEnabled).toBe(false);
   });
@@ -238,11 +343,22 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
     createdLocationIds.push(locationId);
     const ownerId = await fetchOneUserId('owner');
     const bridge = new FakeBridge();
-    const controller = new OutletNodeSettingController(outletSetting, branchNodes, deviceRegistry, bridge as never, syncEmit, pool);
+    const controller = new OutletNodeSettingController(
+      outletSetting,
+      branchNodes,
+      deviceRegistry,
+      bridge as never,
+      syncEmit,
+      pool,
+    );
 
     await expect(
       withSystemContext(pool, (client) =>
-        controller.setEnabled({ ...reqAs('owner', ownerId), dbClient: client } as never, locationId, { nodeEnabled: 'yes' as never }),
+        controller.setEnabled(
+          { ...reqAs('owner', ownerId), dbClient: client } as never,
+          locationId,
+          { nodeEnabled: 'yes' as never },
+        ),
       ),
     ).rejects.toMatchObject({ response: { code: ERR_VALIDATION } });
   });
@@ -265,14 +381,19 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
 
     await expect(
       withSystemContext(pool, (client) =>
-        nodesController.mintPairingToken({ ...reqAs('owner', ownerId), dbClient: client } as never, { locationId }),
+        nodesController.mintPairingToken(
+          { ...reqAs('owner', ownerId), dbClient: client } as never,
+          { locationId },
+        ),
       ),
     ).rejects.toMatchObject({ response: { code: ERR_VALIDATION } });
 
     await withSystemContext(pool, (client) => outletSetting.setEnabled(client, locationId, true));
 
     const minted = await withSystemContext(pool, (client) =>
-      nodesController.mintPairingToken({ ...reqAs('owner', ownerId), dbClient: client } as never, { locationId }),
+      nodesController.mintPairingToken({ ...reqAs('owner', ownerId), dbClient: client } as never, {
+        locationId,
+      }),
     );
     expect(minted.token).toBeDefined();
     expect(minted.qrPayload).toContain('node');

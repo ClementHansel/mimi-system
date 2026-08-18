@@ -39,7 +39,9 @@ export interface TaxProfile {
   npwp: string | null;
   ptkpCode: string;
   dependantsCount: number;
-  bpjsEnrollments: Partial<Record<BpjsProgram, { enrolledSince: ISODate; endedAt: ISODate | null }>>;
+  bpjsEnrollments: Partial<
+    Record<BpjsProgram, { enrolledSince: ISODate; endedAt: ISODate | null }>
+  >;
   bpjsSalaryBase: Money | null;
 }
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
@@ -72,22 +74,27 @@ export class StatutoryService {
 
   async status(client: PoolClient): Promise<StatutoryStatus> {
     const gateRow = await this.settingsRepo.findByKey(client, 'payroll.statutory');
-    const gate = (gateRow?.value as { enabled: boolean; enabledAt: string | null; enabledBy: string | null } | undefined) ?? {
+    const gate = (gateRow?.value as
+      { enabled: boolean; enabledAt: string | null; enabledBy: string | null } | undefined) ?? {
       enabled: false,
       enabledAt: null,
       enabledBy: null,
     };
 
     const missing: StatutoryStatus['missing'] = [];
-    if ((await this.repo.bpjsOpenProgramCount(client)) < this.repo.bpjsProgramCount) missing.push('bpjs_configs');
-    if ((await this.repo.terOpenCategoryCount(client)) < this.repo.terCategoryCount) missing.push('pph21_ter_rates');
+    if ((await this.repo.bpjsOpenProgramCount(client)) < this.repo.bpjsProgramCount)
+      missing.push('bpjs_configs');
+    if ((await this.repo.terOpenCategoryCount(client)) < this.repo.terCategoryCount)
+      missing.push('pph21_ter_rates');
     if ((await this.repo.ptkpOpenCount(client)) === 0) missing.push('pph21_ptkp');
     const profileCoverage = await this.repo.profileCoverage(client);
     if (profileCoverage.withProfile === 0) missing.push('employee_tax_profiles');
 
     let enabledByName: string | null = null;
     if (gate.enabledBy) {
-      const res = await client.query<{ name: string }>(`SELECT name FROM users WHERE id = $1`, [gate.enabledBy]);
+      const res = await client.query<{ name: string }>(`SELECT name FROM users WHERE id = $1`, [
+        gate.enabledBy,
+      ]);
       enabledByName = res.rows[0]?.name ?? null;
     }
 
@@ -156,7 +163,10 @@ export class StatutoryService {
     const overlap = await this.repo.findOverlappingTer(client, dto.effectiveFrom);
     if (overlap && overlap.effective_to !== null) {
       // Overlaps a HISTORICAL (already-closed) window — never legal to insert into.
-      throw new BadRequestException({ code: ERR_EFFECTIVE_OVERLAP, message: `effectiveFrom ${dto.effectiveFrom} falls inside an already-closed TER window` });
+      throw new BadRequestException({
+        code: ERR_EFFECTIVE_OVERLAP,
+        message: `effectiveFrom ${dto.effectiveFrom} falls inside an already-closed TER window`,
+      });
     }
     const openRows = await this.repo.listTer(client);
     const anyOpen = openRows.find((r) => r.effective_to === null);
@@ -172,7 +182,12 @@ export class StatutoryService {
       await this.repo.insertTerRows(
         client,
         dto.effectiveFrom,
-        dto.rows.map((r) => ({ category: r.category, bracketMin: r.bracketMin, bracketMax: r.bracketMax ?? null, ratePct: r.ratePct })),
+        dto.rows.map((r) => ({
+          category: r.category,
+          bracketMin: r.bracketMin,
+          bracketMax: r.bracketMax ?? null,
+          ratePct: r.ratePct,
+        })),
       );
       return this.listTer(client);
     });
@@ -194,7 +209,11 @@ export class StatutoryService {
       errors.push(...bracketErrors.map((e) => `category ${category}: ${e}`));
     }
     if (errors.length > 0) {
-      throw new BadRequestException({ code: ERR_BRACKET_GAP, message: 'PPh21 TER brackets are not contiguous from 0 per category', details: errors });
+      throw new BadRequestException({
+        code: ERR_BRACKET_GAP,
+        message: 'PPh21 TER brackets are not contiguous from 0 per category',
+        details: errors,
+      });
     }
   }
 
@@ -207,7 +226,10 @@ export class StatutoryService {
   async putPtkp(dto: PutPtkpDto, client: PoolClient) {
     const overlap = await this.repo.findOverlappingPtkp(client, dto.effectiveFrom);
     if (overlap && overlap.effective_to !== null) {
-      throw new BadRequestException({ code: ERR_EFFECTIVE_OVERLAP, message: `effectiveFrom ${dto.effectiveFrom} falls inside an already-closed PTKP window` });
+      throw new BadRequestException({
+        code: ERR_EFFECTIVE_OVERLAP,
+        message: `effectiveFrom ${dto.effectiveFrom} falls inside an already-closed PTKP window`,
+      });
     }
     const rows = await this.repo.listPtkp(client);
     const anyOpen = rows.find((r) => r.effective_to === null);
@@ -218,9 +240,14 @@ export class StatutoryService {
       });
     }
 
-    const dupes = dto.rows.filter((r, i) => dto.rows.findIndex((r2) => r2.ptkpCode === r.ptkpCode) !== i);
+    const dupes = dto.rows.filter(
+      (r, i) => dto.rows.findIndex((r2) => r2.ptkpCode === r.ptkpCode) !== i,
+    );
     if (dupes.length > 0) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `duplicate ptkpCode(s) in one PUT: ${[...new Set(dupes.map((d) => d.ptkpCode))].join(', ')}` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `duplicate ptkpCode(s) in one PUT: ${[...new Set(dupes.map((d) => d.ptkpCode))].join(', ')}`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -242,12 +269,19 @@ export class StatutoryService {
       { requireOpenEndedTop: true },
     );
     if (bracketErrors.length > 0) {
-      throw new BadRequestException({ code: ERR_BRACKET_GAP, message: 'Article 17 brackets are not contiguous from 0 / not open-ended at the top', details: bracketErrors });
+      throw new BadRequestException({
+        code: ERR_BRACKET_GAP,
+        message: 'Article 17 brackets are not contiguous from 0 / not open-ended at the top',
+        details: bracketErrors,
+      });
     }
 
     const overlap = await this.repo.findOverlappingArticle17(client, dto.effectiveFrom);
     if (overlap && overlap.effective_to !== null) {
-      throw new BadRequestException({ code: ERR_EFFECTIVE_OVERLAP, message: `effectiveFrom ${dto.effectiveFrom} falls inside an already-closed Article-17 window` });
+      throw new BadRequestException({
+        code: ERR_EFFECTIVE_OVERLAP,
+        message: `effectiveFrom ${dto.effectiveFrom} falls inside an already-closed Article-17 window`,
+      });
     }
     const rows = await this.repo.listArticle17(client);
     const anyOpen = rows.find((r) => r.effective_to === null);
@@ -263,7 +297,11 @@ export class StatutoryService {
       await this.repo.insertArticle17Rows(
         client,
         dto.effectiveFrom,
-        dto.rows.map((r) => ({ bracketMin: r.bracketMin, bracketMax: r.bracketMax ?? null, ratePct: r.ratePct })),
+        dto.rows.map((r) => ({
+          bracketMin: r.bracketMin,
+          bracketMax: r.bracketMax ?? null,
+          ratePct: r.ratePct,
+        })),
       );
       return this.listArticle17(client);
     });
@@ -279,12 +317,20 @@ export class StatutoryService {
     return mapTaxProfile(employeeId, row);
   }
 
-  async putTaxProfile(employeeId: string, dto: TaxProfileDto, caller: { sub: string }, client: PoolClient): Promise<TaxProfile> {
+  async putTaxProfile(
+    employeeId: string,
+    dto: TaxProfileDto,
+    caller: { sub: string },
+    client: PoolClient,
+  ): Promise<TaxProfile> {
     if (!(await this.repo.employeeExists(client, employeeId))) {
       throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Employee not found' });
     }
     if (!(await this.repo.ptkpCodeIsValid(client, dto.ptkpCode))) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `ptkpCode '${dto.ptkpCode}' is not a currently effective PTKP code` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `ptkpCode '${dto.ptkpCode}' is not a currently effective PTKP code`,
+      });
     }
     return withWrite(client, async () => {
       await this.repo.upsertTaxProfile(client, employeeId, {
@@ -301,13 +347,24 @@ export class StatutoryService {
 
   // ── enable / disable (the gate) ─────────────────────────────────────────
 
-  async enable(dto: EnableStatutoryDto, caller: { sub: string }, client: PoolClient): Promise<StatutoryStatus> {
+  async enable(
+    dto: EnableStatutoryDto,
+    caller: { sub: string },
+    client: PoolClient,
+  ): Promise<StatutoryStatus> {
     if (dto.confirm !== true) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: "'confirm' must be true to enable statutory payroll" });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: "'confirm' must be true to enable statutory payroll",
+      });
     }
     const current = await this.status(client);
     if (!current.ready) {
-      throw new BadRequestException({ code: ERR_STATUTORY_NOT_READY, message: 'Statutory payroll setup is not complete', details: { missing: current.missing } });
+      throw new BadRequestException({
+        code: ERR_STATUTORY_NOT_READY,
+        message: 'Statutory payroll setup is not complete',
+        details: { missing: current.missing },
+      });
     }
     return withWrite(client, async () => {
       const value = { enabled: true, enabledAt: new Date().toISOString(), enabledBy: caller.sub };
@@ -317,16 +374,30 @@ export class StatutoryService {
     });
   }
 
-  async disable(dto: DisableStatutoryDto, caller: { sub: string }, client: PoolClient): Promise<StatutoryStatus> {
+  async disable(
+    dto: DisableStatutoryDto,
+    caller: { sub: string },
+    client: PoolClient,
+  ): Promise<StatutoryStatus> {
     return withWrite(client, async () => {
-      const value = { enabled: false, enabledAt: null, enabledBy: null, disabledReason: dto.reason };
+      const value = {
+        enabled: false,
+        enabledAt: null,
+        enabledBy: null,
+        disabledReason: dto.reason,
+      };
       await this.settingsRepo.updateValue(client, 'payroll.statutory', value, caller.sub);
       await this.emitSettingsUpdated('payroll.statutory', value, caller.sub, client);
       return this.status(client);
     });
   }
 
-  private async emitSettingsUpdated(key: string, value: unknown, actorUserId: string, client: PoolClient): Promise<void> {
+  private async emitSettingsUpdated(
+    key: string,
+    value: unknown,
+    actorUserId: string,
+    client: PoolClient,
+  ): Promise<void> {
     await this.syncEmit.emit(client, {
       entity: SyncEntity.SETTINGS,
       op: 'updated',
@@ -385,9 +456,19 @@ function mapArticle17(r: Awaited<ReturnType<StatutoryRepository['listArticle17']
   };
 }
 
-function mapTaxProfile(employeeId: string, row: Awaited<ReturnType<StatutoryRepository['findTaxProfile']>> | undefined): TaxProfile {
+function mapTaxProfile(
+  employeeId: string,
+  row: Awaited<ReturnType<StatutoryRepository['findTaxProfile']>> | undefined,
+): TaxProfile {
   if (!row) {
-    return { employeeId, npwp: null, ptkpCode: 'TK/0', dependantsCount: 0, bpjsEnrollments: {} as TaxProfile['bpjsEnrollments'], bpjsSalaryBase: null };
+    return {
+      employeeId,
+      npwp: null,
+      ptkpCode: 'TK/0',
+      dependantsCount: 0,
+      bpjsEnrollments: {} as TaxProfile['bpjsEnrollments'],
+      bpjsSalaryBase: null,
+    };
   }
   return {
     employeeId,

@@ -13,7 +13,14 @@
  */
 import { Injectable } from '@nestjs/common';
 import { movementSign } from '@mimi/sync-protocol';
-import { negateQty, type ISODateTime, type Money, type MovementType, type Qty, type UUID } from '@mimi/shared';
+import {
+  negateQty,
+  type ISODateTime,
+  type Money,
+  type MovementType,
+  type Qty,
+  type UUID,
+} from '@mimi/shared';
 import type { LedgerMode, StockKey } from '@mimi/sync-protocol';
 
 import { EventBus } from '../events/event-bus.service';

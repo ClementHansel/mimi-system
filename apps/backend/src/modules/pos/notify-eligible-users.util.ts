@@ -44,7 +44,10 @@ import type { UUID } from '@mimi/shared';
  * the ACTING user's own session (`app_is_self`), not a central bypass — see
  * that method and the test suites' `switchActor` helper.
  */
-async function withCentralContext<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+async function withCentralContext<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -62,7 +65,11 @@ async function withCentralContext<T>(pool: Pool, fn: (client: PoolClient) => Pro
   }
 }
 
-export async function findUsersByRoleAtLocation(pool: Pool, roleKeys: readonly string[], locationId: UUID): Promise<UUID[]> {
+export async function findUsersByRoleAtLocation(
+  pool: Pool,
+  roleKeys: readonly string[],
+  locationId: UUID,
+): Promise<UUID[]> {
   return withCentralContext(pool, async (client) => {
     const res = await client.query<{ id: UUID }>(
       `SELECT u.id FROM users u
@@ -76,11 +83,17 @@ export async function findUsersByRoleAtLocation(pool: Pool, roleKeys: readonly s
 }
 
 /** Resolves `{id -> name}` for a set of user ids — display enrichment only, never an authorization input. Missing/duplicate ids are simply absent from the returned map. */
-export async function resolveUserNames(pool: Pool, userIds: readonly (UUID | null | undefined)[]): Promise<Map<UUID, string>> {
+export async function resolveUserNames(
+  pool: Pool,
+  userIds: readonly (UUID | null | undefined)[],
+): Promise<Map<UUID, string>> {
   const ids = [...new Set(userIds.filter((id): id is UUID => Boolean(id)))];
   if (ids.length === 0) return new Map();
   return withCentralContext(pool, async (client) => {
-    const res = await client.query<{ id: UUID; name: string }>(`SELECT id, name FROM users WHERE id = ANY($1::uuid[])`, [ids]);
+    const res = await client.query<{ id: UUID; name: string }>(
+      `SELECT id, name FROM users WHERE id = ANY($1::uuid[])`,
+      [ids],
+    );
     return new Map(res.rows.map((r) => [r.id, r.name]));
   });
 }

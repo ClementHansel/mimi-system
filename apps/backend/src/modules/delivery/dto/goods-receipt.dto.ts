@@ -1,5 +1,14 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsIn, IsOptional, IsString, IsUUID, Matches, ValidateNested } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  ValidateNested,
+} from 'class-validator';
 
 const QTY_RE = /^-?\d+(\.\d{1,3})?$/;
 

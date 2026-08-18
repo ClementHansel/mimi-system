@@ -16,7 +16,9 @@ describe('ScopeBanner', () => {
   });
 
   it('labels a scoped view with the specific outlet name, not a generic label', () => {
-    render(<ScopeBanner scope="outlet" outletName="Outlet Balikpapan Baru" outletCity="Balikpapan" />);
+    render(
+      <ScopeBanner scope="outlet" outletName="Outlet Balikpapan Baru" outletCity="Balikpapan" />,
+    );
     expect(screen.getByText('Outlet Anda: Outlet Balikpapan Baru')).toBeInTheDocument();
     expect(screen.getByText(/hanya untuk outlet ini \(Balikpapan\)/)).toBeInTheDocument();
   });

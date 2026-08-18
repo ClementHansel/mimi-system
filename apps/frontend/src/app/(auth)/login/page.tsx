@@ -56,8 +56,14 @@ export default function LoginPage() {
     <div className="flex min-h-dvh w-full flex-col bg-surface lg:flex-row">
       {/* ── Brand panel — hidden below lg; mobile gets the compact chip below instead ── */}
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 px-12 py-10 text-white lg:flex lg:w-1/2 lg:flex-col lg:justify-between">
-        <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-brand-300/20 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-32 -left-16 size-80 rounded-full bg-white/5 blur-3xl" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-brand-300/20 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-32 -left-16 size-80 rounded-full bg-white/5 blur-3xl"
+        />
 
         <div className="relative flex items-center gap-3">
           <span className="flex size-11 flex-none items-center justify-center rounded-xl bg-white/15 font-display text-lg font-bold">
@@ -67,13 +73,17 @@ export default function LoginPage() {
         </div>
 
         <div className="relative flex max-w-md flex-col gap-4">
-          <h1 className="font-display text-3xl font-bold leading-tight xl:text-4xl">{t('auth.brandHeadline')}</h1>
+          <h1 className="font-display text-3xl font-bold leading-tight xl:text-4xl">
+            {t('auth.brandHeadline')}
+          </h1>
           <p className="text-base text-white/85">{t('auth.brandTagline')}</p>
           <p className="text-sm text-white/70">{t('auth.brandOutlets')}</p>
           <p className="text-sm text-white/70">{t('auth.brandHours')}</p>
         </div>
 
-        <p className="relative text-xs text-white/60">{t('auth.brandFooter', { year: new Date().getFullYear() })}</p>
+        <p className="relative text-xs text-white/60">
+          {t('auth.brandFooter', { year: new Date().getFullYear() })}
+        </p>
       </div>
 
       {/* ── Form panel ── */}
@@ -83,16 +93,23 @@ export default function LoginPage() {
           <span className="flex size-10 flex-none items-center justify-center rounded-xl bg-brand-500 font-display text-base font-bold text-white">
             MC
           </span>
-          <span className="font-display text-base font-semibold text-text-primary">{t('shell.appName')}</span>
+          <span className="font-display text-base font-semibold text-text-primary">
+            {t('shell.appName')}
+          </span>
         </div>
 
         <div className="mx-auto w-full max-w-sm">
-          <h2 className="font-display text-2xl font-semibold text-text-primary">{t('auth.loginTitle')}</h2>
+          <h2 className="font-display text-2xl font-semibold text-text-primary">
+            {t('auth.loginTitle')}
+          </h2>
           <p className="mt-2 text-sm text-text-secondary">{t('auth.loginSubtitle')}</p>
 
           <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4" noValidate>
             {error && (
-              <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger-600/20 bg-danger-50 p-3 text-sm text-danger-700">
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-danger-600/20 bg-danger-50 p-3 text-sm text-danger-700"
+              >
                 <ShieldAlert className="mt-0.5 size-4 flex-none" aria-hidden />
                 <span>{error}</span>
               </div>
@@ -125,7 +142,13 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 size="touch"
-                rightIcon={showPassword ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                rightIcon={
+                  showPassword ? (
+                    <EyeOff className="size-4" aria-hidden />
+                  ) : (
+                    <Eye className="size-4" aria-hidden />
+                  )
+                }
                 required
               />
               {/* Input's rightIcon is decorative (pointer-events-none) — this
@@ -139,11 +162,19 @@ export default function LoginPage() {
                 aria-pressed={showPassword}
                 className="absolute bottom-0 right-0 flex h-touch w-11 items-center justify-center rounded-md text-text-muted transition-colors hover:text-text-primary focus-visible:text-text-primary"
               >
-                <span className="sr-only">{showPassword ? t('auth.hidePassword') : t('auth.showPassword')}</span>
+                <span className="sr-only">
+                  {showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+                </span>
               </button>
             </div>
 
-            <Button type="submit" size="touch-lg" fullWidth loading={submitting} leftIcon={<LogIn className="size-4" />}>
+            <Button
+              type="submit"
+              size="touch-lg"
+              fullWidth
+              loading={submitting}
+              leftIcon={<LogIn className="size-4" />}
+            >
               {submitting ? t('auth.submitting') : t('auth.submit')}
             </Button>
           </form>

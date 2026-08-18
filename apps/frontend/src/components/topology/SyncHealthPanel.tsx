@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { Card, CardHeader, CardTitle, CardContent, DataTable, Badge, Select, PermissionGate } from '@/components/ui';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  DataTable,
+  Badge,
+  Select,
+  PermissionGate,
+} from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { fmtRelative, fmtDate } from '@/lib/dates';
 import { getSyncConflicts, getReconciliations } from './lib/topology-api';
@@ -20,9 +29,14 @@ const QUEUE_OPTIONS = ['conflict', 'exception', 'finance', 'hr'] as const;
 export function SyncHealthPanel() {
   const { t } = useI18n();
   const [queue, setQueue] = useState('');
-  const [conflicts, setConflicts] = useState<{ rows: SyncConflictRow[]; total: number } | null>(null);
+  const [conflicts, setConflicts] = useState<{ rows: SyncConflictRow[]; total: number } | null>(
+    null,
+  );
   const [conflictsLoading, setConflictsLoading] = useState(true);
-  const [reconciliations, setReconciliations] = useState<{ rows: ReconciliationRow[]; total: number } | null>(null);
+  const [reconciliations, setReconciliations] = useState<{
+    rows: ReconciliationRow[];
+    total: number;
+  } | null>(null);
   const [reconLoading, setReconLoading] = useState(true);
 
   useEffect(() => {
@@ -43,24 +57,51 @@ export function SyncHealthPanel() {
 
   const conflictColumns: DataTableColumn<SyncConflictRow>[] = [
     { key: 'kind', header: t('topology.sync.columnKind') },
-    { key: 'queue', header: t('topology.sync.columnQueue'), render: (r) => <Badge variant="neutral" size="sm">{r.queue}</Badge> },
+    {
+      key: 'queue',
+      header: t('topology.sync.columnQueue'),
+      render: (r) => (
+        <Badge variant="neutral" size="sm">
+          {r.queue}
+        </Badge>
+      ),
+    },
     { key: 'entity', header: t('topology.sync.columnEntity') },
     {
       key: 'physicalEffectSuspected',
       header: t('topology.sync.columnPhysicalEffect'),
-      render: (r) => (r.physicalEffectSuspected ? <Badge variant="danger" size="sm">{t('topology.sync.physicalEffectYes')}</Badge> : t('topology.sync.physicalEffectNo')),
+      render: (r) =>
+        r.physicalEffectSuspected ? (
+          <Badge variant="danger" size="sm">
+            {t('topology.sync.physicalEffectYes')}
+          </Badge>
+        ) : (
+          t('topology.sync.physicalEffectNo')
+        ),
     },
-    { key: 'createdAt', header: t('topology.sync.columnDetected'), render: (r) => fmtRelative(r.createdAt) },
+    {
+      key: 'createdAt',
+      header: t('topology.sync.columnDetected'),
+      render: (r) => fmtRelative(r.createdAt),
+    },
   ];
 
   const reconColumns: DataTableColumn<ReconciliationRow>[] = [
     { key: 'locationName', header: t('topology.sync.columnLocation') },
     { key: 'itemName', header: t('topology.sync.columnItem') },
-    { key: 'storageAreaName', header: t('topology.sync.columnStorageArea'), render: (r) => r.storageAreaName ?? '—' },
+    {
+      key: 'storageAreaName',
+      header: t('topology.sync.columnStorageArea'),
+      render: (r) => r.storageAreaName ?? '—',
+    },
     { key: 'expectedQty', header: t('topology.sync.columnExpectedQty'), align: 'right' },
     { key: 'storedQty', header: t('topology.sync.columnStoredQty'), align: 'right' },
     { key: 'divergence', header: t('topology.sync.columnDivergence'), align: 'right' },
-    { key: 'detectedAt', header: t('topology.sync.columnDetected'), render: (r) => fmtDate(r.detectedAt) },
+    {
+      key: 'detectedAt',
+      header: t('topology.sync.columnDetected'),
+      render: (r) => fmtDate(r.detectedAt),
+    },
   ];
 
   return (
@@ -73,13 +114,21 @@ export function SyncHealthPanel() {
             onValueChange={setQueue}
             size="sm"
             wrapperClassName="w-40"
-            options={[{ value: '', label: t('topology.sync.filterQueue') }, ...QUEUE_OPTIONS.map((q) => ({ value: q, label: q }))]}
+            options={[
+              { value: '', label: t('topology.sync.filterQueue') },
+              ...QUEUE_OPTIONS.map((q) => ({ value: q, label: q })),
+            ]}
           />
         </CardHeader>
         <CardContent>
           <DataTable
             columns={conflictColumns}
-            data={{ rows: conflicts?.rows ?? [], total: conflicts?.total ?? 0, page: 1, pageSize: 50 }}
+            data={{
+              rows: conflicts?.rows ?? [],
+              total: conflicts?.total ?? 0,
+              page: 1,
+              pageSize: 50,
+            }}
             keyField={(r) => r.id}
             loading={conflictsLoading}
             emptyTitle={t('topology.sync.conflictsEmpty')}
@@ -95,7 +144,12 @@ export function SyncHealthPanel() {
           <CardContent>
             <DataTable
               columns={reconColumns}
-              data={{ rows: reconciliations?.rows ?? [], total: reconciliations?.total ?? 0, page: 1, pageSize: 50 }}
+              data={{
+                rows: reconciliations?.rows ?? [],
+                total: reconciliations?.total ?? 0,
+                page: 1,
+                pageSize: 50,
+              }}
               keyField={(r) => r.id}
               loading={reconLoading}
               emptyTitle={t('topology.sync.reconciliationsEmpty')}

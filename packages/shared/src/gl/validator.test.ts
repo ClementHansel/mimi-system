@@ -90,7 +90,9 @@ describe('validateJournalEntry', () => {
   });
 
   it('rejects fewer than two lines', () => {
-    const result = validateJournalEntry({ lines: [{ accountCode: '1100', debit: '100.00', credit: '0.00' }] });
+    const result = validateJournalEntry({
+      lines: [{ accountCode: '1100', debit: '100.00', credit: '0.00' }],
+    });
     expect(result.ok).toBe(false);
   });
 

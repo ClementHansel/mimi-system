@@ -23,8 +23,22 @@ describe('binding HMAC — golden fixture (SYNC-PROTOCOL §7.3, backend parity)'
   const K_BASE64 = K_RAW.toString('base64');
 
   /** Independent reference implementation — Node's `crypto`, byte-for-byte the backend's `bindingMessage`/`computeBindingHmac`. */
-  function referenceHmac(fields: { eventId: string; entity: string; entityId: string; op: string; amountIdr: string; occurredAt: string }): string {
-    const message = [fields.eventId, fields.entity, fields.entityId, fields.op, fields.amountIdr, fields.occurredAt].join('‖');
+  function referenceHmac(fields: {
+    eventId: string;
+    entity: string;
+    entityId: string;
+    op: string;
+    amountIdr: string;
+    occurredAt: string;
+  }): string {
+    const message = [
+      fields.eventId,
+      fields.entity,
+      fields.entityId,
+      fields.op,
+      fields.amountIdr,
+      fields.occurredAt,
+    ].join('‖');
     return createHmac('sha256', K_RAW).update(message, 'utf8').digest('hex');
   }
 
@@ -70,7 +84,9 @@ describe('binding HMAC — golden fixture (SYNC-PROTOCOL §7.3, backend parity)'
       withAmountFields.amountIdr,
       withAmountFields.occurredAt,
     ].join('|');
-    const wrongDigest = createHmac('sha256', K_RAW).update(wrongJoinerMessage, 'utf8').digest('hex');
+    const wrongDigest = createHmac('sha256', K_RAW)
+      .update(wrongJoinerMessage, 'utf8')
+      .digest('hex');
     expect(wrongDigest).not.toBe(referenceHmac(withAmountFields));
   });
 });

@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   calculateOnlineOrderNet,
@@ -17,7 +22,10 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.service';
-import { StockInsufficientError, type PostMovementInput } from '../../../kernel/stock-ledger/stock-ledger.types';
+import {
+  StockInsufficientError,
+  type PostMovementInput,
+} from '../../../kernel/stock-ledger/stock-ledger.types';
 import { explodeRecipeUsage, findKitchenLineAreaId } from '../recipe-usage.util';
 import { mapOnlineOrder, type OnlineOrderRow } from './pos-mappers';
 
@@ -61,7 +69,11 @@ const SELECT = `
 export class PosOnlineOrderService {
   constructor(private readonly stockLedger: StockLedgerService) {}
 
-  async create(client: PoolClient, recordedByUserId: UUID, input: CreateOnlineOrderInput): Promise<OnlineOrder> {
+  async create(
+    client: PoolClient,
+    recordedByUserId: UUID,
+    input: CreateOnlineOrderInput,
+  ): Promise<OnlineOrder> {
     // Interactive-only: the REST path pre-checks for a duplicate (platform, orderRef) and rejects
     // it outright with a legible `ERR_CONFLICT`. NOT enforced in `applyOnlineOrderFact` (the shared
     // core the projector also calls) — SYNC-PROTOCOL C8 is explicit that a duplicate platform order
@@ -71,7 +83,10 @@ export class PosOnlineOrderService {
       [input.platform, input.orderRef],
     );
     if (duplicate.rows[0]) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Order ${input.orderRef} on ${input.platform} was already recorded` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Order ${input.orderRef} on ${input.platform} was already recorded`,
+      });
     }
 
     return this.applyOnlineOrderFact(client, { ...input, recordedByUserId });
@@ -81,7 +96,10 @@ export class PosOnlineOrderService {
    * The shared apply core `PosSyncProjector` calls too. Idempotent on `id` (projector) or
    * `client_id` (either path) — dedupes below `SyncProjectorRegistry`'s own event-id guarantee.
    */
-  async applyOnlineOrderFact(client: PoolClient, input: ApplyOnlineOrderFactInput): Promise<OnlineOrder> {
+  async applyOnlineOrderFact(
+    client: PoolClient,
+    input: ApplyOnlineOrderFactInput,
+  ): Promise<OnlineOrder> {
     // Also checks `(platform, order_ref)` — CONTRACTS' `UNIQUE (platform, order_ref)` constraint
     // makes SYNC-PROTOCOL C8's "both kept" prose structurally impossible at the schema level (a
     // second row for the same platform order would violate that constraint outright, not just look
@@ -92,7 +110,9 @@ export class PosOnlineOrderService {
     // to route around with a migration this agent doesn't own.
     const existing = await client.query<{ id: UUID }>(
       `SELECT id FROM online_orders WHERE client_id = $1 ${input.id ? 'OR id = $2' : ''} OR (platform = $${input.id ? 3 : 2} AND order_ref = $${input.id ? 4 : 3})`,
-      input.id ? [input.clientId, input.id, input.platform, input.orderRef] : [input.clientId, input.platform, input.orderRef],
+      input.id
+        ? [input.clientId, input.id, input.platform, input.orderRef]
+        : [input.clientId, input.platform, input.orderRef],
     );
     if (existing.rows[0]) return this.mustGetById(client, existing.rows[0].id);
 
@@ -113,7 +133,9 @@ export class PosOnlineOrderService {
     // CONTRACTS.md's DDL has no dedicated "excluded from revenue" column for the C8 case — `notes`
     // carries a documented, best-effort marker instead (flagged in the module report as a follow-up
     // for a real column).
-    const notes = input.isConflictLoser ? 'duplicate_platform_order — excluded from revenue (see sync_conflicts)' : null;
+    const notes = input.isConflictLoser
+      ? 'duplicate_platform_order — excluded from revenue (see sync_conflicts)'
+      : null;
     const id = input.id ?? randomUUID();
 
     const inserted = await client.query<{ id: UUID }>(
@@ -143,8 +165,20 @@ export class PosOnlineOrderService {
     );
     if (!inserted.rows[0]) return this.mustGetById(client, id); // race with a concurrent apply of the same fact
 
-    if (input.items && input.items.length > 0 && input.status === OnlineOrderStatus.COMPLETED && !input.isConflictLoser) {
-      await this.postUsage(client, input.locationId, id, input.recordedByUserId, input.items, input.id ? 'fact' : 'strict');
+    if (
+      input.items &&
+      input.items.length > 0 &&
+      input.status === OnlineOrderStatus.COMPLETED &&
+      !input.isConflictLoser
+    ) {
+      await this.postUsage(
+        client,
+        input.locationId,
+        id,
+        input.recordedByUserId,
+        input.items,
+        input.id ? 'fact' : 'strict',
+      );
     }
 
     return this.mustGetById(client, id);
@@ -152,7 +186,15 @@ export class PosOnlineOrderService {
 
   async list(
     client: PoolClient,
-    query: { locationId?: UUID; platform?: OnlinePlatform; from?: string; to?: string; settlement?: SettlementStatus; page: number; pageSize: number },
+    query: {
+      locationId?: UUID;
+      platform?: OnlinePlatform;
+      from?: string;
+      to?: string;
+      settlement?: SettlementStatus;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<Paginated<OnlineOrder>> {
     const params: unknown[] = [];
     let where = '1=1';
@@ -177,7 +219,10 @@ export class PosOnlineOrderService {
       where += ` AND settlement_status = $${params.length}`;
     }
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM online_orders WHERE ${where}`, params);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM online_orders WHERE ${where}`,
+      params,
+    );
     const total = Number.parseInt(countRes.rows[0]?.count ?? '0', 10);
 
     const offset = (query.page - 1) * query.pageSize;
@@ -187,7 +232,12 @@ export class PosOnlineOrderService {
       params,
     );
 
-    return { rows: res.rows.map(mapOnlineOrder), total, page: query.page, pageSize: query.pageSize };
+    return {
+      rows: res.rows.map(mapOnlineOrder),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   }
 
   private async postUsage(
@@ -235,7 +285,8 @@ export class PosOnlineOrderService {
 
   private async mustGetById(client: PoolClient, id: UUID): Promise<OnlineOrder> {
     const res = await client.query<OnlineOrderRow>(`${SELECT} WHERE id = $1`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Online order not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Online order not found' });
     return mapOnlineOrder(res.rows[0]);
   }
 }

@@ -62,7 +62,9 @@ const fakeConfig = { get: (_key: string, def?: string) => def } as unknown as Co
 const fakeTopologyGateway = { emitUpdate: () => undefined } as unknown as TopologyGateway;
 
 function reqAs(sub: string) {
-  return { user: { sub, roleKey: 'owner', username: 'test', locationIds: [] } } as unknown as Parameters<DevicesController['update']>[0];
+  return {
+    user: { sub, roleKey: 'owner', username: 'test', locationIds: [] },
+  } as unknown as Parameters<DevicesController['update']>[0];
 }
 
 describe('DevicesController — BE-TXN-ROLLBACK write-then-read-back (live database, separate connections)', () => {
@@ -72,7 +74,9 @@ describe('DevicesController — BE-TXN-ROLLBACK write-then-read-back (live datab
   afterEach(async () => {
     await cleanupNodesAndDevices({ deviceIds: createdDeviceIds });
     if (createdPairingTokenIds.length > 0) {
-      await assertPool.query(`DELETE FROM pairing_tokens WHERE id = ANY($1::uuid[])`, [createdPairingTokenIds]);
+      await assertPool.query(`DELETE FROM pairing_tokens WHERE id = ANY($1::uuid[])`, [
+        createdPairingTokenIds,
+      ]);
     }
     createdDeviceIds.length = 0;
     createdPairingTokenIds.length = 0;
@@ -83,7 +87,14 @@ describe('DevicesController — BE-TXN-ROLLBACK write-then-read-back (live datab
   });
 
   function buildController(): DevicesController {
-    return new DevicesController(devicesRepo, pairingTokens, syncEmit, fakeConfig, fakeTopologyGateway, pool);
+    return new DevicesController(
+      devicesRepo,
+      pairingTokens,
+      syncEmit,
+      fakeConfig,
+      fakeTopologyGateway,
+      pool,
+    );
   }
 
   it('mintPairingToken persists past its own request — a later, separate connection finds the pairing_tokens row', async () => {
@@ -99,7 +110,9 @@ describe('DevicesController — BE-TXN-ROLLBACK write-then-read-back (live datab
     createdPairingTokenIds.push(minted.tokenId);
 
     // Separate connection/transaction — never sees the minting connection's uncommitted state.
-    const row = await assertPool.query(`SELECT id, location_id FROM pairing_tokens WHERE id = $1`, [minted.tokenId]);
+    const row = await assertPool.query(`SELECT id, location_id FROM pairing_tokens WHERE id = $1`, [
+      minted.tokenId,
+    ]);
     expect(row.rows).toHaveLength(1);
     expect(row.rows[0].location_id).toBe(locationId);
   });
@@ -126,11 +139,15 @@ describe('DevicesController — BE-TXN-ROLLBACK write-then-read-back (live datab
     const controller = buildController();
     const ctx = { role: 'owner', userId: ownerId, locationIds: [] };
     const updated = await asRequest(ctx, (client) =>
-      controller.update({ ...reqAs(ownerId), dbClient: client } as never, created.id, { name: 'BE-TXN-ROLLBACK renamed' }),
+      controller.update({ ...reqAs(ownerId), dbClient: client } as never, created.id, {
+        name: 'BE-TXN-ROLLBACK renamed',
+      }),
     );
     expect(updated.name).toBe('BE-TXN-ROLLBACK renamed');
 
-    const row = await assertPool.query<{ name: string }>(`SELECT name FROM devices WHERE id = $1`, [created.id]);
+    const row = await assertPool.query<{ name: string }>(`SELECT name FROM devices WHERE id = $1`, [
+      created.id,
+    ]);
     expect(row.rows[0]!.name).toBe('BE-TXN-ROLLBACK renamed');
   });
 
@@ -156,7 +173,9 @@ describe('DevicesController — BE-TXN-ROLLBACK write-then-read-back (live datab
     const controller = buildController();
     const ctx = { role: 'owner', userId: ownerId, locationIds: [] };
     const unpaired = await asRequest(ctx, (client) =>
-      controller.unpair({ ...reqAs(ownerId), dbClient: client } as never, created.id, { reason: 'test' }),
+      controller.unpair({ ...reqAs(ownerId), dbClient: client } as never, created.id, {
+        reason: 'test',
+      }),
     );
     expect(unpaired.status).toBe('unpaired');
 
@@ -167,7 +186,9 @@ describe('DevicesController — BE-TXN-ROLLBACK write-then-read-back (live datab
     expect(row.rows[0]!.status).toBe('unpaired');
     expect(row.rows[0]!.device_token_hash).toBeNull();
 
-    const events = await assertPool.query(`SELECT type FROM device_events WHERE device_id = $1`, [created.id]);
+    const events = await assertPool.query(`SELECT type FROM device_events WHERE device_id = $1`, [
+      created.id,
+    ]);
     expect(events.rows.map((r) => r.type)).toContain('unpaired');
   });
 
@@ -197,7 +218,10 @@ describe('DevicesController — BE-TXN-ROLLBACK write-then-read-back (live datab
     );
     expect(retired.status).toBe('retired');
 
-    const row = await assertPool.query<{ status: string }>(`SELECT status FROM devices WHERE id = $1`, [created.id]);
+    const row = await assertPool.query<{ status: string }>(
+      `SELECT status FROM devices WHERE id = $1`,
+      [created.id],
+    );
     expect(row.rows[0]!.status).toBe('retired');
   });
 });

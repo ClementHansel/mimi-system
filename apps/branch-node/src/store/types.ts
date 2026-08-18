@@ -112,7 +112,9 @@ export interface Store {
   listLanDevices(): Promise<LanDeviceRecord[]>;
 
   // ── LAN discovery results (D-13; CONTRACTS block 115) ──────────────────
-  upsertDiscoveredDevice(input: Omit<DiscoveredDeviceRecord, 'id' | 'firstSeenAt' | 'lastSeenAt' | 'status'>): Promise<DiscoveredDeviceRecord>;
+  upsertDiscoveredDevice(
+    input: Omit<DiscoveredDeviceRecord, 'id' | 'firstSeenAt' | 'lastSeenAt' | 'status'>,
+  ): Promise<DiscoveredDeviceRecord>;
   listDiscoveredDevices(): Promise<DiscoveredDeviceRecord[]>;
   /** Marks every currently-`new`/`confirmed` row NOT in `stillPresentIds` as `disappeared` (one discovery sweep's worth of churn). */
   markMissingAsDisappeared(stillPresentIds: readonly UUID[]): Promise<void>;
@@ -123,7 +125,12 @@ export interface Store {
   listMasterData(entity: string): Promise<{ entityId: UUID; payload: unknown }[]>;
 
   // ── whitelisted F/B fan-out projections (§1.4 table) ────────────────────
-  upsertProjection(entity: string, entityId: UUID, locationId: UUID | null, payload: unknown): Promise<void>;
+  upsertProjection(
+    entity: string,
+    entityId: UUID,
+    locationId: UUID | null,
+    payload: unknown,
+  ): Promise<void>;
   listProjections(entity: string, locationId?: UUID): Promise<ProjectionRow[]>;
 
   // ── node-local derived stock (D-16a shared projector output) ────────────

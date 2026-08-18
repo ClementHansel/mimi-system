@@ -19,7 +19,9 @@ describe('CreateReplenishmentDto', () => {
   });
 
   it('rejects a missing locationId', async () => {
-    const dto = plainToInstance(CreateReplenishmentDto, { lines: [{ itemId: VALID_UUID, qtyRequested: '1.000', unitId: VALID_UUID }] });
+    const dto = plainToInstance(CreateReplenishmentDto, {
+      lines: [{ itemId: VALID_UUID, qtyRequested: '1.000', unitId: VALID_UUID }],
+    });
     expect(await validate(dto)).not.toHaveLength(0);
   });
 
@@ -69,7 +71,9 @@ describe('UpdateReplenishmentDto', () => {
 
 describe('RejectReplenishmentDto — reason mandatory (FR-LOG-13)', () => {
   it('rejects an empty reason', async () => {
-    expect(await validate(plainToInstance(RejectReplenishmentDto, { reason: '' }))).not.toHaveLength(0);
+    expect(
+      await validate(plainToInstance(RejectReplenishmentDto, { reason: '' })),
+    ).not.toHaveLength(0);
   });
 
   it('rejects a missing reason', async () => {
@@ -77,7 +81,11 @@ describe('RejectReplenishmentDto — reason mandatory (FR-LOG-13)', () => {
   });
 
   it('accepts a non-empty reason', async () => {
-    expect(await validate(plainToInstance(RejectReplenishmentDto, { reason: 'Stok outlet masih cukup' }))).toHaveLength(0);
+    expect(
+      await validate(
+        plainToInstance(RejectReplenishmentDto, { reason: 'Stok outlet masih cukup' }),
+      ),
+    ).toHaveLength(0);
   });
 });
 

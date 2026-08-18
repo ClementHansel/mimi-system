@@ -163,7 +163,13 @@ export class SupplierController {
     @Param('id') supplierId: UUID,
     @Param('itemId') itemId: UUID,
     @CurrentUser() user: JwtAccessPayload,
-    @Body() dto: { supplierSku?: string | null; currentPrice: string; leadTimeDays?: number; isPreferred?: boolean },
+    @Body()
+    dto: {
+      supplierSku?: string | null;
+      currentPrice: string;
+      leadTimeDays?: number;
+      isPreferred?: boolean;
+    },
   ): Promise<SupplierItem> {
     return this.service.upsertItem(
       requireDbClient(req),

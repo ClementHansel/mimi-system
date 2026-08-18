@@ -24,7 +24,9 @@ import type { Drop, Seal, SuratJalan } from './types';
 
 /** The seal that applies to one drop: a drop-specific seal if the SJ tracked one, otherwise the SJ-wide seal (single freezer box covering the whole route). */
 export function sealForDrop(sj: SuratJalan, dropId: UUID): Seal | null {
-  return sj.seals.find((s) => s.dropId === dropId) ?? sj.seals.find((s) => s.dropId === null) ?? null;
+  return (
+    sj.seals.find((s) => s.dropId === dropId) ?? sj.seals.find((s) => s.dropId === null) ?? null
+  );
 }
 
 /** Temp logs for one drop stage, most recent first — read-only history shown alongside the action forms. */
@@ -45,7 +47,12 @@ export type DropAction = 'depart' | 'arrive' | 'receive' | 'fail' | 'none';
  * this never blocks drop N+1 on drop N's completion.
  */
 export function nextActionForDrop(drop: Drop): DropAction {
-  if (drop.status === 'completed' || drop.status === 'completed_discrepancy' || drop.status === 'failed') return 'none';
+  if (
+    drop.status === 'completed' ||
+    drop.status === 'completed_discrepancy' ||
+    drop.status === 'failed'
+  )
+    return 'none';
   if (!drop.departedAt) return 'depart';
   if (!drop.arrivedAt) return 'arrive';
   return 'receive';

@@ -97,7 +97,9 @@ export function isRoleAuthorized(eligible: readonly Actor[], actor: Actor): bool
   // explicitly-listed human role for this step is also authorized.
   const humanRoles = eligible.filter((r): r is RoleKey => r !== SYSTEM_ACTOR);
   const maxRequiredRank = Math.max(...humanRoles.map((r) => ROLE_RANK[r]));
-  return ROLE_RANK[actor] >= maxRequiredRank && (actor === RoleKey.OWNER || actor === RoleKey.MANAGER);
+  return (
+    ROLE_RANK[actor] >= maxRequiredRank && (actor === RoleKey.OWNER || actor === RoleKey.MANAGER)
+  );
 }
 
 const ALL_ROLES: readonly RoleKey[] = Object.values(RoleKey);
@@ -205,7 +207,10 @@ export const APPROVAL_TRANSITIONS: readonly ApprovalTransitionRule[] = [
 ];
 
 /** The `(documentType, variant?, currentState, action)` coordinates that select one rule — the shape every lookup helper below shares with `TransitionRequest`. */
-export type RuleLookup = Pick<TransitionRequest, 'documentType' | 'variant' | 'currentState' | 'action'>;
+export type RuleLookup = Pick<
+  TransitionRequest,
+  'documentType' | 'variant' | 'currentState' | 'action'
+>;
 
 /**
  * Resolves the single `ApprovalTransitionRule` matching `lookup`, or
@@ -229,7 +234,11 @@ export function findApplicableRule(lookup: RuleLookup): ApprovalTransitionRule |
       r.action === lookup.action,
   );
   if (candidates.length === 0) return undefined;
-  return candidates.find((r) => r.variant === lookup.variant) ?? candidates.find((r) => r.variant === undefined) ?? candidates[0];
+  return (
+    candidates.find((r) => r.variant === lookup.variant) ??
+    candidates.find((r) => r.variant === undefined) ??
+    candidates[0]
+  );
 }
 
 /**
@@ -294,16 +303,30 @@ export function transition(request: TransitionRequest): TransitionResult {
     };
   }
 
-  const reasonNeeded = rule.reasonRequired === true || (rule.reasonRequired === 'on_amend' && Boolean(request.isAmendment));
+  const reasonNeeded =
+    rule.reasonRequired === true ||
+    (rule.reasonRequired === 'on_amend' && Boolean(request.isAmendment));
   if (reasonNeeded && !request.reasonProvided) {
-    return { ok: false, code: ERR_REASON_REQUIRED, message: 'A reason is required for this transition' };
+    return {
+      ok: false,
+      code: ERR_REASON_REQUIRED,
+      message: 'A reason is required for this transition',
+    };
   }
 
-  return { ok: true, nextState: rule.to, reasonRequired: reasonNeeded, offlineEligible: rule.offlineEligible };
+  return {
+    ok: true,
+    nextState: rule.to,
+    reasonRequired: reasonNeeded,
+    offlineEligible: rule.offlineEligible,
+  };
 }
 
 /** Every distinct state reachable as a `to` for a given (documentType, variant) — used by the "no unreachable states" property test. */
-export function reachableStates(documentType: TransitionDocumentType, variant?: TransitionVariant): Set<string> {
+export function reachableStates(
+  documentType: TransitionDocumentType,
+  variant?: TransitionVariant,
+): Set<string> {
   const states = new Set<string>();
   for (const r of APPROVAL_TRANSITIONS) {
     if (r.documentType !== documentType) continue;

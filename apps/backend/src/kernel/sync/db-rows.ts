@@ -9,7 +9,8 @@
  */
 import type { Money, UUID } from '@mimi/shared';
 
-export type ApplyStatus = 'pending' | 'applied' | 'quarantined' | 'superseded' | 'pending_dependency';
+export type ApplyStatus =
+  'pending' | 'applied' | 'quarantined' | 'superseded' | 'pending_dependency';
 export type SyncBatchStatusRow = 'received' | 'applied' | 'partial' | 'failed';
 export type OfflineAuthOutcomeRow = 'pending_verification' | 'verified' | 'failed' | 'unprovable';
 export type OfflineAuthVerdictRow = 'upheld' | 'rejected';

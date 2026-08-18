@@ -10,8 +10,19 @@
 import { api } from '@/lib/api';
 import type { Paginated, Opname, OpnameLine } from '@/lib/shared-types';
 import type {
-  Balance, StorageArea, Item, Movement, Replenishment, SuratJalan,
-  DailyRecap, PurchaseOrder, PurchaseOrderListRow, SupplierDirectoryEntry, ReturnDoc, ReturnDetail, WasteRecord,
+  Balance,
+  StorageArea,
+  Item,
+  Movement,
+  Replenishment,
+  SuratJalan,
+  DailyRecap,
+  PurchaseOrder,
+  PurchaseOrderListRow,
+  SupplierDirectoryEntry,
+  ReturnDoc,
+  ReturnDetail,
+  WasteRecord,
 } from './types';
 
 // ── inventory (§4.7) ─────────────────────────────────────────────────────────
@@ -39,7 +50,13 @@ export function getItems(q?: string) {
   return api.get<Paginated<Item>>(`/items?${qs.toString()}`);
 }
 
-export function getMovements(params: { locationId: string; itemId?: string; storageAreaId?: string; from?: string; to?: string }) {
+export function getMovements(params: {
+  locationId: string;
+  itemId?: string;
+  storageAreaId?: string;
+  from?: string;
+  to?: string;
+}) {
   const qs = new URLSearchParams({ locationId: params.locationId, page: '1' });
   if (params.itemId) qs.set('itemId', params.itemId);
   if (params.storageAreaId) qs.set('storageAreaId', params.storageAreaId);
@@ -88,7 +105,9 @@ export function processReplenishment(id: string) {
 // the driver/vehicle pickers moved with `SuratJalanPanel.tsx`'s removal —
 // `components/delivery/lib/delivery-api.ts` carries its own copies.
 
-export function listSuratJalan(params: { status?: string; date?: string; locationId?: string; driverId?: string } = {}) {
+export function listSuratJalan(
+  params: { status?: string; date?: string; locationId?: string; driverId?: string } = {},
+) {
   const qs = new URLSearchParams({ page: '1' });
   if (params.status) qs.set('status', params.status);
   if (params.date) qs.set('date', params.date);
@@ -107,7 +126,9 @@ export function getDailyRecap(date: string) {
 
 // ── purchasing / PO receiving (§4.11) ───────────────────────────────────────
 
-export function listPurchaseOrders(params: { status?: string; supplierId?: string; from?: string; to?: string } = {}) {
+export function listPurchaseOrders(
+  params: { status?: string; supplierId?: string; from?: string; to?: string } = {},
+) {
   const qs = new URLSearchParams({ page: '1' });
   if (params.status) qs.set('status', params.status);
   if (params.supplierId) qs.set('supplierId', params.supplierId);
@@ -125,7 +146,16 @@ export function getPurchaseOrder(id: string) {
 
 export function receivePurchaseOrder(
   id: string,
-  body: { lines: { poLineId: string; qtyReceived: string; storageAreaId: string; conditionNotes?: string }[]; photoAttachmentIds: string[]; notes?: string },
+  body: {
+    lines: {
+      poLineId: string;
+      qtyReceived: string;
+      storageAreaId: string;
+      conditionNotes?: string;
+    }[];
+    photoAttachmentIds: string[];
+    notes?: string;
+  },
 ) {
   return api.post<PurchaseOrder>(`/purchasing/orders/${id}/receipts`, body);
 }
@@ -138,7 +168,9 @@ export function getSupplierDirectory(q?: string) {
 
 // ── waste-return — retur to supplier + retur received from outlet (§4.12) ──
 
-export function listReturns(params: { direction?: string; locationId?: string; status?: string } = {}) {
+export function listReturns(
+  params: { direction?: string; locationId?: string; status?: string } = {},
+) {
   const qs = new URLSearchParams({ page: '1' });
   if (params.direction) qs.set('direction', params.direction);
   if (params.locationId) qs.set('locationId', params.locationId);
@@ -155,7 +187,13 @@ export function createReturn(body: {
   fromLocationId: string;
   toLocationId?: string;
   supplierId?: string;
-  lines: { itemId: string; storageAreaId: string; qty: string; condition: string; reason: string }[];
+  lines: {
+    itemId: string;
+    storageAreaId: string;
+    qty: string;
+    condition: string;
+    reason: string;
+  }[];
   photoAttachmentIds: string[];
 }) {
   return api.post<ReturnDoc>('/returns', body);
@@ -169,7 +207,13 @@ export function shipReturn(id: string, body: { proofAttachmentIds: string[] }) {
   return api.post<ReturnDoc>(`/returns/${id}/ship`, body);
 }
 
-export function receiveReturnDoc(id: string, body: { lines: { lineId: string; qtyReceived: string; storageAreaId: string }[]; proofAttachmentIds: string[] }) {
+export function receiveReturnDoc(
+  id: string,
+  body: {
+    lines: { lineId: string; qtyReceived: string; storageAreaId: string }[];
+    proofAttachmentIds: string[];
+  },
+) {
   return api.post<ReturnDoc>(`/returns/${id}/receive`, body);
 }
 
@@ -217,7 +261,13 @@ export function listWaste(locationId: string, status?: string) {
 
 export function createWaste(body: {
   locationId: string;
-  items: { storageAreaId: string; itemId: string; qty: string; reason: string; reasonDetail?: string }[];
+  items: {
+    storageAreaId: string;
+    itemId: string;
+    qty: string;
+    reason: string;
+    reasonDetail?: string;
+  }[];
   photoAttachmentIds: string[];
 }) {
   return api.post<WasteRecord[]>('/waste', body);

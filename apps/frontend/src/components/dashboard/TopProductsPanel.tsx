@@ -44,8 +44,18 @@ export function TopProductsPanel({ from, to, locationId }: TopProductsPanelProps
 
   const columns: DataTableColumn<TopProductRow>[] = [
     { key: 'name', header: t('dashboard.topProducts.columnProduct') },
-    { key: 'qty', header: t('dashboard.topProducts.columnQty'), align: 'right', render: (r) => formatQty(r.qty) },
-    { key: 'revenue', header: t('dashboard.overview.revenue'), align: 'right', render: (r) => formatMoney(r.revenue) },
+    {
+      key: 'qty',
+      header: t('dashboard.topProducts.columnQty'),
+      align: 'right',
+      render: (r) => formatQty(r.qty),
+    },
+    {
+      key: 'revenue',
+      header: t('dashboard.overview.revenue'),
+      align: 'right',
+      render: (r) => formatMoney(r.revenue),
+    },
   ];
 
   return (

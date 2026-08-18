@@ -14,20 +14,29 @@ export class AttendanceController {
   @Post('check-in')
   @RequirePermission('hr.attendance.check')
   @Audited({ module: 'hr', entityType: 'attendance', action: 'hr.attendance.check' })
-  async checkIn(@Req() req: RequestWithDbContext, @Body() dto: CheckAttendanceDto): Promise<AttendanceRow> {
+  async checkIn(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: CheckAttendanceDto,
+  ): Promise<AttendanceRow> {
     return this.service.checkIn(req.dbClient!, req.user!, dto);
   }
 
   @Post('check-out')
   @RequirePermission('hr.attendance.check')
   @Audited({ module: 'hr', entityType: 'attendance', action: 'hr.attendance.check' })
-  async checkOut(@Req() req: RequestWithDbContext, @Body() dto: CheckAttendanceDto): Promise<AttendanceRow> {
+  async checkOut(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: CheckAttendanceDto,
+  ): Promise<AttendanceRow> {
     return this.service.checkOut(req.dbClient!, req.user!, dto);
   }
 
   @Get('me')
   @RequirePermission('hr.attendance.check')
-  async me(@Req() req: RequestWithDbContext, @Query('month') month?: string): Promise<AttendanceRow[]> {
+  async me(
+    @Req() req: RequestWithDbContext,
+    @Query('month') month?: string,
+  ): Promise<AttendanceRow[]> {
     return this.service.listMe(req.dbClient!, req.user!, month);
   }
 

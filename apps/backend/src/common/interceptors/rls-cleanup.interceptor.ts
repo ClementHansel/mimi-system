@@ -72,11 +72,16 @@ export class RlsCleanupInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       concatMap((data) => from(this.release(request, 'success')).pipe(map(() => data))),
-      catchError((err) => from(this.release(request, 'error')).pipe(concatMap(() => throwError(() => err)))),
+      catchError((err) =>
+        from(this.release(request, 'error')).pipe(concatMap(() => throwError(() => err))),
+      ),
     );
   }
 
-  private async release(request: RequestWithDbContext & Request, outcome: 'success' | 'error'): Promise<void> {
+  private async release(
+    request: RequestWithDbContext & Request,
+    outcome: 'success' | 'error',
+  ): Promise<void> {
     const client = request.dbClient;
     if (!client) return;
     // Clear the reference first: guarantees a single release even if this
@@ -101,13 +106,18 @@ export class RlsCleanupInterceptor implements NestInterceptor {
   }
 
   /** See this file's class doc comment ("BE-TXN-ROLLBACK GUARD") for the full rationale. */
-  private async warnIfUncommittedWrite(client: PoolClient, request: RequestWithDbContext & Request): Promise<void> {
+  private async warnIfUncommittedWrite(
+    client: PoolClient,
+    request: RequestWithDbContext & Request,
+  ): Promise<void> {
     // Declared without an initializer: the `catch` below returns, so the only
     // path that reaches the read has already assigned it, and a `= null` seed
     // would be dead (eslint no-useless-assignment).
     let xid: string | null;
     try {
-      const res = await client.query<{ xid: string | null }>(`SELECT pg_current_xact_id_if_assigned()::text AS xid`);
+      const res = await client.query<{ xid: string | null }>(
+        `SELECT pg_current_xact_id_if_assigned()::text AS xid`,
+      );
       xid = res.rows[0]?.xid ?? null;
     } catch {
       // Best-effort diagnostic only — a failure here (e.g. an already-aborted transaction from a

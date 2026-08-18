@@ -36,14 +36,10 @@ function runStep(label: string, scriptFile: string): void {
 
 async function reset(): Promise<void> {
   const connectionString =
-    process.env.DATABASE_MIGRATION_URL ||
-    'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
 
   // Safety check: refuse to run on production-like URLs
-  if (
-    connectionString.includes('production') ||
-    connectionString.includes('prod')
-  ) {
+  if (connectionString.includes('production') || connectionString.includes('prod')) {
     console.error('✗ Refusing to reset a production database!');
     process.exit(1);
   }

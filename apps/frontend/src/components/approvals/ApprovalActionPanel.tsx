@@ -53,7 +53,11 @@ export function ApprovalActionPanel({
           required={reasonRequiredOnApprove}
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          error={reasonRequiredOnApprove && note.trim() === '' ? t('validation.reasonRequired') : undefined}
+          error={
+            reasonRequiredOnApprove && note.trim() === ''
+              ? t('validation.reasonRequired')
+              : undefined
+          }
           disabled={submitting}
         />
       ) : (
@@ -80,7 +84,12 @@ export function ApprovalActionPanel({
 
       <div className="flex flex-wrap justify-end gap-2">
         {!rejecting ? (
-          <Button type="button" variant="outline" disabled={submitting} onClick={() => setRejecting(true)}>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={submitting}
+            onClick={() => setRejecting(true)}
+          >
             {t('approvalDetail.reject')}
           </Button>
         ) : (

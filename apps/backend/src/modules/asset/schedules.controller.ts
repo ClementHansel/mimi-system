@@ -29,24 +29,46 @@ export class SchedulesController {
   @RequirePermission('asset.read')
   async list(@Req() req: RequestWithDbContext, @Param('id') id: string): Promise<ScheduleDto[]> {
     const assetLocationId = await this.assets.getAssetLocationId(req.dbClient!, id);
-    return this.service.listForAsset(req.dbClient!, assetLocationId, id, req.user!, req.locationScope ?? null);
+    return this.service.listForAsset(
+      req.dbClient!,
+      assetLocationId,
+      id,
+      req.user!,
+      req.locationScope ?? null,
+    );
   }
 
   @Post(':id/schedules')
   @RequirePermission('asset.schedule.manage')
-  @Audited({ module: 'asset', entityType: 'maintenance_schedules', action: 'asset.schedule.manage' })
+  @Audited({
+    module: 'asset',
+    entityType: 'maintenance_schedules',
+    action: 'asset.schedule.manage',
+  })
   async create(
     @Req() req: RequestWithDbContext,
     @Param('id') id: string,
     @Body() dto: CreateScheduleDto,
   ): Promise<ScheduleDto> {
     const assetLocationId = await this.assets.getAssetLocationId(req.dbClient!, id);
-    return this.service.create(req.dbClient!, req.user!.sub, assetLocationId, id, dto, req.user!, req.locationScope ?? null);
+    return this.service.create(
+      req.dbClient!,
+      req.user!.sub,
+      assetLocationId,
+      id,
+      dto,
+      req.user!,
+      req.locationScope ?? null,
+    );
   }
 
   @Patch('schedules/:scheduleId')
   @RequirePermission('asset.schedule.manage')
-  @Audited({ module: 'asset', entityType: 'maintenance_schedules', action: 'asset.schedule.manage' })
+  @Audited({
+    module: 'asset',
+    entityType: 'maintenance_schedules',
+    action: 'asset.schedule.manage',
+  })
   async update(
     @Req() req: RequestWithDbContext,
     @Param('scheduleId') scheduleId: string,

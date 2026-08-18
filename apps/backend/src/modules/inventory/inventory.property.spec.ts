@@ -23,7 +23,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { addQty, ZERO_QTY } from '@mimi/shared';
-import { foldMovementsToBalances, projectBalanceAt, stockKeyOf, type MovementFact, type StockKey } from '@mimi/sync-protocol';
+import {
+  foldMovementsToBalances,
+  projectBalanceAt,
+  stockKeyOf,
+  type MovementFact,
+  type StockKey,
+} from '@mimi/sync-protocol';
 
 import { InventoryRepository } from './inventory.repository';
 import { InventoryService, type CallerContext } from './inventory.service';
@@ -33,7 +39,11 @@ import { EventBus } from '../../kernel/events/event-bus.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { closePool, getOwnerPool, withRollback } from './test-support/live-db';
 
-const CENTRAL_CALLER: CallerContext = { userId: '00000000-0000-0000-0000-0000000000ab', roleKey: 'owner' as never, locationScope: null };
+const CENTRAL_CALLER: CallerContext = {
+  userId: '00000000-0000-0000-0000-0000000000ab',
+  roleKey: 'owner' as never,
+  locationScope: null,
+};
 
 // A fake SyncEmitService — this suite never calls a write path (upsertMinStock/area-transfer)
 // so the real dependency is never exercised, but InventoryService's constructor needs *something*.
@@ -44,7 +54,10 @@ function service(): InventoryService {
   return new InventoryService(new InventoryRepository(), stockLedger, fakeSyncEmit);
 }
 
-async function fetchAllMovements(client: import('pg').PoolClient, key: StockKey): Promise<MovementFact[]> {
+async function fetchAllMovements(
+  client: import('pg').PoolClient,
+  key: StockKey,
+): Promise<MovementFact[]> {
   const res = await client.query<{
     id: string;
     movement_type: string;
@@ -108,17 +121,26 @@ describe('M07 inventory — read APIs agree with the ledger projection (live see
     // this suite samples immune to that race, without weakening what the
     // property itself asserts (it still fully re-derives each sampled key's
     // balance from ALL of `stock_movements` for that key, seed or otherwise).
-    const rows = await getOwnerPool().query<{ location_id: string; storage_area_id: string; item_id: string }>(
+    const rows = await getOwnerPool().query<{
+      location_id: string;
+      storage_area_id: string;
+      item_id: string;
+    }>(
       `SELECT DISTINCT b.location_id, b.storage_area_id, b.item_id
          FROM stock_balances b
          JOIN stock_movements m
            ON m.location_id = b.location_id AND m.storage_area_id = b.storage_area_id AND m.item_id = b.item_id
         WHERE m.ref_type = 'seed'`,
     );
-    allKeys = rows.rows.map((r) => ({ locationId: r.location_id, storageAreaId: r.storage_area_id, itemId: r.item_id }));
+    allKeys = rows.rows.map((r) => ({
+      locationId: r.location_id,
+      storageAreaId: r.storage_area_id,
+      itemId: r.item_id,
+    }));
 
     const pairs = new Map<string, { locationId: string; itemId: string }>();
-    for (const k of allKeys) pairs.set(`${k.locationId}::${k.itemId}`, { locationId: k.locationId, itemId: k.itemId });
+    for (const k of allKeys)
+      pairs.set(`${k.locationId}::${k.itemId}`, { locationId: k.locationId, itemId: k.itemId });
     allLocationItemPairs = [...pairs.values()];
   }, 30_000);
 
@@ -166,58 +188,68 @@ describe('M07 inventory — read APIs agree with the ledger projection (live see
 
   it('property: for random (location, item) pairs, the summed-across-areas total (low-stock/suggestions/summary grain) equals fold-of-movements summed the same way', async () => {
     await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 0, max: allLocationItemPairs.length - 1 }), async (idx) => {
-        const pair = allLocationItemPairs[idx]!;
+      fc.asyncProperty(
+        fc.integer({ min: 0, max: allLocationItemPairs.length - 1 }),
+        async (idx) => {
+          const pair = allLocationItemPairs[idx]!;
 
-        await withRollback(async (client) => {
-          const repo = new InventoryRepository();
-          const apiTotal = await repo.getLocationItemTotal(client, pair.locationId, pair.itemId);
+          await withRollback(async (client) => {
+            const repo = new InventoryRepository();
+            const apiTotal = await repo.getLocationItemTotal(client, pair.locationId, pair.itemId);
 
-          const areasRes = await client.query<{ storage_area_id: string }>(
-            `SELECT DISTINCT storage_area_id FROM stock_balances WHERE location_id = $1 AND item_id = $2`,
-            [pair.locationId, pair.itemId],
-          );
+            const areasRes = await client.query<{ storage_area_id: string }>(
+              `SELECT DISTINCT storage_area_id FROM stock_balances WHERE location_id = $1 AND item_id = $2`,
+              [pair.locationId, pair.itemId],
+            );
 
-          let expectedTotal = ZERO_QTY;
-          for (const areaRow of areasRes.rows) {
-            const key: StockKey = { locationId: pair.locationId, storageAreaId: areaRow.storage_area_id, itemId: pair.itemId };
-            const movements = await fetchAllMovements(client, key);
-            expectedTotal = addQty(expectedTotal, projectBalanceAt(movements, key));
-          }
+            let expectedTotal = ZERO_QTY;
+            for (const areaRow of areasRes.rows) {
+              const key: StockKey = {
+                locationId: pair.locationId,
+                storageAreaId: areaRow.storage_area_id,
+                itemId: pair.itemId,
+              };
+              const movements = await fetchAllMovements(client, key);
+              expectedTotal = addQty(expectedTotal, projectBalanceAt(movements, key));
+            }
 
-          expect(apiTotal).toBe(expectedTotal);
-        });
-      }),
+            expect(apiTotal).toBe(expectedTotal);
+          });
+        },
+      ),
       { numRuns: 25 },
     );
   }, 60_000);
 
-  it('property: history\'s reconstructed series ends at the live summed balance for random (location, item) pairs', async () => {
+  it("property: history's reconstructed series ends at the live summed balance for random (location, item) pairs", async () => {
     await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 0, max: allLocationItemPairs.length - 1 }), async (idx) => {
-        const pair = allLocationItemPairs[idx]!;
-        const svc = service();
+      fc.asyncProperty(
+        fc.integer({ min: 0, max: allLocationItemPairs.length - 1 }),
+        async (idx) => {
+          const pair = allLocationItemPairs[idx]!;
+          const svc = service();
 
-        await withRollback(async (client) => {
-          const repo = new InventoryRepository();
-          const liveTotal = await repo.getLocationItemTotal(client, pair.locationId, pair.itemId);
+          await withRollback(async (client) => {
+            const repo = new InventoryRepository();
+            const liveTotal = await repo.getLocationItemTotal(client, pair.locationId, pair.itemId);
 
-          const series = await svc.getHistory(
-            client,
-            { ...CENTRAL_CALLER, locationScope: null },
-            pair.locationId,
-            pair.itemId,
-            30,
-          );
-          expect(series).toHaveLength(30);
-          expect(series[series.length - 1]!.closing).toBe(liveTotal);
-        });
-      }),
+            const series = await svc.getHistory(
+              client,
+              { ...CENTRAL_CALLER, locationScope: null },
+              pair.locationId,
+              pair.itemId,
+              30,
+            );
+            expect(series).toHaveLength(30);
+            expect(series[series.length - 1]!.closing).toBe(liveTotal);
+          });
+        },
+      ),
       { numRuns: 25 },
     );
   }, 60_000);
 
-  it('multi-key fold agreement, exercised via the shared projector\'s own batch API (foldMovementsToBalances) across several keys at once', async () => {
+  it("multi-key fold agreement, exercised via the shared projector's own batch API (foldMovementsToBalances) across several keys at once", async () => {
     const sample = allKeys.slice(0, 10);
     await withRollback(async (client) => {
       const allMovements: MovementFact[] = [];

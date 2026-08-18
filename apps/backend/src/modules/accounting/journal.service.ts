@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   DocumentPrefix,
@@ -69,21 +74,44 @@ export class JournalService {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (query.from) { conds.push(`je.entry_date >= $${i++}`); args.push(query.from); }
-    if (query.to) { conds.push(`je.entry_date <= $${i++}`); args.push(query.to); }
-    if (query.eventType) { conds.push(`je.event_type = $${i++}`); args.push(query.eventType); }
-    if (query.locationId) { conds.push(`je.location_id = $${i++}`); args.push(query.locationId); }
-    if (query.source) { conds.push(`je.source = $${i++}`); args.push(query.source); }
+    if (query.from) {
+      conds.push(`je.entry_date >= $${i++}`);
+      args.push(query.from);
+    }
+    if (query.to) {
+      conds.push(`je.entry_date <= $${i++}`);
+      args.push(query.to);
+    }
+    if (query.eventType) {
+      conds.push(`je.event_type = $${i++}`);
+      args.push(query.eventType);
+    }
+    if (query.locationId) {
+      conds.push(`je.location_id = $${i++}`);
+      args.push(query.locationId);
+    }
+    if (query.source) {
+      conds.push(`je.source = $${i++}`);
+      args.push(query.source);
+    }
     if (query.accountCode) {
-      conds.push(`EXISTS (SELECT 1 FROM journal_lines jl2 JOIN chart_of_accounts c2 ON c2.id = jl2.account_id WHERE jl2.entry_id = je.id AND c2.code = $${i++})`);
+      conds.push(
+        `EXISTS (SELECT 1 FROM journal_lines jl2 JOIN chart_of_accounts c2 ON c2.id = jl2.account_id WHERE jl2.entry_id = je.id AND c2.code = $${i++})`,
+      );
       args.push(query.accountCode);
     }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (page - 1) * pageSize;
 
     const [rows, count] = await Promise.all([
-      client.query<JournalEntryRow>(`${ENTRY_SELECT} ${where} ORDER BY je.entry_date DESC, je.entry_number DESC LIMIT $${i} OFFSET $${i + 1}`, [...args, pageSize, offset]),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM journal_entries je ${where}`, args),
+      client.query<JournalEntryRow>(
+        `${ENTRY_SELECT} ${where} ORDER BY je.entry_date DESC, je.entry_number DESC LIMIT $${i} OFFSET $${i + 1}`,
+        [...args, pageSize, offset],
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM journal_entries je ${where}`,
+        args,
+      ),
     ]);
 
     const result: JournalEntry[] = [];
@@ -99,7 +127,11 @@ export class JournalService {
   }
 
   /** `POST /api/accounting/journal` — a manual entry, `source='manual'`. Rejects unbalanced (`ERR_UNBALANCED_ENTRY`) and closed/locked periods (`ERR_PERIOD_CLOSED`). */
-  async postManual(client: PoolClient, postedBy: UUID, dto: CreateJournalEntryDto): Promise<JournalEntry> {
+  async postManual(
+    client: PoolClient,
+    postedBy: UUID,
+    dto: CreateJournalEntryDto,
+  ): Promise<JournalEntry> {
     const draftLines: DraftLine[] = dto.lines.map((l) => ({
       accountCode: l.accountCode,
       debit: l.debit ?? '0.00',
@@ -107,7 +139,9 @@ export class JournalService {
       memo: l.memo ?? null,
     }));
 
-    const validation = validateJournalEntry({ lines: draftLines.map((l) => ({ ...l, memo: l.memo ?? undefined })) });
+    const validation = validateJournalEntry({
+      lines: draftLines.map((l) => ({ ...l, memo: l.memo ?? undefined })),
+    });
     if (!validation.ok) {
       throw new BadRequestException({ code: validation.code, message: validation.message });
     }
@@ -119,7 +153,10 @@ export class JournalService {
       // period auto-create too, not leave it half-committed by RlsCleanupInterceptor's ROLLBACK.
       const period = await this.periods.findOrCreateForDate(client, dto.entryDate);
       if (period.status !== 'open') {
-        throw new ConflictException({ code: ERR_PERIOD_CLOSED, message: `Fiscal period ${period.period_code} is '${period.status}' — cannot post into it` });
+        throw new ConflictException({
+          code: ERR_PERIOD_CLOSED,
+          message: `Fiscal period ${period.period_code} is '${period.status}' — cannot post into it`,
+        });
       }
 
       const entryId = await this.insertEntry(client, {
@@ -148,8 +185,13 @@ export class JournalService {
    * instead of double-posting. Returns `null` on that no-op path so callers
    * can distinguish "posted" from "already posted" without a second query.
    */
-  async postSystemEntry(client: PoolClient, params: PostSystemEntryParams): Promise<JournalEntry | null> {
-    const validation = validateJournalEntry({ lines: params.lines.map((l) => ({ ...l, memo: l.memo ?? undefined })) });
+  async postSystemEntry(
+    client: PoolClient,
+    params: PostSystemEntryParams,
+  ): Promise<JournalEntry | null> {
+    const validation = validateJournalEntry({
+      lines: params.lines.map((l) => ({ ...l, memo: l.memo ?? undefined })),
+    });
     if (!validation.ok) {
       throw new BadRequestException({
         code: validation.code,
@@ -171,7 +213,16 @@ export class JournalService {
        VALUES ($1,$2,$3,$4,'system',$5,$6,$7,$8,'posted', NULL)
        ON CONFLICT (event_type, ref_type, ref_id) WHERE source = 'system' DO NOTHING
        RETURNING id`,
-      [entryNumber, params.entryDate, targetPeriodId, params.eventType, params.refType, params.refId, params.locationId, params.description],
+      [
+        entryNumber,
+        params.entryDate,
+        targetPeriodId,
+        params.eventType,
+        params.refType,
+        params.refId,
+        params.locationId,
+        params.description,
+      ],
     );
     const entryId = insertRes.rows[0]?.id;
     if (!entryId) return null; // idempotent replay — a system entry for this (eventType, refType, refId) already exists
@@ -181,21 +232,40 @@ export class JournalService {
   }
 
   /** `POST /api/accounting/journal/:id/reverse` — a NEW entry with every debit/credit swapped, linked via `reversed_by_entry_id`. Never mutates/deletes the original (D-04 append-only). */
-  async reverse(client: PoolClient, actorId: UUID, id: UUID, reason: string): Promise<JournalEntry> {
+  async reverse(
+    client: PoolClient,
+    actorId: UUID,
+    id: UUID,
+    reason: string,
+  ): Promise<JournalEntry> {
     const original = await this.requireEntry(client, id);
     if (original.status === 'reversed') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Journal entry ${original.entry_number} is already reversed` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Journal entry ${original.entry_number} is already reversed`,
+      });
     }
     const period = await this.periods.get(client, original.fiscal_period_id);
     if (period.status === 'locked') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Fiscal period ${period.period_code} is 'locked' — reversal entries are forbidden` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Fiscal period ${period.period_code} is 'locked' — reversal entries are forbidden`,
+      });
     }
     if (period.status === 'closed') {
-      throw new ConflictException({ code: ERR_PERIOD_CLOSED, message: `Fiscal period ${period.period_code} is 'closed'` });
+      throw new ConflictException({
+        code: ERR_PERIOD_CLOSED,
+        message: `Fiscal period ${period.period_code} is 'closed'`,
+      });
     }
 
     const originalLines = await this.lines(client, id);
-    const swapped: DraftLine[] = originalLines.map((l) => ({ accountCode: l.account_code, debit: l.credit, credit: l.debit, memo: l.memo }));
+    const swapped: DraftLine[] = originalLines.map((l) => ({
+      accountCode: l.account_code,
+      debit: l.credit,
+      credit: l.debit,
+      memo: l.memo,
+    }));
     const entryDate = new Date().toISOString().slice(0, 10);
 
     return withWrite(client, async () => {
@@ -218,17 +288,37 @@ export class JournalService {
         entryNumberOverride: entryNumber,
       });
 
-      await client.query(`UPDATE journal_entries SET status = 'reversed', reversed_by_entry_id = $2 WHERE id = $1`, [id, reversalId]);
+      await client.query(
+        `UPDATE journal_entries SET status = 'reversed', reversed_by_entry_id = $2 WHERE id = $1`,
+        [id, reversalId],
+      );
       return this.getDetail(client, reversalId);
     });
   }
 
-  async postingRules(client: PoolClient, eventType?: string): Promise<
-    { eventType: string; ruleSeq: number; condition: object | null; debitAccountCode: string; creditAccountCode: string; amountSource: string; isActive: boolean }[]
+  async postingRules(
+    client: PoolClient,
+    eventType?: string,
+  ): Promise<
+    {
+      eventType: string;
+      ruleSeq: number;
+      condition: object | null;
+      debitAccountCode: string;
+      creditAccountCode: string;
+      amountSource: string;
+      isActive: boolean;
+    }[]
   > {
     const where = eventType ? `WHERE event_type = $1` : '';
     const res = await client.query<{
-      event_type: string; rule_seq: number; condition: object | null; debit_account_code: string; credit_account_code: string; amount_source: string; is_active: boolean;
+      event_type: string;
+      rule_seq: number;
+      condition: object | null;
+      debit_account_code: string;
+      credit_account_code: string;
+      amount_source: string;
+      is_active: boolean;
     }>(
       `SELECT event_type, rule_seq, condition, debit_account_code, credit_account_code, amount_source, is_active
          FROM posting_rules ${where} ORDER BY event_type, rule_seq`,
@@ -250,12 +340,19 @@ export class JournalService {
   private async requireEntry(client: PoolClient, id: UUID): Promise<JournalEntryRow> {
     const res = await client.query<JournalEntryRow>(`${ENTRY_SELECT} WHERE je.id = $1`, [id]);
     const row = res.rows[0];
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Journal entry ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Journal entry ${id} not found`,
+      });
     return row;
   }
 
   private async lines(client: PoolClient, entryId: UUID): Promise<JournalLineRow[]> {
-    const res = await client.query<JournalLineRow>(`${LINE_SELECT} WHERE jl.entry_id = $1 ORDER BY jl.line_no`, [entryId]);
+    const res = await client.query<JournalLineRow>(
+      `${LINE_SELECT} WHERE jl.entry_id = $1 ORDER BY jl.line_no`,
+      [entryId],
+    );
     return res.rows;
   }
 
@@ -275,7 +372,14 @@ export class JournalService {
       locationName: row.location_name,
       description: row.description,
       status: row.status,
-      lines: lineRows.map((l) => ({ lineNo: l.line_no, accountCode: l.account_code, accountName: l.account_name, debit: l.debit, credit: l.credit, memo: l.memo })),
+      lines: lineRows.map((l) => ({
+        lineNo: l.line_no,
+        accountCode: l.account_code,
+        accountName: l.account_name,
+        debit: l.debit,
+        credit: l.credit,
+        memo: l.memo,
+      })),
     };
   }
 
@@ -312,7 +416,18 @@ export class JournalService {
       `INSERT INTO journal_entries (entry_number, entry_date, fiscal_period_id, event_type, source, ref_type, ref_id, location_id, description, status, posted_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'posted',$10)
        RETURNING id`,
-      [entryNumber, params.entryDate, params.fiscalPeriodId, params.eventType, params.source, params.refType, params.refId, params.locationId, params.description, params.postedBy],
+      [
+        entryNumber,
+        params.entryDate,
+        params.fiscalPeriodId,
+        params.eventType,
+        params.source,
+        params.refType,
+        params.refId,
+        params.locationId,
+        params.description,
+        params.postedBy,
+      ],
     );
     const entryId = res.rows[0]!.id;
     await this.insertLines(client, entryId, params.lines);
@@ -325,7 +440,10 @@ export class JournalService {
       lineNo += 1;
       const account = await this.coa.requireByCode(client, line.accountCode);
       if (!account.is_postable) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `Account ${account.code} (${account.name}) is a header account (is_postable=false) and cannot receive postings` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `Account ${account.code} (${account.name}) is a header account (is_postable=false) and cannot receive postings`,
+        });
       }
       await client.query(
         `INSERT INTO journal_lines (entry_id, line_no, account_id, debit, credit, memo) VALUES ($1,$2,$3,$4,$5,$6)`,

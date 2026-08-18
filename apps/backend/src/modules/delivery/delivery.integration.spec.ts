@@ -103,7 +103,13 @@ describe('M10 delivery — live DB integration', () => {
   const replenishmentRepo = new ReplenishmentRepository();
   const replenishment = new ReplenishmentAdvancementService(replenishmentRepo, syncEmit);
 
-  const sjService = new SuratJalanService(syncEmit, stockLedger, eventBus, coldChain, replenishment);
+  const sjService = new SuratJalanService(
+    syncEmit,
+    stockLedger,
+    eventBus,
+    coldChain,
+    replenishment,
+  );
   const dropService = new DropService(syncEmit, stockLedger, eventBus, coldChain, replenishment);
   const goodsReceiptService = new GoodsReceiptService(stockLedger, syncEmit);
 
@@ -160,7 +166,18 @@ describe('M10 delivery — live DB integration', () => {
               driverId: fixtures.driverId,
               vehicleId: fixtures.dryVehicleId,
               plannedDate: new Date().toISOString().slice(0, 10),
-              drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.frozenItemId, qty: '5.000', unitId: fixtures.frozenItemUnitId }] }],
+              drops: [
+                {
+                  locationId: fixtures.outletId,
+                  lines: [
+                    {
+                      itemId: fixtures.frozenItemId,
+                      qty: '5.000',
+                      unitId: fixtures.frozenItemUnitId,
+                    },
+                  ],
+                },
+              ],
             },
             fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
           ),
@@ -179,7 +196,18 @@ describe('M10 delivery — live DB integration', () => {
               driverId: fixtures.driverId,
               vehicleId: fixtures.dryVehicleId,
               plannedDate: new Date().toISOString().slice(0, 10),
-              drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.chilledItemId, qty: '5.000', unitId: fixtures.chilledItemUnitId }] }],
+              drops: [
+                {
+                  locationId: fixtures.outletId,
+                  lines: [
+                    {
+                      itemId: fixtures.chilledItemId,
+                      qty: '5.000',
+                      unitId: fixtures.chilledItemUnitId,
+                    },
+                  ],
+                },
+              ],
             },
             fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
           ),
@@ -201,8 +229,16 @@ describe('M10 delivery — live DB integration', () => {
               {
                 locationId: fixtures.outletId,
                 lines: [
-                  { itemId: fixtures.frozenItemId, qty: '3.000', unitId: fixtures.frozenItemUnitId },
-                  { itemId: fixtures.chilledItemId, qty: '3.000', unitId: fixtures.chilledItemUnitId },
+                  {
+                    itemId: fixtures.frozenItemId,
+                    qty: '3.000',
+                    unitId: fixtures.frozenItemUnitId,
+                  },
+                  {
+                    itemId: fixtures.chilledItemId,
+                    qty: '3.000',
+                    unitId: fixtures.chilledItemUnitId,
+                  },
                 ],
               },
             ],
@@ -228,7 +264,18 @@ describe('M10 delivery — live DB integration', () => {
             driverId: fixtures.driverId,
             vehicleId: fixtures.frozenVehicleId,
             plannedDate,
-            drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.frozenItemId, qty: '3.000', unitId: fixtures.frozenItemUnitId }] }],
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  {
+                    itemId: fixtures.frozenItemId,
+                    qty: '3.000',
+                    unitId: fixtures.frozenItemUnitId,
+                  },
+                ],
+              },
+            ],
           },
           fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
         ),
@@ -255,7 +302,18 @@ describe('M10 delivery — live DB integration', () => {
               driverId: fixtures.driverId,
               vehicleId: fixtures.dryVehicleId, // no freezer
               plannedDate: new Date().toISOString().slice(0, 10),
-              drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.frozenItemId, qty: '5.000', unitId: fixtures.frozenItemUnitId }] }],
+              drops: [
+                {
+                  locationId: fixtures.outletId,
+                  lines: [
+                    {
+                      itemId: fixtures.frozenItemId,
+                      qty: '5.000',
+                      unitId: fixtures.frozenItemUnitId,
+                    },
+                  ],
+                },
+              ],
             },
             fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
           ),
@@ -297,14 +355,28 @@ describe('M10 delivery — live DB integration', () => {
       // replenishment_requests(id)` point at EACH OTHER (both plain RESTRICT, no `ON DELETE` clause,
       // migrations 030/033/034) — neither table can be deleted first while the other still references it.
       // Break the cycle by nulling both link columns before deleting either row.
-      if (requestId) await getOwnerPool().query(`UPDATE replenishment_requests SET sj_id = NULL WHERE id = $1`, [requestId]);
-      if (sjId) await getOwnerPool().query(`UPDATE sj_drops SET replenishment_request_id = NULL WHERE sj_id = $1`, [sjId]);
-      if (sjId) await getOwnerPool().query(`UPDATE sj_lines SET request_line_id = NULL WHERE sj_id = $1`, [sjId]);
+      if (requestId)
+        await getOwnerPool().query(`UPDATE replenishment_requests SET sj_id = NULL WHERE id = $1`, [
+          requestId,
+        ]);
+      if (sjId)
+        await getOwnerPool().query(
+          `UPDATE sj_drops SET replenishment_request_id = NULL WHERE sj_id = $1`,
+          [sjId],
+        );
+      if (sjId)
+        await getOwnerPool().query(`UPDATE sj_lines SET request_line_id = NULL WHERE sj_id = $1`, [
+          sjId,
+        ]);
       if (requestId) await deleteReplenishmentRequest(requestId);
       if (sjId) await deleteSuratJalan(sjId);
       if (photoAttachmentId) await deleteAttachment(photoAttachmentId);
       if (signatureAttachmentId) await deleteAttachment(signatureAttachmentId);
-      await resetStockKey(fixtures.warehouseId, fixtures.freezerAreaWarehouse, fixtures.frozenItemId);
+      await resetStockKey(
+        fixtures.warehouseId,
+        fixtures.freezerAreaWarehouse,
+        fixtures.frozenItemId,
+      );
       await resetStockKey(fixtures.outletId, fixtures.freezerAreaOutlet, fixtures.frozenItemId);
     });
 
@@ -322,7 +394,14 @@ describe('M10 delivery — live DB integration', () => {
               {
                 locationId: fixtures.outletId,
                 replenishmentRequestId: requestId,
-                lines: [{ itemId: fixtures.frozenItemId, qty: SENT_QTY, unitId: fixtures.frozenItemUnitId, requestLineId }],
+                lines: [
+                  {
+                    itemId: fixtures.frozenItemId,
+                    qty: SENT_QTY,
+                    unitId: fixtures.frozenItemUnitId,
+                    requestLineId,
+                  },
+                ],
               },
             ],
             notes: 'W3-07 integration test',
@@ -330,7 +409,9 @@ describe('M10 delivery — live DB integration', () => {
           fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
         ),
       );
-      console.log(`[delivery.integration] SJ create took ${Date.now() - start}ms against live Postgres`);
+      console.log(
+        `[delivery.integration] SJ create took ${Date.now() - start}ms against live Postgres`,
+      );
 
       expect(sj.sjNumber).toMatch(/^SJ\/\d{6}\/\d{4}$/);
       expect(sj.status).toBe('draft');
@@ -341,16 +422,24 @@ describe('M10 delivery — live DB integration', () => {
       lineId = sj.drops[0]!.lines[0]!.id;
 
       // The sj_id fulfilment link really landed on the replenishment_requests row (not just in memory).
-      const linked = await getOwnerPool().query<{ sj_id: string }>(`SELECT sj_id FROM replenishment_requests WHERE id = $1`, [requestId]);
+      const linked = await getOwnerPool().query<{ sj_id: string }>(
+        `SELECT sj_id FROM replenishment_requests WHERE id = $1`,
+        [requestId],
+      );
       expect(linked.rows[0]!.sj_id).toBe(sjId);
 
       // A real `surat_jalan.issued` sync_events row was inserted — not merely returned in the response.
-      const eventRow = await getOwnerPool().query(`SELECT entity, op, payload FROM sync_events WHERE entity = 'surat_jalan' AND op = 'issued' AND entity_id = $1`, [sjId]);
+      const eventRow = await getOwnerPool().query(
+        `SELECT entity, op, payload FROM sync_events WHERE entity = 'surat_jalan' AND op = 'issued' AND entity_id = $1`,
+        [sjId],
+      );
       expect(eventRow.rows).toHaveLength(1);
     });
 
     it('ready(): moves draft -> ready and advances the linked replenishment request to processing', async () => {
-      const sj = await withCommit((client) => sjService.ready(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      const sj = await withCommit((client) =>
+        sjService.ready(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
       expect(sj.status).toBe('ready');
       expect(await readReplenishmentRequestStatus(requestId)).toBe('processing');
     });
@@ -377,7 +466,9 @@ describe('M10 delivery — live DB integration', () => {
       );
       const beforeQty = Number(before.rows[0]?.qty_on_hand ?? 0);
 
-      const sj = await withCommit((client) => sjService.dispatch(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      const sj = await withCommit((client) =>
+        sjService.dispatch(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
       expect(sj.status).toBe('in_transit');
       expect(sj.dispatchedAt).not.toBeNull();
 
@@ -389,18 +480,26 @@ describe('M10 delivery — live DB integration', () => {
 
       expect(await readReplenishmentRequestStatus(requestId)).toBe('shipped');
 
-      const movement = await getOwnerPool().query(`SELECT movement_type FROM stock_movements WHERE ref_type = 'sj_drop' AND ref_id = $1 AND item_id = $2`, [dropId, fixtures.frozenItemId]);
+      const movement = await getOwnerPool().query(
+        `SELECT movement_type FROM stock_movements WHERE ref_type = 'sj_drop' AND ref_id = $1 AND item_id = $2`,
+        [dropId, fixtures.frozenItemId],
+      );
       expect(movement.rows.map((r) => r.movement_type)).toContain('transfer_out');
     });
 
     it('depart(): requires a temperature reading for a frozen drop and records it', async () => {
-      const drop = await withCommit((client) => dropService.depart(client, dropId, { tempC: '-19.5' }, fixtures.driverUserId));
+      const drop = await withCommit((client) =>
+        dropService.depart(client, dropId, { tempC: '-19.5' }, fixtures.driverUserId),
+      );
       expect(drop.departedAt).not.toBeNull();
       expect(drop.status).toBe('en_route');
     });
 
     it('arrive(): logs the arrival temperature and verifies the seal', async () => {
-      const sealRow = await getOwnerPool().query<{ id: string }>(`SELECT id FROM sj_seals WHERE sj_id = $1 LIMIT 1`, [sjId]);
+      const sealRow = await getOwnerPool().query<{ id: string }>(
+        `SELECT id FROM sj_seals WHERE sj_id = $1 LIMIT 1`,
+        [sjId],
+      );
       const sealId = sealRow.rows[0]!.id;
 
       const drop = await withCommit((client) =>
@@ -414,7 +513,10 @@ describe('M10 delivery — live DB integration', () => {
       expect(drop.status).toBe('arrived');
       expect(drop.arrivedAt).not.toBeNull();
 
-      const sealAfter = await getOwnerPool().query<{ status: string }>(`SELECT status FROM sj_seals WHERE id = $1`, [sealId]);
+      const sealAfter = await getOwnerPool().query<{ status: string }>(
+        `SELECT status FROM sj_seals WHERE id = $1`,
+        [sealId],
+      );
       expect(sealAfter.rows[0]!.status).toBe('verified_intact');
     });
 
@@ -429,7 +531,14 @@ describe('M10 delivery — live DB integration', () => {
             client,
             dropId,
             {
-              lines: [{ lineId, qtyReceived: RECEIVED_QTY, receivedStorageAreaId: fixtures.freezerAreaOutlet, discrepancyReason: 'kurang 1 kg saat bongkar' }],
+              lines: [
+                {
+                  lineId,
+                  qtyReceived: RECEIVED_QTY,
+                  receivedStorageAreaId: fixtures.freezerAreaOutlet,
+                  discrepancyReason: 'kurang 1 kg saat bongkar',
+                },
+              ],
               photoAttachmentIds: [],
               signatureAttachmentId,
             } as never,
@@ -446,7 +555,13 @@ describe('M10 delivery — live DB integration', () => {
             client,
             dropId,
             {
-              lines: [{ lineId, qtyReceived: RECEIVED_QTY, receivedStorageAreaId: fixtures.freezerAreaOutlet }],
+              lines: [
+                {
+                  lineId,
+                  qtyReceived: RECEIVED_QTY,
+                  receivedStorageAreaId: fixtures.freezerAreaOutlet,
+                },
+              ],
               photoAttachmentIds: [photoAttachmentId],
               signatureAttachmentId,
             } as never,
@@ -467,7 +582,14 @@ describe('M10 delivery — live DB integration', () => {
           client,
           dropId,
           {
-            lines: [{ lineId, qtyReceived: RECEIVED_QTY, receivedStorageAreaId: fixtures.freezerAreaOutlet, discrepancyReason: 'kurang 1 kg saat bongkar' }],
+            lines: [
+              {
+                lineId,
+                qtyReceived: RECEIVED_QTY,
+                receivedStorageAreaId: fixtures.freezerAreaOutlet,
+                discrepancyReason: 'kurang 1 kg saat bongkar',
+              },
+            ],
             photoAttachmentIds: [photoAttachmentId],
             signatureAttachmentId,
             discrepancyNotes: 'kurang 1 kg saat bongkar',
@@ -486,14 +608,23 @@ describe('M10 delivery — live DB integration', () => {
         `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
         [fixtures.outletId, fixtures.freezerAreaOutlet, fixtures.frozenItemId],
       );
-      expect(Number(afterOutlet.rows[0]!.qty_on_hand)).toBeCloseTo(beforeOutletQty + Number(RECEIVED_QTY), 3);
+      expect(Number(afterOutlet.rows[0]!.qty_on_hand)).toBeCloseTo(
+        beforeOutletQty + Number(RECEIVED_QTY),
+        3,
+      );
 
-      const movement = await getOwnerPool().query(`SELECT movement_type, storage_area_id FROM stock_movements WHERE ref_type = 'sj_drop' AND ref_id = $1 AND item_id = $2 AND movement_type = 'transfer_in'`, [dropId, fixtures.frozenItemId]);
+      const movement = await getOwnerPool().query(
+        `SELECT movement_type, storage_area_id FROM stock_movements WHERE ref_type = 'sj_drop' AND ref_id = $1 AND item_id = $2 AND movement_type = 'transfer_in'`,
+        [dropId, fixtures.frozenItemId],
+      );
       expect(movement.rows).toHaveLength(1);
       expect(movement.rows[0]!.storage_area_id).toBe(fixtures.freezerAreaOutlet);
 
       // SJ auto-completes once every drop is terminal (D-14).
-      const sjAfter = await getOwnerPool().query<{ status: string; completed_at: Date | null }>(`SELECT status, completed_at FROM surat_jalan WHERE id = $1`, [sjId]);
+      const sjAfter = await getOwnerPool().query<{ status: string; completed_at: Date | null }>(
+        `SELECT status, completed_at FROM surat_jalan WHERE id = $1`,
+        [sjId],
+      );
       expect(sjAfter.rows[0]!.status).toBe('completed');
       expect(sjAfter.rows[0]!.completed_at).not.toBeNull();
 
@@ -520,17 +651,35 @@ describe('M10 delivery — live DB integration', () => {
             driverId: fixtures.driverId,
             vehicleId: fixtures.frozenVehicleId,
             plannedDate: new Date().toISOString().slice(0, 10),
-            drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.frozenItemId, qty: '2.000', unitId: fixtures.frozenItemUnitId }] }],
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  {
+                    itemId: fixtures.frozenItemId,
+                    qty: '2.000',
+                    unitId: fixtures.frozenItemUnitId,
+                  },
+                ],
+              },
+            ],
           },
           fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
         ),
       );
       sjId = sj.id;
-      await withCommit((client) => sjService.ready(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      await withCommit((client) =>
+        sjService.ready(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
       notifySpy.mockClear();
 
       const loaded = await withCommit((client) =>
-        sjService.load(client, sjId, { seals: [{ sealNumber: 'SEAL-BREACH-0001' }], tempC: '-2.0' }, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+        sjService.load(
+          client,
+          sjId,
+          { seals: [{ sealNumber: 'SEAL-BREACH-0001' }], tempC: '-2.0' },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
       );
 
       const breachLog = loaded.tempLogs.find((t) => t.stage === 'load');
@@ -542,7 +691,10 @@ describe('M10 delivery — live DB integration', () => {
       expect(call.params.recordedTemp).toBe('-2.0');
       expect(call.userIds.length).toBeGreaterThan(0); // owner+manager+assigned KGD resolved via system-context, not an empty list
 
-      const dbRow = await getOwnerPool().query<{ is_breach: boolean }>(`SELECT is_breach FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`, [sjId]);
+      const dbRow = await getOwnerPool().query<{ is_breach: boolean }>(
+        `SELECT is_breach FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`,
+        [sjId],
+      );
       expect(dbRow.rows[0]!.is_breach).toBe(true);
     });
   });
@@ -575,8 +727,16 @@ describe('M10 delivery — live DB integration', () => {
               {
                 locationId: fixtures.outletId,
                 lines: [
-                  { itemId: fixtures.frozenItemId, qty: '2.000', unitId: fixtures.frozenItemUnitId },
-                  { itemId: fixtures.chilledItemId, qty: '2.000', unitId: fixtures.chilledItemUnitId },
+                  {
+                    itemId: fixtures.frozenItemId,
+                    qty: '2.000',
+                    unitId: fixtures.frozenItemUnitId,
+                  },
+                  {
+                    itemId: fixtures.chilledItemId,
+                    qty: '2.000',
+                    unitId: fixtures.chilledItemUnitId,
+                  },
                 ],
               },
             ],
@@ -585,13 +745,20 @@ describe('M10 delivery — live DB integration', () => {
         ),
       );
       mixedSjId = sj.id;
-      await withCommit((client) => sjService.ready(client, mixedSjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      await withCommit((client) =>
+        sjService.ready(client, mixedSjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
       notifySpy.mockClear();
 
       // -18.0°C: squarely inside the freezer's -25..-15 (frozen items are FINE) but well outside the
       // chiller's 0..5 (chilled items are NOT) — the exact "one truck, one reading, two classes" case.
       const loaded = await withCommit((client) =>
-        sjService.load(client, mixedSjId, { seals: [{ sealNumber: 'SEAL-MIXED-0001' }], tempC: '-18.0' }, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+        sjService.load(
+          client,
+          mixedSjId,
+          { seals: [{ sealNumber: 'SEAL-MIXED-0001' }], tempC: '-18.0' },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
       );
 
       const log = loaded.tempLogs.find((t) => t.stage === 'load');
@@ -625,26 +792,47 @@ describe('M10 delivery — live DB integration', () => {
             driverId: fixtures.driverId,
             vehicleId: fixtures.frozenVehicleId,
             plannedDate: new Date().toISOString().slice(0, 10),
-            drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.chilledItemId, qty: '2.000', unitId: fixtures.chilledItemUnitId }] }],
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  {
+                    itemId: fixtures.chilledItemId,
+                    qty: '2.000',
+                    unitId: fixtures.chilledItemUnitId,
+                  },
+                ],
+              },
+            ],
           },
           fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
         ),
       );
       chilledOnlySjId = sj.id;
-      await withCommit((client) => sjService.ready(client, chilledOnlySjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      await withCommit((client) =>
+        sjService.ready(client, chilledOnlySjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
       notifySpy.mockClear();
 
       // 2.0°C is squarely inside the chiller's 0..5 range. Under the OLD (single static shipment-type
       // range) logic this would have been checked against frozen's -25..-15 and wrongly flagged EVERY time.
       const loaded = await withCommit((client) =>
-        sjService.load(client, chilledOnlySjId, { seals: [{ sealNumber: 'SEAL-CHILLED-0001' }], tempC: '2.0' }, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+        sjService.load(
+          client,
+          chilledOnlySjId,
+          { seals: [{ sealNumber: 'SEAL-CHILLED-0001' }], tempC: '2.0' },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
       );
 
       const log = loaded.tempLogs.find((t) => t.stage === 'load');
       expect(log?.isBreach).toBe(false);
       expect(notifySpy).not.toHaveBeenCalled();
 
-      const dbRow = await getOwnerPool().query<{ is_breach: boolean }>(`SELECT is_breach FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`, [chilledOnlySjId]);
+      const dbRow = await getOwnerPool().query<{ is_breach: boolean }>(
+        `SELECT is_breach FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`,
+        [chilledOnlySjId],
+      );
       expect(dbRow.rows[0]!.is_breach).toBe(false);
     });
 
@@ -657,18 +845,36 @@ describe('M10 delivery — live DB integration', () => {
             driverId: fixtures.driverId,
             vehicleId: fixtures.frozenVehicleId,
             plannedDate: new Date().toISOString().slice(0, 10),
-            drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.frozenItemId, qty: '2.000', unitId: fixtures.frozenItemUnitId }] }],
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  {
+                    itemId: fixtures.frozenItemId,
+                    qty: '2.000',
+                    unitId: fixtures.frozenItemUnitId,
+                  },
+                ],
+              },
+            ],
           },
           fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
         ),
       );
       frozenOnlySjId = sj.id;
-      await withCommit((client) => sjService.ready(client, frozenOnlySjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      await withCommit((client) =>
+        sjService.ready(client, frozenOnlySjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
       notifySpy.mockClear();
 
       // 10.0°C breaches the freezer's -25..-15 range.
       const loaded = await withCommit((client) =>
-        sjService.load(client, frozenOnlySjId, { seals: [{ sealNumber: 'SEAL-FROZEN-0001' }], tempC: '10.0' }, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+        sjService.load(
+          client,
+          frozenOnlySjId,
+          { seals: [{ sealNumber: 'SEAL-FROZEN-0001' }], tempC: '10.0' },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
       );
 
       const log = loaded.tempLogs.find((t) => t.stage === 'load');
@@ -680,7 +886,10 @@ describe('M10 delivery — live DB integration', () => {
       expect(call.params.minTemp).toBe('-25.0');
       expect(call.params.maxTemp).toBe('-15.0');
 
-      const dbRow = await getOwnerPool().query<{ notes: string | null }>(`SELECT notes FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`, [frozenOnlySjId]);
+      const dbRow = await getOwnerPool().query<{ notes: string | null }>(
+        `SELECT notes FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'load'`,
+        [frozenOnlySjId],
+      );
       const detail = JSON.parse(dbRow.rows[0]!.notes!);
       expect(detail.breachedClasses).toEqual(['frozen']);
     });
@@ -705,7 +914,15 @@ describe('M10 delivery — live DB integration', () => {
             {
               locationId: fixtures.outletId,
               receiptType: 'unmatched_delivery',
-              lines: [{ itemId: fixtures.dryItemId, storageAreaId: fixtures.dryAreaOutlet, qtyExpected: '0.000', qtyReceived: '4.000', discrepancyReason: 'unmatched delivery — no SJ cached on this device' }],
+              lines: [
+                {
+                  itemId: fixtures.dryItemId,
+                  storageAreaId: fixtures.dryAreaOutlet,
+                  qtyExpected: '0.000',
+                  qtyReceived: '4.000',
+                  discrepancyReason: 'unmatched delivery — no SJ cached on this device',
+                },
+              ],
               photoAttachmentIds: [photoId],
               notes: 'blind receipt integration test',
             },
@@ -715,7 +932,10 @@ describe('M10 delivery — live DB integration', () => {
         receiptId = receipt.id;
         expect(receipt.receiptNumber).toMatch(/^GR\/\d{6}\/\d{4}$/);
 
-        const dbRow = await getOwnerPool().query<{ receipt_type: string }>(`SELECT receipt_type FROM goods_receipts WHERE id = $1`, [receiptId]);
+        const dbRow = await getOwnerPool().query<{ receipt_type: string }>(
+          `SELECT receipt_type FROM goods_receipts WHERE id = $1`,
+          [receiptId],
+        );
         expect(dbRow.rows[0]!.receipt_type).toBe('unmatched_delivery');
 
         const balance = await getOwnerPool().query<{ qty_on_hand: string }>(
@@ -743,9 +963,24 @@ describe('M10 delivery — live DB integration', () => {
     projectorRegistry.register(projector);
     const offlineCredsRepo = new OfflineCredentialsRepository();
     const registryRepo = new RegistryRepository(getAppPool());
-    const offlineAuth = new OfflineAuthService(offlineCredsRepo, conflictsRepo, new ConfigService());
-    const reconciliation = new ReconciliationService(getAppPool(), eventsRepo, conflictsRepo, registryRepo);
-    const ingest = new SyncIngestService(eventsRepo, conflictDetector, offlineAuth, reconciliation, projectorRegistry);
+    const offlineAuth = new OfflineAuthService(
+      offlineCredsRepo,
+      conflictsRepo,
+      new ConfigService(),
+    );
+    const reconciliation = new ReconciliationService(
+      getAppPool(),
+      eventsRepo,
+      conflictsRepo,
+      registryRepo,
+    );
+    const ingest = new SyncIngestService(
+      eventsRepo,
+      conflictDetector,
+      offlineAuth,
+      reconciliation,
+      projectorRegistry,
+    );
 
     beforeAll(async () => {
       await seedWarehouseStock(fixtures.dryItemId, fixtures.dryAreaWarehouse, '20.000');
@@ -757,7 +992,14 @@ describe('M10 delivery — live DB integration', () => {
             driverId: fixtures.driverId,
             vehicleId: fixtures.dryVehicleId,
             plannedDate: new Date().toISOString().slice(0, 10),
-            drops: [{ locationId: fixtures.outletId, lines: [{ itemId: fixtures.dryItemId, qty: '5.000', unitId: fixtures.dryItemUnitId }] }],
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.dryItemId, qty: '5.000', unitId: fixtures.dryItemUnitId },
+                ],
+              },
+            ],
           },
           fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
         ),
@@ -766,11 +1008,24 @@ describe('M10 delivery — live DB integration', () => {
       dropId = sj.drops[0]!.id;
       lineId = sj.drops[0]!.lines[0]!.id;
 
-      await withCommit((client) => sjService.ready(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
-      await withCommit((client) => sjService.load(client, sjId, { seals: [{ sealNumber: 'SEAL-PROJ-0001' }] }, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
-      await withCommit((client) => sjService.dispatch(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]));
+      await withCommit((client) =>
+        sjService.ready(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
+      await withCommit((client) =>
+        sjService.load(
+          client,
+          sjId,
+          { seals: [{ sealNumber: 'SEAL-PROJ-0001' }] },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      await withCommit((client) =>
+        sjService.dispatch(client, sjId, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
       await withCommit((client) => dropService.depart(client, dropId, {}, fixtures.driverUserId));
-      await withCommit((client) => dropService.arrive(client, dropId, { tempC: '27.0' }, fixtures.driverUserId));
+      await withCommit((client) =>
+        dropService.arrive(client, dropId, { tempC: '27.0' }, fixtures.driverUserId),
+      );
 
       photoId = await createConfirmedAttachment('receiving_photo', 'sj_drop', dropId);
       sigId = await createConfirmedAttachment('signature', 'sj_drop', dropId);
@@ -801,12 +1056,18 @@ describe('M10 delivery — live DB integration', () => {
               v: 1,
               data: {
                 dropId,
-                lines: [{ lineId, qtyReceived: '5.000', receivedStorageAreaId: fixtures.dryAreaOutlet }],
+                lines: [
+                  { lineId, qtyReceived: '5.000', receivedStorageAreaId: fixtures.dryAreaOutlet },
+                ],
                 photoAttachmentIds: [photoId],
                 signatureAttachmentId: sigId,
                 clientId,
               },
-              meta: { actorUserId: fixtures.usersByRole[RoleKey.LEADER_OUTLET], actorRole: 'leader_outlet', appVersion: 'test-suite' },
+              meta: {
+                actorUserId: fixtures.usersByRole[RoleKey.LEADER_OUTLET],
+                actorRole: 'leader_outlet',
+                appVersion: 'test-suite',
+              },
             },
             clientSeq: 1n,
             occurredAt: new Date().toISOString(),
@@ -830,11 +1091,16 @@ describe('M10 delivery — live DB integration', () => {
 
       const start = Date.now();
       const ack1 = await ingest.ingestBatch(batch, async () => fixtures.outletId);
-      console.log(`[delivery.integration] first sj_drops.received ingest took ${Date.now() - start}ms against live Postgres`);
+      console.log(
+        `[delivery.integration] first sj_drops.received ingest took ${Date.now() - start}ms against live Postgres`,
+      );
       expect(ack1.rejected).toEqual([]);
 
       // The domain effect landed exactly once: drop completed, stock posted.
-      const dropAfter = await getOwnerPool().query<{ status: string }>(`SELECT status FROM sj_drops WHERE id = $1`, [dropId]);
+      const dropAfter = await getOwnerPool().query<{ status: string }>(
+        `SELECT status FROM sj_drops WHERE id = $1`,
+        [dropId],
+      );
       expect(dropAfter.rows[0]!.status).toBe('completed');
 
       const afterFirst = await getOwnerPool().query<{ qty_on_hand: string }>(
@@ -907,7 +1173,11 @@ describe('M10 delivery — live DB integration', () => {
             payload: {
               v: 1,
               data: { sjId, dropId, stage: 'arrive', tempC: '31.0' },
-              meta: { actorUserId: fixtures.usersByRole[RoleKey.DRIVER], actorRole: 'driver', appVersion: 'test-suite' },
+              meta: {
+                actorUserId: fixtures.usersByRole[RoleKey.DRIVER],
+                actorRole: 'driver',
+                appVersion: 'test-suite',
+              },
             },
             clientSeq: 1n,
             occurredAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // claims it happened an hour ago
@@ -920,11 +1190,13 @@ describe('M10 delivery — live DB integration', () => {
       const ack1 = await ingest.ingestBatch(batch, async () => fixtures.outletId);
       expect(ack1.rejected).toEqual([]);
 
-      const eventRow = await getOwnerPool().query<{ relay_received_at: Date | null; received_at: Date }>(
-        `SELECT relay_received_at, received_at FROM sync_events WHERE event_id = $1`,
-        [eventId],
-      );
-      const defensibleAt = (eventRow.rows[0]!.relay_received_at ?? eventRow.rows[0]!.received_at).getTime();
+      const eventRow = await getOwnerPool().query<{
+        relay_received_at: Date | null;
+        received_at: Date;
+      }>(`SELECT relay_received_at, received_at FROM sync_events WHERE event_id = $1`, [eventId]);
+      const defensibleAt = (
+        eventRow.rows[0]!.relay_received_at ?? eventRow.rows[0]!.received_at
+      ).getTime();
 
       const tempLogRow1 = await getOwnerPool().query<{ logged_at: Date }>(
         `SELECT logged_at FROM sj_temperature_logs WHERE sj_id = $1 AND stage = 'arrive' AND temp_c = '31.0' ORDER BY logged_at DESC LIMIT 1`,

@@ -79,9 +79,15 @@ export class AttendanceSyncProjector implements SyncProjector {
 
   constructor(private readonly attendance: AttendanceService) {}
 
-  async project(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<void> {
+  async project(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<void> {
     if (context.isConflictLoser) {
-      this.logger.warn(`skipping conflict-loser attendance event ${event.eventId} (${event.op}) — not double-counting`);
+      this.logger.warn(
+        `skipping conflict-loser attendance event ${event.eventId} (${event.op}) — not double-counting`,
+      );
       return;
     }
 
@@ -106,7 +112,10 @@ export class AttendanceSyncProjector implements SyncProjector {
    * this class's header for why `event.relayReceivedAt`/`new Date()` are
    * both wrong here.
    */
-  private async resolveRelayReceivedAt(client: PoolClient, event: SyncEventEnvelope): Promise<ISODateTime> {
+  private async resolveRelayReceivedAt(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+  ): Promise<ISODateTime> {
     const res = await client.query<{ relay_received_at: ISODateTime | null }>(
       'SELECT relay_received_at FROM sync_events WHERE event_id = $1',
       [event.eventId],

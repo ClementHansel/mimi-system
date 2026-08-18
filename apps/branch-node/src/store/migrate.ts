@@ -34,7 +34,10 @@ async function getAppliedVersions(client: pg.PoolClient | pg.Client): Promise<Se
   return new Set(result.rows.map((r) => r.version));
 }
 
-async function getPendingMigrations(client: pg.PoolClient | pg.Client, migrationsDir: string): Promise<Migration[]> {
+async function getPendingMigrations(
+  client: pg.PoolClient | pg.Client,
+  migrationsDir: string,
+): Promise<Migration[]> {
   const applied = await getAppliedVersions(client);
   const files = await readdir(migrationsDir);
   const sqlFiles = files.filter((f) => f.endsWith('.sql')).sort();
@@ -47,7 +50,11 @@ async function getPendingMigrations(client: pg.PoolClient | pg.Client, migration
   return pending;
 }
 
-async function runMigration(client: pg.PoolClient | pg.Client, migrationsDir: string, migration: Migration): Promise<void> {
+async function runMigration(
+  client: pg.PoolClient | pg.Client,
+  migrationsDir: string,
+  migration: Migration,
+): Promise<void> {
   const filePath = join(migrationsDir, migration.filename);
   const sql = await readFile(filePath, 'utf-8');
   await client.query(sql);
@@ -81,7 +88,10 @@ export async function migrationStatus(
   await ensureMigrationsTable(client);
   const applied = await getAppliedVersions(client);
   const files = (await readdir(migrationsDir)).filter((f) => f.endsWith('.sql')).sort();
-  return files.map((filename) => ({ filename, applied: applied.has(filename.replace('.sql', '')) }));
+  return files.map((filename) => ({
+    filename,
+    applied: applied.has(filename.replace('.sql', '')),
+  }));
 }
 
 async function cli(): Promise<void> {
@@ -94,11 +104,14 @@ async function cli(): Promise<void> {
   try {
     if (process.argv.includes('--status')) {
       const status = await migrationStatus(client);
-      for (const s of status) console.log(`  ${s.applied ? '✓ Applied' : '○ Pending'}  ${s.filename}`);
+      for (const s of status)
+        console.log(`  ${s.applied ? '✓ Applied' : '○ Pending'}  ${s.filename}`);
       return;
     }
     const { applied } = await runMigrations(client);
-    console.log(applied.length === 0 ? 'Node database up to date.' : `Applied: ${applied.join(', ')}`);
+    console.log(
+      applied.length === 0 ? 'Node database up to date.' : `Applied: ${applied.join(', ')}`,
+    );
   } finally {
     await client.end();
   }

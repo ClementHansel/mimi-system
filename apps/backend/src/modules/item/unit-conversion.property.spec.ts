@@ -25,7 +25,7 @@ const factorArb = fc
   .map(([whole, frac]) => `${whole}.${String(frac).padStart(6, '0')}`);
 
 describe('unit conversion math (@mimi/shared convertQty) — property tests', () => {
-  it('qty_to = qty_from × factor, exactly (the DB comment\'s own formula, checked against the bigint result)', () => {
+  it("qty_to = qty_from × factor, exactly (the DB comment's own formula, checked against the bigint result)", () => {
     fc.assert(
       fc.property(qtyArb, factorArb, (qty, factor) => {
         const converted = convertQty(qty, factor);
@@ -52,7 +52,9 @@ describe('unit conversion math (@mimi/shared convertQty) — property tests', ()
     fc.assert(
       fc.property(qtyArb, qtyArb, factorArb, (a, b, factor) => {
         const [lo, hi] = parseQty(a) <= parseQty(b) ? [a, b] : [b, a];
-        expect(parseQty(convertQty(lo, factor))).toBeLessThanOrEqual(parseQty(convertQty(hi, factor)));
+        expect(parseQty(convertQty(lo, factor))).toBeLessThanOrEqual(
+          parseQty(convertQty(hi, factor)),
+        );
       }),
     );
   });
@@ -63,7 +65,9 @@ describe('unit conversion math (@mimi/shared convertQty) — property tests', ()
     // (kg↔gr↔ml↔ltr...) depends on for stock valuation not to drift.
     fc.assert(
       fc.property(
-        fc.tuple(fc.integer({ min: 1, max: 1_000_000 }), fc.integer({ min: 0, max: 999 })).map(([w, f]) => `${w}.${String(f).padStart(3, '0')}`),
+        fc
+          .tuple(fc.integer({ min: 1, max: 1_000_000 }), fc.integer({ min: 0, max: 999 }))
+          .map(([w, f]) => `${w}.${String(f).padStart(3, '0')}`),
         fc.integer({ min: 1, max: 1000 }),
         (qty, factorInt) => {
           const factor = `${factorInt}.000000`;

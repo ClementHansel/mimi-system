@@ -27,7 +27,12 @@ export function ApprovalsInboxPanel() {
   const router = useRouter();
   const [documentType, setDocumentType] = useState<string>('');
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<Paginated<PendingApprovalRow>>({ rows: [], total: 0, page: 1, pageSize: PAGE_SIZE });
+  const [data, setData] = useState<Paginated<PendingApprovalRow>>({
+    rows: [],
+    total: 0,
+    page: 1,
+    pageSize: PAGE_SIZE,
+  });
   const [loading, setLoading] = useState(true);
 
   function reload() {
@@ -60,14 +65,21 @@ export function ApprovalsInboxPanel() {
       render: (r) => r.documentNumber ?? `#${r.documentId.slice(0, 8)}`,
     },
     { key: 'requestedBy', header: t('approvalsInbox.requestedBy') },
-    { key: 'locationName', header: t('approvalsInbox.location'), render: (r) => r.locationName ?? '—' },
-    { key: 'amount', header: t('approvalsInbox.amount'), align: 'right', render: (r) => formatMoney(r.amount) },
+    {
+      key: 'locationName',
+      header: t('approvalsInbox.location'),
+      render: (r) => r.locationName ?? '—',
+    },
+    {
+      key: 'amount',
+      header: t('approvalsInbox.amount'),
+      align: 'right',
+      render: (r) => formatMoney(r.amount),
+    },
     {
       key: 'requestedAt',
       header: t('approvalsInbox.waiting'),
-      render: (r) => (
-        <span title={fmtDateTime(r.requestedAt)}>{fmtRelative(r.requestedAt)}</span>
-      ),
+      render: (r) => <span title={fmtDateTime(r.requestedAt)}>{fmtRelative(r.requestedAt)}</span>,
     },
     { key: 'stepNo', header: t('approvalsInbox.step'), align: 'center', render: (r) => r.stepNo },
   ];

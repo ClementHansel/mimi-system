@@ -145,17 +145,25 @@ export async function cacheCredential(
     cachedAt: new Date().toISOString(),
   };
   await db.store<CachedCredentialRecord>('credentials').put(record);
-  await db.store<PinAttemptState>('pin_attempts').put({ credentialId: res.credentialId, failedAttempts: 0, lockedOut: false });
+  await db
+    .store<PinAttemptState>('pin_attempts')
+    .put({ credentialId: res.credentialId, failedAttempts: 0, lockedOut: false });
   return { cached: true };
 }
 
 /** §7.2 CRL check — called by the reconciler when an `offline_authorizations.revoked` event pulls down. */
-export async function applyCrlRevocationWithinTx(tx: TxHandle, credentialId: UUID, revokedAt: ISODateTime): Promise<void> {
+export async function applyCrlRevocationWithinTx(
+  tx: TxHandle,
+  credentialId: UUID,
+  revokedAt: ISODateTime,
+): Promise<void> {
   await tx.store<CredentialRevocationRecord>('credential_crl').put({ credentialId, revokedAt });
 }
 
 export async function isRevoked(db: LocalDatabase, credentialId: UUID): Promise<boolean> {
-  return (await db.store<CredentialRevocationRecord>('credential_crl').get(credentialId)) !== undefined;
+  return (
+    (await db.store<CredentialRevocationRecord>('credential_crl').get(credentialId)) !== undefined
+  );
 }
 
 export async function isLockedOut(db: LocalDatabase, credentialId: UUID): Promise<boolean> {
@@ -218,7 +226,17 @@ export interface AuthorizeOfflineInput {
 
 export type AuthorizeOfflineOutcome =
   | { ok: true; meta: OfflineAuthorizationMeta }
-  | { ok: false; reason: 'revoked' | 'locked_out' | 'expired' | 'scope_exceeded' | 'selfie_required' | 'pin_invalid' | 'not_cached' };
+  | {
+      ok: false;
+      reason:
+        | 'revoked'
+        | 'locked_out'
+        | 'expired'
+        | 'scope_exceeded'
+        | 'selfie_required'
+        | 'pin_invalid'
+        | 'not_cached';
+    };
 
 /**
  * The full §7.3 device-side flow. This function's verdict is ADVISORY UX
@@ -239,8 +257,15 @@ export async function authorizeOffline(
   if (await isRevoked(db, input.credentialId)) return { ok: false, reason: 'revoked' };
   if (await isLockedOut(db, input.credentialId)) return { ok: false, reason: 'locked_out' };
 
-  const provability: ExpiryProvability = evaluateExpiryProvability(input.occurredAt, null, cached.claims.exp);
-  if (provability === 'expired' && new Date(nowIso).getTime() > new Date(cached.claims.exp).getTime()) {
+  const provability: ExpiryProvability = evaluateExpiryProvability(
+    input.occurredAt,
+    null,
+    cached.claims.exp,
+  );
+  if (
+    provability === 'expired' &&
+    new Date(nowIso).getTime() > new Date(cached.claims.exp).getTime()
+  ) {
     return { ok: false, reason: 'expired' };
   }
 
@@ -272,7 +297,11 @@ export async function authorizeOffline(
   }
 
   const pinAttemptsBeforeSuccess = attemptState.failedAttempts + 1;
-  await attemptsStore.put({ credentialId: input.credentialId, failedAttempts: 0, lockedOut: false });
+  await attemptsStore.put({
+    credentialId: input.credentialId,
+    failedAttempts: 0,
+    lockedOut: false,
+  });
 
   const binding = await computeBindingHmac(cached.claims.k, {
     eventId: input.eventId,
@@ -327,19 +356,44 @@ export async function authorizeOffline(
  */
 export async function computeBindingHmac(
   kBase64: string,
-  fields: { eventId: UUID; entity: string; entityId: UUID; op: string; amountIdr: string; occurredAt: ISODateTime },
+  fields: {
+    eventId: UUID;
+    entity: string;
+    entityId: UUID;
+    op: string;
+    amountIdr: string;
+    occurredAt: ISODateTime;
+  },
 ): Promise<string> {
-  const message = [fields.eventId, fields.entity, fields.entityId, fields.op, fields.amountIdr, fields.occurredAt].join('‖');
+  const message = [
+    fields.eventId,
+    fields.entity,
+    fields.entityId,
+    fields.op,
+    fields.amountIdr,
+    fields.occurredAt,
+  ].join('‖');
   const keyBytes = base64ToBytes(kBase64);
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) throw new Error('Web Crypto SubtleCrypto is unavailable in this environment');
-  const key = await subtle.importKey('raw', keyBytes as unknown as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await subtle.sign('HMAC', key, new TextEncoder().encode(message) as unknown as BufferSource);
+  const key = await subtle.importKey(
+    'raw',
+    keyBytes as unknown as BufferSource,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(message) as unknown as BufferSource,
+  );
   return bytesToHex(new Uint8Array(sig));
 }
 
 function base64ToBytes(b64: string): Uint8Array {
-  const bin = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
+  const bin =
+    typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary');
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;

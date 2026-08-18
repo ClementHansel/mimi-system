@@ -41,7 +41,10 @@ export function RosterPanel() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  const days = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart],
+  );
   const from = toDateInput(weekStart);
   const to = toDateInput(days[6]);
 
@@ -65,7 +68,10 @@ export function RosterPanel() {
 
   useEffect(reload, [locationId, from, to]);
 
-  const shiftOptions = [{ value: LIBUR, label: t('hr.roster.off') }, ...shifts.map((s) => ({ value: s.id, label: `${s.name} (${s.startTime}-${s.endTime})` }))];
+  const shiftOptions = [
+    { value: LIBUR, label: t('hr.roster.off') },
+    ...shifts.map((s) => ({ value: s.id, label: `${s.name} (${s.startTime}-${s.endTime})` })),
+  ];
 
   async function save() {
     setSaving(true);
@@ -100,15 +106,26 @@ export function RosterPanel() {
             wrapperClassName="w-56"
           />
           <div className="flex items-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addDays(w, -7))}>{'<'}</Button>
+            <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addDays(w, -7))}>
+              {'<'}
+            </Button>
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-text-primary">{t('hr.roster.week')}</span>
-              <span className="text-sm text-text-secondary">{from} – {to}</span>
+              <span className="text-sm text-text-secondary">
+                {from} – {to}
+              </span>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addDays(w, 7))}>{'>'}</Button>
+            <Button variant="outline" size="sm" onClick={() => setWeekStart((w) => addDays(w, 7))}>
+              {'>'}
+            </Button>
           </div>
           <PermissionGate permission="hr.shift.manage">
-            <Button className="ml-auto" onClick={save} loading={saving} disabled={rows.length === 0}>
+            <Button
+              className="ml-auto"
+              onClick={save}
+              loading={saving}
+              disabled={rows.length === 0}
+            >
               {t('common.save')}
             </Button>
           </PermissionGate>
@@ -122,16 +139,22 @@ export function RosterPanel() {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-border bg-surface-sunken text-left text-text-secondary">
-                <th className="sticky left-0 bg-surface-sunken px-3 py-2">{t('hr.roster.employee')}</th>
+                <th className="sticky left-0 bg-surface-sunken px-3 py-2">
+                  {t('hr.roster.employee')}
+                </th>
                 {days.map((d) => (
-                  <th key={d.toISOString()} className="px-3 py-2 text-center">{toDateInput(d)}</th>
+                  <th key={d.toISOString()} className="px-3 py-2 text-center">
+                    {toDateInput(d)}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.employeeId} className="border-b border-border last:border-0">
-                  <td className="sticky left-0 bg-surface-raised px-3 py-2 font-medium text-text-primary">{row.employeeName}</td>
+                  <td className="sticky left-0 bg-surface-raised px-3 py-2 font-medium text-text-primary">
+                    {row.employeeName}
+                  </td>
                   {days.map((d) => {
                     const date = toDateInput(d);
                     const key = `${row.employeeId}:${date}`;
@@ -186,10 +209,29 @@ function NewShiftForm({ locationId, onCreated }: { locationId: string; onCreated
   return (
     <Card>
       <CardContent className="flex flex-wrap items-end gap-3">
-        <Input label={t('hr.roster.shiftName')} value={name} onChange={(e) => setName(e.target.value)} wrapperClassName="w-40" />
-        <Input type="time" label={t('hr.roster.shiftStart')} value={startTime} onChange={(e) => setStartTime(e.target.value)} wrapperClassName="w-32" />
-        <Input type="time" label={t('hr.roster.shiftEnd')} value={endTime} onChange={(e) => setEndTime(e.target.value)} wrapperClassName="w-32" />
-        <Button onClick={submit} loading={busy}>{t('hr.roster.addShift')}</Button>
+        <Input
+          label={t('hr.roster.shiftName')}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          wrapperClassName="w-40"
+        />
+        <Input
+          type="time"
+          label={t('hr.roster.shiftStart')}
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+          wrapperClassName="w-32"
+        />
+        <Input
+          type="time"
+          label={t('hr.roster.shiftEnd')}
+          value={endTime}
+          onChange={(e) => setEndTime(e.target.value)}
+          wrapperClassName="w-32"
+        />
+        <Button onClick={submit} loading={busy}>
+          {t('hr.roster.addShift')}
+        </Button>
       </CardContent>
     </Card>
   );

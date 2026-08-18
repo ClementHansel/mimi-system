@@ -33,7 +33,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     info: { name?: string } | undefined,
   ): TUser {
     if (err || !user) {
-      const code = info?.name === 'TokenExpiredError' ? ERR_AUTH_TOKEN_EXPIRED : ERR_AUTH_TOKEN_INVALID;
+      const code =
+        info?.name === 'TokenExpiredError' ? ERR_AUTH_TOKEN_EXPIRED : ERR_AUTH_TOKEN_INVALID;
       throw new UnauthorizedException({ code, message: 'Invalid or expired access token' });
     }
     return user;

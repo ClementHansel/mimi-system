@@ -77,11 +77,16 @@ export class DeviceRegistryRepository {
   }
 
   async findByFingerprint(client: DbClient, fingerprint: string): Promise<DeviceRow | undefined> {
-    const res = await client.query<DeviceRow>(`SELECT * FROM devices WHERE fingerprint = $1`, [fingerprint]);
+    const res = await client.query<DeviceRow>(`SELECT * FROM devices WHERE fingerprint = $1`, [
+      fingerprint,
+    ]);
     return res.rows[0];
   }
 
-  async list(client: DbClient, filters: DeviceListFilters): Promise<{ rows: DeviceWithLocation[]; total: number }> {
+  async list(
+    client: DbClient,
+    filters: DeviceListFilters,
+  ): Promise<{ rows: DeviceWithLocation[]; total: number }> {
     const page = Math.max(1, filters.page ?? 1);
     const pageSize = Math.min(200, Math.max(1, filters.pageSize ?? 50));
     const offset = (page - 1) * pageSize;
@@ -89,17 +94,31 @@ export class DeviceRegistryRepository {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (filters.locationId) { conds.push(`d.location_id = $${i++}`); args.push(filters.locationId); }
-    else if (filters.locationIds) { conds.push(`d.location_id = ANY($${i++}::uuid[])`); args.push(filters.locationIds); }
-    if (filters.category) { conds.push(`d.category = $${i++}`); args.push(filters.category); }
-    if (filters.status) { conds.push(`d.status = $${i++}`); args.push(filters.status); }
+    if (filters.locationId) {
+      conds.push(`d.location_id = $${i++}`);
+      args.push(filters.locationId);
+    } else if (filters.locationIds) {
+      conds.push(`d.location_id = ANY($${i++}::uuid[])`);
+      args.push(filters.locationIds);
+    }
+    if (filters.category) {
+      conds.push(`d.category = $${i++}`);
+      args.push(filters.category);
+    }
+    if (filters.status) {
+      conds.push(`d.status = $${i++}`);
+      args.push(filters.status);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
     const rows = await client.query<DeviceWithLocation>(
       `${DEVICE_SELECT} ${where} ORDER BY d.created_at DESC LIMIT $${i} OFFSET $${i + 1}`,
       [...args, pageSize, offset],
     );
-    const count = await client.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM devices d ${where}`, args);
+    const count = await client.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM devices d ${where}`,
+      args,
+    );
     return { rows: rows.rows, total: Number(count.rows[0]?.n ?? '0') };
   }
 
@@ -146,16 +165,33 @@ export class DeviceRegistryRepository {
     return res.rows[0]!;
   }
 
-  async update(client: DbClient, id: UUID, patch: { name?: string; category?: string; locationId?: UUID }): Promise<DeviceRow | undefined> {
+  async update(
+    client: DbClient,
+    id: UUID,
+    patch: { name?: string; category?: string; locationId?: UUID },
+  ): Promise<DeviceRow | undefined> {
     const sets: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (patch.name !== undefined) { sets.push(`name = $${i++}`); args.push(patch.name); }
-    if (patch.category !== undefined) { sets.push(`category = $${i++}`); args.push(patch.category); }
-    if (patch.locationId !== undefined) { sets.push(`location_id = $${i++}`); args.push(patch.locationId); }
-    if (sets.length === 0) return this.findById(client, id) as unknown as Promise<DeviceRow | undefined>;
+    if (patch.name !== undefined) {
+      sets.push(`name = $${i++}`);
+      args.push(patch.name);
+    }
+    if (patch.category !== undefined) {
+      sets.push(`category = $${i++}`);
+      args.push(patch.category);
+    }
+    if (patch.locationId !== undefined) {
+      sets.push(`location_id = $${i++}`);
+      args.push(patch.locationId);
+    }
+    if (sets.length === 0)
+      return this.findById(client, id) as unknown as Promise<DeviceRow | undefined>;
     args.push(id);
-    const res = await client.query<DeviceRow>(`UPDATE devices SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, args);
+    const res = await client.query<DeviceRow>(
+      `UPDATE devices SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      args,
+    );
     return res.rows[0];
   }
 
@@ -199,19 +235,43 @@ export class DeviceRegistryRepository {
     await client.query(
       `INSERT INTO device_heartbeats (device_id, app_version, queue_depth, client_time, battery_pct, storage_free_mb, network_type, payload)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [id, beat.appVersion, beat.queueDepth, beat.clientTime, beat.batteryPct ?? null, beat.storageFreeMb ?? null, beat.networkType ?? null, JSON.stringify(beat.payload)],
+      [
+        id,
+        beat.appVersion,
+        beat.queueDepth,
+        beat.clientTime,
+        beat.batteryPct ?? null,
+        beat.storageFreeMb ?? null,
+        beat.networkType ?? null,
+        JSON.stringify(beat.payload),
+      ],
     );
   }
 
-  async recentHeartbeats(client: DbClient, deviceId: UUID, limit = 20): Promise<{ at: string; queue_depth: number; app_version: string | null; battery_pct: number | null }[]> {
-    const res = await client.query<{ at: string; queue_depth: number; app_version: string | null; battery_pct: number | null }>(
+  async recentHeartbeats(
+    client: DbClient,
+    deviceId: UUID,
+    limit = 20,
+  ): Promise<
+    { at: string; queue_depth: number; app_version: string | null; battery_pct: number | null }[]
+  > {
+    const res = await client.query<{
+      at: string;
+      queue_depth: number;
+      app_version: string | null;
+      battery_pct: number | null;
+    }>(
       `SELECT at, queue_depth, app_version, battery_pct FROM device_heartbeats WHERE device_id = $1 ORDER BY at DESC LIMIT $2`,
       [deviceId, limit],
     );
     return res.rows;
   }
 
-  async recentEvents(client: DbClient, deviceId: UUID, limit = 20): Promise<{ type: string; detail: unknown; created_at: string }[]> {
+  async recentEvents(
+    client: DbClient,
+    deviceId: UUID,
+    limit = 20,
+  ): Promise<{ type: string; detail: unknown; created_at: string }[]> {
     const res = await client.query<{ type: string; detail: unknown; created_at: string }>(
       `SELECT type, detail, created_at FROM device_events WHERE device_id = $1 ORDER BY created_at DESC LIMIT $2`,
       [deviceId, limit],
@@ -222,11 +282,23 @@ export class DeviceRegistryRepository {
   /** `device_events` (block 113) — feeds F12 + `outlet_offline` alerting (§7.3). `type` MUST be a value the migration 113 CHECK constraint accepts (`DeviceEventType`); never invent a new one here without a schema migration. */
   async insertDeviceEvent(
     client: DbClient,
-    params: { deviceId?: UUID | null; nodeId?: UUID | null; locationId: UUID | null; type: `${DeviceEventType}`; detail?: Record<string, unknown> },
+    params: {
+      deviceId?: UUID | null;
+      nodeId?: UUID | null;
+      locationId: UUID | null;
+      type: `${DeviceEventType}`;
+      detail?: Record<string, unknown>;
+    },
   ): Promise<void> {
     await client.query(
       `INSERT INTO device_events (device_id, node_id, location_id, type, detail) VALUES ($1,$2,$3,$4,$5)`,
-      [params.deviceId ?? null, params.nodeId ?? null, params.locationId, params.type, JSON.stringify(params.detail ?? {})],
+      [
+        params.deviceId ?? null,
+        params.nodeId ?? null,
+        params.locationId,
+        params.type,
+        JSON.stringify(params.detail ?? {}),
+      ],
     );
   }
 
@@ -240,7 +312,11 @@ export class DeviceRegistryRepository {
    * registration for exactly this reason, so NULL should not occur in
    * practice, but the guard stays explicit rather than relying on that.
    */
-  async findDevicesPastThreshold(client: DbClient, cutoffIso: string, fromStatuses: readonly DeviceStatusRow[]): Promise<DeviceRow[]> {
+  async findDevicesPastThreshold(
+    client: DbClient,
+    cutoffIso: string,
+    fromStatuses: readonly DeviceStatusRow[],
+  ): Promise<DeviceRow[]> {
     const res = await client.query<DeviceRow>(
       `SELECT * FROM devices
         WHERE status = ANY($1::text[])

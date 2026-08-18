@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   ApprovalDocumentType,
@@ -28,7 +34,11 @@ import { ListReplenishmentQueryDto } from './dto/list-replenishment.query';
 import { RejectReplenishmentDto } from './dto/reject-replenishment.dto';
 import { UpdateReplenishmentDto } from './dto/update-replenishment.dto';
 import { WarehouseQueueQueryDto } from './dto/warehouse-queue.query';
-import { ReplenishmentLineRow, ReplenishmentRepository, ReplenishmentRow } from './replenishment.repository';
+import {
+  ReplenishmentLineRow,
+  ReplenishmentRepository,
+  ReplenishmentRow,
+} from './replenishment.repository';
 
 /** `AuditRow[]` shape CONTRACTS.md §4.9's `GET /:id/history` returns — mirrors `kernel/audit`'s `AuditRow` (same table, same columns) without importing across that module's own file (no shared barrel exists for it). */
 export interface ReplenishmentHistoryRow {
@@ -80,7 +90,10 @@ export class ReplenishmentService {
 
   // ── reads ──────────────────────────────────────────────────────────────
 
-  async list(client: PoolClient, query: ListReplenishmentQueryDto): Promise<Paginated<Replenishment>> {
+  async list(
+    client: PoolClient,
+    query: ListReplenishmentQueryDto,
+  ): Promise<Paginated<Replenishment>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
     const { rows, total } = await this.repo.list(client, {
@@ -94,16 +107,27 @@ export class ReplenishmentService {
     return { rows: rows.map((r) => this.toResource(r, [], null)), total, page, pageSize };
   }
 
-  async warehouseQueue(client: PoolClient, query: WarehouseQueueQueryDto): Promise<Paginated<Replenishment>> {
+  async warehouseQueue(
+    client: PoolClient,
+    query: WarehouseQueueQueryDto,
+  ): Promise<Paginated<Replenishment>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
-    const { rows, total } = await this.repo.listWarehouseQueue(client, { status: query.status, page, pageSize });
+    const { rows, total } = await this.repo.listWarehouseQueue(client, {
+      status: query.status,
+      page,
+      pageSize,
+    });
     return { rows: rows.map((r) => this.toResource(r, [], null)), total, page, pageSize };
   }
 
   async getById(client: PoolClient, id: UUID): Promise<Replenishment> {
     const row = await this.repo.findById(client, id);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Replenishment request ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${id} not found`,
+      });
     const lines = await this.repo.findLines(client, id);
     const approval = await this.loadApprovalDetail(client, id, row.status);
     return this.toResource(row, lines, approval);
@@ -111,13 +135,21 @@ export class ReplenishmentService {
 
   async getHistory(client: PoolClient, id: UUID): Promise<ReplenishmentHistoryRow[]> {
     const row = await this.repo.findById(client, id);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Replenishment request ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${id} not found`,
+      });
     return this.repo.history(client, id);
   }
 
   // ── draft lifecycle ───────────────────────────────────────────────────
 
-  async create(client: PoolClient, caller: CallerScope, dto: CreateReplenishmentDto): Promise<Replenishment> {
+  async create(
+    client: PoolClient,
+    caller: CallerScope,
+    dto: CreateReplenishmentDto,
+  ): Promise<Replenishment> {
     this.assertLocationInScope(caller, dto.locationId);
     this.validateLines(dto.lines);
 
@@ -136,11 +168,23 @@ export class ReplenishmentService {
     return resource;
   }
 
-  async update(client: PoolClient, caller: CallerScope, id: UUID, dto: UpdateReplenishmentDto): Promise<Replenishment> {
+  async update(
+    client: PoolClient,
+    caller: CallerScope,
+    id: UUID,
+    dto: UpdateReplenishmentDto,
+  ): Promise<Replenishment> {
     const row = await this.repo.findByIdForUpdate(client, id);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Replenishment request ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${id} not found`,
+      });
     if (row.status !== 'draft') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Only a draft request can be edited (current status: ${row.status})` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Only a draft request can be edited (current status: ${row.status})`,
+      });
     }
     this.assertLocationInScope(caller, row.locationId);
 
@@ -150,7 +194,10 @@ export class ReplenishmentService {
       await this.repo.insertLines(client, id, dto.lines);
     }
     if (dto.neededBy !== undefined) {
-      await client.query(`UPDATE replenishment_requests SET needed_by = $2 WHERE id = $1`, [id, dto.neededBy]);
+      await client.query(`UPDATE replenishment_requests SET needed_by = $2 WHERE id = $1`, [
+        id,
+        dto.neededBy,
+      ]);
     }
 
     const resource = await this.getById(client, id);
@@ -158,9 +205,17 @@ export class ReplenishmentService {
     return resource;
   }
 
-  async remove(client: PoolClient, caller: CallerScope, id: UUID): Promise<{ id: UUID; deleted: true }> {
+  async remove(
+    client: PoolClient,
+    caller: CallerScope,
+    id: UUID,
+  ): Promise<{ id: UUID; deleted: true }> {
     const row = await this.repo.findByIdForUpdate(client, id);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Replenishment request ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${id} not found`,
+      });
     this.assertLocationInScope(caller, row.locationId);
 
     // Validates role + current-state eligibility for the `delete` edge
@@ -177,10 +232,17 @@ export class ReplenishmentService {
 
   async submit(client: PoolClient, caller: CallerScope, id: UUID): Promise<Replenishment> {
     const row = await this.repo.findByIdForUpdate(client, id);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Replenishment request ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${id} not found`,
+      });
     this.assertLocationInScope(caller, row.locationId);
     if (row.status !== 'draft') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Only a draft request can be submitted (current status: ${row.status})` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Only a draft request can be submitted (current status: ${row.status})`,
+      });
     }
 
     // CONTRACTS.md §5.1 row 1 lists the "submit" edge as `draft --submit--> submitted`, but
@@ -217,7 +279,11 @@ export class ReplenishmentService {
         locationId: row.locationId,
         neededBy: row.neededBy,
         source: row.source,
-        lines: lines.map((l) => ({ itemId: l.itemId, qtyRequested: l.qtyRequested, unitId: l.itemId })),
+        lines: lines.map((l) => ({
+          itemId: l.itemId,
+          qtyRequested: l.qtyRequested,
+          unitId: l.itemId,
+        })),
       },
     });
 
@@ -228,13 +294,25 @@ export class ReplenishmentService {
 
   // ── approve / reject (both chain steps share one endpoint each) ───────
 
-  async approve(client: PoolClient, caller: CallerScope, id: UUID, dto: ApproveReplenishmentDto): Promise<Replenishment> {
+  async approve(
+    client: PoolClient,
+    caller: CallerScope,
+    id: UUID,
+    dto: ApproveReplenishmentDto,
+  ): Promise<Replenishment> {
     const row = await this.repo.findByIdForUpdate(client, id);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Replenishment request ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${id} not found`,
+      });
 
     const amendments = dto.amendments ?? [];
     if (amendments.length > 0 && !can(caller.roleKey as RoleKey, 'replenishment.amend')) {
-      throw new ForbiddenException({ code: ERR_FORBIDDEN, message: `Role '${caller.roleKey}' may not amend quantities (replenishment.amend required)` });
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: `Role '${caller.roleKey}' may not amend quantities (replenishment.amend required)`,
+      });
     }
     if (amendments.length > 0) await this.validateAmendments(client, id, amendments);
 
@@ -242,7 +320,10 @@ export class ReplenishmentService {
     // `on_amend` rule (state-machine.ts) requires a non-empty reason — the per-LINE reasons are what
     // actually gets persisted (recoverable "from what, to what, why"); this concatenation only has to
     // satisfy the engine's own `reasonProvided` boolean, never re-derive the granular trail from it.
-    const reasonForEngine = amendments.length > 0 ? amendments.map((a) => `${a.lineId}: ${a.reason}`).join(' | ') : dto.note;
+    const reasonForEngine =
+      amendments.length > 0
+        ? amendments.map((a) => `${a.lineId}: ${a.reason}`).join(' | ')
+        : dto.note;
 
     const result = await this.approvals.approve(client, {
       documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
@@ -291,7 +372,11 @@ export class ReplenishmentService {
       data: {
         id,
         note: dto.note,
-        amendments: amendments.map((a) => ({ lineId: a.lineId, qtyApproved: a.qtyApproved, reason: a.reason })),
+        amendments: amendments.map((a) => ({
+          lineId: a.lineId,
+          qtyApproved: a.qtyApproved,
+          reason: a.reason,
+        })),
       },
     });
 
@@ -300,9 +385,18 @@ export class ReplenishmentService {
     return resource;
   }
 
-  async reject(client: PoolClient, caller: CallerScope, id: UUID, dto: RejectReplenishmentDto): Promise<Replenishment> {
+  async reject(
+    client: PoolClient,
+    caller: CallerScope,
+    id: UUID,
+    dto: RejectReplenishmentDto,
+  ): Promise<Replenishment> {
     const row = await this.repo.findByIdForUpdate(client, id);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Replenishment request ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${id} not found`,
+      });
 
     const wasSupervisorStep = row.status === 'submitted';
     const result = await this.approvals.reject(client, {
@@ -331,7 +425,11 @@ export class ReplenishmentService {
 
   async process(client: PoolClient, caller: CallerScope, id: UUID): Promise<Replenishment> {
     const row = await this.repo.findByIdForUpdate(client, id);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Replenishment request ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${id} not found`,
+      });
 
     const nextState = this.runTransition(row.status, 'process', caller.roleKey);
     await this.repo.updateStatus(client, id, nextState);
@@ -351,7 +449,11 @@ export class ReplenishmentService {
 
   // ── internals ──────────────────────────────────────────────────────────
 
-  private toResource(row: ReplenishmentRow, lines: ReplenishmentLineRow[], approval: ApprovalDetail | null): Replenishment {
+  private toResource(
+    row: ReplenishmentRow,
+    lines: ReplenishmentLineRow[],
+    approval: ApprovalDetail | null,
+  ): Replenishment {
     return {
       id: row.id,
       requestNumber: row.requestNumber,
@@ -365,26 +467,32 @@ export class ReplenishmentService {
       sjId: row.sjId,
       sjNumber: row.sjNumber,
       approval,
-      lines: lines.map(
-        (l): ReplenishmentLine => ({
-          id: l.id,
-          itemId: l.itemId,
-          itemName: l.itemName,
-          unitCode: l.unitCode,
-          qtyRequested: l.qtyRequested,
-          qtyApproved: l.qtyApproved,
-          qtyShipped: l.qtyShipped,
-          qtyReceived: l.qtyReceived,
-          amendReason: l.amendReason,
-        }),
-      ),
+      lines: lines.map((l): ReplenishmentLine => ({
+        id: l.id,
+        itemId: l.itemId,
+        itemName: l.itemName,
+        unitCode: l.unitCode,
+        qtyRequested: l.qtyRequested,
+        qtyApproved: l.qtyApproved,
+        qtyShipped: l.qtyShipped,
+        qtyReceived: l.qtyReceived,
+        amendReason: l.amendReason,
+      })),
     };
   }
 
-  private async loadApprovalDetail(client: PoolClient, id: UUID, status: string): Promise<ApprovalDetail | null> {
+  private async loadApprovalDetail(
+    client: PoolClient,
+    id: UUID,
+    status: string,
+  ): Promise<ApprovalDetail | null> {
     if (status === 'draft') return null;
     try {
-      const detail = await this.approvals.getDetail(client, ApprovalDocumentType.REPLENISHMENT_REQUEST, id);
+      const detail = await this.approvals.getDetail(
+        client,
+        ApprovalDocumentType.REPLENISHMENT_REQUEST,
+        id,
+      );
       return {
         approvalId: detail.approvalId,
         state: detail.state,
@@ -426,18 +534,29 @@ export class ReplenishmentService {
   private assertLocationInScope(caller: CallerScope, locationId: UUID): void {
     if (caller.locationIds === null) return; // central role
     if (!caller.locationIds.includes(locationId)) {
-      throw new ForbiddenException({ code: ERR_LOCATION_OUT_OF_SCOPE, message: `Location ${locationId} is outside your assigned scope` });
+      throw new ForbiddenException({
+        code: ERR_LOCATION_OUT_OF_SCOPE,
+        message: `Location ${locationId} is outside your assigned scope`,
+      });
     }
   }
 
-  private validateLines(lines: readonly { itemId: UUID; qtyRequested: string; unitId: UUID }[]): void {
+  private validateLines(
+    lines: readonly { itemId: UUID; qtyRequested: string; unitId: UUID }[],
+  ): void {
     const seen = new Set<UUID>();
     for (const line of lines) {
       if (isZeroQty(line.qtyRequested) || isNegativeQty(line.qtyRequested)) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `qtyRequested must be greater than 0 (item ${line.itemId})` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `qtyRequested must be greater than 0 (item ${line.itemId})`,
+        });
       }
       if (seen.has(line.itemId)) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `Item ${line.itemId} appears more than once — one line per item` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `Item ${line.itemId} appears more than once — one line per item`,
+        });
       }
       seen.add(line.itemId);
     }
@@ -453,10 +572,16 @@ export class ReplenishmentService {
     for (const a of amendments) {
       const line = byId.get(a.lineId);
       if (!line) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `Line ${a.lineId} does not belong to request ${requestId}` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `Line ${a.lineId} does not belong to request ${requestId}`,
+        });
       }
       if (isNegativeQty(a.qtyApproved)) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `qtyApproved must be >= 0 (line ${a.lineId})` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `qtyApproved must be >= 0 (line ${a.lineId})`,
+        });
       }
       // FR-LOG-13, enforced HERE and not left to the engine's own `reasonProvided` gate: the engine
       // only ever sees the CONCATENATED multi-line string built below (`reasonForEngine`), which always
@@ -465,7 +590,10 @@ export class ReplenishmentService {
       // per-line check is what actually guarantees "a reason is required for every amended line", the
       // named fraud-vector control this ticket is about.
       if (!a.reason || a.reason.trim().length === 0) {
-        throw new BadRequestException({ code: ERR_REASON_REQUIRED, message: `A reason is required to amend line ${a.lineId}` });
+        throw new BadRequestException({
+          code: ERR_REASON_REQUIRED,
+          message: `A reason is required to amend line ${a.lineId}`,
+        });
       }
     }
   }

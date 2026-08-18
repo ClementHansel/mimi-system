@@ -36,8 +36,10 @@ export const useMeAttendanceStore = create<AttendanceState>()(
   persist(
     (set, get) => ({
       today: null,
-      recordCheckIn: (date, attendanceId, at) => set({ today: { date, attendanceId, checkedInAt: at, checkedOutAt: null } }),
-      recordCheckOut: (at) => set((s) => (s.today ? { today: { ...s.today, checkedOutAt: at } } : s)),
+      recordCheckIn: (date, attendanceId, at) =>
+        set({ today: { date, attendanceId, checkedInAt: at, checkedOutAt: null } }),
+      recordCheckOut: (at) =>
+        set((s) => (s.today ? { today: { ...s.today, checkedOutAt: at } } : s)),
       resetIfStale: (currentDate) => {
         const current = get().today;
         if (current && current.date !== currentDate) set({ today: null });

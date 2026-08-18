@@ -47,8 +47,14 @@ describe('EffectiveWindowEditor', () => {
   beforeEach(() => {
     useSessionStore.setState({
       user: {
-        id: 'u1', username: 'hradmin1', name: 'Test HR Admin', roleKey: 'hr_admin',
-        permissions: ['payroll.statutory.config'], locations: [], employeeId: null, mustSetPin: false,
+        id: 'u1',
+        username: 'hradmin1',
+        name: 'Test HR Admin',
+        roleKey: 'hr_admin',
+        permissions: ['payroll.statutory.config'],
+        locations: [],
+        employeeId: null,
+        mustSetPin: false,
       },
     });
   });
@@ -57,7 +63,11 @@ describe('EffectiveWindowEditor', () => {
     setup('');
     const dateInput = screen.getByLabelText('Berlaku Sejak') as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: '2025-01-01' } });
-    expect(screen.getByText('Tanggal ini sudah punya tarif — pilih tanggal lain atau ubah baris yang ada.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Tanggal ini sudah punya tarif — pilih tanggal lain atau ubah baris yang ada.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Simpan Vintage' })).toBeDisabled();
   });
 
@@ -65,7 +75,9 @@ describe('EffectiveWindowEditor', () => {
     setup('');
     const dateInput = screen.getByLabelText('Berlaku Sejak');
     fireEvent.change(dateInput, { target: { value: '2024-06-01' } });
-    expect(screen.getByText('Tanggal ini sebelum tarif terbaru yang sudah ada — periksa kembali.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Tanggal ini sebelum tarif terbaru yang sudah ada — periksa kembali.'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Simpan Vintage' })).toBeDisabled();
   });
 
@@ -90,8 +102,14 @@ describe('EffectiveWindowEditor', () => {
   it('hides "Tambah Vintage Baru" for a session with only payroll.statutory.read (e.g. Owner)', () => {
     useSessionStore.setState({
       user: {
-        id: 'u2', username: 'owner', name: 'Test Owner', roleKey: 'owner',
-        permissions: ['payroll.statutory.read'], locations: [], employeeId: null, mustSetPin: false,
+        id: 'u2',
+        username: 'owner',
+        name: 'Test Owner',
+        roleKey: 'owner',
+        permissions: ['payroll.statutory.read'],
+        locations: [],
+        employeeId: null,
+        mustSetPin: false,
       },
     });
     const onSubmit = vi.fn();

@@ -73,7 +73,12 @@ export default function PosPage() {
   }, [location]);
 
   const summary = calculateCartSummary(
-    cartLines.map((l) => ({ productId: l.productId, unitPrice: l.unitPrice, qty: l.qty, discount: l.discount })),
+    cartLines.map((l) => ({
+      productId: l.productId,
+      unitPrice: l.unitPrice,
+      qty: l.qty,
+      discount: l.discount,
+    })),
     saleDiscount,
   );
 
@@ -94,7 +99,11 @@ export default function PosPage() {
   }
 
   if (!actor || posLocation.status === 'loading') {
-    return <div className="flex min-h-[40vh] items-center justify-center text-text-muted">{t('common.loading')}</div>;
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center text-text-muted">
+        {t('common.loading')}
+      </div>
+    );
   }
 
   if (runtimeError) {
@@ -104,17 +113,30 @@ export default function PosPage() {
         icon={AlertTriangle}
         title={t('pos.runtimeLoadFailedTitle')}
         description={t('pos.runtimeLoadFailedDescription')}
-        action={<Button onClick={() => setRuntimeAttempt((a) => a + 1)}>{t('common.retry')}</Button>}
+        action={
+          <Button onClick={() => setRuntimeAttempt((a) => a + 1)}>{t('common.retry')}</Button>
+        }
       />
     );
   }
 
   if (!runtime || !location) {
-    return <div className="flex min-h-[40vh] items-center justify-center text-text-muted">{t('common.loading')}</div>;
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center text-text-muted">
+        {t('common.loading')}
+      </div>
+    );
   }
 
   if (!currentShift) {
-    return <ShiftOpenForm runtime={runtime} actor={actor} locationId={location.id} kasirName={kasirName} />;
+    return (
+      <ShiftOpenForm
+        runtime={runtime}
+        actor={actor}
+        locationId={location.id}
+        kasirName={kasirName}
+      />
+    );
   }
 
   return (
@@ -128,12 +150,24 @@ export default function PosPage() {
             <ProductGrid
               products={catalog?.products ?? []}
               categories={catalog?.categories ?? []}
-              onAdd={(p) => addProduct({ productId: p.id, productName: p.name, unitPrice: p.price })}
+              onAdd={(p) =>
+                addProduct({ productId: p.id, productName: p.name, unitPrice: p.price })
+              }
             />
           </div>
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4">
-            <Cart lines={cartLines} summary={summary} saleDiscount={saleDiscount} onSaleDiscountChange={setSaleDiscount} />
-            <Button size="touch-lg" fullWidth disabled={cartLines.length === 0} onClick={() => setPayOpen(true)}>
+            <Cart
+              lines={cartLines}
+              summary={summary}
+              saleDiscount={saleDiscount}
+              onSaleDiscountChange={setSaleDiscount}
+            />
+            <Button
+              size="touch-lg"
+              fullWidth
+              disabled={cartLines.length === 0}
+              onClick={() => setPayOpen(true)}
+            >
               {t('pos.goToPayment')}
             </Button>
             <Button
@@ -156,7 +190,12 @@ export default function PosPage() {
         <ShiftPanel runtime={runtime} actor={actor} shift={currentShift} />
       </TabsContent>
 
-      <Modal open={payOpen} onClose={() => setPayOpen(false)} title={t('pos.paymentTitle')} size="sm">
+      <Modal
+        open={payOpen}
+        onClose={() => setPayOpen(false)}
+        title={t('pos.paymentTitle')}
+        size="sm"
+      >
         <PaymentPanel
           runtime={runtime}
           actor={actor}
@@ -172,7 +211,13 @@ export default function PosPage() {
       </Modal>
 
       {voidOpen && lastSaleId && (
-        <VoidRefundModal open={voidOpen} onClose={() => setVoidOpen(false)} runtime={runtime} actor={actor} saleId={lastSaleId} />
+        <VoidRefundModal
+          open={voidOpen}
+          onClose={() => setVoidOpen(false)}
+          runtime={runtime}
+          actor={actor}
+          saleId={lastSaleId}
+        />
       )}
     </>
   );

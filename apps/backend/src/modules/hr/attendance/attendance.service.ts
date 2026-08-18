@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   businessDateOf,
@@ -16,7 +22,11 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { checkGeofence } from '../geofence.util';
-import { getLateGraceMinutes, getMaxOfflineWindowHours, getOvertimeSettings } from '../hr-settings.util';
+import {
+  getLateGraceMinutes,
+  getMaxOfflineWindowHours,
+  getOvertimeSettings,
+} from '../hr-settings.util';
 import { pgDateToIso } from '../pg-date.util';
 import { resolveDefensibility } from '../time-defensibility.util';
 import type { CheckAttendanceDto, CorrectAttendanceDto } from '../dto/attendance.dto';
@@ -69,7 +79,11 @@ interface ResolvedShift {
 export class AttendanceService {
   constructor(private readonly storage: StorageService) {}
 
-  async checkIn(client: PoolClient, user: JwtAccessPayload, dto: CheckAttendanceDto): Promise<AttendanceRow> {
+  async checkIn(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    dto: CheckAttendanceDto,
+  ): Promise<AttendanceRow> {
     const employee = await this.resolveSelfEmployee(client, user.sub);
     return withWrite(client, async () => {
       const row = await this.applyCheckIn(client, employee.id, dto, new Date().toISOString());
@@ -77,7 +91,11 @@ export class AttendanceService {
     });
   }
 
-  async checkOut(client: PoolClient, user: JwtAccessPayload, dto: CheckAttendanceDto): Promise<AttendanceRow> {
+  async checkOut(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    dto: CheckAttendanceDto,
+  ): Promise<AttendanceRow> {
     const employee = await this.resolveSelfEmployee(client, user.sub);
     return withWrite(client, async () => {
       const row = await this.applyCheckOut(client, employee.id, dto, new Date().toISOString());
@@ -94,14 +112,21 @@ export class AttendanceService {
    * PIN-02/POUT-07 must not silently diverge depending on whether the
    * outlet had internet that day (coordinator's instruction).
    */
-  async applyCheckIn(client: PoolClient, employeeId: UUID, dto: CheckAttendanceDto, relayReceivedAt: ISODateTime): Promise<Record<string, any>> {
+  async applyCheckIn(
+    client: PoolClient,
+    employeeId: UUID,
+    dto: CheckAttendanceDto,
+    relayReceivedAt: ISODateTime,
+  ): Promise<Record<string, any>> {
     const location = await this.resolveLocation(client, dto.locationId);
 
     const occurredAt = dto.at ?? relayReceivedAt;
     const maxOfflineWindowHours = await getMaxOfflineWindowHours(client);
     const defensibility = resolveDefensibility(occurredAt, relayReceivedAt, maxOfflineWindowHours);
     const lateInstant = defensibility.timeDisputed ? defensibility.defensibleAt : occurredAt;
-    const date = businessDateOf(defensibility.timeSuspect ? defensibility.defensibleAt : occurredAt);
+    const date = businessDateOf(
+      defensibility.timeSuspect ? defensibility.defensibleAt : occurredAt,
+    );
 
     // Idempotent replay: the exact same client_id already landed — return it as-is (§2.2 outbox rule).
     const existingByClient = await client.query<Record<string, any>>(
@@ -118,10 +143,19 @@ export class AttendanceService {
     );
     if (existingByDay.rows.length > 0 && existingByDay.rows[0]!.check_in_at) {
       // SYNC-PROTOCOL §5.2 C4: a second check-in the same day is an HR exception, not a silent overwrite.
-      throw new ConflictException({ code: ERR_CONFLICT, message: 'Employee already checked in today' });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: 'Employee already checked in today',
+      });
     }
 
-    const distance = checkGeofence(Number(dto.lat), Number(dto.lng), Number(location.latitude), Number(location.longitude), location.geofenceRadiusM);
+    const distance = checkGeofence(
+      Number(dto.lat),
+      Number(dto.lng),
+      Number(location.latitude),
+      Number(location.longitude),
+      location.geofenceRadiusM,
+    );
     if (!distance.ok) {
       throw new BadRequestException({
         code: ERR_GEOFENCE_OUT_OF_RANGE,
@@ -151,10 +185,21 @@ export class AttendanceService {
              time_suspect = $13, time_disputed = $14, check_in_received_at = $15
            WHERE id = $1 RETURNING *`,
           [
-            rowId, shift?.shiftAssignmentId ?? null, occurredAt, dto.lat, dto.lng,
-            distance.distanceM, dto.selfieAttachmentId, dto.deviceId ?? null,
-            status, lateM, distance.ok, dto.clientId,
-            defensibility.timeSuspect, defensibility.timeDisputed, relayReceivedAt,
+            rowId,
+            shift?.shiftAssignmentId ?? null,
+            occurredAt,
+            dto.lat,
+            dto.lng,
+            distance.distanceM,
+            dto.selfieAttachmentId,
+            dto.deviceId ?? null,
+            status,
+            lateM,
+            distance.ok,
+            dto.clientId,
+            defensibility.timeSuspect,
+            defensibility.timeDisputed,
+            relayReceivedAt,
           ],
         )
       : await client.query<Record<string, any>>(
@@ -165,9 +210,23 @@ export class AttendanceService {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
            RETURNING *`,
           [
-            employeeId, dto.locationId, date, shift?.shiftAssignmentId ?? null, occurredAt, dto.lat, dto.lng,
-            distance.distanceM, dto.selfieAttachmentId, dto.deviceId ?? null, status, lateM,
-            distance.ok, dto.clientId, defensibility.timeSuspect, defensibility.timeDisputed, relayReceivedAt,
+            employeeId,
+            dto.locationId,
+            date,
+            shift?.shiftAssignmentId ?? null,
+            occurredAt,
+            dto.lat,
+            dto.lng,
+            distance.distanceM,
+            dto.selfieAttachmentId,
+            dto.deviceId ?? null,
+            status,
+            lateM,
+            distance.ok,
+            dto.clientId,
+            defensibility.timeSuspect,
+            defensibility.timeDisputed,
+            relayReceivedAt,
           ],
         );
 
@@ -175,14 +234,21 @@ export class AttendanceService {
   }
 
   /** The `checked_out` counterpart of `applyCheckIn` — same sharing rationale. */
-  async applyCheckOut(client: PoolClient, employeeId: UUID, dto: CheckAttendanceDto, relayReceivedAt: ISODateTime): Promise<Record<string, any>> {
+  async applyCheckOut(
+    client: PoolClient,
+    employeeId: UUID,
+    dto: CheckAttendanceDto,
+    relayReceivedAt: ISODateTime,
+  ): Promise<Record<string, any>> {
     const location = await this.resolveLocation(client, dto.locationId);
 
     const occurredAt = dto.at ?? relayReceivedAt;
     const maxOfflineWindowHours = await getMaxOfflineWindowHours(client);
     const defensibility = resolveDefensibility(occurredAt, relayReceivedAt, maxOfflineWindowHours);
     const outInstant = defensibility.timeDisputed ? defensibility.defensibleAt : occurredAt;
-    const date = businessDateOf(defensibility.timeSuspect ? defensibility.defensibleAt : occurredAt);
+    const date = businessDateOf(
+      defensibility.timeSuspect ? defensibility.defensibleAt : occurredAt,
+    );
 
     const existingByClient = await client.query<Record<string, any>>(
       'SELECT * FROM attendance WHERE check_out_client_id = $1',
@@ -198,13 +264,25 @@ export class AttendanceService {
     );
     const row = rowRes.rows[0];
     if (!row || !row.check_in_at) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'No check-in found for this date — check in before checking out' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'No check-in found for this date — check in before checking out',
+      });
     }
     if (row.check_out_at) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: 'Employee already checked out today' });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: 'Employee already checked out today',
+      });
     }
 
-    const distance = checkGeofence(Number(dto.lat), Number(dto.lng), Number(location.latitude), Number(location.longitude), location.geofenceRadiusM);
+    const distance = checkGeofence(
+      Number(dto.lat),
+      Number(dto.lng),
+      Number(location.latitude),
+      Number(location.longitude),
+      location.geofenceRadiusM,
+    );
     if (!distance.ok) {
       throw new BadRequestException({
         code: ERR_GEOFENCE_OUT_OF_RANGE,
@@ -218,7 +296,11 @@ export class AttendanceService {
     let overtimeM = 0;
     let workM = workedMinutes(row.check_in_at, outInstant, 0);
     if (row.shift_assignment_id) {
-      const shiftRes = await client.query<{ start_time: string; end_time: string; break_minutes: number }>(
+      const shiftRes = await client.query<{
+        start_time: string;
+        end_time: string;
+        break_minutes: number;
+      }>(
         `SELECT ws.start_time, ws.end_time, ws.break_minutes
            FROM shift_assignments sa JOIN work_shifts ws ON ws.id = sa.work_shift_id
           WHERE sa.id = $1`,
@@ -241,22 +323,43 @@ export class AttendanceService {
          check_out_received_at = $12
        WHERE id = $1 RETURNING *`,
       [
-        row.id, occurredAt, dto.lat, dto.lng, distance.distanceM,
-        dto.selfieAttachmentId, overtimeM, workM,
-        dto.clientId, defensibility.timeSuspect, defensibility.timeDisputed, relayReceivedAt,
+        row.id,
+        occurredAt,
+        dto.lat,
+        dto.lng,
+        distance.distanceM,
+        dto.selfieAttachmentId,
+        overtimeM,
+        workM,
+        dto.clientId,
+        defensibility.timeSuspect,
+        defensibility.timeDisputed,
+        relayReceivedAt,
       ],
     );
 
     return res.rows[0]!;
   }
 
-  async correct(client: PoolClient, user: JwtAccessPayload, id: UUID, dto: CorrectAttendanceDto): Promise<AttendanceRow> {
+  async correct(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    id: UUID,
+    dto: CorrectAttendanceDto,
+  ): Promise<AttendanceRow> {
     const actorUserId = user.sub;
     if (!dto.correctionReason?.trim()) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'correctionReason is required' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'correctionReason is required',
+      });
     }
-    const rowRes = await client.query<Record<string, any>>('SELECT * FROM attendance WHERE id = $1', [id]);
-    if (rowRes.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Attendance row not found' });
+    const rowRes = await client.query<Record<string, any>>(
+      'SELECT * FROM attendance WHERE id = $1',
+      [id],
+    );
+    if (rowRes.rows.length === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Attendance row not found' });
     const row = rowRes.rows[0]!;
 
     return withWrite(client, async () => {
@@ -272,8 +375,15 @@ export class AttendanceService {
 
       const checkInAt = dto.checkInAt ?? row.check_in_at;
       const checkOutAt = dto.checkOutAt ?? row.check_out_at;
-      if ((dto.checkInAt !== undefined || dto.checkOutAt !== undefined) && row.shift_assignment_id) {
-        const shiftRes = await client.query<{ start_time: string; end_time: string; break_minutes: number }>(
+      if (
+        (dto.checkInAt !== undefined || dto.checkOutAt !== undefined) &&
+        row.shift_assignment_id
+      ) {
+        const shiftRes = await client.query<{
+          start_time: string;
+          end_time: string;
+          break_minutes: number;
+        }>(
           `SELECT ws.start_time, ws.end_time, ws.break_minutes
              FROM shift_assignments sa JOIN work_shifts ws ON ws.id = sa.work_shift_id
             WHERE sa.id = $1`,
@@ -281,14 +391,24 @@ export class AttendanceService {
         );
         if (shiftRes.rows.length > 0) {
           const s = shiftRes.rows[0]!;
-          const window = shiftWindow(pgDateToIso(row.date), toHHmm(s.start_time), toHHmm(s.end_time), s.break_minutes);
+          const window = shiftWindow(
+            pgDateToIso(row.date),
+            toHHmm(s.start_time),
+            toHHmm(s.end_time),
+            s.break_minutes,
+          );
           const graceMinutes = await getLateGraceMinutes(client);
-          if (checkInAt) set('late_minutes', computeLateMinutes(window.startUtc, checkInAt, graceMinutes));
+          if (checkInAt)
+            set('late_minutes', computeLateMinutes(window.startUtc, checkInAt, graceMinutes));
           if (checkOutAt) {
             const overtimeSettings = await getOvertimeSettings(client);
-            set('overtime_minutes', computeOvertimeMinutes(window.endUtc, checkOutAt, overtimeSettings.minMinutes));
+            set(
+              'overtime_minutes',
+              computeOvertimeMinutes(window.endUtc, checkOutAt, overtimeSettings.minMinutes),
+            );
           }
-          if (checkInAt && checkOutAt) set('work_minutes', workedMinutes(checkInAt, checkOutAt, s.break_minutes));
+          if (checkInAt && checkOutAt)
+            set('work_minutes', workedMinutes(checkInAt, checkOutAt, s.break_minutes));
         }
       }
 
@@ -301,7 +421,11 @@ export class AttendanceService {
     });
   }
 
-  async listMe(client: PoolClient, user: JwtAccessPayload, month?: string): Promise<AttendanceRow[]> {
+  async listMe(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    month?: string,
+  ): Promise<AttendanceRow[]> {
     const employee = await this.resolveSelfEmployee(client, user.sub);
     const params: unknown[] = [employee.id];
     let where = 'a.employee_id = $1';
@@ -328,12 +452,27 @@ export class AttendanceService {
   ): Promise<Paginated<AttendanceRow>> {
     const params: unknown[] = [];
     let where = '1=1';
-    if (locationId) { params.push(locationId); where += ` AND a.location_id = $${params.length}`; }
-    if (date) { params.push(date); where += ` AND a.date = $${params.length}`; }
-    if (employeeId) { params.push(employeeId); where += ` AND a.employee_id = $${params.length}`; }
-    if (status) { params.push(status); where += ` AND a.status = $${params.length}`; }
+    if (locationId) {
+      params.push(locationId);
+      where += ` AND a.location_id = $${params.length}`;
+    }
+    if (date) {
+      params.push(date);
+      where += ` AND a.date = $${params.length}`;
+    }
+    if (employeeId) {
+      params.push(employeeId);
+      where += ` AND a.employee_id = $${params.length}`;
+    }
+    if (status) {
+      params.push(status);
+      where += ` AND a.status = $${params.length}`;
+    }
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM attendance a WHERE ${where}`, params);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM attendance a WHERE ${where}`,
+      params,
+    );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
 
     params.push(pageSize, (page - 1) * pageSize);
@@ -342,7 +481,12 @@ export class AttendanceService {
       params,
     );
 
-    return { rows: await Promise.all(res.rows.map((r) => this.toAttendanceRow(client, user, r))), total, page, pageSize };
+    return {
+      rows: await Promise.all(res.rows.map((r) => this.toAttendanceRow(client, user, r))),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   /**
@@ -350,15 +494,30 @@ export class AttendanceService {
    * `periodCode` is `'YYYY-MM'`; `disputedRows` surfaces §6.4 `time_disputed` rows for
    * a payroll operator to review before trusting a period's lateness/overtime totals.
    */
-  async summary(client: PoolClient, periodCode: string, locationId?: string, employeeId?: string): Promise<AttendanceSummaryRow[]> {
+  async summary(
+    client: PoolClient,
+    periodCode: string,
+    locationId?: string,
+    employeeId?: string,
+  ): Promise<AttendanceSummaryRow[]> {
     const match = /^(\d{4})-(\d{2})$/.exec(periodCode);
-    if (!match) throw new BadRequestException({ code: ERR_VALIDATION, message: "periodCode must be 'YYYY-MM'" });
+    if (!match)
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: "periodCode must be 'YYYY-MM'",
+      });
     const startDate = `${match[1]}-${match[2]}-01`;
 
     const params: unknown[] = [startDate];
     let where = "a.date >= $1::date AND a.date < ($1::date + INTERVAL '1 month')";
-    if (locationId) { params.push(locationId); where += ` AND a.location_id = $${params.length}`; }
-    if (employeeId) { params.push(employeeId); where += ` AND a.employee_id = $${params.length}`; }
+    if (locationId) {
+      params.push(locationId);
+      where += ` AND a.location_id = $${params.length}`;
+    }
+    if (employeeId) {
+      params.push(employeeId);
+      where += ` AND a.employee_id = $${params.length}`;
+    }
 
     const res = await client.query<Record<string, any>>(
       `SELECT
@@ -395,13 +554,19 @@ export class AttendanceService {
   // ── helpers ──────────────────────────────────────────────────────────────
 
   /** Public — also used by `AttendanceSyncProjector` to resolve `event.actorUserId` -> employee. */
-  async resolveSelfEmployee(client: PoolClient, userId: UUID): Promise<{ id: UUID; locationId: UUID }> {
+  async resolveSelfEmployee(
+    client: PoolClient,
+    userId: UUID,
+  ): Promise<{ id: UUID; locationId: UUID }> {
     const res = await client.query<{ id: UUID; location_id: UUID }>(
       'SELECT id, location_id FROM employees WHERE user_id = $1',
       [userId],
     );
     if (res.rows.length === 0) {
-      throw new ForbiddenException({ code: ERR_VALIDATION, message: 'This account has no linked employee record' });
+      throw new ForbiddenException({
+        code: ERR_VALIDATION,
+        message: 'This account has no linked employee record',
+      });
     }
     return { id: res.rows[0]!.id, locationId: res.rows[0]!.location_id };
   }
@@ -410,27 +575,49 @@ export class AttendanceService {
     client: PoolClient,
     locationId: UUID,
   ): Promise<{ latitude: string; longitude: string; geofenceRadiusM: number }> {
-    const res = await client.query<{ latitude: string | null; longitude: string | null; geofence_radius_m: number }>(
-      'SELECT latitude, longitude, geofence_radius_m FROM locations WHERE id = $1',
-      [locationId],
-    );
-    if (res.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Location not found' });
+    const res = await client.query<{
+      latitude: string | null;
+      longitude: string | null;
+      geofence_radius_m: number;
+    }>('SELECT latitude, longitude, geofence_radius_m FROM locations WHERE id = $1', [locationId]);
+    if (res.rows.length === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Location not found' });
     const row = res.rows[0]!;
     if (row.latitude === null || row.longitude === null) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'This location has no geofence center configured' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'This location has no geofence center configured',
+      });
     }
-    return { latitude: row.latitude, longitude: row.longitude, geofenceRadiusM: row.geofence_radius_m };
+    return {
+      latitude: row.latitude,
+      longitude: row.longitude,
+      geofenceRadiusM: row.geofence_radius_m,
+    };
   }
 
   private async assertAttachmentExists(client: PoolClient, attachmentId: UUID): Promise<void> {
     const res = await client.query('SELECT id FROM attachments WHERE id = $1', [attachmentId]);
     if (res.rows.length === 0) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'selfieAttachmentId does not reference an uploaded attachment' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'selfieAttachmentId does not reference an uploaded attachment',
+      });
     }
   }
 
-  private async resolveShiftAssignment(client: PoolClient, employeeId: UUID, date: string): Promise<ResolvedShift | null> {
-    const res = await client.query<{ id: UUID; start_time: string; end_time: string; break_minutes: number; work_shift_id: UUID | null }>(
+  private async resolveShiftAssignment(
+    client: PoolClient,
+    employeeId: UUID,
+    date: string,
+  ): Promise<ResolvedShift | null> {
+    const res = await client.query<{
+      id: UUID;
+      start_time: string;
+      end_time: string;
+      break_minutes: number;
+      work_shift_id: UUID | null;
+    }>(
       `SELECT sa.id, sa.work_shift_id, ws.start_time, ws.end_time, ws.break_minutes
          FROM shift_assignments sa
          LEFT JOIN work_shifts ws ON ws.id = sa.work_shift_id
@@ -439,7 +626,12 @@ export class AttendanceService {
     );
     const row = res.rows[0];
     if (!row || !row.work_shift_id) return null;
-    return { shiftAssignmentId: row.id, startTime: toHHmm(row.start_time), endTime: toHHmm(row.end_time), breakMinutes: row.break_minutes };
+    return {
+      shiftAssignmentId: row.id,
+      startTime: toHHmm(row.start_time),
+      endTime: toHHmm(row.end_time),
+      breakMinutes: row.break_minutes,
+    };
   }
 
   /**
@@ -449,7 +641,11 @@ export class AttendanceService {
    * holds no table grants of its own — and `toAttendanceRow`'s caller
    * already has one open for this request).
    */
-  private async safeSelfieUrl(client: PoolClient, user: JwtAccessPayload, attachmentId: UUID | null): Promise<string | null> {
+  private async safeSelfieUrl(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    attachmentId: UUID | null,
+  ): Promise<string | null> {
     if (!attachmentId) return null;
     try {
       const { url } = await this.storage.getUrl(client, user, null, attachmentId);
@@ -459,9 +655,19 @@ export class AttendanceService {
     }
   }
 
-  private async toAttendanceRow(client: PoolClient, user: JwtAccessPayload, r: Record<string, any>): Promise<AttendanceRow> {
-    const empRes = await client.query<{ name: string }>('SELECT name FROM employees WHERE id = $1', [r.employee_id]);
-    const locRes = await client.query<{ name: string }>('SELECT name FROM locations WHERE id = $1', [r.location_id]);
+  private async toAttendanceRow(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    r: Record<string, any>,
+  ): Promise<AttendanceRow> {
+    const empRes = await client.query<{ name: string }>(
+      'SELECT name FROM employees WHERE id = $1',
+      [r.employee_id],
+    );
+    const locRes = await client.query<{ name: string }>(
+      'SELECT name FROM locations WHERE id = $1',
+      [r.location_id],
+    );
     const [inUrl, outUrl] = await Promise.all([
       this.safeSelfieUrl(client, user, r.check_in_selfie_attachment_id ?? null),
       this.safeSelfieUrl(client, user, r.check_out_selfie_attachment_id ?? null),

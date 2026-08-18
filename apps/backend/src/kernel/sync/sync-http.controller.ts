@@ -37,7 +37,12 @@ export class SyncHttpController {
   @Public()
   @Get('health')
   health() {
-    return { ok: true, protocol_v: PROTOCOL_V, server_time: new Date().toISOString(), tier: 'cloud' as const };
+    return {
+      ok: true,
+      protocol_v: PROTOCOL_V,
+      server_time: new Date().toISOString(),
+      tier: 'cloud' as const,
+    };
   }
 
   @Public()
@@ -55,7 +60,9 @@ export class SyncHttpController {
       body.pullCursor ?? 0,
       body.outboxDepth ?? 0,
     );
-    await withSystemContext(this.pool, (client) => this.registry.touchDeviceSync(client, device.id, body.outboxDepth ?? 0));
+    await withSystemContext(this.pool, (client) =>
+      this.registry.touchDeviceSync(client, device.id, body.outboxDepth ?? 0),
+    );
     return ack;
   }
 
@@ -77,7 +84,8 @@ export class SyncHttpController {
         rejected: body.events.map((e) => ({
           eventId: e.eventId,
           code: 'malformed',
-          detail: 'batch contains an origin_device_id other than the authenticated device (node relay not yet supported)',
+          detail:
+            'batch contains an origin_device_id other than the authenticated device (node relay not yet supported)',
         })),
       };
     }
@@ -91,7 +99,11 @@ export class SyncHttpController {
   @Public()
   @UseGuards(DeviceAuthGuard)
   @Get('pull')
-  async pullEvents(@Req() req: RequestWithDevice, @Query('cursor') cursor?: string, @Query('limit') limit?: string) {
+  async pullEvents(
+    @Req() req: RequestWithDevice,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
     const device = req.device!;
     const scope = this.pull.buildScope({
       subscriberId: device.id,
@@ -99,7 +111,11 @@ export class SyncHttpController {
       locationIds: [device.locationId],
       projectionRole: 'pos_device',
     });
-    const result = await this.pull.pull(scope, Number(cursor ?? 0), Math.min(Number(limit ?? MAX_PULL_LIMIT), MAX_PULL_LIMIT));
+    const result = await this.pull.pull(
+      scope,
+      Number(cursor ?? 0),
+      Math.min(Number(limit ?? MAX_PULL_LIMIT), MAX_PULL_LIMIT),
+    );
     return encodePullResult(result); // client_seq: internal bigint -> wire decimal string (wire-codec.ts)
   }
 

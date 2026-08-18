@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   ApprovalDocumentType,
@@ -17,7 +23,12 @@ import {
 import { formatDateOnly } from '../../common/date-only.util';
 import { ApprovalService } from '../../kernel/approvals/approvals.service';
 import { withWrite } from './db-tx';
-import type { ApprovePurchaseRequestDto, CreatePurchaseRequestDto, ListPurchaseRequestQueryDto, RejectPurchaseRequestDto } from './dto/purchase-request.dto';
+import type {
+  ApprovePurchaseRequestDto,
+  CreatePurchaseRequestDto,
+  ListPurchaseRequestQueryDto,
+  RejectPurchaseRequestDto,
+} from './dto/purchase-request.dto';
 import { PurchaseRequestRepository } from './purchase-request.repository';
 
 export interface ActorContext {
@@ -55,7 +66,16 @@ export interface PurchaseRequestDetail {
    * mirroring `PurchaseOrderService`'s identical fix in this same ticket.
    */
   approval: ApprovalDetail | null;
-  lines: { id: UUID; itemId: UUID; itemName: string; unitId: UUID; unitCode: string; qty: string; estPrice: string; suggestedSupplierId: UUID | null }[];
+  lines: {
+    id: UUID;
+    itemId: UUID;
+    itemName: string;
+    unitId: UUID;
+    unitCode: string;
+    qty: string;
+    estPrice: string;
+    suggestedSupplierId: UUID | null;
+  }[];
 }
 
 /**
@@ -78,10 +98,18 @@ export class PurchaseRequestService {
     private readonly approvals: ApprovalService,
   ) {}
 
-  async list(client: PoolClient, query: ListPurchaseRequestQueryDto): Promise<Paginated<PurchaseRequestListRow>> {
+  async list(
+    client: PoolClient,
+    query: ListPurchaseRequestQueryDto,
+  ): Promise<Paginated<PurchaseRequestListRow>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
-    const { rows, total } = await this.repo.listHeaders(client, { locationId: query.locationId, status: query.status, page, pageSize });
+    const { rows, total } = await this.repo.listHeaders(client, {
+      locationId: query.locationId,
+      status: query.status,
+      page,
+      pageSize,
+    });
     const result: PurchaseRequestListRow[] = [];
     for (const row of rows) {
       const lineCount = await this.repo.lineCount(client, row.id);
@@ -104,15 +132,27 @@ export class PurchaseRequestService {
     return this.toDetail(client, header, lines);
   }
 
-  async create(client: PoolClient, actor: ActorContext, dto: CreatePurchaseRequestDto): Promise<PurchaseRequestDetail> {
+  async create(
+    client: PoolClient,
+    actor: ActorContext,
+    dto: CreatePurchaseRequestDto,
+  ): Promise<PurchaseRequestDetail> {
     this.assertLocationInScope(actor, dto.locationId);
     if (dto.lines.length === 0) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'A purchase request needs at least one line' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'A purchase request needs at least one line',
+      });
     }
 
     return withWrite(client, async () => {
       const prNumber = await this.repo.nextPrNumber(client);
-      const id = await this.repo.insertHeader(client, { prNumber, locationId: dto.locationId, requestedBy: actor.userId, neededBy: dto.neededBy ?? null });
+      const id = await this.repo.insertHeader(client, {
+        prNumber,
+        locationId: dto.locationId,
+        requestedBy: actor.userId,
+        neededBy: dto.neededBy ?? null,
+      });
       for (const line of dto.lines) {
         await this.repo.insertLine(client, {
           prId: id,
@@ -132,7 +172,10 @@ export class PurchaseRequestService {
     const header = await this.requireHeader(client, id);
     this.assertLocationInScope(actor, header.location_id);
     if (header.status !== PurchaseRequestStatus.DRAFT) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PR ${id} is '${header.status}', not 'draft'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PR ${id} is '${header.status}', not 'draft'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -152,10 +195,18 @@ export class PurchaseRequestService {
     });
   }
 
-  async approve(client: PoolClient, actor: ActorContext, id: UUID, dto: ApprovePurchaseRequestDto): Promise<PurchaseRequestDetail> {
+  async approve(
+    client: PoolClient,
+    actor: ActorContext,
+    id: UUID,
+    dto: ApprovePurchaseRequestDto,
+  ): Promise<PurchaseRequestDetail> {
     const header = await this.requireHeader(client, id);
     if (header.status !== PurchaseRequestStatus.SUBMITTED) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PR ${id} is '${header.status}', not 'submitted'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PR ${id} is '${header.status}', not 'submitted'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -174,10 +225,18 @@ export class PurchaseRequestService {
     });
   }
 
-  async reject(client: PoolClient, actor: ActorContext, id: UUID, dto: RejectPurchaseRequestDto): Promise<PurchaseRequestDetail> {
+  async reject(
+    client: PoolClient,
+    actor: ActorContext,
+    id: UUID,
+    dto: RejectPurchaseRequestDto,
+  ): Promise<PurchaseRequestDetail> {
     const header = await this.requireHeader(client, id);
     if (header.status !== PurchaseRequestStatus.SUBMITTED) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PR ${id} is '${header.status}', not 'submitted'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PR ${id} is '${header.status}', not 'submitted'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -201,14 +260,21 @@ export class PurchaseRequestService {
 
   private async requireHeader(client: PoolClient, id: UUID) {
     const header = await this.repo.findHeader(client, id);
-    if (!header) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Purchase request ${id} not found` });
+    if (!header)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Purchase request ${id} not found`,
+      });
     return header;
   }
 
   private assertLocationInScope(actor: ActorContext, locationId: UUID): void {
     if (actor.locationScope === null) return;
     if (!actor.locationScope.includes(locationId)) {
-      throw new ForbiddenException({ code: ERR_FORBIDDEN, message: `Role '${actor.roleKey}' is not assigned to location ${locationId}` });
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: `Role '${actor.roleKey}' is not assigned to location ${locationId}`,
+      });
     }
   }
 
@@ -244,10 +310,17 @@ export class PurchaseRequestService {
   }
 
   /** CONTRACTS.md §4.11's PR-detail `ApprovalDetail` — see `PurchaseOrderService.loadApprovalDetail`'s doc comment for the shared reasoning (identical pattern, one-step chain here per this module's header doc). */
-  private async loadApprovalDetail(client: PoolClient, header: NonNullable<Awaited<ReturnType<PurchaseRequestRepository['findHeader']>>>): Promise<ApprovalDetail | null> {
+  private async loadApprovalDetail(
+    client: PoolClient,
+    header: NonNullable<Awaited<ReturnType<PurchaseRequestRepository['findHeader']>>>,
+  ): Promise<ApprovalDetail | null> {
     if (!header.approval_id) return null;
     try {
-      const detail = await this.approvals.getDetail(client, ApprovalDocumentType.PURCHASE_REQUEST, header.id);
+      const detail = await this.approvals.getDetail(
+        client,
+        ApprovalDocumentType.PURCHASE_REQUEST,
+        header.id,
+      );
       return {
         approvalId: detail.approvalId,
         state: detail.state,

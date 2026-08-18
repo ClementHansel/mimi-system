@@ -22,7 +22,14 @@ import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.ser
 import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
 import { LocationService } from './location.service';
 import { StorageAreaService } from './storage-area.service';
-import { cleanupLocations, closePool, loadFixtures, nextCode, withRollback, type Fixtures } from './test-support/live-db';
+import {
+  cleanupLocations,
+  closePool,
+  loadFixtures,
+  nextCode,
+  withRollback,
+  type Fixtures,
+} from './test-support/live-db';
 
 const eventsRepo = new SyncEventsRepository();
 const conflictsRepo = new SyncConflictsRepository();
@@ -45,7 +52,12 @@ describe('LocationService (live database)', () => {
     const created = await withRollback((client) =>
       locationService.create(
         client,
-        { code: nextCode('LOC'), name: 'Outlet Test', type: LocationType.OUTLET, city: 'Balikpapan' },
+        {
+          code: nextCode('LOC'),
+          name: 'Outlet Test',
+          type: LocationType.OUTLET,
+          city: 'Balikpapan',
+        },
         ACTOR,
       ),
     );
@@ -62,21 +74,33 @@ describe('LocationService (live database)', () => {
 
   it('updates a location', async () => {
     const created = await withRollback((client) =>
-      locationService.create(client, { code: nextCode('LOC'), name: 'Before', type: LocationType.OUTLET, city: 'Samarinda' }, ACTOR),
+      locationService.create(
+        client,
+        { code: nextCode('LOC'), name: 'Before', type: LocationType.OUTLET, city: 'Samarinda' },
+        ACTOR,
+      ),
     );
     createdLocationIds.push(created.id);
 
-    const updated = await withRollback((client) => locationService.update(client, created.id, { name: 'After' }, ACTOR));
+    const updated = await withRollback((client) =>
+      locationService.update(client, created.id, { name: 'After' }, ACTOR),
+    );
     expect(updated.name).toBe('After');
   });
 
   it('deactivates a location', async () => {
     const created = await withRollback((client) =>
-      locationService.create(client, { code: nextCode('LOC'), name: 'ToDeactivate', type: LocationType.OUTLET, city: 'Tarakan' }, ACTOR),
+      locationService.create(
+        client,
+        { code: nextCode('LOC'), name: 'ToDeactivate', type: LocationType.OUTLET, city: 'Tarakan' },
+        ACTOR,
+      ),
     );
     createdLocationIds.push(created.id);
 
-    const result = await withRollback((client) => locationService.deactivate(client, created.id, ACTOR));
+    const result = await withRollback((client) =>
+      locationService.deactivate(client, created.id, ACTOR),
+    );
     expect(result.deactivated).toBe(true);
 
     const fetched = await withRollback((client) => locationService.getById(client, created.id));
@@ -85,14 +109,25 @@ describe('LocationService (live database)', () => {
 
   it('404s on a nonexistent location', async () => {
     await expect(
-      withRollback((client) => locationService.getById(client, '00000000-0000-0000-0000-000000000000')),
+      withRollback((client) =>
+        locationService.getById(client, '00000000-0000-0000-0000-000000000000'),
+      ),
     ).rejects.toMatchObject({ status: 404 });
   });
 
   describe('StorageAreaService', () => {
     it('creates, lists, updates a storage area for a location', async () => {
       const location = await withRollback((client) =>
-        locationService.create(client, { code: nextCode('LOC'), name: 'For Areas', type: LocationType.OUTLET, city: 'Balikpapan' }, ACTOR),
+        locationService.create(
+          client,
+          {
+            code: nextCode('LOC'),
+            name: 'For Areas',
+            type: LocationType.OUTLET,
+            city: 'Balikpapan',
+          },
+          ACTOR,
+        ),
       );
       createdLocationIds.push(location.id);
 
@@ -100,13 +135,21 @@ describe('LocationService (live database)', () => {
         storageAreaService.create(
           client,
           location.id,
-          { code: 'FRZ', name: 'Freezer 1', type: StorageAreaType.FREEZER, tempMin: '-25.0', tempMax: '-15.0' },
+          {
+            code: 'FRZ',
+            name: 'Freezer 1',
+            type: StorageAreaType.FREEZER,
+            tempMin: '-25.0',
+            tempMax: '-15.0',
+          },
           ACTOR,
         ),
       );
       expect(area.locationId).toBe(location.id);
 
-      const list = await withRollback((client) => storageAreaService.listForLocation(client, location.id));
+      const list = await withRollback((client) =>
+        storageAreaService.listForLocation(client, location.id),
+      );
       expect(list.some((a) => a.id === area.id)).toBe(true);
 
       const updated = await withRollback((client) =>
@@ -114,7 +157,9 @@ describe('LocationService (live database)', () => {
       );
       expect(updated.name).toBe('Freezer Utama');
 
-      const refetchedLocation = await withRollback((client) => locationService.getById(client, location.id));
+      const refetchedLocation = await withRollback((client) =>
+        locationService.getById(client, location.id),
+      );
       expect(refetchedLocation.storageAreaCount).toBe(1);
     });
 
@@ -132,7 +177,12 @@ describe('LocationService (live database)', () => {
         );
 
         await expect(
-          storageAreaService.deactivate(client, fixtures.outletId, fixtures.storageAreaOutlet, ACTOR),
+          storageAreaService.deactivate(
+            client,
+            fixtures.outletId,
+            fixtures.storageAreaOutlet,
+            ACTOR,
+          ),
         ).rejects.toMatchObject({ response: { code: 'ERR_AREA_HAS_STOCK' } });
       });
       // ^ this whole block's own INSERT is rolled back — deactivate() rejects
@@ -142,15 +192,31 @@ describe('LocationService (live database)', () => {
 
     it('deactivates a storage area with a zero stock balance', async () => {
       const location = await withRollback((client) =>
-        locationService.create(client, { code: nextCode('LOC'), name: 'Zero Stock', type: LocationType.OUTLET, city: 'Balikpapan' }, ACTOR),
+        locationService.create(
+          client,
+          {
+            code: nextCode('LOC'),
+            name: 'Zero Stock',
+            type: LocationType.OUTLET,
+            city: 'Balikpapan',
+          },
+          ACTOR,
+        ),
       );
       createdLocationIds.push(location.id);
 
       const area = await withRollback((client) =>
-        storageAreaService.create(client, location.id, { code: 'DRY', name: 'Dry Store', type: StorageAreaType.DRY_STORE }, ACTOR),
+        storageAreaService.create(
+          client,
+          location.id,
+          { code: 'DRY', name: 'Dry Store', type: StorageAreaType.DRY_STORE },
+          ACTOR,
+        ),
       );
 
-      const result = await withRollback((client) => storageAreaService.deactivate(client, location.id, area.id, ACTOR));
+      const result = await withRollback((client) =>
+        storageAreaService.deactivate(client, location.id, area.id, ACTOR),
+      );
       expect(result.deactivated).toBe(true);
     });
   });

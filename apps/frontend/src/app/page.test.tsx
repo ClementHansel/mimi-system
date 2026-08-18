@@ -63,12 +63,23 @@ describe('HomePage (home hub — workspace chooser)', () => {
     setUser({
       roleKey: 'owner',
       permissions: [
-        'dashboard.view', 'pos.catalog.read', 'user.read', 'audit.read', 'settings.manage',
-        'hr.employee.read', 'payment.read', 'delivery.read', 'purchasing.read',
-        'payroll.slip.read.own', 'asset.read', 'topology.read',
+        'dashboard.view',
+        'pos.catalog.read',
+        'user.read',
+        'audit.read',
+        'settings.manage',
+        'hr.employee.read',
+        'payment.read',
+        'delivery.read',
+        'purchasing.read',
+        'payroll.slip.read.own',
+        'asset.read',
+        'topology.read',
       ],
       name: 'Siti Rahma',
-      locations: [{ id: 'l1', code: 'LJN', name: 'Outlet Loa Janan', type: 'outlet', city: 'Samarinda' }],
+      locations: [
+        { id: 'l1', code: 'LJN', name: 'Outlet Loa Janan', type: 'outlet', city: 'Samarinda' },
+      ],
     });
     render(<HomePage />);
 

@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
 import {
@@ -66,10 +71,22 @@ export class LeavesService {
   ): Promise<Paginated<LeaveRow>> {
     const params: unknown[] = [];
     let where = '1=1';
-    if (locationId) { params.push(locationId); where += ` AND e.location_id = $${params.length}`; }
-    if (status) { params.push(status); where += ` AND lr.status = $${params.length}`; }
-    if (type) { params.push(type); where += ` AND lr.type = $${params.length}`; }
-    if (employeeId) { params.push(employeeId); where += ` AND lr.employee_id = $${params.length}`; }
+    if (locationId) {
+      params.push(locationId);
+      where += ` AND e.location_id = $${params.length}`;
+    }
+    if (status) {
+      params.push(status);
+      where += ` AND lr.status = $${params.length}`;
+    }
+    if (type) {
+      params.push(type);
+      where += ` AND lr.type = $${params.length}`;
+    }
+    if (employeeId) {
+      params.push(employeeId);
+      where += ` AND lr.employee_id = $${params.length}`;
+    }
 
     const countRes = await client.query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM leave_requests lr JOIN employees e ON e.id = lr.employee_id WHERE ${where}`,
@@ -93,7 +110,11 @@ export class LeavesService {
     return { rows: res.rows.map(this.mapLeaveRow), total, page, pageSize };
   }
 
-  async listMe(client: PoolClient, actorUserId: UUID, year?: string): Promise<{ rows: LeaveRow[]; quota: LeaveQuota }> {
+  async listMe(
+    client: PoolClient,
+    actorUserId: UUID,
+    year?: string,
+  ): Promise<{ rows: LeaveRow[]; quota: LeaveQuota }> {
     const employee = await this.resolveSelfEmployee(client, actorUserId);
     const params: unknown[] = [employee.id];
     let where = 'lr.employee_id = $1';
@@ -109,7 +130,11 @@ export class LeavesService {
         ORDER BY lr.start_date DESC`,
       params,
     );
-    const quota = await this.getQuota(client, employee.id, year ?? String(new Date().getFullYear()));
+    const quota = await this.getQuota(
+      client,
+      employee.id,
+      year ?? String(new Date().getFullYear()),
+    );
     return { rows: res.rows.map(this.mapLeaveRow), quota };
   }
 
@@ -124,7 +149,14 @@ export class LeavesService {
         entityId: leaveId,
         locationId: employee.locationId,
         actorUserId,
-        data: { clientId: dto.clientId, type: dto.type, startDate: dto.startDate, endDate: dto.endDate, reason: dto.reason ?? null, attachmentId: dto.attachmentId ?? null },
+        data: {
+          clientId: dto.clientId,
+          type: dto.type,
+          startDate: dto.startDate,
+          endDate: dto.endDate,
+          reason: dto.reason ?? null,
+          attachmentId: dto.attachmentId ?? null,
+        },
       });
 
       return this.getRowOrThrow(client, leaveId);
@@ -144,13 +176,25 @@ export class LeavesService {
    * created. The online REST path has no such correlation need and mints
    * its own fresh id.
    */
-  async insertAndSubmit(client: PoolClient, actorUserId: UUID, dto: SubmitLeaveDto, explicitId?: UUID): Promise<UUID> {
+  async insertAndSubmit(
+    client: PoolClient,
+    actorUserId: UUID,
+    dto: SubmitLeaveDto,
+    explicitId?: UUID,
+  ): Promise<UUID> {
     const employee = await this.resolveSelfEmployee(client, actorUserId);
 
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'endDate must be on or after startDate' });
+    if (
+      Number.isNaN(startDate.getTime()) ||
+      Number.isNaN(endDate.getTime()) ||
+      endDate < startDate
+    ) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'endDate must be on or after startDate',
+      });
     }
     const days = Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1;
 
@@ -169,7 +213,10 @@ export class LeavesService {
 
     // Idempotent replay (§2.2) — the exact same client_id already landed. Covers BOTH a retried REST
     // call and a re-projection sweep for the SAME `leave_requests.submitted` event.
-    const existing = await client.query<{ id: UUID }>('SELECT id FROM leave_requests WHERE client_id = $1', [dto.clientId]);
+    const existing = await client.query<{ id: UUID }>(
+      'SELECT id FROM leave_requests WHERE client_id = $1',
+      [dto.clientId],
+    );
     if (existing.rows.length > 0) {
       return existing.rows[0]!.id;
     }
@@ -178,7 +225,17 @@ export class LeavesService {
     await client.query(
       `INSERT INTO leave_requests (id, employee_id, type, start_date, end_date, days, reason, attachment_id, client_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [leaveId, employee.id, dto.type, dto.startDate, dto.endDate, days, dto.reason ?? null, dto.attachmentId ?? null, dto.clientId],
+      [
+        leaveId,
+        employee.id,
+        dto.type,
+        dto.startDate,
+        dto.endDate,
+        days,
+        dto.reason ?? null,
+        dto.attachmentId ?? null,
+        dto.clientId,
+      ],
     );
 
     // Ticket instruction: supply a REAL locationId here — the employee's home location — or the
@@ -191,12 +248,21 @@ export class LeavesService {
       locationId: employee.locationId,
     });
 
-    await client.query('UPDATE leave_requests SET approval_id = $2 WHERE id = $1', [leaveId, submitResult.approvalId]);
+    await client.query('UPDATE leave_requests SET approval_id = $2 WHERE id = $1', [
+      leaveId,
+      submitResult.approvalId,
+    ]);
 
     return leaveId;
   }
 
-  async approve(client: PoolClient, actorUserId: UUID, actorRole: RoleKey, id: UUID, dto: ApproveLeaveDto): Promise<LeaveRow> {
+  async approve(
+    client: PoolClient,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+    id: UUID,
+    dto: ApproveLeaveDto,
+  ): Promise<LeaveRow> {
     const leave = await this.requireLeave(client, id);
 
     return withWrite(client, async () => {
@@ -238,8 +304,15 @@ export class LeavesService {
     });
   }
 
-  async reject(client: PoolClient, actorUserId: UUID, actorRole: RoleKey, id: UUID, dto: RejectLeaveDto): Promise<LeaveRow> {
-    if (!dto.reason?.trim()) throw new BadRequestException({ code: ERR_VALIDATION, message: 'reason is required' });
+  async reject(
+    client: PoolClient,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+    id: UUID,
+    dto: RejectLeaveDto,
+  ): Promise<LeaveRow> {
+    if (!dto.reason?.trim())
+      throw new BadRequestException({ code: ERR_VALIDATION, message: 'reason is required' });
     const leave = await this.requireLeave(client, id);
 
     return withWrite(client, async () => {
@@ -270,7 +343,12 @@ export class LeavesService {
     });
   }
 
-  async cancel(client: PoolClient, actorUserId: UUID, actorRole: RoleKey, id: UUID): Promise<LeaveRow> {
+  async cancel(
+    client: PoolClient,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+    id: UUID,
+  ): Promise<LeaveRow> {
     return withWrite(client, async () => {
       const applied = await this.applyCancel(client, actorUserId, actorRole, id);
       if (applied) {
@@ -295,15 +373,26 @@ export class LeavesService {
    * since `ApprovalService.decide()` itself throws `ERR_APPROVAL_ALREADY_
    * DECIDED` on a non-pending approval rather than tolerating a replay.
    */
-  async applyCancel(client: PoolClient, actorUserId: UUID, actorRole: RoleKey, id: UUID): Promise<boolean> {
+  async applyCancel(
+    client: PoolClient,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+    id: UUID,
+  ): Promise<boolean> {
     const leave = await this.requireLeave(client, id);
     if (leave.status === LeaveStatus.CANCELLED) return false; // idempotent replay — already applied
 
     if (leave.employeeUserId !== actorUserId) {
-      throw new ForbiddenException({ code: ERR_VALIDATION, message: 'Only the requesting employee may cancel this leave' });
+      throw new ForbiddenException({
+        code: ERR_VALIDATION,
+        message: 'Only the requesting employee may cancel this leave',
+      });
     }
     if (leave.status !== LeaveStatus.PENDING) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'Only a pending leave request can be cancelled' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'Only a pending leave request can be cancelled',
+      });
     }
 
     const result = await this.approvals.cancel(client, {
@@ -314,7 +403,10 @@ export class LeavesService {
       actorRole,
     });
 
-    await client.query('UPDATE leave_requests SET status = $2 WHERE id = $1', [id, result.nextState]);
+    await client.query('UPDATE leave_requests SET status = $2 WHERE id = $1', [
+      id,
+      result.nextState,
+    ]);
     return true;
   }
 
@@ -343,13 +435,19 @@ export class LeavesService {
   }
 
   /** Public — also used by `LeaveSyncProjector` to resolve `event.actorUserId` -> employee. */
-  async resolveSelfEmployee(client: PoolClient, userId: UUID): Promise<{ id: UUID; locationId: UUID }> {
+  async resolveSelfEmployee(
+    client: PoolClient,
+    userId: UUID,
+  ): Promise<{ id: UUID; locationId: UUID }> {
     const res = await client.query<{ id: UUID; location_id: UUID }>(
       'SELECT id, location_id FROM employees WHERE user_id = $1',
       [userId],
     );
     if (res.rows.length === 0) {
-      throw new ForbiddenException({ code: ERR_VALIDATION, message: 'This account has no linked employee record' });
+      throw new ForbiddenException({
+        code: ERR_VALIDATION,
+        message: 'This account has no linked employee record',
+      });
     }
     return { id: res.rows[0]!.id, locationId: res.rows[0]!.location_id };
   }
@@ -367,7 +465,10 @@ export class LeavesService {
       [userId],
     );
     if (res.rows.length === 0) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `No user found for actor ${userId}` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `No user found for actor ${userId}`,
+      });
     }
     return res.rows[0]!.key;
   }
@@ -375,16 +476,29 @@ export class LeavesService {
   private async requireLeave(
     client: PoolClient,
     id: UUID,
-  ): Promise<{ status: LeaveStatus; startDate: string; endDate: string; type: LeaveType; employeeUserId: UUID | null }> {
+  ): Promise<{
+    status: LeaveStatus;
+    startDate: string;
+    endDate: string;
+    type: LeaveType;
+    employeeUserId: UUID | null;
+  }> {
     const res = await client.query<Record<string, any>>(
       `SELECT lr.status, lr.start_date, lr.end_date, lr.type, e.user_id
          FROM leave_requests lr JOIN employees e ON e.id = lr.employee_id
         WHERE lr.id = $1`,
       [id],
     );
-    if (res.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Leave request not found' });
+    if (res.rows.length === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Leave request not found' });
     const r = res.rows[0]!;
-    return { status: r.status, startDate: pgDateToIso(r.start_date), endDate: pgDateToIso(r.end_date), type: r.type, employeeUserId: r.user_id ?? null };
+    return {
+      status: r.status,
+      startDate: pgDateToIso(r.start_date),
+      endDate: pgDateToIso(r.end_date),
+      type: r.type,
+      employeeUserId: r.user_id ?? null,
+    };
   }
 
   private async getRowOrThrow(client: PoolClient, id: UUID): Promise<LeaveRow> {
@@ -397,7 +511,8 @@ export class LeavesService {
         WHERE lr.id = $1`,
       [id],
     );
-    if (res.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Leave request not found' });
+    if (res.rows.length === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Leave request not found' });
     return this.mapLeaveRow(res.rows[0]!);
   }
 

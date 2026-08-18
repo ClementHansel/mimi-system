@@ -5,7 +5,17 @@
  * `RlsContextGuard` -> `PermissionsGuard`), unlike `kernel/sync`'s
  * device-token `/sync/v1/*` routes.
  */
-import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -20,7 +30,10 @@ function assertLocationInScope(req: RequestWithDbContext, locationId: string | u
   if (!locationId) return;
   const scope = req.locationScope;
   if (scope !== null && scope !== undefined && !scope.includes(locationId)) {
-    throw new BadRequestException({ code: ERR_LOCATION_OUT_OF_SCOPE, message: `locationId '${locationId}' is outside your assigned scope` });
+    throw new BadRequestException({
+      code: ERR_LOCATION_OUT_OF_SCOPE,
+      message: `locationId '${locationId}' is outside your assigned scope`,
+    });
   }
 }
 
@@ -65,7 +78,10 @@ export class SyncAdminController {
         cursorLag: 0, // see report note: exact per-device pull lag needs sync_cursors joined by device — left as a follow-up refinement
       }));
 
-      const nodeRes = await client.query(`SELECT id AS "nodeId" FROM branch_nodes WHERE location_id = $1 LIMIT 1`, [loc.id]);
+      const nodeRes = await client.query(
+        `SELECT id AS "nodeId" FROM branch_nodes WHERE location_id = $1 LIMIT 1`,
+        [loc.id],
+      );
       const openConflicts = await client.query<{ n: string }>(
         `SELECT COUNT(*)::text AS n FROM sync_conflicts WHERE location_id = $1 AND queue = 'conflict' AND status = 'open'`,
         [loc.id],
@@ -134,8 +150,13 @@ export class SyncAdminController {
   @RequirePermission('sync.conflict.resolve')
   @Audited({ entityType: 'sync_conflict', action: 'sync.conflict.dismiss' })
   @Post('conflicts/:id/dismiss')
-  async dismissConflict(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() body: { reason: string }) {
-    if (!body?.reason) throw new BadRequestException({ code: 'ERR_REASON_REQUIRED', message: 'reason is required' });
+  async dismissConflict(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() body: { reason: string },
+  ) {
+    if (!body?.reason)
+      throw new BadRequestException({ code: 'ERR_REASON_REQUIRED', message: 'reason is required' });
     const client = req.dbClient ?? this.pool;
 
     // Entries whose kind requires resolution in the owning domain UI (C1 opname, C2 SJ receipt, C3
@@ -143,13 +164,23 @@ export class SyncAdminController {
     // NOT yet in packages/shared/src/error-codes.ts's closed union (flagged as a follow-up in the W2-D
     // report); used here as a literal string so the wire contract matches CONTRACTS exactly today.
     const DOMAIN_RESOLVED_KINDS = new Set(['double_count', 'duplicate_receipt', 'decision_race']);
-    const existing = await client.query<{ kind: string }>(`SELECT kind FROM sync_conflicts WHERE id = $1`, [id]);
+    const existing = await client.query<{ kind: string }>(
+      `SELECT kind FROM sync_conflicts WHERE id = $1`,
+      [id],
+    );
     if (existing.rows[0] && DOMAIN_RESOLVED_KINDS.has(existing.rows[0].kind)) {
-      throw new BadRequestException({ code: 'ERR_RESOLVE_IN_DOMAIN', message: 'This conflict must be resolved in its owning domain screen, not dismissed here' });
+      throw new BadRequestException({
+        code: 'ERR_RESOLVE_IN_DOMAIN',
+        message: 'This conflict must be resolved in its owning domain screen, not dismissed here',
+      });
     }
 
     const dismissed = await this.conflicts.dismiss(client, id, req.user!.sub, body.reason);
-    if (!dismissed) throw new BadRequestException({ code: 'ERR_NOT_FOUND', message: 'Conflict not found or not open' });
+    if (!dismissed)
+      throw new BadRequestException({
+        code: 'ERR_NOT_FOUND',
+        message: 'Conflict not found or not open',
+      });
     // BE-TXN-ROLLBACK: `RlsContextGuard` opens this request's transaction and
     // `RlsCleanupInterceptor` unconditionally rolls it back afterward — this
     // write must commit itself, exactly like `pos.controller.ts`'s
@@ -174,8 +205,14 @@ export class SyncAdminController {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (status) { conds.push(`sr.status = $${i++}`); args.push(status); }
-    if (locationIds) { conds.push(`sr.location_id = ANY($${i++}::uuid[])`); args.push(locationIds); }
+    if (status) {
+      conds.push(`sr.status = $${i++}`);
+      args.push(status);
+    }
+    if (locationIds) {
+      conds.push(`sr.location_id = ANY($${i++}::uuid[])`);
+      args.push(locationIds);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
     const rows = await client.query(
@@ -191,8 +228,16 @@ export class SyncAdminController {
         LIMIT $${i} OFFSET $${i + 1}`,
       [...args, Number(pageSize), offset],
     );
-    const count = await client.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM stock_reconciliations sr ${where}`, args);
-    return { rows: rows.rows, total: Number(count.rows[0]?.n ?? '0'), page: Number(page), pageSize: Number(pageSize) };
+    const count = await client.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM stock_reconciliations sr ${where}`,
+      args,
+    );
+    return {
+      rows: rows.rows,
+      total: Number(count.rows[0]?.n ?? '0'),
+      page: Number(page),
+      pageSize: Number(pageSize),
+    };
   }
 
   @RequirePermission('sync.conflict.resolve')
@@ -203,16 +248,30 @@ export class SyncAdminController {
     @Param('id') id: string,
     @Body() body: { resolution: string; adjustmentId?: string },
   ) {
-    if (!body?.resolution) throw new BadRequestException({ code: 'ERR_REASON_REQUIRED', message: 'resolution is required' });
+    if (!body?.resolution)
+      throw new BadRequestException({
+        code: 'ERR_REASON_REQUIRED',
+        message: 'resolution is required',
+      });
     const client = req.dbClient ?? this.pool;
     const res = await client.query(
       `UPDATE stock_reconciliations
           SET status = 'resolved', resolved_by = $2, resolved_at = NOW(), resolution = $3
         WHERE id = $1 AND status = 'open'
         RETURNING *`,
-      [id, req.user!.sub, body.adjustmentId ? `${body.resolution} (adjustment: ${body.adjustmentId})` : body.resolution],
+      [
+        id,
+        req.user!.sub,
+        body.adjustmentId
+          ? `${body.resolution} (adjustment: ${body.adjustmentId})`
+          : body.resolution,
+      ],
     );
-    if (!res.rows[0]) throw new BadRequestException({ code: 'ERR_NOT_FOUND', message: 'Reconciliation not found or not open' });
+    if (!res.rows[0])
+      throw new BadRequestException({
+        code: 'ERR_NOT_FOUND',
+        message: 'Reconciliation not found or not open',
+      });
     // BE-TXN-ROLLBACK: same controller-commit convention as `dismissConflict`
     // above and `pos.controller.ts` — see that comment for why.
     await client.query('COMMIT');
@@ -221,7 +280,10 @@ export class SyncAdminController {
 
   @RequirePermission('sync.conflict.resolve')
   @Post('reconcile/:locationId')
-  async triggerReconcile(@Req() req: RequestWithDbContext, @Param('locationId') locationId: string) {
+  async triggerReconcile(
+    @Req() req: RequestWithDbContext,
+    @Param('locationId') locationId: string,
+  ) {
     assertLocationInScope(req, locationId);
     const jobId = randomUUID();
     // Fire-and-continue: R1 is a straightforward SQL pass, cheap enough to run inline for one location;
@@ -246,11 +308,26 @@ export class SyncAdminController {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (originDeviceId) { conds.push(`origin_device_id = $${i++}`); args.push(originDeviceId); }
-    if (entity) { conds.push(`entity = $${i++}`); args.push(entity); }
-    if (applyStatus) { conds.push(`apply_status = $${i++}`); args.push(applyStatus); }
-    if (from) { conds.push(`occurred_at >= $${i++}`); args.push(from); }
-    if (locationIds) { conds.push(`(location_id IS NULL OR location_id = ANY($${i++}::uuid[]))`); args.push(locationIds); }
+    if (originDeviceId) {
+      conds.push(`origin_device_id = $${i++}`);
+      args.push(originDeviceId);
+    }
+    if (entity) {
+      conds.push(`entity = $${i++}`);
+      args.push(entity);
+    }
+    if (applyStatus) {
+      conds.push(`apply_status = $${i++}`);
+      args.push(applyStatus);
+    }
+    if (from) {
+      conds.push(`occurred_at >= $${i++}`);
+      args.push(from);
+    }
+    if (locationIds) {
+      conds.push(`(location_id IS NULL OR location_id = ANY($${i++}::uuid[]))`);
+      args.push(locationIds);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (Number(page) - 1) * Number(pageSize);
 
@@ -260,8 +337,16 @@ export class SyncAdminController {
          FROM sync_events ${where} ORDER BY server_seq DESC LIMIT $${i} OFFSET $${i + 1}`,
       [...args, Number(pageSize), offset],
     );
-    const count = await client.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM sync_events ${where}`, args);
-    return { rows: rows.rows, total: Number(count.rows[0]?.n ?? '0'), page: Number(page), pageSize: Number(pageSize) };
+    const count = await client.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM sync_events ${where}`,
+      args,
+    );
+    return {
+      rows: rows.rows,
+      total: Number(count.rows[0]?.n ?? '0'),
+      page: Number(page),
+      pageSize: Number(pageSize),
+    };
   }
 }
 

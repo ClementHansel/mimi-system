@@ -60,7 +60,11 @@ export async function openTestTx(): Promise<PoolClient> {
   // module's file to fix (owned by W1-D), but load-bearing enough to flag
   // loudly.
   await client.query('SET LOCAL ROLE app_user');
-  await setRlsContext(client, { role: 'owner', userId: '00000000-0000-0000-0000-0000000000aa', locationIds: null });
+  await setRlsContext(client, {
+    role: 'owner',
+    userId: '00000000-0000-0000-0000-0000000000aa',
+    locationIds: null,
+  });
   return client;
 }
 
@@ -100,7 +104,10 @@ export interface StockFixtureKey {
  * keys — the whole call runs inside a transaction that gets rolled back
  * regardless.
  */
-export async function pickUnusedStockKey(client: PoolClient, opts: { excludeLocationId?: string } = {}): Promise<StockFixtureKey> {
+export async function pickUnusedStockKey(
+  client: PoolClient,
+  opts: { excludeLocationId?: string } = {},
+): Promise<StockFixtureKey> {
   const res = await client.query<{ location_id: string; storage_area_id: string; item_id: string }>(
     `SELECT sa.location_id, sa.id AS storage_area_id, i.id AS item_id
        FROM storage_areas sa
@@ -115,7 +122,10 @@ export async function pickUnusedStockKey(client: PoolClient, opts: { excludeLoca
     opts.excludeLocationId ? [opts.excludeLocationId] : [],
   );
   const row = res.rows[0];
-  if (!row) throw new Error('pickUnusedStockKey: no unused (location, area, item) triplet found — seed data exhausted?');
+  if (!row)
+    throw new Error(
+      'pickUnusedStockKey: no unused (location, area, item) triplet found — seed data exhausted?',
+    );
   return { locationId: row.location_id, storageAreaId: row.storage_area_id, itemId: row.item_id };
 }
 
@@ -127,7 +137,13 @@ export interface TransferFixture {
 
 /** Same idea as `pickUnusedStockKey`, but for a pair of keys spanning two DIFFERENT locations sharing one item — a clean fixture for cross-location transfer tests. */
 export async function pickUnusedTransferFixture(client: PoolClient): Promise<TransferFixture> {
-  const res = await client.query<{ from_location: string; from_area: string; to_location: string; to_area: string; item_id: string }>(
+  const res = await client.query<{
+    from_location: string;
+    from_area: string;
+    to_location: string;
+    to_area: string;
+    item_id: string;
+  }>(
     `WITH cand_areas AS (
        SELECT location_id, id FROM storage_areas ORDER BY random() LIMIT 30
      ),
@@ -153,7 +169,10 @@ export async function pickUnusedTransferFixture(client: PoolClient): Promise<Tra
   };
 }
 
-export async function readBalance(client: PoolClient, key: StockFixtureKey): Promise<string | null> {
+export async function readBalance(
+  client: PoolClient,
+  key: StockFixtureKey,
+): Promise<string | null> {
   const res = await client.query<{ qty_on_hand: string }>(
     `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
     [key.locationId, key.storageAreaId, key.itemId],

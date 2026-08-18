@@ -58,7 +58,10 @@ export function DashboardShell() {
   const canOutletView = can('dashboard.outlet.view');
 
   const today = new Date();
-  const [range, setRange] = useState<DateRangeValue>({ from: addDays(today, -6), to: addDays(today, 0) });
+  const [range, setRange] = useState<DateRangeValue>({
+    from: addDays(today, -6),
+    to: addDays(today, 0),
+  });
 
   if (canCompanyView) {
     return <CompanyDashboard range={range} onRangeChange={setRange} />;
@@ -99,7 +102,10 @@ function CompanyDashboard({
       const results = await dashboardApi.refresh();
       const failed = results.filter((r) => !r.ok);
       if (failed.length > 0) {
-        toast({ title: t('dashboard.refreshPartialFailure', { count: failed.length }), variant: 'danger' });
+        toast({
+          title: t('dashboard.refreshPartialFailure', { count: failed.length }),
+          variant: 'danger',
+        });
       } else {
         toast({ title: t('dashboard.refreshSuccess'), variant: 'success' });
       }
@@ -115,7 +121,13 @@ function CompanyDashboard({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <ScopeBanner scope="company" className="flex-1" />
-        <Button variant="outline" size="sm" leftIcon={<RefreshCcw className="size-4" />} loading={refreshing} onClick={handleRefresh}>
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon={<RefreshCcw className="size-4" />}
+          loading={refreshing}
+          onClick={handleRefresh}
+        >
           {t('dashboard.refreshButton')}
         </Button>
       </div>
@@ -134,7 +146,9 @@ function CompanyDashboard({
             <OverviewCards data={overview} loading={overviewLoading} />
             <TrendPanel from={from} to={to} />
             <div>
-              <h3 className="mb-2 font-display text-lg font-semibold text-text-primary">{t('dashboard.tabs.opsStatus')}</h3>
+              <h3 className="mb-2 font-display text-lg font-semibold text-text-primary">
+                {t('dashboard.tabs.opsStatus')}
+              </h3>
               <OpsStatusPanel />
             </div>
           </div>

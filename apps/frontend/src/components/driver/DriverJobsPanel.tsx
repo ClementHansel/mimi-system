@@ -66,27 +66,41 @@ export function DriverJobsPanel() {
   }
 
   const openJobs = jobs.filter(
-    (sj) => OPEN_SJ_STATUSES.has(sj.status) || sj.drops.some((d) => !TERMINAL_DROP_STATUSES.has(d.status)),
+    (sj) =>
+      OPEN_SJ_STATUSES.has(sj.status) ||
+      sj.drops.some((d) => !TERMINAL_DROP_STATUSES.has(d.status)),
   );
 
   return (
     <div className="flex flex-col gap-4 p-4">
       {/* AppShell already owns the single OfflineBanner for this (non-chromeless) route. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="font-display text-2xl font-semibold text-text-primary">{t('driver.today')}</h1>
+        <h1 className="font-display text-2xl font-semibold text-text-primary">
+          {t('driver.today')}
+        </h1>
         <div className="flex items-center gap-2">
           <SyncStatusPill />
-          <Button variant="outline" size="sm" onClick={reload} leftIcon={<RefreshCcw className="size-4" />}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={reload}
+            leftIcon={<RefreshCcw className="size-4" />}
+          >
             {t('common.refresh')}
           </Button>
         </div>
       </div>
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
-      {!loading && loadError && jobs.length === 0 && <EmptyState title={t('table.error')} size="lg" />}
-      {!loading && !loadError && openJobs.length === 0 && <EmptyState title={t('driver.empty')} size="lg" />}
+      {!loading && loadError && jobs.length === 0 && (
+        <EmptyState title={t('table.error')} size="lg" />
+      )}
+      {!loading && !loadError && openJobs.length === 0 && (
+        <EmptyState title={t('driver.empty')} size="lg" />
+      )}
 
-      {!loading && openJobs.map((sj) => <SjJobCard key={sj.id} sj={sj} onChanged={applyDropPatch} />)}
+      {!loading &&
+        openJobs.map((sj) => <SjJobCard key={sj.id} sj={sj} onChanged={applyDropPatch} />)}
     </div>
   );
 }

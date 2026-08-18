@@ -40,7 +40,12 @@ export class TopProductsService {
     }
     params.push(limit);
 
-    const res = await client.query<{ product_id: string; name: string; qty: string; revenue: string }>(
+    const res = await client.query<{
+      product_id: string;
+      name: string;
+      qty: string;
+      revenue: string;
+    }>(
       `SELECT p.id AS product_id, p.name, SUM(sl.qty)::text AS qty, SUM(sl.line_total)::text AS revenue
          FROM sale_lines sl
          JOIN sales s ON s.id = sl.sale_id
@@ -54,6 +59,11 @@ export class TopProductsService {
       params,
     );
 
-    return res.rows.map((r) => ({ productId: r.product_id, name: r.name, qty: r.qty as Qty, revenue: r.revenue as Money }));
+    return res.rows.map((r) => ({
+      productId: r.product_id,
+      name: r.name,
+      qty: r.qty as Qty,
+      revenue: r.revenue as Money,
+    }));
   }
 }

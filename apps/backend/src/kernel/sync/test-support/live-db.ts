@@ -70,7 +70,9 @@ export function getTestPool(): Pool {
 }
 
 export async function fetchOneLocationId(): Promise<string> {
-  const res = await getOwnerPool().query<{ id: string }>(`SELECT id FROM locations WHERE type = 'outlet' ORDER BY id LIMIT 1`);
+  const res = await getOwnerPool().query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'outlet' ORDER BY id LIMIT 1`,
+  );
   if (!res.rows[0]) throw new Error('Test fixture requires at least one seeded outlet location');
   return res.rows[0].id;
 }
@@ -117,29 +119,47 @@ export async function cleanupOrigins(originDeviceIds: string[]): Promise<void> {
   const p = getOwnerPool();
   // Order matters: sync_events.batch_id -> sync_batches(id) and sync_conflicts.{winner,loser}_event_id ->
   // sync_events(event_id), so children must go before parents.
-  await p.query(`DELETE FROM sync_conflicts WHERE loser_event_id IN (SELECT event_id FROM sync_events WHERE origin_device_id = ANY($1::uuid[])) OR winner_event_id IN (SELECT event_id FROM sync_events WHERE origin_device_id = ANY($1::uuid[]))`, [originDeviceIds]);
-  await p.query(`DELETE FROM sync_events WHERE origin_device_id = ANY($1::uuid[])`, [originDeviceIds]);
-  await p.query(`DELETE FROM sync_batches WHERE origin_device_id = ANY($1::uuid[])`, [originDeviceIds]);
-  await p.query(`DELETE FROM sync_cursors WHERE subscriber_id = ANY($1::uuid[])`, [originDeviceIds]);
+  await p.query(
+    `DELETE FROM sync_conflicts WHERE loser_event_id IN (SELECT event_id FROM sync_events WHERE origin_device_id = ANY($1::uuid[])) OR winner_event_id IN (SELECT event_id FROM sync_events WHERE origin_device_id = ANY($1::uuid[]))`,
+    [originDeviceIds],
+  );
+  await p.query(`DELETE FROM sync_events WHERE origin_device_id = ANY($1::uuid[])`, [
+    originDeviceIds,
+  ]);
+  await p.query(`DELETE FROM sync_batches WHERE origin_device_id = ANY($1::uuid[])`, [
+    originDeviceIds,
+  ]);
+  await p.query(`DELETE FROM sync_cursors WHERE subscriber_id = ANY($1::uuid[])`, [
+    originDeviceIds,
+  ]);
 }
 
 export async function cleanupDevices(deviceIds: string[]): Promise<void> {
   if (deviceIds.length === 0) return;
   const p = getOwnerPool();
-  await p.query(`DELETE FROM offline_authorizations WHERE device_id = ANY($1::uuid[])`, [deviceIds]);
+  await p.query(`DELETE FROM offline_authorizations WHERE device_id = ANY($1::uuid[])`, [
+    deviceIds,
+  ]);
   await p.query(`DELETE FROM devices WHERE id = ANY($1::uuid[])`, [deviceIds]);
 }
 
 export async function cleanupCredentials(credentialIds: string[]): Promise<void> {
   if (credentialIds.length === 0) return;
   const p = getOwnerPool();
-  await p.query(`DELETE FROM offline_authorizations WHERE credential_id = ANY($1::uuid[])`, [credentialIds]);
-  await p.query(`DELETE FROM offline_credentials WHERE credential_id = ANY($1::uuid[])`, [credentialIds]);
+  await p.query(`DELETE FROM offline_authorizations WHERE credential_id = ANY($1::uuid[])`, [
+    credentialIds,
+  ]);
+  await p.query(`DELETE FROM offline_credentials WHERE credential_id = ANY($1::uuid[])`, [
+    credentialIds,
+  ]);
 }
 
 /** Best-effort: also clears any `user_locations` rows this suite added (never the seed's own rows — callers pass back exactly what `assignUserToLocation` created). */
 export async function cleanupUserLocation(userId: string, locationId: string): Promise<void> {
-  await getOwnerPool().query(`DELETE FROM user_locations WHERE user_id = $1 AND location_id = $2`, [userId, locationId]);
+  await getOwnerPool().query(`DELETE FROM user_locations WHERE user_id = $1 AND location_id = $2`, [
+    userId,
+    locationId,
+  ]);
 }
 
 export async function closeTestPool(): Promise<void> {

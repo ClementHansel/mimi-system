@@ -57,11 +57,18 @@ export function DropArriveModal({ open, onClose, sj, drop, onDone }: DropArriveM
           dropId: drop.id,
           at,
           tempC,
-          sealCheck: seal && sealStatus ? { sealId: seal.id, status: sealStatus, notes: sealNotes || undefined } : undefined,
+          sealCheck:
+            seal && sealStatus
+              ? { sealId: seal.id, status: sealStatus, notes: sealNotes || undefined }
+              : undefined,
         },
         actor,
       );
-      await runtime.commitTempLog(mintId(), { sjId: sj.id, dropId: drop.id, stage: 'arrive', tempC }, actor);
+      await runtime.commitTempLog(
+        mintId(),
+        { sjId: sj.id, dropId: drop.id, stage: 'arrive', tempC },
+        actor,
+      );
       toast({ title: t('driver.arrive.queued'), variant: 'success' });
       onDone({ status: 'arrived', arrivedAt: at });
     } catch {
@@ -72,7 +79,12 @@ export function DropArriveModal({ open, onClose, sj, drop, onDone }: DropArriveM
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={t('driver.arrive.title', { location: drop.locationName })} size="sm">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('driver.arrive.title', { location: drop.locationName })}
+      size="sm"
+    >
       <div className="flex flex-col gap-4">
         <TempInput
           label={t('driver.arrive.tempLabel')}
@@ -127,7 +139,14 @@ export function DropArriveModal({ open, onClose, sj, drop, onDone }: DropArriveM
           </div>
         )}
 
-        <Button type="button" size="touch-lg" fullWidth loading={submitting} disabled={!canSubmit} onClick={handleSubmit}>
+        <Button
+          type="button"
+          size="touch-lg"
+          fullWidth
+          loading={submitting}
+          disabled={!canSubmit}
+          onClick={handleSubmit}
+        >
           {t('driver.arrive.submit')}
         </Button>
       </div>

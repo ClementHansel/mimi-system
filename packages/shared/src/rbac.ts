@@ -220,12 +220,16 @@ export const PERMISSION_KEYS: readonly PermissionKey[] = PERMISSION_ROWS.map(([k
 export const PERMISSION_KEY_COUNT = PERMISSION_KEYS.length;
 
 /** `RBAC_MATRIX[permissionKey][role] === true` iff the role holds that permission. */
-export const RBAC_MATRIX: Readonly<Record<PermissionKey, Readonly<Record<RoleKey, boolean>>>> = Object.fromEntries(
-  PERMISSION_ROWS.map(([key, flags]) => [
-    key,
-    Object.fromEntries(RBAC_ROLE_ORDER.map((role, i) => [role, flags[i]])) as Record<RoleKey, boolean>,
-  ]),
-) as Record<PermissionKey, Readonly<Record<RoleKey, boolean>>>;
+export const RBAC_MATRIX: Readonly<Record<PermissionKey, Readonly<Record<RoleKey, boolean>>>> =
+  Object.fromEntries(
+    PERMISSION_ROWS.map(([key, flags]) => [
+      key,
+      Object.fromEntries(RBAC_ROLE_ORDER.map((role, i) => [role, flags[i]])) as Record<
+        RoleKey,
+        boolean
+      >,
+    ]),
+  ) as Record<PermissionKey, Readonly<Record<RoleKey, boolean>>>;
 
 /**
  * The authorization predicate `PermissionsGuard` calls. `permission` is typed

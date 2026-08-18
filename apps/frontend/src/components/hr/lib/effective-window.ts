@@ -34,11 +34,15 @@ export function windowState(row: EffectiveDatedRow, asOf: string): WindowState {
 
 /** Sorts newest-first by `effectiveFrom` — the vintage a rate editor should default to showing/highlighting is always the most recent one, never array order from the API. */
 export function sortByEffectiveFromDesc<T extends EffectiveDatedRow>(rows: readonly T[]): T[] {
-  return [...rows].sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : a.effectiveFrom > b.effectiveFrom ? -1 : 0));
+  return [...rows].sort((a, b) =>
+    a.effectiveFrom < b.effectiveFrom ? 1 : a.effectiveFrom > b.effectiveFrom ? -1 : 0,
+  );
 }
 
 /** Groups rows sharing the same `effectiveFrom` into one "vintage" — Article-17/TER submit a full bracket SET per effective date (CONTRACTS §4.15 PUT bodies), so the editor must let the user build/replace a whole set at once, not one row. */
-export function groupByEffectiveFrom<T extends EffectiveDatedRow>(rows: readonly T[]): Map<string, T[]> {
+export function groupByEffectiveFrom<T extends EffectiveDatedRow>(
+  rows: readonly T[],
+): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const row of rows) {
     const list = map.get(row.effectiveFrom) ?? [];
@@ -57,7 +61,10 @@ export function groupByEffectiveFrom<T extends EffectiveDatedRow>(rows: readonly
  * the date is safe to submit — the server is still the actual
  * `ERR_EFFECTIVE_OVERLAP` authority; this is a same-day UX guard only.
  */
-export function validateNewEffectiveFrom(existing: readonly EffectiveDatedRow[], newEffectiveFrom: string): 'duplicate' | 'beforeLatest' | null {
+export function validateNewEffectiveFrom(
+  existing: readonly EffectiveDatedRow[],
+  newEffectiveFrom: string,
+): 'duplicate' | 'beforeLatest' | null {
   if (existing.some((r) => r.effectiveFrom === newEffectiveFrom)) return 'duplicate';
   const latest = sortByEffectiveFromDesc(existing)[0];
   if (latest && newEffectiveFrom < latest.effectiveFrom) return 'beforeLatest';

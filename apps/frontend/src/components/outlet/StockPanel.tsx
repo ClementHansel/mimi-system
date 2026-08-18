@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Boxes } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Card, CardContent, CardHeader, CardTitle, Badge, Input, EmptyState } from '@/components/ui';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Badge,
+  Input,
+  EmptyState,
+} from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { toast } from '@/components/ui';
 import { useOutletLocation } from './lib/use-outlet-location';
@@ -38,7 +46,11 @@ export function StockPanel() {
 
   const byArea = useMemo(() => {
     const filtered = q.trim()
-      ? balances.filter((b) => b.itemName.toLowerCase().includes(q.trim().toLowerCase()) || b.sku.toLowerCase().includes(q.trim().toLowerCase()))
+      ? balances.filter(
+          (b) =>
+            b.itemName.toLowerCase().includes(q.trim().toLowerCase()) ||
+            b.sku.toLowerCase().includes(q.trim().toLowerCase()),
+        )
       : balances;
     const groups = new Map<string, Balance[]>();
     for (const b of filtered) {
@@ -77,9 +89,14 @@ export function StockPanel() {
               <table className="w-full border-collapse text-sm">
                 <tbody>
                   {items.map((b) => (
-                    <tr key={`${b.storageAreaId}-${b.itemId}`} className="border-b border-border last:border-0">
+                    <tr
+                      key={`${b.storageAreaId}-${b.itemId}`}
+                      className="border-b border-border last:border-0"
+                    >
                       <td className="px-4 py-2.5 text-text-primary">{b.itemName}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{formatQty(b.qtyOnHand, b.unitCode)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        {formatQty(b.qtyOnHand, b.unitCode)}
+                      </td>
                       <td className="px-4 py-2.5 text-right">
                         {b.belowMin && (
                           <Badge variant="warning" size="sm">

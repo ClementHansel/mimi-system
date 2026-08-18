@@ -52,10 +52,15 @@ export class WhatsAppChannelService {
     params: Record<string, string>,
     renderedText: string,
   ): Promise<WhatsAppSendResult> {
-    const outboxId = await this.outbox.create('whatsapp', recipientPhone, templateKey, { params, text: renderedText });
+    const outboxId = await this.outbox.create('whatsapp', recipientPhone, templateKey, {
+      params,
+      text: renderedText,
+    });
 
     if (!this.enabled) {
-      this.logger.log(`WA_ENABLED=false — wrote outbox row ${outboxId} for ${recipientPhone}, sending nothing.`);
+      this.logger.log(
+        `WA_ENABLED=false — wrote outbox row ${outboxId} for ${recipientPhone}, sending nothing.`,
+      );
       return { success: false, outboxId, error: 'WhatsApp channel disabled (mock outbox mode)' };
     }
 

@@ -20,7 +20,9 @@ describe('ApprovalActionPanel — mandatory-reason gates', () => {
     fireEvent.click(confirmBtn); // still blocked — no reason yet
     expect(onReject).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText(/Alasan Penolakan/), { target: { value: 'Dokumen tidak lengkap' } });
+    fireEvent.change(screen.getByLabelText(/Alasan Penolakan/), {
+      target: { value: 'Dokumen tidak lengkap' },
+    });
     expect(confirmBtn).not.toBeDisabled();
     fireEvent.click(confirmBtn);
     expect(onReject).toHaveBeenCalledWith('Dokumen tidak lengkap');
@@ -38,14 +40,23 @@ describe('ApprovalActionPanel — mandatory-reason gates', () => {
 
   it('blocks approve until a reason is filled when the document type requires one on approve too (cash_variance_proposal, §5.9)', () => {
     const onApprove = vi.fn();
-    render(<ApprovalActionPanel approveSupported reasonRequiredOnApprove onApprove={onApprove} onReject={vi.fn()} />);
+    render(
+      <ApprovalActionPanel
+        approveSupported
+        reasonRequiredOnApprove
+        onApprove={onApprove}
+        onReject={vi.fn()}
+      />,
+    );
 
     const approveBtn = screen.getByRole('button', { name: 'Setujui' });
     expect(approveBtn).toBeDisabled();
     fireEvent.click(approveBtn);
     expect(onApprove).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText(/Catatan/), { target: { value: 'Selisih dikonfirmasi kasir' } });
+    fireEvent.change(screen.getByLabelText(/Catatan/), {
+      target: { value: 'Selisih dikonfirmasi kasir' },
+    });
     expect(approveBtn).not.toBeDisabled();
     fireEvent.click(approveBtn);
     expect(onApprove).toHaveBeenCalledWith('Selisih dikonfirmasi kasir');

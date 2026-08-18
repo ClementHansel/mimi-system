@@ -22,7 +22,15 @@
  * endpoints in §4.15) or the calculation throws.
  */
 import { PayrollComponentCode, PayrollComponentType } from '../enums';
-import { compareMoney, isNegativeMoney, minMoney, mulMoneyByRate, subMoney, sumMoney, ZERO_MONEY } from '../money';
+import {
+  compareMoney,
+  isNegativeMoney,
+  minMoney,
+  mulMoneyByRate,
+  subMoney,
+  sumMoney,
+  ZERO_MONEY,
+} from '../money';
 import { formatFixed, parseFixed } from '../decimal/fixed-point';
 import type { ISODate, Money } from '../types';
 
@@ -67,7 +75,9 @@ export interface EmployeeTaxProfile {
   npwp: string | null;
   ptkpCode: string;
   dependantsCount: number;
-  bpjsEnrollments: Partial<Record<BpjsProgram, { enrolledSince: ISODate; endedAt: ISODate | null }>>;
+  bpjsEnrollments: Partial<
+    Record<BpjsProgram, { enrolledSince: ISODate; endedAt: ISODate | null }>
+  >;
   /** Override base when it differs from `employments.base_salary`; `null` = use base. */
   bpjsSalaryBase: Money | null;
 }
@@ -82,8 +92,13 @@ export interface StatutoryLineResult {
 const RATE_PCT_SCALE = 3; // matches bpjs_configs/pph21_ter_rates NUMERIC(6,3)
 
 /** Picks the row whose `[effectiveFrom, effectiveTo]` window contains `asOf` (CONTRACTS.md §1.7 calculation note 1). */
-export function selectEffective<T extends EffectiveDated>(rows: readonly T[], asOf: ISODate): T | undefined {
-  return rows.find((r) => r.effectiveFrom <= asOf && (r.effectiveTo === null || asOf <= r.effectiveTo));
+export function selectEffective<T extends EffectiveDated>(
+  rows: readonly T[],
+  asOf: ISODate,
+): T | undefined {
+  return rows.find(
+    (r) => r.effectiveFrom <= asOf && (r.effectiveTo === null || asOf <= r.effectiveTo),
+  );
 }
 
 function isEnrolledAt(
@@ -91,7 +106,9 @@ function isEnrolledAt(
   asOf: ISODate,
 ): boolean {
   if (!enrollment) return false;
-  return enrollment.enrolledSince <= asOf && (enrollment.endedAt === null || asOf <= enrollment.endedAt);
+  return (
+    enrollment.enrolledSince <= asOf && (enrollment.endedAt === null || asOf <= enrollment.endedAt)
+  );
 }
 
 function clampToFloorAndCap(base: Money, floor: Money | null, cap: Money | null): Money {
@@ -101,10 +118,22 @@ function clampToFloorAndCap(base: Money, floor: Money | null, cap: Money | null)
   return result;
 }
 
-const BPJS_COMPONENT_CODE: Record<BpjsProgram, { employee: PayrollComponentCode | null; employer: PayrollComponentCode }> = {
-  kesehatan: { employee: PayrollComponentCode.BPJS_KESEHATAN_EMPLOYEE, employer: PayrollComponentCode.BPJS_KESEHATAN_EMPLOYER },
-  jht: { employee: PayrollComponentCode.BPJS_JHT_EMPLOYEE, employer: PayrollComponentCode.BPJS_JHT_EMPLOYER },
-  jp: { employee: PayrollComponentCode.BPJS_JP_EMPLOYEE, employer: PayrollComponentCode.BPJS_JP_EMPLOYER },
+const BPJS_COMPONENT_CODE: Record<
+  BpjsProgram,
+  { employee: PayrollComponentCode | null; employer: PayrollComponentCode }
+> = {
+  kesehatan: {
+    employee: PayrollComponentCode.BPJS_KESEHATAN_EMPLOYEE,
+    employer: PayrollComponentCode.BPJS_KESEHATAN_EMPLOYER,
+  },
+  jht: {
+    employee: PayrollComponentCode.BPJS_JHT_EMPLOYEE,
+    employer: PayrollComponentCode.BPJS_JHT_EMPLOYER,
+  },
+  jp: {
+    employee: PayrollComponentCode.BPJS_JP_EMPLOYEE,
+    employer: PayrollComponentCode.BPJS_JP_EMPLOYER,
+  },
   // JKK/JKM are employer-only by law — no employee share exists (CONTRACTS.md §2.6).
   jkk: { employee: null, employer: PayrollComponentCode.BPJS_JKK_EMPLOYER },
   jkm: { employee: null, employer: PayrollComponentCode.BPJS_JKM_EMPLOYER },
@@ -163,7 +192,11 @@ function mulMoneyByRateAsPercent(base: Money, pct: string): Money {
 }
 
 /** Selects the TER category for a PTKP code effective at `asOf` (calculation note 1/2). */
-export function resolveTerCategory(ptkpCode: string, ptkpRows: readonly Pph21PtkpRow[], asOf: ISODate): 'A' | 'B' | 'C' | undefined {
+export function resolveTerCategory(
+  ptkpCode: string,
+  ptkpRows: readonly Pph21PtkpRow[],
+  asOf: ISODate,
+): 'A' | 'B' | 'C' | undefined {
   return selectEffective(
     ptkpRows.filter((r) => r.ptkpCode === ptkpCode),
     asOf,
@@ -179,7 +212,11 @@ export function calculatePph21Monthly(
 ): Money {
   const candidates = terRates.filter((r) => r.category === category);
   const bracket = selectEffective(
-    candidates.filter((r) => compareMoney(monthlyGross, r.bracketMin) >= 0 && (r.bracketMax === null || compareMoney(monthlyGross, r.bracketMax) < 0)),
+    candidates.filter(
+      (r) =>
+        compareMoney(monthlyGross, r.bracketMin) >= 0 &&
+        (r.bracketMax === null || compareMoney(monthlyGross, r.bracketMax) < 0),
+    ),
     asOf,
   );
   if (!bracket) return ZERO_MONEY;
@@ -194,11 +231,41 @@ export function calculatePph21Monthly(
  * `calculatePph21DecemberTrueUp` never substitutes this constant on its own.
  */
 export const DEFAULT_PPH21_ARTICLE17_BRACKETS: readonly Pph21Article17Bracket[] = [
-  { bracketMin: '0.00', bracketMax: '60000000.00', ratePct: '5.000', effectiveFrom: '2022-01-01', effectiveTo: null },
-  { bracketMin: '60000000.00', bracketMax: '250000000.00', ratePct: '15.000', effectiveFrom: '2022-01-01', effectiveTo: null },
-  { bracketMin: '250000000.00', bracketMax: '500000000.00', ratePct: '25.000', effectiveFrom: '2022-01-01', effectiveTo: null },
-  { bracketMin: '500000000.00', bracketMax: '5000000000.00', ratePct: '30.000', effectiveFrom: '2022-01-01', effectiveTo: null },
-  { bracketMin: '5000000000.00', bracketMax: null, ratePct: '35.000', effectiveFrom: '2022-01-01', effectiveTo: null },
+  {
+    bracketMin: '0.00',
+    bracketMax: '60000000.00',
+    ratePct: '5.000',
+    effectiveFrom: '2022-01-01',
+    effectiveTo: null,
+  },
+  {
+    bracketMin: '60000000.00',
+    bracketMax: '250000000.00',
+    ratePct: '15.000',
+    effectiveFrom: '2022-01-01',
+    effectiveTo: null,
+  },
+  {
+    bracketMin: '250000000.00',
+    bracketMax: '500000000.00',
+    ratePct: '25.000',
+    effectiveFrom: '2022-01-01',
+    effectiveTo: null,
+  },
+  {
+    bracketMin: '500000000.00',
+    bracketMax: '5000000000.00',
+    ratePct: '30.000',
+    effectiveFrom: '2022-01-01',
+    effectiveTo: null,
+  },
+  {
+    bracketMin: '5000000000.00',
+    bracketMax: null,
+    ratePct: '35.000',
+    effectiveFrom: '2022-01-01',
+    effectiveTo: null,
+  },
 ];
 
 /**
@@ -217,7 +284,9 @@ export function selectEffectiveArticle17Brackets(
   rows: readonly Pph21Article17Bracket[],
   asOf: ISODate,
 ): Pph21Article17Bracket[] {
-  const active = rows.filter((r) => r.effectiveFrom <= asOf && (r.effectiveTo === null || asOf <= r.effectiveTo));
+  const active = rows.filter(
+    (r) => r.effectiveFrom <= asOf && (r.effectiveTo === null || asOf <= r.effectiveTo),
+  );
   if (active.length === 0) return [];
   const currentVintageFrom = active.reduce(
     (latest, r) => (r.effectiveFrom > latest ? r.effectiveFrom : latest),
@@ -229,12 +298,17 @@ export function selectEffectiveArticle17Brackets(
 }
 
 /** Marginal progressive tax over `taxableIncome`, walking each bracket in order (never applies a bracket's rate to income below it). Expects an already-selected schedule (see `selectEffectiveArticle17Brackets`) — it does not itself filter by effective date. */
-export function progressiveTax(taxableIncome: Money, brackets: readonly Pph21Article17Bracket[]): Money {
-  if (isNegativeMoney(taxableIncome) || compareMoney(taxableIncome, '0.00') === 0) return ZERO_MONEY;
+export function progressiveTax(
+  taxableIncome: Money,
+  brackets: readonly Pph21Article17Bracket[],
+): Money {
+  if (isNegativeMoney(taxableIncome) || compareMoney(taxableIncome, '0.00') === 0)
+    return ZERO_MONEY;
   const amounts: Money[] = [];
   for (const bracket of brackets) {
     if (compareMoney(taxableIncome, bracket.bracketMin) <= 0) continue;
-    const upper = bracket.bracketMax === null ? taxableIncome : minMoney(taxableIncome, bracket.bracketMax);
+    const upper =
+      bracket.bracketMax === null ? taxableIncome : minMoney(taxableIncome, bracket.bracketMax);
     const portion = subMoney(upper, bracket.bracketMin);
     if (isNegativeMoney(portion) || compareMoney(portion, '0.00') === 0) continue;
     amounts.push(mulMoneyByRateAsPercent(portion, bracket.ratePct));
@@ -262,7 +336,9 @@ export function calculatePph21DecemberTrueUp(
 ): Money {
   const effectiveBrackets = selectEffectiveArticle17Brackets(article17Brackets, asOf);
   if (effectiveBrackets.length === 0) {
-    throw new RangeError(`No effective PPh21 Article-17 bracket schedule for ${asOf} — payroll.statutory readiness check should have caught this before this run was allowed`);
+    throw new RangeError(
+      `No effective PPh21 Article-17 bracket schedule for ${asOf} — payroll.statutory readiness check should have caught this before this run was allowed`,
+    );
   }
   const taxableAnnualIncome = subMoney(annualGrossIncome, ptkpAnnualAmount);
   const annualTax = progressiveTax(taxableAnnualIncome, effectiveBrackets);
@@ -289,9 +365,18 @@ export interface StatutoryCalculationInputs {
 
 /** The full statutory line set for one employee for one period — BPJS (both legs) + PPh21 (TER, or December true-up). */
 export function calculateStatutoryLines(inputs: StatutoryCalculationInputs): StatutoryLineResult[] {
-  const lines = calculateBpjsLines(inputs.employeeTaxProfile, inputs.bpjsConfigs, inputs.monthlyBaseSalary, inputs.asOfDate);
+  const lines = calculateBpjsLines(
+    inputs.employeeTaxProfile,
+    inputs.bpjsConfigs,
+    inputs.monthlyBaseSalary,
+    inputs.asOfDate,
+  );
 
-  const category = resolveTerCategory(inputs.employeeTaxProfile.ptkpCode, inputs.pph21Ptkp, inputs.asOfDate);
+  const category = resolveTerCategory(
+    inputs.employeeTaxProfile.ptkpCode,
+    inputs.pph21Ptkp,
+    inputs.asOfDate,
+  );
   let pph21Amount: Money = ZERO_MONEY;
   if (category) {
     pph21Amount =
@@ -306,10 +391,20 @@ export function calculateStatutoryLines(inputs: StatutoryCalculationInputs): Sta
             inputs.decemberTrueUp.article17Brackets,
             inputs.asOfDate,
           )
-        : calculatePph21Monthly(inputs.monthlyGross, category, inputs.pph21TerRates, inputs.asOfDate);
+        : calculatePph21Monthly(
+            inputs.monthlyGross,
+            category,
+            inputs.pph21TerRates,
+            inputs.asOfDate,
+          );
   }
   if (!isZero(pph21Amount)) {
-    lines.push({ componentCode: PayrollComponentCode.PPH21, type: PayrollComponentType.DEDUCTION, amount: pph21Amount, ratePct: null });
+    lines.push({
+      componentCode: PayrollComponentCode.PPH21,
+      type: PayrollComponentType.DEDUCTION,
+      amount: pph21Amount,
+      ratePct: null,
+    });
   }
 
   return lines;

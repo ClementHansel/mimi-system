@@ -1,4 +1,11 @@
-import { CallHandler, ExecutionContext, Inject, Injectable, Logger, NestInterceptor } from '@nestjs/common';
+import {
+  CallHandler,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  Logger,
+  NestInterceptor,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
@@ -117,10 +124,10 @@ export class AuditInterceptor implements NestInterceptor {
 
     const entityType = options.entityType ?? this.deriveModule(request) ?? 'unknown';
     const preEntityId = this.extractParamId(request);
-    const permissionKeys = this.reflector.getAllAndOverride<string[] | undefined>(REQUIRE_PERMISSION_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const permissionKeys = this.reflector.getAllAndOverride<string[] | undefined>(
+      REQUIRE_PERMISSION_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     const before = await this.captureBefore(request, entityType, preEntityId);
 
@@ -128,13 +135,19 @@ export class AuditInterceptor implements NestInterceptor {
       tap({
         next: (responseBody) => {
           const entityId = preEntityId ?? this.extractResponseId(responseBody);
-          void this.writeAuditRow(request, options, entityType, entityId, before, responseBody, permissionKeys).catch(
-            (err) => {
-              this.logger.error(
-                `Failed to write audit row for ${entityType}/${entityId ?? '?'}: ${err instanceof Error ? err.message : String(err)}`,
-              );
-            },
-          );
+          void this.writeAuditRow(
+            request,
+            options,
+            entityType,
+            entityId,
+            before,
+            responseBody,
+            permissionKeys,
+          ).catch((err) => {
+            this.logger.error(
+              `Failed to write audit row for ${entityType}/${entityId ?? '?'}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
         },
         // No audit row on error — nothing durable happened, so nothing to record.
       }),
@@ -158,7 +171,10 @@ export class AuditInterceptor implements NestInterceptor {
     // '/api/replenishment/:id/approve' → 'replenishment'. setGlobalPrefix strips
     // nothing from request.url at this layer, so the first non-empty segment
     // (skipping a literal 'api') is the module slug.
-    const segments = (request.originalUrl ?? request.url ?? '').split('?')[0]!.split('/').filter(Boolean);
+    const segments = (request.originalUrl ?? request.url ?? '')
+      .split('?')[0]!
+      .split('/')
+      .filter(Boolean);
     const first = segments[0] === 'api' ? segments[1] : segments[0];
     return first ?? null;
   }
@@ -275,7 +291,8 @@ export class AuditInterceptor implements NestInterceptor {
    */
   private extractLocationId(request: AuditableRequest): string | null {
     const explicit =
-      (request.body?.locationId as string | undefined) ?? (request.params?.locationId as string | undefined);
+      (request.body?.locationId as string | undefined) ??
+      (request.params?.locationId as string | undefined);
     if (typeof explicit === 'string' && UUID_RE.test(explicit)) return explicit;
     const scope = request.locationScope;
     if (scope && scope.length === 1) return scope[0]!;

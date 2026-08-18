@@ -41,8 +41,20 @@ const SIZE_CLASSES: Record<NonNullable<SelectProps['size']>, string> = {
  * ergonomic (Radix-style) without reimplementing ARIA.
  */
 export function Select({
-  label, error, hint, placeholder, options, value, onValueChange,
-  size = 'md', required, disabled, id, name, className, wrapperClassName,
+  label,
+  error,
+  hint,
+  placeholder,
+  options,
+  value,
+  onValueChange,
+  size = 'md',
+  required,
+  disabled,
+  id,
+  name,
+  className,
+  wrapperClassName,
 }: SelectProps) {
   const autoId = useId();
   const selectId = id ?? autoId;
@@ -87,12 +99,19 @@ export function Select({
             </option>
           ))}
         </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
+        <ChevronDown
+          className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-text-muted"
+          aria-hidden
+        />
       </div>
       {error ? (
-        <p id={errorId} className="text-sm text-danger-600">{error}</p>
+        <p id={errorId} className="text-sm text-danger-600">
+          {error}
+        </p>
       ) : hint ? (
-        <p id={hintId} className="text-sm text-text-muted">{hint}</p>
+        <p id={hintId} className="text-sm text-text-muted">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

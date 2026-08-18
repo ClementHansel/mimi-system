@@ -1,5 +1,12 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsOptional, IsString, IsUUID, Matches, ValidateNested } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  ValidateNested,
+} from 'class-validator';
 
 /** `Qty` wire format (CONTRACTS.md §0): a decimal string, up to 3 places, `NUMERIC(14,3)`. */
 const QTY_PATTERN = /^-?\d{1,11}(\.\d{1,3})?$/;

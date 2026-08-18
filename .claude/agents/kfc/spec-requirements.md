@@ -93,11 +93,12 @@ If the requirements clarification process seems to be going in circles or not ma
 **User Story:** As a [role], I want [feature], so that [benefit]
 
 #### Acceptance Criteria
+
 This section should have EARS requirements
 
 1. WHEN [event] THEN [system] SHALL [response]
 2. IF [precondition] THEN [system] SHALL [response]
-  
+
 ### Requirement 2
 
 **User Story:** As a [role], I want [feature], so that [benefit]

@@ -25,7 +25,10 @@
  * supplier module.
  */
 import { Pool, type PoolClient } from 'pg';
-import { SYSTEM_CENTRAL_ROLE, SYSTEM_SENTINEL_USER_ID } from '../../../common/database/system-context';
+import {
+  SYSTEM_CENTRAL_ROLE,
+  SYSTEM_SENTINEL_USER_ID,
+} from '../../../common/database/system-context';
 
 const OWNER_URL =
   process.env.DATABASE_MIGRATION_URL ??
@@ -84,9 +87,15 @@ export async function withRollback<T>(
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
-    await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId ?? SYSTEM_SENTINEL_USER_ID]);
-    await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.roleKey ?? SYSTEM_CENTRAL_ROLE]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [(ctx.locationIds ?? []).join(',')]);
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [
+      ctx.userId ?? SYSTEM_SENTINEL_USER_ID,
+    ]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, [
+      ctx.roleKey ?? SYSTEM_CENTRAL_ROLE,
+    ]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      (ctx.locationIds ?? []).join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -123,7 +132,10 @@ export async function fetchOneUserId(roleKey: string): Promise<{ id: string; use
 }
 
 export async function fetchOneLocationId(type: 'warehouse' | 'outlet' = 'outlet'): Promise<string> {
-  const res = await getOwnerPool().query<{ id: string }>(`SELECT id FROM locations WHERE type = $1 ORDER BY id LIMIT 1`, [type]);
+  const res = await getOwnerPool().query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = $1 ORDER BY id LIMIT 1`,
+    [type],
+  );
   if (!res.rows[0]) throw new Error(`Test fixture requires at least one seeded '${type}' location`);
   return res.rows[0].id;
 }
@@ -137,7 +149,9 @@ export async function insertTestUser(row: {
   pinHash?: string | null;
 }): Promise<string> {
   const pool = getOwnerPool();
-  const roleRes = await pool.query<{ id: string }>(`SELECT id FROM roles WHERE key = $1`, [row.roleKey]);
+  const roleRes = await pool.query<{ id: string }>(`SELECT id FROM roles WHERE key = $1`, [
+    row.roleKey,
+  ]);
   if (!roleRes.rows[0]) throw new Error(`Unknown role '${row.roleKey}'`);
   const res = await pool.query<{ id: string }>(
     `INSERT INTO users (username, name, role_id, password_hash, pin_hash) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
@@ -147,7 +161,10 @@ export async function insertTestUser(row: {
 }
 
 export async function assignUserToLocation(userId: string, locationId: string): Promise<void> {
-  await getOwnerPool().query(`INSERT INTO user_locations (user_id, location_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [userId, locationId]);
+  await getOwnerPool().query(
+    `INSERT INTO user_locations (user_id, location_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+    [userId, locationId],
+  );
 }
 
 export async function insertTestDevice(locationId: string): Promise<string> {
@@ -172,12 +189,22 @@ export async function deleteTestUser(userId: string): Promise<void> {
   await pool.query(`DELETE FROM users WHERE id = $1`, [userId]);
 }
 
-export async function setSettingValue(client: PoolClient, key: string, value: unknown): Promise<void> {
-  await client.query(`UPDATE settings SET value = $2::jsonb WHERE key = $1`, [key, JSON.stringify(value)]);
+export async function setSettingValue(
+  client: PoolClient,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  await client.query(`UPDATE settings SET value = $2::jsonb WHERE key = $1`, [
+    key,
+    JSON.stringify(value),
+  ]);
 }
 
 export async function resetSettingValue(key: string, value: unknown): Promise<void> {
-  await getOwnerPool().query(`UPDATE settings SET value = $2::jsonb, updated_by = NULL WHERE key = $1`, [key, JSON.stringify(value)]);
+  await getOwnerPool().query(
+    `UPDATE settings SET value = $2::jsonb, updated_by = NULL WHERE key = $1`,
+    [key, JSON.stringify(value)],
+  );
 }
 
 /**
@@ -237,9 +264,15 @@ export async function asCommittedRequest<T>(
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
-    await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId ?? SYSTEM_SENTINEL_USER_ID]);
-    await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.roleKey ?? SYSTEM_CENTRAL_ROLE]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [(ctx.locationIds ?? []).join(',')]);
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [
+      ctx.userId ?? SYSTEM_SENTINEL_USER_ID,
+    ]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, [
+      ctx.roleKey ?? SYSTEM_CENTRAL_ROLE,
+    ]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      (ctx.locationIds ?? []).join(','),
+    ]);
     const result = await fn(client);
     await client.query('COMMIT');
     return result;

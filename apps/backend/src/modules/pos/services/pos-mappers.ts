@@ -1,4 +1,14 @@
-import type { Money, OnlineOrderStatus, OnlinePlatform, PaymentMethod, PaymentStatus, Qty, SaleStatus, ShiftStatus, UUID } from '@mimi/shared';
+import type {
+  Money,
+  OnlineOrderStatus,
+  OnlinePlatform,
+  PaymentMethod,
+  PaymentStatus,
+  Qty,
+  SaleStatus,
+  ShiftStatus,
+  UUID,
+} from '@mimi/shared';
 import type { CashVarianceProposal, OnlineOrder, Sale, Shift } from '@mimi/shared';
 
 /** Row-to-DTO mappers — one place that knows the `snake_case` DB shape vs the `camelCase` wire shape (CONTRACTS.md §0). */
@@ -118,7 +128,8 @@ export interface OnlineOrderRow {
 }
 
 export function mapOnlineOrder(r: OnlineOrderRow): OnlineOrder {
-  const orderDate = typeof r.order_date === 'string' ? r.order_date : r.order_date.toISOString().slice(0, 10);
+  const orderDate =
+    typeof r.order_date === 'string' ? r.order_date : r.order_date.toISOString().slice(0, 10);
   return {
     id: r.id,
     locationId: r.location_id,

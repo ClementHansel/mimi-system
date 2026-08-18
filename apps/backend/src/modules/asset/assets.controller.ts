@@ -54,7 +54,13 @@ export class AssetsController {
   @RequirePermission('asset.manage')
   @Audited({ module: 'asset', entityType: 'assets', action: 'asset.manage' })
   async create(@Req() req: RequestWithDbContext, @Body() dto: CreateAssetDto): Promise<AssetDto> {
-    return this.service.create(req.dbClient!, req.user!.sub, dto, req.user!, req.locationScope ?? null);
+    return this.service.create(
+      req.dbClient!,
+      req.user!.sub,
+      dto,
+      req.user!,
+      req.locationScope ?? null,
+    );
   }
 
   @Patch(':id')
@@ -65,6 +71,13 @@ export class AssetsController {
     @Param('id') id: string,
     @Body() dto: UpdateAssetDto,
   ): Promise<AssetDto> {
-    return this.service.update(req.dbClient!, req.user!.sub, id, dto, req.user!, req.locationScope ?? null);
+    return this.service.update(
+      req.dbClient!,
+      req.user!.sub,
+      id,
+      dto,
+      req.user!,
+      req.locationScope ?? null,
+    );
   }
 }

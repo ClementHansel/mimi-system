@@ -16,17 +16,8 @@ import type { Money, UUID, ISODate, ISODateTime } from '@/lib/shared-types';
  * live response, with the mismatch flagged in the build report rather than
  * silently coded around.
  */
-export type {
-  Account,
-  JournalEntry,
-  PaymentVerification,
-  OfflineAuthCase,
-} from '@mimi/shared';
-export {
-  AccountType,
-  PaymentVerificationRefType,
-  PayeeType,
-} from '@mimi/shared';
+export type { Account, JournalEntry, PaymentVerification, OfflineAuthCase } from '@mimi/shared';
+export { AccountType, PaymentVerificationRefType, PayeeType } from '@mimi/shared';
 
 export interface FiscalPeriodRow {
   id: UUID;

@@ -33,15 +33,28 @@ function assertBalances(eventType: string, amount: string, context: Record<strin
     ]),
   };
   const result = validateJournalEntry(entry);
-  expect(result.ok, `eventType='${eventType}' context=${JSON.stringify(context)} legs=${JSON.stringify(legs)}: ${!result.ok ? result.message : ''}`).toBe(true);
+  expect(
+    result.ok,
+    `eventType='${eventType}' context=${JSON.stringify(context)} legs=${JSON.stringify(legs)}: ${!result.ok ? result.message : ''}`,
+  ).toBe(true);
 }
 
 describe('property: every posting-rule resolver produces a balanced entry', () => {
   const simpleEventTypes = [
-    'gudang_purchase', 'gudang_goods_in', 'gudang_goods_out_to_outlet', 'gudang_return_to_supplier', 'gudang_waste',
-    'outlet_ingredient_usage', 'outlet_waste', 'outlet_return_to_warehouse',
-    'payroll_payment', 'qris_settlement', 'transfer_verified', 'platform_settlement',
-    'petty_cash_topup', 'employee_loan_disbursement',
+    'gudang_purchase',
+    'gudang_goods_in',
+    'gudang_goods_out_to_outlet',
+    'gudang_return_to_supplier',
+    'gudang_waste',
+    'outlet_ingredient_usage',
+    'outlet_waste',
+    'outlet_return_to_warehouse',
+    'payroll_payment',
+    'qris_settlement',
+    'transfer_verified',
+    'platform_settlement',
+    'petty_cash_topup',
+    'employee_loan_disbursement',
   ];
 
   it.each(simpleEventTypes)('%s (unconditional single pair) always balances', (eventType) => {
@@ -49,64 +62,120 @@ describe('property: every posting-rule resolver produces a balanced entry', () =
   });
 
   it('gudang_stock_adjustment balances for both shortage and overage', () => {
-    fc.assert(fc.property(money, fc.constantFrom('shortage', 'overage'), (amount, direction) => assertBalances('gudang_stock_adjustment', amount, { direction })));
+    fc.assert(
+      fc.property(money, fc.constantFrom('shortage', 'overage'), (amount, direction) =>
+        assertBalances('gudang_stock_adjustment', amount, { direction }),
+      ),
+    );
   });
 
   it('gudang_stock_revaluation balances for both up and down', () => {
-    fc.assert(fc.property(money, fc.constantFrom('up', 'down'), (amount, direction) => assertBalances('gudang_stock_revaluation', amount, { direction })));
+    fc.assert(
+      fc.property(money, fc.constantFrom('up', 'down'), (amount, direction) =>
+        assertBalances('gudang_stock_revaluation', amount, { direction }),
+      ),
+    );
   });
 
   it('outlet_goods_in_from_warehouse balances with and without a discrepancy leg', () => {
     fc.assert(
       fc.property(money, fc.boolean(), smallMoney, (amount, discrepancy, shortfall) =>
-        assertBalances('outlet_goods_in_from_warehouse', amount, { discrepancy, shortfall })),
+        assertBalances('outlet_goods_in_from_warehouse', amount, { discrepancy, shortfall }),
+      ),
     );
   });
 
   it('outlet_sales balances for the single-method shorthand', () => {
-    fc.assert(fc.property(money, fc.constantFrom('cash', 'qris', 'bank_transfer'), (amount, method) => assertBalances('outlet_sales', amount, { method })));
+    fc.assert(
+      fc.property(money, fc.constantFrom('cash', 'qris', 'bank_transfer'), (amount, method) =>
+        assertBalances('outlet_sales', amount, { method }),
+      ),
+    );
   });
 
   it('outlet_sales balances for a multi-method daily aggregate (JOUT-03, incl. online fee leg)', () => {
     fc.assert(
       fc.property(smallMoney, smallMoney, smallMoney, smallMoney, (cash, qris, online, fees) => {
         // amount is irrelevant when byMethod is present — resolveOutletSalesLegs ignores it in that branch.
-        assertBalances('outlet_sales', '0.00', { byMethod: { cash, qris, online }, onlineFees: fees });
+        assertBalances('outlet_sales', '0.00', {
+          byMethod: { cash, qris, online },
+          onlineFees: fees,
+        });
       }),
     );
   });
 
   it('outlet_stock_adjustment balances for shortage (attributable + non-attributable) and overage', () => {
     fc.assert(
-      fc.property(money, fc.constantFrom('shortage', 'overage'), fc.boolean(), (amount, direction, attributable) =>
-        assertBalances('outlet_stock_adjustment', amount, { direction, attributable })),
+      fc.property(
+        money,
+        fc.constantFrom('shortage', 'overage'),
+        fc.boolean(),
+        (amount, direction, attributable) =>
+          assertBalances('outlet_stock_adjustment', amount, { direction, attributable }),
+      ),
     );
   });
 
   it('outlet_direct_purchase balances for petty-cash and PO sources', () => {
-    fc.assert(fc.property(money, fc.constantFrom('petty_cash', 'po', 'po_receipt'), (amount, source) => assertBalances('outlet_direct_purchase', amount, { source })));
+    fc.assert(
+      fc.property(money, fc.constantFrom('petty_cash', 'po', 'po_receipt'), (amount, source) =>
+        assertBalances('outlet_direct_purchase', amount, { source }),
+      ),
+    );
   });
 
   it('outlet_petty_cash balances regardless of expense account override', () => {
-    fc.assert(fc.property(money, fc.constantFrom(undefined, '6100', '6200'), (amount, expenseAccountCode) => assertBalances('outlet_petty_cash', amount, { expenseAccountCode })));
+    fc.assert(
+      fc.property(money, fc.constantFrom(undefined, '6100', '6200'), (amount, expenseAccountCode) =>
+        assertBalances('outlet_petty_cash', amount, { expenseAccountCode }),
+      ),
+    );
   });
 
   it('outlet_operating_expense balances for both paidVia', () => {
-    fc.assert(fc.property(money, fc.constantFrom('cash', 'bank_transfer'), (amount, paidVia) => assertBalances('outlet_operating_expense', amount, { paidVia })));
+    fc.assert(
+      fc.property(money, fc.constantFrom('cash', 'bank_transfer'), (amount, paidVia) =>
+        assertBalances('outlet_operating_expense', amount, { paidVia }),
+      ),
+    );
   });
 
   it('offline_auth_rejected (X7) balances for both refund/void and waste sources', () => {
-    fc.assert(fc.property(money, fc.constantFrom('refund_or_void', 'waste'), (amount, source) => assertBalances('offline_auth_rejected', amount, { source })));
+    fc.assert(
+      fc.property(money, fc.constantFrom('refund_or_void', 'waste'), (amount, source) =>
+        assertBalances('offline_auth_rejected', amount, { source }),
+      ),
+    );
   });
 
   it('payroll_accrual (X1/X1s, genuinely multi-leg) balances for any combination of present legs', () => {
     fc.assert(
       fc.property(
-        smallMoney, smallMoney, smallMoney, fc.boolean(), smallMoney, smallMoney, smallMoney,
-        (grossAmount, loanDeductionTotal, soShortfallDeductionTotal, statutoryMode, employerCostTotal, bpjsEmployeeDeductionTotal, pph21DeductionTotal) =>
+        smallMoney,
+        smallMoney,
+        smallMoney,
+        fc.boolean(),
+        smallMoney,
+        smallMoney,
+        smallMoney,
+        (
+          grossAmount,
+          loanDeductionTotal,
+          soShortfallDeductionTotal,
+          statutoryMode,
+          employerCostTotal,
+          bpjsEmployeeDeductionTotal,
+          pph21DeductionTotal,
+        ) =>
           assertBalances('payroll_accrual', '0.00', {
-            grossAmount, loanDeductionTotal, soShortfallDeductionTotal, statutoryMode,
-            employerCostTotal, bpjsEmployeeDeductionTotal, pph21DeductionTotal,
+            grossAmount,
+            loanDeductionTotal,
+            soShortfallDeductionTotal,
+            statutoryMode,
+            employerCostTotal,
+            bpjsEmployeeDeductionTotal,
+            pph21DeductionTotal,
           }),
       ),
     );

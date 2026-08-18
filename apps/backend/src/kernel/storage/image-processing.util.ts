@@ -12,7 +12,14 @@ export interface ProcessedImage {
 }
 
 /** MIME types this pipeline knows how to compress. Everything else (PDF, etc.) passes through untouched. */
-const PROCESSABLE_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+const PROCESSABLE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
 
 export function isProcessableImage(mimeType: string): boolean {
   return PROCESSABLE_MIME_TYPES.has(mimeType.toLowerCase());
@@ -45,7 +52,12 @@ export function isProcessableImage(mimeType: string): boolean {
 export async function compressAndStripExif(input: Buffer): Promise<ProcessedImage> {
   const buffer = await sharp(input)
     .rotate()
-    .resize({ width: MAX_DIMENSION_PX, height: MAX_DIMENSION_PX, fit: 'inside', withoutEnlargement: true })
+    .resize({
+      width: MAX_DIMENSION_PX,
+      height: MAX_DIMENSION_PX,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
     .jpeg({ quality: JPEG_QUALITY })
     .toBuffer();
 

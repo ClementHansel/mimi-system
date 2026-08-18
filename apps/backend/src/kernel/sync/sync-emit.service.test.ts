@@ -38,29 +38,56 @@ describe('SyncEmitService.emit — cloud-origin authority guard', () => {
     ['goods_receipts', 'recorded'],
     ['attendance', 'checked_in'], // HR entering a correction, per the coordinator's follow-up question
     ['waste_records', 'reported'], // desktop entry — already worked before the fix (bidirectional), regression-guarded here too
-  ])('cloud MAY emit %s.%s (push-class, but canOriginate exempts the cloud tier)', async (entity, op) => {
-    const emit = buildEmitService();
-    await expect(
-      emit.emit(fakeClient, { entity, op, entityId: 'e', locationId: 'l', actorUserId: 'u', data: {} }),
-    ).resolves.toMatchObject({ entity, op });
-  });
+  ])(
+    'cloud MAY emit %s.%s (push-class, but canOriginate exempts the cloud tier)',
+    async (entity, op) => {
+      const emit = buildEmitService();
+      await expect(
+        emit.emit(fakeClient, {
+          entity,
+          op,
+          entityId: 'e',
+          locationId: 'l',
+          actorUserId: 'u',
+          data: {},
+        }),
+      ).resolves.toMatchObject({ entity, op });
+    },
+  );
 
   it.each([
     ['stock_balances', 'updated'], // D-16/D-16a: never on the wire in either direction, even from the cloud
     ['stock_movements', 'posted'],
     ['journal_entries', 'posted'],
     ['not_a_real_entity', 'whatever'],
-  ])('cloud may NOT emit %s.%s (class D/X, or unknown — no legitimate op vocabulary at all)', async (entity, op) => {
-    const emit = buildEmitService();
-    await expect(
-      emit.emit(fakeClient, { entity, op, entityId: 'e', locationId: 'l', actorUserId: 'u', data: {} }),
-    ).rejects.toThrow(/not a known op|class X\/D\/T/);
-  });
+  ])(
+    'cloud may NOT emit %s.%s (class D/X, or unknown — no legitimate op vocabulary at all)',
+    async (entity, op) => {
+      const emit = buildEmitService();
+      await expect(
+        emit.emit(fakeClient, {
+          entity,
+          op,
+          entityId: 'e',
+          locationId: 'l',
+          actorUserId: 'u',
+          data: {},
+        }),
+      ).rejects.toThrow(/not a known op|class X\/D\/T/);
+    },
+  );
 
-  it('rejects an op that is genuinely not in the entity\'s vocabulary, even though the entity itself is wire-eligible', async () => {
+  it("rejects an op that is genuinely not in the entity's vocabulary, even though the entity itself is wire-eligible", async () => {
     const emit = buildEmitService();
     await expect(
-      emit.emit(fakeClient, { entity: 'sales', op: 'not_a_real_op', entityId: 'e', locationId: 'l', actorUserId: 'u', data: {} }),
+      emit.emit(fakeClient, {
+        entity: 'sales',
+        op: 'not_a_real_op',
+        entityId: 'e',
+        locationId: 'l',
+        actorUserId: 'u',
+        data: {},
+      }),
     ).rejects.toThrow();
   });
 });

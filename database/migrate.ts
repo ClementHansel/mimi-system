@@ -37,8 +37,7 @@ interface Migration {
 
 async function getClient(): Promise<pg.Client> {
   const connectionString =
-    process.env.DATABASE_MIGRATION_URL ||
-    'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
 
   const client = new Client({ connectionString });
   await client.connect();
@@ -55,9 +54,7 @@ async function ensureMigrationsTable(client: pg.Client): Promise<void> {
   `);
 }
 
-async function getAppliedMigrations(
-  client: pg.Client,
-): Promise<Map<string, Date>> {
+async function getAppliedMigrations(client: pg.Client): Promise<Map<string, Date>> {
   const result = await client.query(
     'SELECT version, applied_at FROM schema_migrations ORDER BY version',
   );
@@ -68,9 +65,7 @@ async function getAppliedMigrations(
   return map;
 }
 
-async function getPendingMigrations(
-  client: pg.Client,
-): Promise<Migration[]> {
+async function getPendingMigrations(client: pg.Client): Promise<Migration[]> {
   const applied = await getAppliedMigrations(client);
   const files = await readdir(MIGRATIONS_DIR);
 
@@ -87,20 +82,17 @@ async function getPendingMigrations(
   return pending;
 }
 
-async function runMigration(
-  client: pg.Client,
-  migration: Migration,
-): Promise<void> {
+async function runMigration(client: pg.Client, migration: Migration): Promise<void> {
   const filePath = join(MIGRATIONS_DIR, migration.filename);
   const sql = await readFile(filePath, 'utf-8');
 
   console.log(`  Applying: ${migration.filename}...`);
 
   await client.query(sql);
-  await client.query(
-    'INSERT INTO schema_migrations (version, filename) VALUES ($1, $2)',
-    [migration.version, migration.filename],
-  );
+  await client.query('INSERT INTO schema_migrations (version, filename) VALUES ($1, $2)', [
+    migration.version,
+    migration.filename,
+  ]);
 
   console.log(`  ✓ Applied: ${migration.filename}`);
 }
@@ -116,9 +108,7 @@ async function showStatus(client: pg.Client): Promise<void> {
   for (const filename of sqlFiles) {
     const version = filename.replace('.sql', '');
     const appliedAt = applied.get(version);
-    const status = appliedAt
-      ? `✓ Applied (${appliedAt.toISOString()})`
-      : '○ Pending';
+    const status = appliedAt ? `✓ Applied (${appliedAt.toISOString()})` : '○ Pending';
     console.log(`  ${status}  ${filename}`);
   }
 

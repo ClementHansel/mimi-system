@@ -4,14 +4,31 @@ import { useEffect, useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
-  Button, Card, CardContent, Modal, DataTable, StatusBadge, ApprovalTimeline, Select, QtyInput,
-  Input, EmptyState, toast, PermissionGate,
+  Button,
+  Card,
+  CardContent,
+  Modal,
+  DataTable,
+  StatusBadge,
+  ApprovalTimeline,
+  Select,
+  QtyInput,
+  Input,
+  EmptyState,
+  toast,
+  PermissionGate,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { usePermissions } from '@/lib/permissions';
 import { useOutletLocation } from './lib/use-outlet-location';
-import { getItems, listReplenishment, getReplenishment, createReplenishment, submitReplenishment } from './lib/outlet-api';
+import {
+  getItems,
+  listReplenishment,
+  getReplenishment,
+  createReplenishment,
+  submitReplenishment,
+} from './lib/outlet-api';
 import type { Replenishment, Item } from './lib/types';
 
 interface DraftLine {
@@ -91,8 +108,16 @@ export function ReplenishmentPanel() {
 
   const columns: DataTableColumn<Replenishment>[] = [
     { key: 'requestNumber', header: t('outlet.replenishment.number') },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="replenishment" status={r.status} /> },
-    { key: 'submittedAt', header: t('common.date'), render: (r) => r.submittedAt?.slice(0, 10) ?? '—' },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="replenishment" status={r.status} />,
+    },
+    {
+      key: 'submittedAt',
+      header: t('common.date'),
+      render: (r) => r.submittedAt?.slice(0, 10) ?? '—',
+    },
     {
       key: 'flag',
       header: '',
@@ -100,7 +125,9 @@ export function ReplenishmentPanel() {
         r.status === 'rejected' || r.lines.some((l) => l.amendReason) ? (
           <span className="inline-flex items-center gap-1 text-sm font-medium text-warning-700">
             <AlertTriangle className="size-3.5" aria-hidden />
-            {r.status === 'rejected' ? t('outlet.replenishment.rejectedFlag') : t('outlet.replenishment.amendedFlag')}
+            {r.status === 'rejected'
+              ? t('outlet.replenishment.rejectedFlag')
+              : t('outlet.replenishment.amendedFlag')}
           </span>
         ) : null,
     },
@@ -110,7 +137,11 @@ export function ReplenishmentPanel() {
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
         <PermissionGate permission="replenishment.create">
-          <Button leftIcon={<Plus className="size-4" />} size="touch" onClick={() => setCreateOpen(true)}>
+          <Button
+            leftIcon={<Plus className="size-4" />}
+            size="touch"
+            onClick={() => setCreateOpen(true)}
+          >
             {t('outlet.replenishment.new')}
           </Button>
         </PermissionGate>
@@ -125,7 +156,12 @@ export function ReplenishmentPanel() {
         emptyDescription={t('outlet.replenishment.empty')}
       />
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={t('outlet.replenishment.new')} size="lg">
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title={t('outlet.replenishment.new')}
+        size="lg"
+      >
         <div className="flex flex-col gap-4">
           <Input
             type="date"
@@ -138,15 +174,22 @@ export function ReplenishmentPanel() {
               <Select
                 label={t('outlet.replenishment.item')}
                 value={line.itemId}
-                onValueChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))}
-                options={items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }))}
+                onValueChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))
+                }
+                options={items.map((i) => ({
+                  value: i.id,
+                  label: `${i.name} (${i.baseUnit.code})`,
+                }))}
                 placeholder={t('common.selectPlaceholder')}
                 wrapperClassName="flex-1"
               />
               <QtyInput
                 label={t('outlet.replenishment.qty')}
                 value={line.qtyRequested}
-                onChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qtyRequested: v } : l)))}
+                onChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qtyRequested: v } : l)))
+                }
                 unitCode={items.find((i) => i.id === line.itemId)?.baseUnit.code}
               />
             </div>
@@ -162,26 +205,37 @@ export function ReplenishmentPanel() {
           </Button>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
-          <Button loading={saving} onClick={submitCreate}>{t('common.submit')}</Button>
+          <Button variant="outline" onClick={() => setCreateOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button loading={saving} onClick={submitCreate}>
+            {t('common.submit')}
+          </Button>
         </div>
       </Modal>
 
-      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.requestNumber ?? ''} size="lg">
+      <Modal
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title={detail?.requestNumber ?? ''}
+        size="lg"
+      >
         {detail && (
           <div className="flex flex-col gap-4">
             <StatusBadge domain="replenishment" status={detail.status} />
 
-            {detail.status === 'rejected' && detail.approval?.steps.some((s) => s.state === 'rejected') && (
-              <Card className="border-danger-600/30 bg-danger-50/40">
-                <CardContent className="flex items-start gap-2 p-3 text-sm text-danger-700">
-                  <AlertTriangle className="mt-0.5 size-4 flex-none" aria-hidden />
-                  <span>
-                    {detail.approval.steps.find((s) => s.state === 'rejected')?.reason ?? t('approvalTimeline.noReason')}
-                  </span>
-                </CardContent>
-              </Card>
-            )}
+            {detail.status === 'rejected' &&
+              detail.approval?.steps.some((s) => s.state === 'rejected') && (
+                <Card className="border-danger-600/30 bg-danger-50/40">
+                  <CardContent className="flex items-start gap-2 p-3 text-sm text-danger-700">
+                    <AlertTriangle className="mt-0.5 size-4 flex-none" aria-hidden />
+                    <span>
+                      {detail.approval.steps.find((s) => s.state === 'rejected')?.reason ??
+                        t('approvalTimeline.noReason')}
+                    </span>
+                  </CardContent>
+                </Card>
+              )}
 
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -196,8 +250,12 @@ export function ReplenishmentPanel() {
                 {detail.lines.map((l) => (
                   <tr key={l.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2.5">{l.itemName}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(l.qtyRequested, l.unitCode)}</td>
-                    <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(l.qtyApproved, l.unitCode)}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {formatQty(l.qtyRequested, l.unitCode)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {formatQty(l.qtyApproved, l.unitCode)}
+                    </td>
                     <td className="px-3 py-2.5">
                       {l.amendReason ? (
                         <span className="inline-flex items-center gap-1 font-medium text-warning-700">

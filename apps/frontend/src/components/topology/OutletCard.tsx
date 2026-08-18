@@ -1,9 +1,26 @@
 'use client';
 
 import { useState } from 'react';
-import { Tablet, Smartphone, Printer, Laptop, Router, Waypoints, HardDrive, type LucideIcon } from 'lucide-react';
+import {
+  Tablet,
+  Smartphone,
+  Printer,
+  Laptop,
+  Router,
+  Waypoints,
+  HardDrive,
+  type LucideIcon,
+} from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Card, CardHeader, CardTitle, CardContent, StatusBadge, DataTable, Badge } from '@/components/ui';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  StatusBadge,
+  DataTable,
+  Badge,
+} from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { fmtRelative } from '@/lib/dates';
 import { nodeDisplayState } from './lib/rollup';
@@ -50,11 +67,32 @@ export function OutletCard({ location }: { location: TopologyLocation }) {
         );
       },
     },
-    { key: 'category', header: t('topology.device.columnCategory'), render: (d) => t(`topology.device.category.${d.category}`) },
-    { key: 'status', header: t('topology.device.columnStatus'), render: (d) => <StatusBadge domain="device" status={d.status} size="sm" /> },
-    { key: 'appVersion', header: t('topology.device.columnAppVersion'), render: (d) => d.appVersion ?? '—' },
-    { key: 'queueDepth', header: t('topology.device.columnQueueDepth'), align: 'right', render: (d) => String(d.queueDepth) },
-    { key: 'lastSeenAt', header: t('topology.device.columnLastSeen'), render: (d) => fmtRelative(d.lastSeenAt) },
+    {
+      key: 'category',
+      header: t('topology.device.columnCategory'),
+      render: (d) => t(`topology.device.category.${d.category}`),
+    },
+    {
+      key: 'status',
+      header: t('topology.device.columnStatus'),
+      render: (d) => <StatusBadge domain="device" status={d.status} size="sm" />,
+    },
+    {
+      key: 'appVersion',
+      header: t('topology.device.columnAppVersion'),
+      render: (d) => d.appVersion ?? '—',
+    },
+    {
+      key: 'queueDepth',
+      header: t('topology.device.columnQueueDepth'),
+      align: 'right',
+      render: (d) => String(d.queueDepth),
+    },
+    {
+      key: 'lastSeenAt',
+      header: t('topology.device.columnLastSeen'),
+      render: (d) => fmtRelative(d.lastSeenAt),
+    },
   ];
 
   return (
@@ -63,7 +101,9 @@ export function OutletCard({ location }: { location: TopologyLocation }) {
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="text-base">{location.location.name}</CardTitle>
           <StatusBadge domain="topologyOutlet" status={location.outletStatus} size="sm" />
-          <Badge variant="neutral" size="sm">{t('topology.outlet.deviceCount', { count: location.counts.total })}</Badge>
+          <Badge variant="neutral" size="sm">
+            {t('topology.outlet.deviceCount', { count: location.counts.total })}
+          </Badge>
         </div>
         <NodeIndicator location={location} nodeState={nodeState} />
       </CardHeader>
@@ -71,7 +111,12 @@ export function OutletCard({ location }: { location: TopologyLocation }) {
         <SyncHealthStrip location={location} />
         <DataTable
           columns={columns}
-          data={{ rows: visibleDevices, total: visibleDevices.length, page: 1, pageSize: Math.max(visibleDevices.length, 1) }}
+          data={{
+            rows: visibleDevices,
+            total: visibleDevices.length,
+            page: 1,
+            pageSize: Math.max(visibleDevices.length, 1),
+          }}
           keyField={(d) => d.id}
           onRowClick={(d) => setOpenDevice(d)}
           emptyTitle={t('topology.device.empty')}
@@ -86,7 +131,13 @@ export function OutletCard({ location }: { location: TopologyLocation }) {
   );
 }
 
-function NodeIndicator({ location, nodeState }: { location: TopologyLocation; nodeState: ReturnType<typeof nodeDisplayState> }) {
+function NodeIndicator({
+  location,
+  nodeState,
+}: {
+  location: TopologyLocation;
+  nodeState: ReturnType<typeof nodeDisplayState>;
+}) {
   const { t } = useI18n();
 
   if (nodeState === 'none') {
@@ -110,19 +161,35 @@ function SyncHealthStrip({ location }: { location: TopologyLocation }) {
   const h = location.syncHealth;
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-md bg-surface-sunken px-3 py-2 text-xs text-text-secondary">
-      <span>{t('topology.outlet.syncHealth.queueDepth')}: <strong className="text-text-primary">{h.queueDepth}</strong></span>
-      <span>{t('topology.outlet.syncHealth.quarantineDepth')}: <strong className="text-text-primary">{h.quarantineDepth}</strong></span>
       <span>
-        {t('topology.outlet.syncHealth.lastSyncAt')}: <strong className="text-text-primary">{h.lastSyncAt ? fmtRelative(h.lastSyncAt) : t('topology.outlet.syncHealth.neverSynced')}</strong>
+        {t('topology.outlet.syncHealth.queueDepth')}:{' '}
+        <strong className="text-text-primary">{h.queueDepth}</strong>
+      </span>
+      <span>
+        {t('topology.outlet.syncHealth.quarantineDepth')}:{' '}
+        <strong className="text-text-primary">{h.quarantineDepth}</strong>
+      </span>
+      <span>
+        {t('topology.outlet.syncHealth.lastSyncAt')}:{' '}
+        <strong className="text-text-primary">
+          {h.lastSyncAt ? fmtRelative(h.lastSyncAt) : t('topology.outlet.syncHealth.neverSynced')}
+        </strong>
       </span>
       {h.conflictsOpen > 0 && (
-        <span className="text-danger-600">{t('topology.outlet.syncHealth.conflictsOpen')}: <strong>{h.conflictsOpen}</strong></span>
+        <span className="text-danger-600">
+          {t('topology.outlet.syncHealth.conflictsOpen')}: <strong>{h.conflictsOpen}</strong>
+        </span>
       )}
       {h.exceptionsOpen > 0 && (
-        <span className="text-warning-700">{t('topology.outlet.syncHealth.exceptionsOpen')}: <strong>{h.exceptionsOpen}</strong></span>
+        <span className="text-warning-700">
+          {t('topology.outlet.syncHealth.exceptionsOpen')}: <strong>{h.exceptionsOpen}</strong>
+        </span>
       )}
       {h.offlineAuthPending > 0 && (
-        <span className="text-warning-700">{t('topology.outlet.syncHealth.offlineAuthPending')}: <strong>{h.offlineAuthPending}</strong></span>
+        <span className="text-warning-700">
+          {t('topology.outlet.syncHealth.offlineAuthPending')}:{' '}
+          <strong>{h.offlineAuthPending}</strong>
+        </span>
       )}
     </div>
   );

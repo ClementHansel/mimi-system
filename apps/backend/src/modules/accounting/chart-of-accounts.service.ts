@@ -1,7 +1,16 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION, type Account } from '@mimi/shared';
-import type { CreateAccountDto, ListAccountsQueryDto, UpdateAccountDto } from './dto/accounting.dto';
+import type {
+  CreateAccountDto,
+  ListAccountsQueryDto,
+  UpdateAccountDto,
+} from './dto/accounting.dto';
 import type { AccountRow } from './accounting.types';
 import { withWrite } from './db-tx';
 
@@ -19,9 +28,18 @@ export class ChartOfAccountsService {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (query.type) { conds.push(`type = $${i++}`); args.push(query.type); }
-    if (query.active !== undefined) { conds.push(`is_active = $${i++}`); args.push(query.active); }
-    if (query.q) { conds.push(`(code ILIKE $${i} OR name ILIKE $${i})`); args.push(`%${query.q}%`); }
+    if (query.type) {
+      conds.push(`type = $${i++}`);
+      args.push(query.type);
+    }
+    if (query.active !== undefined) {
+      conds.push(`is_active = $${i++}`);
+      args.push(query.active);
+    }
+    if (query.q) {
+      conds.push(`(code ILIKE $${i} OR name ILIKE $${i})`);
+      args.push(`%${query.q}%`);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const res = await client.query<AccountRow>(`${ACCOUNT_SELECT} ${where} ORDER BY code`, args);
     return res.rows.map(toAccount);
@@ -30,7 +48,8 @@ export class ChartOfAccountsService {
   async get(client: PoolClient, id: string): Promise<Account> {
     const res = await client.query<AccountRow>(`${ACCOUNT_SELECT} WHERE id = $1`, [id]);
     const row = res.rows[0];
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Account ${id} not found` });
+    if (!row)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Account ${id} not found` });
     return toAccount(row);
   }
 
@@ -42,18 +61,32 @@ export class ChartOfAccountsService {
   async requireByCode(client: PoolClient, code: string): Promise<AccountRow> {
     const row = await this.findByCode(client, code);
     if (!row) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Account code '${code}' not found in chart_of_accounts — posting rule or manual entry references a code that was never seeded` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Account code '${code}' not found in chart_of_accounts — posting rule or manual entry references a code that was never seeded`,
+      });
     }
     return row;
   }
 
   async create(client: PoolClient, dto: CreateAccountDto): Promise<Account> {
     const existing = await this.findByCode(client, dto.code);
-    if (existing) throw new ConflictException({ code: ERR_CONFLICT, message: `Account code '${dto.code}' already exists` });
+    if (existing)
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Account code '${dto.code}' already exists`,
+      });
 
     if (dto.parentId) {
-      const parent = await client.query<{ id: string }>(`SELECT id FROM chart_of_accounts WHERE id = $1`, [dto.parentId]);
-      if (!parent.rows[0]) throw new BadRequestException({ code: ERR_VALIDATION, message: `parentId ${dto.parentId} not found` });
+      const parent = await client.query<{ id: string }>(
+        `SELECT id FROM chart_of_accounts WHERE id = $1`,
+        [dto.parentId],
+      );
+      if (!parent.rows[0])
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `parentId ${dto.parentId} not found`,
+        });
     }
 
     return withWrite(client, async () => {
@@ -61,7 +94,14 @@ export class ChartOfAccountsService {
         `INSERT INTO chart_of_accounts (code, name, type, normal_balance, parent_id, is_postable, is_system, is_active)
          VALUES ($1,$2,$3,$4,$5,$6,false,true)
          RETURNING id, code, name, type, normal_balance, parent_id, is_postable, is_system, is_active`,
-        [dto.code, dto.name, dto.type, dto.normalBalance, dto.parentId ?? null, dto.isPostable ?? true],
+        [
+          dto.code,
+          dto.name,
+          dto.type,
+          dto.normalBalance,
+          dto.parentId ?? null,
+          dto.isPostable ?? true,
+        ],
       );
       return toAccount(res.rows[0]!);
     });

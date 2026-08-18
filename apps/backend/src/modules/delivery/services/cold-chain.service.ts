@@ -5,7 +5,11 @@ import { DATABASE_POOL } from '../../../common/database/database-pool.provider';
 import { NotificationService } from '../../../kernel/notification/notification.service';
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import { withSystemContext } from '../system-context';
-import { COLD_CHAIN_STORAGE_TYPES, requiredAreaTypeFor, type ItemStorageType } from '../storage-type.util';
+import {
+  COLD_CHAIN_STORAGE_TYPES,
+  requiredAreaTypeFor,
+  type ItemStorageType,
+} from '../storage-type.util';
 
 export interface ShipmentTypeRow {
   id: string;
@@ -81,18 +85,30 @@ export class ColdChainService {
       [params.sjId],
     );
     const sj = sjRes.rows[0];
-    if (!sj) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Surat Jalan ${params.sjId} not found` });
+    if (!sj)
+      throw new NotFoundException({
+        code: 'ERR_NOT_FOUND',
+        message: `Surat Jalan ${params.sjId} not found`,
+      });
 
     let locationId = sj.origin_location_id;
     let locationName = 'Gudang Pusat';
     let dropSeq: number | null = null;
     if (params.dropId) {
-      const dropRes = await client.query<{ location_id: string; location_name: string; drop_seq: number }>(
+      const dropRes = await client.query<{
+        location_id: string;
+        location_name: string;
+        drop_seq: number;
+      }>(
         `SELECT d.location_id, l.name AS location_name, d.drop_seq FROM sj_drops d JOIN locations l ON l.id = d.location_id WHERE d.id = $1 AND d.sj_id = $2`,
         [params.dropId, params.sjId],
       );
       const drop = dropRes.rows[0];
-      if (!drop) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Drop ${params.dropId} not found on Surat Jalan ${params.sjId}` });
+      if (!drop)
+        throw new NotFoundException({
+          code: 'ERR_NOT_FOUND',
+          message: `Drop ${params.dropId} not found on Surat Jalan ${params.sjId}`,
+        });
       locationId = drop.location_id;
       locationName = drop.location_name;
       dropSeq = drop.drop_seq;
@@ -120,10 +136,17 @@ export class ColdChainService {
       entityId: id,
       locationId,
       actorUserId,
-      data: { sjId: params.sjId, dropId: params.dropId ?? undefined, stage: params.stage, tempC: params.tempC },
+      data: {
+        sjId: params.sjId,
+        dropId: params.dropId ?? undefined,
+        stage: params.stage,
+        tempC: params.tempC,
+      },
     });
 
-    const nameRes = await client.query<{ name: string }>(`SELECT name FROM users WHERE id = $1`, [actorUserId]);
+    const nameRes = await client.query<{ name: string }>(`SELECT name FROM users WHERE id = $1`, [
+      actorUserId,
+    ]);
     return {
       id,
       dropId: params.dropId,
@@ -136,7 +159,9 @@ export class ColdChainService {
   }
 
   async loadShipmentType(client: PoolClient, shipmentTypeId: string): Promise<ShipmentTypeRow> {
-    const res = await client.query<ShipmentTypeRow>(`SELECT * FROM shipment_types WHERE id = $1`, [shipmentTypeId]);
+    const res = await client.query<ShipmentTypeRow>(`SELECT * FROM shipment_types WHERE id = $1`, [
+      shipmentTypeId,
+    ]);
     const row = res.rows[0];
     if (!row) throw new Error(`shipment_types/${shipmentTypeId} not found`);
     return row;
@@ -187,7 +212,12 @@ export class ColdChainService {
   ): Promise<{ id: string; isBreach: boolean }> {
     const classRanges =
       params.shipmentType.key === 'frozen'
-        ? await this.resolveOnboardClassRanges(client, params.sjId, params.originLocationId, params.dropSeq)
+        ? await this.resolveOnboardClassRanges(
+            client,
+            params.sjId,
+            params.originLocationId,
+            params.dropSeq,
+          )
         : [];
     const breaches = classRanges.filter((r) => isTempBreach(params.tempC, r.tempMin, r.tempMax));
     const isBreach = breaches.length > 0;
@@ -199,7 +229,9 @@ export class ColdChainService {
     const notes = isBreach
       ? JSON.stringify({
           breachedClasses: breaches.map((b) => b.storageType),
-          ranges: Object.fromEntries(breaches.map((b) => [b.storageType, { min: b.tempMin, max: b.tempMax }])),
+          ranges: Object.fromEntries(
+            breaches.map((b) => [b.storageType, { min: b.tempMin, max: b.tempMax }]),
+          ),
         })
       : null;
 
@@ -208,7 +240,17 @@ export class ColdChainService {
        VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, NOW()), $9)
        ON CONFLICT (client_id) DO NOTHING
        RETURNING id`,
-      [params.sjId, params.dropId, params.stage, params.tempC, isBreach, params.loggedBy, params.clientId ?? null, params.loggedAt ?? null, notes],
+      [
+        params.sjId,
+        params.dropId,
+        params.stage,
+        params.tempC,
+        isBreach,
+        params.loggedBy,
+        params.clientId ?? null,
+        params.loggedAt ?? null,
+        notes,
+      ],
     );
 
     // `ON CONFLICT ... DO NOTHING` yields no row on an idempotent replay (same `client_id`) — read back
@@ -216,7 +258,10 @@ export class ColdChainService {
     const id =
       res.rows[0]?.id ??
       (
-        await client.query<{ id: string }>(`SELECT id FROM sj_temperature_logs WHERE client_id = $1`, [params.clientId ?? null])
+        await client.query<{ id: string }>(
+          `SELECT id FROM sj_temperature_logs WHERE client_id = $1`,
+          [params.clientId ?? null],
+        )
       ).rows[0]?.id;
     if (!id) throw new Error('sj_temperature_logs insert did not return an id');
 
@@ -268,7 +313,12 @@ export class ColdChainService {
    * `reverseFailedDropStock` already use for the identical "one canonical
    * area per type per location" assumption).
    */
-  private async resolveOnboardClassRanges(client: PoolClient, sjId: UUID, originLocationId: UUID, minDropSeq: number | null): Promise<CargoClassRange[]> {
+  private async resolveOnboardClassRanges(
+    client: PoolClient,
+    sjId: UUID,
+    originLocationId: UUID,
+    minDropSeq: number | null,
+  ): Promise<CargoClassRange[]> {
     const classesRes = await client.query<{ storage_type: ItemStorageType }>(
       `SELECT DISTINCT i.storage_type
          FROM sj_lines sl

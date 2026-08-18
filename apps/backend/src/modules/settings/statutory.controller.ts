@@ -37,7 +37,11 @@ export class StatutoryController {
 
   @Get('bpjs')
   @RequirePermission('payroll.statutory.read')
-  listBpjs(@Query('program') program: string | undefined, @Query('asOf') asOf: string | undefined, @Req() req: RequestWithDbContext) {
+  listBpjs(
+    @Query('program') program: string | undefined,
+    @Query('asOf') asOf: string | undefined,
+    @Req() req: RequestWithDbContext,
+  ) {
     return this.service.listBpjs(req.dbClient!, program, asOf);
   }
 
@@ -50,7 +54,11 @@ export class StatutoryController {
 
   @Get('pph21/ter')
   @RequirePermission('payroll.statutory.read')
-  listTer(@Query('category') category: string | undefined, @Query('asOf') asOf: string | undefined, @Req() req: RequestWithDbContext) {
+  listTer(
+    @Query('category') category: string | undefined,
+    @Query('asOf') asOf: string | undefined,
+    @Req() req: RequestWithDbContext,
+  ) {
     return this.service.listTer(req.dbClient!, category, asOf);
   }
 
@@ -89,7 +97,10 @@ export class StatutoryController {
 
   @Get('employees/:employeeId/tax-profile')
   @RequirePermission('payroll.statutory.read')
-  getTaxProfile(@Param('employeeId') employeeId: string, @Req() req: RequestWithDbContext): Promise<TaxProfile> {
+  getTaxProfile(
+    @Param('employeeId') employeeId: string,
+    @Req() req: RequestWithDbContext,
+  ): Promise<TaxProfile> {
     return this.service.getTaxProfile(employeeId, req.dbClient!);
   }
 
@@ -108,14 +119,22 @@ export class StatutoryController {
   @Post('enable')
   @RequirePermission('payroll.statutory.enable')
   @Audited({ entityType: 'settings', action: 'payroll.statutory.enable' })
-  enable(@Body() dto: EnableStatutoryDto, @CurrentUser() caller: JwtAccessPayload, @Req() req: RequestWithDbContext): Promise<StatutoryStatus> {
+  enable(
+    @Body() dto: EnableStatutoryDto,
+    @CurrentUser() caller: JwtAccessPayload,
+    @Req() req: RequestWithDbContext,
+  ): Promise<StatutoryStatus> {
     return this.service.enable(dto, caller, req.dbClient!);
   }
 
   @Post('disable')
   @RequirePermission('payroll.statutory.enable')
   @Audited({ entityType: 'settings', action: 'payroll.statutory.enable' })
-  disable(@Body() dto: DisableStatutoryDto, @CurrentUser() caller: JwtAccessPayload, @Req() req: RequestWithDbContext): Promise<StatutoryStatus> {
+  disable(
+    @Body() dto: DisableStatutoryDto,
+    @CurrentUser() caller: JwtAccessPayload,
+    @Req() req: RequestWithDbContext,
+  ): Promise<StatutoryStatus> {
     return this.service.disable(dto, caller, req.dbClient!);
   }
 }

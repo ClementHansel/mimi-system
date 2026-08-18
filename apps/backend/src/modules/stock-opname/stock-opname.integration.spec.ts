@@ -32,7 +32,15 @@
  * a row to match. Fixed to LEFT JOIN — see that file's comment.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { can, ERR_DISPUTES_OPEN, ERR_FORBIDDEN, ERR_NOT_FOUND, ERR_VARIANCE_REASON_REQUIRED, RoleKey, SyncOriginType } from '@mimi/shared';
+import {
+  can,
+  ERR_DISPUTES_OPEN,
+  ERR_FORBIDDEN,
+  ERR_NOT_FOUND,
+  ERR_VARIANCE_REASON_REQUIRED,
+  RoleKey,
+  SyncOriginType,
+} from '@mimi/shared';
 
 // The FIRST live-DB test in a cold run pays for pool/connection warm-up
 // (observed 5s+ once, 150-250ms on every later test in the same run) — a
@@ -81,7 +89,11 @@ function buildService(): StockOpnameService {
   );
 }
 
-function actorFor(fx: Fixtures, role: RoleKey, locationScope: readonly string[] | null = null): ActorContext {
+function actorFor(
+  fx: Fixtures,
+  role: RoleKey,
+  locationScope: readonly string[] | null = null,
+): ActorContext {
   return { userId: fx.usersByRole[role], roleKey: role, locationScope };
 }
 
@@ -103,22 +115,49 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
   // write/read — never on a DIFFERENT step's already-committed-or-rolled-back connection.
 
   it('outlet opname, GENUINE RLS sessions: Leader Outlet counts, Supervisor approves — real user_locations scope throughout', async () => {
-    const leaderOutlet = { role: 'leader_outlet', userId: fx.leaderOutletUserId, locationIds: [fx.outletId] };
-    const supervisor = { role: 'supervisor', userId: fx.supervisorUserId, locationIds: [fx.outletId] };
-    const leaderOutletActor: ActorContext = { userId: fx.leaderOutletUserId, roleKey: RoleKey.LEADER_OUTLET, locationScope: [fx.outletId] };
-    const supervisorActor: ActorContext = { userId: fx.supervisorUserId, roleKey: RoleKey.SUPERVISOR, locationScope: [fx.outletId] };
+    const leaderOutlet = {
+      role: 'leader_outlet',
+      userId: fx.leaderOutletUserId,
+      locationIds: [fx.outletId],
+    };
+    const supervisor = {
+      role: 'supervisor',
+      userId: fx.supervisorUserId,
+      locationIds: [fx.outletId],
+    };
+    const leaderOutletActor: ActorContext = {
+      userId: fx.leaderOutletUserId,
+      roleKey: RoleKey.LEADER_OUTLET,
+      locationScope: [fx.outletId],
+    };
+    const supervisorActor: ActorContext = {
+      userId: fx.supervisorUserId,
+      roleKey: RoleKey.SUPERVISOR,
+      locationScope: [fx.outletId],
+    };
     const itemId = await pickUnusedStockKey(fx.outletId, fx.storageAreaOutlet);
 
-    const created = await asRequest(leaderOutlet, (client) => buildService().create(client, leaderOutletActor, { locationId: fx.outletId }));
+    const created = await asRequest(leaderOutlet, (client) =>
+      buildService().create(client, leaderOutletActor, { locationId: fx.outletId }),
+    );
     expect(created.status).toBe('counting');
 
     await asRequest(leaderOutlet, (client) =>
       buildService().upsertLines(client, leaderOutletActor, created.id, {
-        lines: [{ storageAreaId: fx.storageAreaOutlet, itemId, countedQty: '7.500', varianceReason: 'Selisih hasil hitung fisik' }],
+        lines: [
+          {
+            storageAreaId: fx.storageAreaOutlet,
+            itemId,
+            countedQty: '7.500',
+            varianceReason: 'Selisih hasil hitung fisik',
+          },
+        ],
       }),
     );
 
-    const submitted = await asRequest(leaderOutlet, (client) => buildService().submit(client, leaderOutletActor, created.id));
+    const submitted = await asRequest(leaderOutlet, (client) =>
+      buildService().submit(client, leaderOutletActor, created.id),
+    );
     expect(submitted.status).toBe('submitted');
     expect(submitted.lines[0]!.diffQty).toBe('7.500');
     // Attributability survives a genuinely RLS-restricted read: the Leader Outlet's own name
@@ -127,7 +166,9 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
 
     // A genuinely SEPARATE session — the Supervisor's own real user id + real user_locations
     // scope, on its own connection (two real actors, not one owner session switching mid-transaction).
-    const approved = await asRequest(supervisor, (client) => buildService().approve(client, supervisorActor, created.id, { note: 'Disetujui' }));
+    const approved = await asRequest(supervisor, (client) =>
+      buildService().approve(client, supervisorActor, created.id, { note: 'Disetujui' }),
+    );
     expect(approved.status).toBe('adjusted');
     // The Supervisor is neither central nor the Leader Outlet, so `users_select` genuinely denies
     // them the counter's `users` row — `counted_by_name` comes back NULL from the LEFT JOIN. The
@@ -140,7 +181,10 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     // genuinely committed, not merely visible within its own now-closed transaction.
     const final = await asRequest(supervisor, async (client) => {
       const balance = await readBalance(client, fx.outletId, fx.storageAreaOutlet, itemId);
-      const adjustments = await client.query(`SELECT * FROM stock_adjustments WHERE opname_id = $1`, [created.id]);
+      const adjustments = await client.query(
+        `SELECT * FROM stock_adjustments WHERE opname_id = $1`,
+        [created.id],
+      );
       return { balance, adjustments: adjustments.rows };
     });
     expect(final.balance).toBe('7.500');
@@ -152,13 +196,31 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     // Setup as the real Leader Outlet/Supervisor pair (owner session — setup is not the assertion here);
     // each step is its own connection/commit, per the rule above.
     const itemId = await pickUnusedStockKey(fx.outletId, fx.storageAreaOutlet);
-    const created = await withRollback((client) => buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]), { locationId: fx.outletId }));
-    await withRollback((client) =>
-      buildService().upsertLines(client, actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]), created.id, {
-        lines: [{ storageAreaId: fx.storageAreaOutlet, itemId, countedQty: '2.000', varianceReason: 'Selisih' }],
+    const created = await withRollback((client) =>
+      buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]), {
+        locationId: fx.outletId,
       }),
     );
-    await withRollback((client) => buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]), created.id));
+    await withRollback((client) =>
+      buildService().upsertLines(
+        client,
+        actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]),
+        created.id,
+        {
+          lines: [
+            {
+              storageAreaId: fx.storageAreaOutlet,
+              itemId,
+              countedQty: '2.000',
+              varianceReason: 'Selisih',
+            },
+          ],
+        },
+      ),
+    );
+    await withRollback((client) =>
+      buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]), created.id),
+    );
 
     // The ACTUAL assertion: Kepala Gudang's own real session, scoped to the warehouse (their real
     // user_locations row) — not an application-level override. `stock_opname_loc`'s `app_has_location()`
@@ -167,33 +229,67 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     // STRONGER result than the owner-session version of this test could show (defense in depth: RLS
     // denies first, the engine's own role check would have denied it too) — reported as observed, not
     // adjusted to match a preconceived error code (coordinator instruction).
-    await withRollbackAs({ role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] }, async (client) => {
-      const service = buildService();
-      await expect(
-        service.approve(client, { userId: fx.kepalaGudangUserId, roleKey: RoleKey.KEPALA_GUDANG, locationScope: [fx.warehouseId] }, created.id, {}),
-      ).rejects.toMatchObject({ response: { code: ERR_NOT_FOUND } });
-    });
+    await withRollbackAs(
+      { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] },
+      async (client) => {
+        const service = buildService();
+        await expect(
+          service.approve(
+            client,
+            {
+              userId: fx.kepalaGudangUserId,
+              roleKey: RoleKey.KEPALA_GUDANG,
+              locationScope: [fx.warehouseId],
+            },
+            created.id,
+            {},
+          ),
+        ).rejects.toMatchObject({ response: { code: ERR_NOT_FOUND } });
+      },
+    );
   });
 
   it('warehouse opname, GENUINE RLS session: Kepala Gudang counts AND approves under their own real (warehouse-scoped) session', async () => {
-    const kgd = { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] };
-    const kgdActor: ActorContext = { userId: fx.kepalaGudangUserId, roleKey: RoleKey.KEPALA_GUDANG, locationScope: [fx.warehouseId] };
+    const kgd = {
+      role: 'kepala_gudang',
+      userId: fx.kepalaGudangUserId,
+      locationIds: [fx.warehouseId],
+    };
+    const kgdActor: ActorContext = {
+      userId: fx.kepalaGudangUserId,
+      roleKey: RoleKey.KEPALA_GUDANG,
+      locationScope: [fx.warehouseId],
+    };
     const itemId = await pickUnusedStockKey(fx.warehouseId, fx.storageAreaWarehouse);
 
-    const created = await asRequest(kgd, (client) => buildService().create(client, kgdActor, { locationId: fx.warehouseId }));
+    const created = await asRequest(kgd, (client) =>
+      buildService().create(client, kgdActor, { locationId: fx.warehouseId }),
+    );
     await asRequest(kgd, (client) =>
       buildService().upsertLines(client, kgdActor, created.id, {
-        lines: [{ storageAreaId: fx.storageAreaWarehouse, itemId, countedQty: '3.000', varianceReason: 'Kekurangan stok gudang' }],
+        lines: [
+          {
+            storageAreaId: fx.storageAreaWarehouse,
+            itemId,
+            countedQty: '3.000',
+            varianceReason: 'Kekurangan stok gudang',
+          },
+        ],
       }),
     );
     await asRequest(kgd, (client) => buildService().submit(client, kgdActor, created.id));
 
-    const approved = await asRequest(kgd, (client) => buildService().approve(client, kgdActor, created.id, {}));
+    const approved = await asRequest(kgd, (client) =>
+      buildService().approve(client, kgdActor, created.id, {}),
+    );
     expect(approved.status).toBe('adjusted');
 
     const final = await asRequest(kgd, async (client) => {
       const balance = await readBalance(client, fx.warehouseId, fx.storageAreaWarehouse, itemId);
-      const adjustments = await client.query(`SELECT * FROM stock_adjustments WHERE opname_id = $1`, [created.id]);
+      const adjustments = await client.query(
+        `SELECT * FROM stock_adjustments WHERE opname_id = $1`,
+        [created.id],
+      );
       return { balance, adjustments: adjustments.rows };
     });
     expect(final.balance).toBe('3.000');
@@ -204,25 +300,59 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
 
   it('warehouse opname: Supervisor is NOT eligible — rejected under their OWN genuine (outlet-scoped) session', async () => {
     const itemId = await pickUnusedStockKey(fx.warehouseId, fx.storageAreaWarehouse);
-    const created = await withRollback((client) => buildService().create(client, actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]), { locationId: fx.warehouseId }));
-    await withRollback((client) =>
-      buildService().upsertLines(client, actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]), created.id, {
-        lines: [{ storageAreaId: fx.storageAreaWarehouse, itemId, countedQty: '3.000', varianceReason: 'Kekurangan' }],
+    const created = await withRollback((client) =>
+      buildService().create(client, actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]), {
+        locationId: fx.warehouseId,
       }),
     );
-    await withRollback((client) => buildService().submit(client, actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]), created.id));
+    await withRollback((client) =>
+      buildService().upsertLines(
+        client,
+        actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]),
+        created.id,
+        {
+          lines: [
+            {
+              storageAreaId: fx.storageAreaWarehouse,
+              itemId,
+              countedQty: '3.000',
+              varianceReason: 'Kekurangan',
+            },
+          ],
+        },
+      ),
+    );
+    await withRollback((client) =>
+      buildService().submit(
+        client,
+        actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]),
+        created.id,
+      ),
+    );
 
     // Same reasoning as the outlet-side cross-check above: the Supervisor's real session is scoped to
     // their outlet, never the warehouse, so `stock_opname_loc` hides the row first.
-    await withRollbackAs({ role: 'supervisor', userId: fx.supervisorUserId, locationIds: [fx.outletId] }, async (client) => {
-      const service = buildService();
-      await expect(
-        service.approve(client, { userId: fx.supervisorUserId, roleKey: RoleKey.SUPERVISOR, locationScope: [fx.outletId] }, created.id, {}),
-      ).rejects.toMatchObject({ response: { code: ERR_NOT_FOUND } });
-    });
+    await withRollbackAs(
+      { role: 'supervisor', userId: fx.supervisorUserId, locationIds: [fx.outletId] },
+      async (client) => {
+        const service = buildService();
+        await expect(
+          service.approve(
+            client,
+            {
+              userId: fx.supervisorUserId,
+              roleKey: RoleKey.SUPERVISOR,
+              locationScope: [fx.outletId],
+            },
+            created.id,
+            {},
+          ),
+        ).rejects.toMatchObject({ response: { code: ERR_NOT_FOUND } });
+      },
+    );
   });
 
-  it('a large variance escalates the outlet chain to Manager after Supervisor\'s step', async () => {
+  it("a large variance escalates the outlet chain to Manager after Supervisor's step", async () => {
     const owner = { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] };
     // Own committed connection: the setting must be durably visible to the LATER, separate
     // connections `submit`/`approve` run on — a raw write inside a block that only ever
@@ -232,33 +362,60 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     // `007_settings_document_counters.sql`: `{"managerAboveIdr":"2000000.00"}`).
     const originalThreshold = { managerAboveIdr: '2000000.00' };
     try {
-      await asCommittedRequest(owner, (client) => setSettingValue(client, 'approval.threshold.opname', { managerAboveIdr: '0.01' }));
+      await asCommittedRequest(owner, (client) =>
+        setSettingValue(client, 'approval.threshold.opname', { managerAboveIdr: '0.01' }),
+      );
 
       const itemId = await pickUnusedStockKey(fx.outletId, fx.storageAreaOutlet);
-      const created = await withRollback((client) => buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET), { locationId: fx.outletId }));
-      await withRollback((client) =>
-        buildService().upsertLines(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id, {
-          lines: [{ storageAreaId: fx.storageAreaOutlet, itemId, countedQty: '50.000', varianceReason: 'Selisih besar' }],
+      const created = await withRollback((client) =>
+        buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET), {
+          locationId: fx.outletId,
         }),
       );
-      await withRollback((client) => buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id));
+      await withRollback((client) =>
+        buildService().upsertLines(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id, {
+          lines: [
+            {
+              storageAreaId: fx.storageAreaOutlet,
+              itemId,
+              countedQty: '50.000',
+              varianceReason: 'Selisih besar',
+            },
+          ],
+        }),
+      );
+      await withRollback((client) =>
+        buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id),
+      );
 
-      const step1 = await withRollback((client) => buildService().approve(client, actorFor(fx, RoleKey.SUPERVISOR), created.id, {}));
+      const step1 = await withRollback((client) =>
+        buildService().approve(client, actorFor(fx, RoleKey.SUPERVISOR), created.id, {}),
+      );
       expect(step1.status).toBe('submitted'); // not yet finalized — escalated to step 2
 
-      const step2 = await withRollback((client) => buildService().approve(client, actorFor(fx, RoleKey.MANAGER), created.id, {}));
+      const step2 = await withRollback((client) =>
+        buildService().approve(client, actorFor(fx, RoleKey.MANAGER), created.id, {}),
+      );
       expect(step2.status).toBe('adjusted');
 
-      const balance = await withRollback((client) => readBalance(client, fx.outletId, fx.storageAreaOutlet, itemId));
+      const balance = await withRollback((client) =>
+        readBalance(client, fx.outletId, fx.storageAreaOutlet, itemId),
+      );
       expect(balance).toBe('50.000');
     } finally {
-      await asCommittedRequest(owner, (client) => setSettingValue(client, 'approval.threshold.opname', originalThreshold));
+      await asCommittedRequest(owner, (client) =>
+        setSettingValue(client, 'approval.threshold.opname', originalThreshold),
+      );
     }
   });
 
   it('submit rejects with ERR_VARIANCE_REASON_REQUIRED when a non-zero variance has no reason', async () => {
     const itemId = await pickUnusedStockKey(fx.outletId, fx.storageAreaOutlet);
-    const created = await withRollback((client) => buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET), { locationId: fx.outletId }));
+    const created = await withRollback((client) =>
+      buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET), {
+        locationId: fx.outletId,
+      }),
+    );
     await withRollback((client) =>
       buildService().upsertLines(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id, {
         lines: [{ storageAreaId: fx.storageAreaOutlet, itemId, countedQty: '1.000' }],
@@ -266,7 +423,9 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     );
 
     await withRollback((client) =>
-      expect(buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id)).rejects.toMatchObject({
+      expect(
+        buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id),
+      ).rejects.toMatchObject({
         response: { code: ERR_VARIANCE_REASON_REQUIRED },
       }),
     );
@@ -274,24 +433,45 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
 
   it('reject requires a reason and never posts an adjustment', async () => {
     const itemId = await pickUnusedStockKey(fx.warehouseId, fx.storageAreaWarehouse);
-    const created = await withRollback((client) => buildService().create(client, actorFor(fx, RoleKey.KEPALA_GUDANG), { locationId: fx.warehouseId }));
-    await withRollback((client) =>
-      buildService().upsertLines(client, actorFor(fx, RoleKey.KEPALA_GUDANG), created.id, {
-        lines: [{ storageAreaId: fx.storageAreaWarehouse, itemId, countedQty: '2.000', varianceReason: 'test' }],
+    const created = await withRollback((client) =>
+      buildService().create(client, actorFor(fx, RoleKey.KEPALA_GUDANG), {
+        locationId: fx.warehouseId,
       }),
     );
-    await withRollback((client) => buildService().submit(client, actorFor(fx, RoleKey.KEPALA_GUDANG), created.id));
+    await withRollback((client) =>
+      buildService().upsertLines(client, actorFor(fx, RoleKey.KEPALA_GUDANG), created.id, {
+        lines: [
+          {
+            storageAreaId: fx.storageAreaWarehouse,
+            itemId,
+            countedQty: '2.000',
+            varianceReason: 'test',
+          },
+        ],
+      }),
+    );
+    await withRollback((client) =>
+      buildService().submit(client, actorFor(fx, RoleKey.KEPALA_GUDANG), created.id),
+    );
 
     await withRollback((client) =>
       expect(
-        buildService().reject(client, actorFor(fx, RoleKey.KEPALA_GUDANG), created.id, { reason: '' as unknown as string }),
+        buildService().reject(client, actorFor(fx, RoleKey.KEPALA_GUDANG), created.id, {
+          reason: '' as unknown as string,
+        }),
       ).rejects.toBeTruthy(),
     );
 
-    const rejected = await withRollback((client) => buildService().reject(client, actorFor(fx, RoleKey.KEPALA_GUDANG), created.id, { reason: 'Data tidak valid' }));
+    const rejected = await withRollback((client) =>
+      buildService().reject(client, actorFor(fx, RoleKey.KEPALA_GUDANG), created.id, {
+        reason: 'Data tidak valid',
+      }),
+    );
     expect(rejected.status).toBe('rejected');
 
-    const balance = await withRollback((client) => readBalance(client, fx.warehouseId, fx.storageAreaWarehouse, itemId));
+    const balance = await withRollback((client) =>
+      readBalance(client, fx.warehouseId, fx.storageAreaWarehouse, itemId),
+    );
     expect(balance).toBeNull();
   });
 
@@ -299,14 +479,22 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     await withRollback(async (client) => {
       const service = buildService();
       await expect(
-        service.create(client, actorFor(fx, RoleKey.LEADER_OUTLET, [fx.warehouseId]), { locationId: fx.outletId }),
+        service.create(client, actorFor(fx, RoleKey.LEADER_OUTLET, [fx.warehouseId]), {
+          locationId: fx.outletId,
+        }),
       ).rejects.toMatchObject({ response: { code: ERR_FORBIDDEN } });
     });
   });
 
   it('cancel from counting requires no approval chain and never touches stock_balances', async () => {
-    const created = await withRollback((client) => buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET), { locationId: fx.outletId }));
-    const cancelled = await withRollback((client) => buildService().cancel(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id));
+    const created = await withRollback((client) =>
+      buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET), {
+        locationId: fx.outletId,
+      }),
+    );
+    const cancelled = await withRollback((client) =>
+      buildService().cancel(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id),
+    );
     expect(cancelled.status).toBe('cancelled');
   });
 
@@ -314,13 +502,28 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     const owner = { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] };
     const itemId = await pickUnusedStockKey(fx.outletId, fx.storageAreaOutlet);
 
-    const created = await withRollback((client) => buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET), { locationId: fx.outletId }));
-    await withRollback((client) =>
-      buildService().upsertLines(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id, {
-        lines: [{ storageAreaId: fx.storageAreaOutlet, itemId, countedQty: '9.000', varianceReason: 'Awal' }],
+    const created = await withRollback((client) =>
+      buildService().create(client, actorFor(fx, RoleKey.LEADER_OUTLET), {
+        locationId: fx.outletId,
       }),
     );
-    const lineId = await withRollback(async (client) => (await buildService().getDetail(client, created.id)).lines.find((l) => l.itemId === itemId)!.id);
+    await withRollback((client) =>
+      buildService().upsertLines(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id, {
+        lines: [
+          {
+            storageAreaId: fx.storageAreaOutlet,
+            itemId,
+            countedQty: '9.000',
+            varianceReason: 'Awal',
+          },
+        ],
+      }),
+    );
+    const lineId = await withRollback(
+      async (client) =>
+        (await buildService().getDetail(client, created.id)).lines.find((l) => l.itemId === itemId)!
+          .id,
+    );
 
     // Two devices independently counted the same item/area — both land as real `area_counted`
     // events (`sync_conflicts.winner_event_id`/`loser_event_id` FK-reference `sync_events`). Seeded
@@ -340,8 +543,16 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
         op: 'area_counted',
         payload: {
           v: 1,
-          data: { opnameId: created.id, storageAreaId: fx.storageAreaOutlet, lines: [{ itemId, systemQty: '0.000', countedQty, varianceReason: 'Hitungan kedua' }] },
-          meta: { actorUserId: fx.usersByRole[RoleKey.LEADER_OUTLET], actorRole: 'leader_outlet', appVersion: 'test' },
+          data: {
+            opnameId: created.id,
+            storageAreaId: fx.storageAreaOutlet,
+            lines: [{ itemId, systemQty: '0.000', countedQty, varianceReason: 'Hitungan kedua' }],
+          },
+          meta: {
+            actorUserId: fx.usersByRole[RoleKey.LEADER_OUTLET],
+            actorRole: 'leader_outlet',
+            appVersion: 'test',
+          },
         },
         clientSeq,
         occurredAt: new Date().toISOString(),
@@ -370,7 +581,9 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     });
 
     await withRollback((client) =>
-      expect(buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id)).rejects.toMatchObject({
+      expect(
+        buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id),
+      ).rejects.toMatchObject({
         response: { code: ERR_DISPUTES_OPEN },
       }),
     );
@@ -384,7 +597,9 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     expect(resolved.countedQty).toBe('11.000');
     expect(resolved.disputed).toBe(false);
 
-    const submitted = await withRollback((client) => buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id));
+    const submitted = await withRollback((client) =>
+      buildService().submit(client, actorFor(fx, RoleKey.LEADER_OUTLET), created.id),
+    );
     expect(submitted.status).toBe('submitted');
   });
 
@@ -403,40 +618,75 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
   // guard's transaction (no `withWrite`) fails these, a service that commits passes.
   describe('write-then-read-back across SEPARATE connections (each simulating one real HTTP request)', () => {
     it('create persists past its own request — a later GET (new connection) finds it', async () => {
-      const leaderOutlet = { role: 'leader_outlet', userId: fx.leaderOutletUserId, locationIds: [fx.outletId] };
-      const leaderOutletActor: ActorContext = { userId: fx.leaderOutletUserId, roleKey: RoleKey.LEADER_OUTLET, locationScope: [fx.outletId] };
+      const leaderOutlet = {
+        role: 'leader_outlet',
+        userId: fx.leaderOutletUserId,
+        locationIds: [fx.outletId],
+      };
+      const leaderOutletActor: ActorContext = {
+        userId: fx.leaderOutletUserId,
+        roleKey: RoleKey.LEADER_OUTLET,
+        locationScope: [fx.outletId],
+      };
 
-      const created = await asRequest(leaderOutlet, (client) => buildService().create(client, leaderOutletActor, { locationId: fx.outletId }));
+      const created = await asRequest(leaderOutlet, (client) =>
+        buildService().create(client, leaderOutletActor, { locationId: fx.outletId }),
+      );
       expect(created.status).toBe('counting');
 
       // A GENUINELY separate connection/transaction — never sees `create`'s connection's
       // uncommitted state, only what it actually COMMITted.
-      const reread = await asRequest(leaderOutlet, (client) => buildService().getDetail(client, created.id));
+      const reread = await asRequest(leaderOutlet, (client) =>
+        buildService().getDetail(client, created.id),
+      );
       expect(reread.id).toBe(created.id);
       expect(reread.opnameNumber).toBe(created.opnameNumber);
       expect(reread.status).toBe('counting');
 
-      const listed = await asRequest(leaderOutlet, (client) => buildService().list(client, { locationId: fx.outletId, page: 1, pageSize: 200 }));
+      const listed = await asRequest(leaderOutlet, (client) =>
+        buildService().list(client, { locationId: fx.outletId, page: 1, pageSize: 200 }),
+      );
       expect(listed.rows.map((r) => r.id)).toContain(created.id);
     });
 
     it('the full counting → submit → approve lifecycle persists end to end across separate requests, including the posted stock_adjustment', async () => {
-      const kgd = { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] };
-      const kgdActor: ActorContext = { userId: fx.kepalaGudangUserId, roleKey: RoleKey.KEPALA_GUDANG, locationScope: [fx.warehouseId] };
+      const kgd = {
+        role: 'kepala_gudang',
+        userId: fx.kepalaGudangUserId,
+        locationIds: [fx.warehouseId],
+      };
+      const kgdActor: ActorContext = {
+        userId: fx.kepalaGudangUserId,
+        roleKey: RoleKey.KEPALA_GUDANG,
+        locationScope: [fx.warehouseId],
+      };
       const itemId = await pickUnusedStockKey(fx.warehouseId, fx.storageAreaWarehouse);
 
-      const created = await asRequest(kgd, (client) => buildService().create(client, kgdActor, { locationId: fx.warehouseId }));
+      const created = await asRequest(kgd, (client) =>
+        buildService().create(client, kgdActor, { locationId: fx.warehouseId }),
+      );
 
       await asRequest(kgd, (client) =>
         buildService().upsertLines(client, kgdActor, created.id, {
-          lines: [{ storageAreaId: fx.storageAreaWarehouse, itemId, countedQty: '4.000', varianceReason: 'BE-TXN-ROLLBACK regression' }],
+          lines: [
+            {
+              storageAreaId: fx.storageAreaWarehouse,
+              itemId,
+              countedQty: '4.000',
+              varianceReason: 'BE-TXN-ROLLBACK regression',
+            },
+          ],
         }),
       );
 
-      const submitted = await asRequest(kgd, (client) => buildService().submit(client, kgdActor, created.id));
+      const submitted = await asRequest(kgd, (client) =>
+        buildService().submit(client, kgdActor, created.id),
+      );
       expect(submitted.status).toBe('submitted');
 
-      const approved = await asRequest(kgd, (client) => buildService().approve(client, kgdActor, created.id, {}));
+      const approved = await asRequest(kgd, (client) =>
+        buildService().approve(client, kgdActor, created.id, {}),
+      );
       expect(approved.status).toBe('adjusted');
 
       // Final independent read: a THIRD, still-different connection sees the whole chain's
@@ -445,7 +695,10 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
       const reread = await asRequest(kgd, async (client) => {
         const detail = await buildService().getDetail(client, created.id);
         const balance = await readBalance(client, fx.warehouseId, fx.storageAreaWarehouse, itemId);
-        const adjustments = await client.query(`SELECT id FROM stock_adjustments WHERE opname_id = $1`, [created.id]);
+        const adjustments = await client.query(
+          `SELECT id FROM stock_adjustments WHERE opname_id = $1`,
+          [created.id],
+        );
         return { detail, balance, adjustmentCount: adjustments.rows.length };
       });
 
@@ -456,14 +709,28 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
     });
 
     it('cancel persists — a later GET (new connection) sees the cancelled status, not the pre-cancel one', async () => {
-      const leaderOutlet = { role: 'leader_outlet', userId: fx.leaderOutletUserId, locationIds: [fx.outletId] };
-      const leaderOutletActor: ActorContext = { userId: fx.leaderOutletUserId, roleKey: RoleKey.LEADER_OUTLET, locationScope: [fx.outletId] };
+      const leaderOutlet = {
+        role: 'leader_outlet',
+        userId: fx.leaderOutletUserId,
+        locationIds: [fx.outletId],
+      };
+      const leaderOutletActor: ActorContext = {
+        userId: fx.leaderOutletUserId,
+        roleKey: RoleKey.LEADER_OUTLET,
+        locationScope: [fx.outletId],
+      };
 
-      const created = await asRequest(leaderOutlet, (client) => buildService().create(client, leaderOutletActor, { locationId: fx.outletId }));
-      const cancelled = await asRequest(leaderOutlet, (client) => buildService().cancel(client, leaderOutletActor, created.id));
+      const created = await asRequest(leaderOutlet, (client) =>
+        buildService().create(client, leaderOutletActor, { locationId: fx.outletId }),
+      );
+      const cancelled = await asRequest(leaderOutlet, (client) =>
+        buildService().cancel(client, leaderOutletActor, created.id),
+      );
       expect(cancelled.status).toBe('cancelled');
 
-      const reread = await asRequest(leaderOutlet, (client) => buildService().getDetail(client, created.id));
+      const reread = await asRequest(leaderOutlet, (client) =>
+        buildService().getDetail(client, created.id),
+      );
       expect(reread.status).toBe('cancelled');
     });
   });

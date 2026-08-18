@@ -24,7 +24,10 @@ import type { Pool, PoolClient } from 'pg';
 const SYSTEM_ROLE = 'owner';
 
 /** Runs `fn` inside a fresh transaction with the central-role RLS bypass asserted, committing on success. */
-export async function withSystemContext<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withSystemContext<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

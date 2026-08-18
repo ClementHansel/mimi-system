@@ -34,7 +34,11 @@ import {
 
 function actorOf(req: RequestWithDbContext): PaymentActor {
   const user = req.user!;
-  return { userId: user.sub, roleKey: user.roleKey as RoleKey, locationScope: req.locationScope ?? null };
+  return {
+    userId: user.sub,
+    roleKey: user.roleKey as RoleKey,
+    locationScope: req.locationScope ?? null,
+  };
 }
 
 /** CONTRACTS.md §4.17 — chart of accounts + posting rules (read). */
@@ -58,7 +62,11 @@ export class AccountsController {
   @Patch(':id')
   @RequirePermission('accounting.coa.manage')
   @Audited({ entityType: 'chart_of_accounts', action: 'accounting.coa.update' })
-  update(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: UpdateAccountDto): Promise<Account> {
+  update(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateAccountDto,
+  ): Promise<Account> {
     return this.coa.update(req.dbClient!, id, dto);
   }
 }
@@ -101,7 +109,11 @@ export class JournalController {
   @Post(':id/reverse')
   @RequirePermission('accounting.journal.reverse')
   @Audited({ entityType: 'journal_entries', action: 'accounting.journal.reverse' })
-  reverse(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ReverseJournalEntryDto) {
+  reverse(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ReverseJournalEntryDto,
+  ) {
     return this.journal.reverse(req.dbClient!, req.user!.sub, id, dto.reason);
   }
 }
@@ -192,8 +204,18 @@ export class PaymentsController {
   @Post(':id/proof')
   @RequirePermission('payment.proof.upload')
   @Audited({ entityType: 'payment_verifications', action: 'payment.proof.upload' })
-  uploadProof(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: UploadProofDto) {
-    return this.payments.uploadProof(req.dbClient!, actorOf(req), id, dto.proofAttachmentId, dto.referenceNumber);
+  uploadProof(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: UploadProofDto,
+  ) {
+    return this.payments.uploadProof(
+      req.dbClient!,
+      actorOf(req),
+      id,
+      dto.proofAttachmentId,
+      dto.referenceNumber,
+    );
   }
 
   @Post(':id/verify')
@@ -225,14 +247,21 @@ export class ExceptionsController {
 
   @Get()
   @RequirePermission('sync.exception.review')
-  list(@Req() req: RequestWithDbContext, @Query() query: ListExceptionsQueryDto): Promise<Paginated<unknown>> {
+  list(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ListExceptionsQueryDto,
+  ): Promise<Paginated<unknown>> {
     return this.exceptions.list(req.dbClient!, query);
   }
 
   @Post(':id/verdict')
   @RequirePermission('sync.exception.review')
   @Audited({ entityType: 'offline_authorizations', action: 'sync.exception.verdict' })
-  verdict(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ExceptionVerdictDto) {
+  verdict(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ExceptionVerdictDto,
+  ) {
     return this.exceptions.recordVerdict(req.dbClient!, req.user!.sub, id, dto);
   }
 }

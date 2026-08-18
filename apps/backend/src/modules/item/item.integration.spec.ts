@@ -13,7 +13,13 @@ import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.reposi
 import { ItemService } from './item.service';
 import { ItemCategoryService } from './item-category.service';
 import { UnitService } from './unit.service';
-import { getOwnerPool, loadFixtures, nextCode, withRollback, type Fixtures } from '../location/test-support/live-db';
+import {
+  getOwnerPool,
+  loadFixtures,
+  nextCode,
+  withRollback,
+  type Fixtures,
+} from '../location/test-support/live-db';
 
 const eventsRepo = new SyncEventsRepository();
 const conflictsRepo = new SyncConflictsRepository();
@@ -90,7 +96,9 @@ describe('ItemService / ItemCategoryService / UnitService (live database)', () =
     expect(withCost.avgCost).toBeDefined();
     expect(withCost.lastPurchaseCost).toBeDefined();
 
-    const withoutCost = await withRollback((client) => itemService.getById(client, created.id, false));
+    const withoutCost = await withRollback((client) =>
+      itemService.getById(client, created.id, false),
+    );
     expect(withoutCost.avgCost).toBeUndefined();
     expect(withoutCost.lastPurchaseCost).toBeUndefined();
   });
@@ -99,47 +107,69 @@ describe('ItemService / ItemCategoryService / UnitService (live database)', () =
     const created = await withRollback((client) =>
       itemService.create(
         client,
-        { sku: nextCode('SKU'), name: 'Before', baseUnitId: fixtures.baseUnitId, storageType: ItemStorageType.CHILLED },
+        {
+          sku: nextCode('SKU'),
+          name: 'Before',
+          baseUnitId: fixtures.baseUnitId,
+          storageType: ItemStorageType.CHILLED,
+        },
         ACTOR,
       ),
     );
     createdItemIds.push(created.id);
 
-    const updated = await withRollback((client) => itemService.update(client, created.id, { name: 'After' }, ACTOR));
+    const updated = await withRollback((client) =>
+      itemService.update(client, created.id, { name: 'After' }, ACTOR),
+    );
     expect(updated.name).toBe('After');
 
-    const deactivated = await withRollback((client) => itemService.deactivate(client, created.id, ACTOR));
+    const deactivated = await withRollback((client) =>
+      itemService.deactivate(client, created.id, ACTOR),
+    );
     expect(deactivated.deactivated).toBe(true);
   });
 
   it('404s on a nonexistent item', async () => {
     await expect(
-      withRollback((client) => itemService.getById(client, '00000000-0000-0000-0000-000000000000', true)),
+      withRollback((client) =>
+        itemService.getById(client, '00000000-0000-0000-0000-000000000000', true),
+      ),
     ).rejects.toMatchObject({ status: 404 });
   });
 
   it('creates and updates an item category (no delete endpoint per CONTRACTS.md §4.4)', async () => {
-    const created = await withRollback((client) => categoryService.create(client, { name: nextCode('Cat') }, ACTOR));
+    const created = await withRollback((client) =>
+      categoryService.create(client, { name: nextCode('Cat') }, ACTOR),
+    );
     createdCategoryIds.push(created.id);
     expect(created.sortOrder).toBe(0);
 
-    const updated = await withRollback((client) => categoryService.update(client, created.id, { sortOrder: 5 }, ACTOR));
+    const updated = await withRollback((client) =>
+      categoryService.update(client, created.id, { sortOrder: 5 }, ACTOR),
+    );
     expect(updated.sortOrder).toBe(5);
   });
 
   it('creates a unit and lists it', async () => {
-    const created = await withRollback((client) => unitService.createUnit(client, { code: nextCode('U'), name: 'Test Unit' }, ACTOR));
+    const created = await withRollback((client) =>
+      unitService.createUnit(client, { code: nextCode('U'), name: 'Test Unit' }, ACTOR),
+    );
     createdUnitIds.push(created.id);
 
     const list = await withRollback((client) => unitService.listUnits(client));
     expect(list.some((u) => u.id === created.id)).toBe(true);
   });
 
-  it('replaces an item\'s unit conversions via PUT (full-replace semantics)', async () => {
+  it("replaces an item's unit conversions via PUT (full-replace semantics)", async () => {
     const item = await withRollback((client) =>
       itemService.create(
         client,
-        { sku: nextCode('SKU'), name: 'Conv Item', baseUnitId: fixtures.baseUnitId, storageType: ItemStorageType.DRY },
+        {
+          sku: nextCode('SKU'),
+          name: 'Conv Item',
+          baseUnitId: fixtures.baseUnitId,
+          storageType: ItemStorageType.DRY,
+        },
         ACTOR,
       ),
     );
@@ -149,7 +179,15 @@ describe('ItemService / ItemCategoryService / UnitService (live database)', () =
       unitService.putConversions(
         client,
         item.id,
-        { conversions: [{ fromUnitId: fixtures.baseUnitId, toUnitId: fixtures.altUnitId, factor: '1000.000000' }] },
+        {
+          conversions: [
+            {
+              fromUnitId: fixtures.baseUnitId,
+              toUnitId: fixtures.altUnitId,
+              factor: '1000.000000',
+            },
+          ],
+        },
         ACTOR,
       ),
     );
@@ -157,7 +195,9 @@ describe('ItemService / ItemCategoryService / UnitService (live database)', () =
     expect(firstPut[0]!.factor).toBe('1000.000000');
 
     // A second PUT with an EMPTY list must fully replace (delete) the first — proves this isn't an upsert-only append.
-    const secondPut = await withRollback((client) => unitService.putConversions(client, item.id, { conversions: [] }, ACTOR));
+    const secondPut = await withRollback((client) =>
+      unitService.putConversions(client, item.id, { conversions: [] }, ACTOR),
+    );
     expect(secondPut).toHaveLength(0);
 
     const fetched = await withRollback((client) => unitService.getConversions(client, item.id));

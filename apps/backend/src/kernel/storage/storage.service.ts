@@ -1,4 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import {
@@ -155,7 +163,8 @@ export class StorageService implements OnModuleInit {
     const host = this.config.get<string>('MINIO_ENDPOINT', 'localhost');
     const port = this.config.get<string>('MINIO_PORT', '9000');
     const ssl = String(this.config.get('MINIO_USE_SSL', 'false')).toLowerCase() === 'true';
-    const endpoint = this.config.get<string>('S3_ENDPOINT') ?? `${ssl ? 'https' : 'http'}://${host}:${port}`;
+    const endpoint =
+      this.config.get<string>('S3_ENDPOINT') ?? `${ssl ? 'https' : 'http'}://${host}:${port}`;
     this.bucket = this.config.get<string>('MINIO_BUCKET', 'mimi-storage');
 
     this.client = new S3Client({
@@ -205,9 +214,10 @@ export class StorageService implements OnModuleInit {
     }
 
     if (clientAttachmentId !== undefined) {
-      const existing = await client.query<AttachmentRow>('SELECT * FROM attachments WHERE id = $1', [
-        clientAttachmentId,
-      ]);
+      const existing = await client.query<AttachmentRow>(
+        'SELECT * FROM attachments WHERE id = $1',
+        [clientAttachmentId],
+      );
       if (existing.rows.length > 0) {
         const row = existing.rows[0]!;
         // Same id, different declared content: an offline device reusing an
@@ -225,7 +235,11 @@ export class StorageService implements OnModuleInit {
         // rather than minting a second row for the same capture.
         const retryUploadUrl = await getSignedUrl(
           this.client,
-          new PutObjectCommand({ Bucket: this.bucket, Key: row.object_key, ContentType: dto.mimeType }),
+          new PutObjectCommand({
+            Bucket: this.bucket,
+            Key: row.object_key,
+            ContentType: dto.mimeType,
+          }),
           { expiresIn: PRESIGN_UPLOAD_TTL_SECONDS },
         );
         return {
@@ -274,14 +288,21 @@ export class StorageService implements OnModuleInit {
   }
 
   private async findAttachment(client: PoolClient, id: string): Promise<AttachmentRow> {
-    const result = await client.query<AttachmentRow>('SELECT * FROM attachments WHERE id = $1', [id]);
+    const result = await client.query<AttachmentRow>('SELECT * FROM attachments WHERE id = $1', [
+      id,
+    ]);
     if (result.rows.length === 0) {
       throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Attachment ${id} not found` });
     }
     return result.rows[0]!;
   }
 
-  async confirm(client: PoolClient, user: JwtAccessPayload, id: string, sha256Hint?: string): Promise<AttachmentDto> {
+  async confirm(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    id: string,
+    sha256Hint?: string,
+  ): Promise<AttachmentDto> {
     void sha256Hint; // Accepted as an integrity hint from the client; the server-computed hash after processing is authoritative.
     const row = await this.findAttachment(client, id);
 
@@ -298,7 +319,9 @@ export class StorageService implements OnModuleInit {
     }
 
     if (isProcessableImage(row.mime_type)) {
-      const original = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }));
+      const original = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }),
+      );
       const chunks: Buffer[] = [];
       for await (const chunk of original.Body as AsyncIterable<Buffer>) chunks.push(chunk);
       const originalBuffer = Buffer.concat(chunks);
@@ -360,9 +383,13 @@ export class StorageService implements OnModuleInit {
       await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: row.object_key }));
     }
 
-    const url = await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }), {
-      expiresIn: PRESIGN_DOWNLOAD_TTL_SECONDS,
-    });
+    const url = await getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }),
+      {
+        expiresIn: PRESIGN_DOWNLOAD_TTL_SECONDS,
+      },
+    );
 
     return this.toDto(row, url);
   }
@@ -376,10 +403,17 @@ export class StorageService implements OnModuleInit {
     const row = await this.findAttachment(client, id);
     this.assertEntityScope(user, locationScope, row);
 
-    const url = await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }), {
-      expiresIn: PRESIGN_DOWNLOAD_TTL_SECONDS,
-    });
-    return { url, expiresAt: new Date(Date.now() + PRESIGN_DOWNLOAD_TTL_SECONDS * 1000).toISOString() };
+    const url = await getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }),
+      {
+        expiresIn: PRESIGN_DOWNLOAD_TTL_SECONDS,
+      },
+    );
+    return {
+      url,
+      expiresAt: new Date(Date.now() + PRESIGN_DOWNLOAD_TTL_SECONDS * 1000).toISOString(),
+    };
   }
 
   /**
@@ -392,7 +426,11 @@ export class StorageService implements OnModuleInit {
    * roles per `ScopeService`). An attachment with no `location_id` at all
    * (e.g. a menu product photo) is visible to anyone authenticated.
    */
-  private assertEntityScope(user: JwtAccessPayload, locationScope: string[] | null, row: AttachmentRow): void {
+  private assertEntityScope(
+    user: JwtAccessPayload,
+    locationScope: string[] | null,
+    row: AttachmentRow,
+  ): void {
     if (!row.location_id) return;
     if (CENTRAL_ROLES.has(user.roleKey)) return;
     if (locationScope === null) return;

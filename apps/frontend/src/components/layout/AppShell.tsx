@@ -140,7 +140,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (isPublicRoute(pathname)) {
     return (
       <>
-        <main className="flex min-h-dvh items-center justify-center bg-surface p-4">{children}</main>
+        <main className="flex min-h-dvh items-center justify-center bg-surface p-4">
+          {children}
+        </main>
         <ToastViewport />
       </>
     );
@@ -171,7 +173,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="hidden lg:block">
           <Sidebar variant="desktop" />
         </div>
-        <Drawer open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} title="Menu" side="left">
+        <Drawer
+          open={mobileMenuOpen}
+          onClose={() => setMobileMenuOpen(false)}
+          title="Menu"
+          side="left"
+        >
           <Sidebar variant="mobile" />
         </Drawer>
         <div className="flex flex-1 flex-col overflow-hidden">

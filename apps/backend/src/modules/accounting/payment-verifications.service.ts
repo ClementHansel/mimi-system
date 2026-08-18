@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   DocumentPrefix,
@@ -79,28 +85,60 @@ export class PaymentVerificationsService {
     private readonly eventBus: EventBus,
   ) {}
 
-  async list(client: PoolClient, query: ListPaymentsQueryDto): Promise<Paginated<PaymentVerification>> {
+  async list(
+    client: PoolClient,
+    query: ListPaymentsQueryDto,
+  ): Promise<Paginated<PaymentVerification>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (query.status) { conds.push(`pv.status = $${i++}`); args.push(query.status); }
-    if (query.refType) { conds.push(`pv.ref_type = $${i++}`); args.push(query.refType); }
-    if (query.locationId) { conds.push(`pv.location_id = $${i++}`); args.push(query.locationId); }
-    if (query.from) { conds.push(`pv.created_at >= $${i++}`); args.push(query.from); }
-    if (query.to) { conds.push(`pv.created_at <= $${i++}`); args.push(query.to); }
+    if (query.status) {
+      conds.push(`pv.status = $${i++}`);
+      args.push(query.status);
+    }
+    if (query.refType) {
+      conds.push(`pv.ref_type = $${i++}`);
+      args.push(query.refType);
+    }
+    if (query.locationId) {
+      conds.push(`pv.location_id = $${i++}`);
+      args.push(query.locationId);
+    }
+    if (query.from) {
+      conds.push(`pv.created_at >= $${i++}`);
+      args.push(query.from);
+    }
+    if (query.to) {
+      conds.push(`pv.created_at <= $${i++}`);
+      args.push(query.to);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (page - 1) * pageSize;
 
     const [rows, count] = await Promise.all([
-      client.query<PaymentVerificationRow>(`${PV_SELECT} ${where} ORDER BY pv.created_at DESC LIMIT $${i} OFFSET $${i + 1}`, [...args, pageSize, offset]),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM payment_verifications pv ${where}`, args),
+      client.query<PaymentVerificationRow>(
+        `${PV_SELECT} ${where} ORDER BY pv.created_at DESC LIMIT $${i} OFFSET $${i + 1}`,
+        [...args, pageSize, offset],
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM payment_verifications pv ${where}`,
+        args,
+      ),
     ]);
-    return { rows: rows.rows.map(toPaymentVerification), total: Number(count.rows[0]?.count ?? '0'), page, pageSize };
+    return {
+      rows: rows.rows.map(toPaymentVerification),
+      total: Number(count.rows[0]?.count ?? '0'),
+      page,
+      pageSize,
+    };
   }
 
-  async getDetail(client: PoolClient, id: UUID): Promise<PaymentVerification & { history: unknown[] }> {
+  async getDetail(
+    client: PoolClient,
+    id: UUID,
+  ): Promise<PaymentVerification & { history: unknown[] }> {
     const row = await this.requireRow(client, id);
     // `AuditRow[]` history is `kernel/audit`'s territory (the `@Audited()` interceptor, W2-C) — this
     // module surfaces an empty history array rather than reaching into audit_log's schema directly,
@@ -108,7 +146,11 @@ export class PaymentVerificationsService {
     return { ...toPaymentVerification(row), history: [] };
   }
 
-  async create(client: PoolClient, actor: PaymentActor, dto: CreatePaymentDto): Promise<PaymentVerification> {
+  async create(
+    client: PoolClient,
+    actor: PaymentActor,
+    dto: CreatePaymentDto,
+  ): Promise<PaymentVerification> {
     this.assertScope(actor, dto.locationId ?? null);
 
     return withWrite(client, async () => {
@@ -124,7 +166,19 @@ export class PaymentVerificationsService {
           `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, proof_attachment_id, reference_number, submitted_by, location_id, notes)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
            RETURNING id`,
-          [pvNumber, dto.refType, dto.refId ?? null, dto.payeeType, dto.payeeId ?? null, dto.amount, dto.proofAttachmentId ?? null, dto.referenceNumber ?? null, actor.userId, dto.locationId ?? null, dto.notes ?? null],
+          [
+            pvNumber,
+            dto.refType,
+            dto.refId ?? null,
+            dto.payeeType,
+            dto.payeeId ?? null,
+            dto.amount,
+            dto.proofAttachmentId ?? null,
+            dto.referenceNumber ?? null,
+            actor.userId,
+            dto.locationId ?? null,
+            dto.notes ?? null,
+          ],
         );
         // NOTE: no sync event here — `@mimi/sync-protocol`'s registry (`schema/registry.ts`) defines only
         // three wire ops for `payment_verifications`: 'verified', 'paid', 'rejected' ("pull-only: no
@@ -148,20 +202,46 @@ export class PaymentVerificationsService {
   async createSystemVerification(
     client: PoolClient,
     callerContext: { role: string; userId: UUID; locationIds: readonly UUID[] },
-    params: { refType: string; refId: UUID | null; payeeType: string; payeeId: UUID | null; amount: string; locationId: UUID | null; submittedBy: UUID; notes?: string | null },
+    params: {
+      refType: string;
+      refId: UUID | null;
+      payeeType: string;
+      payeeId: UUID | null;
+      amount: string;
+      locationId: UUID | null;
+      submittedBy: UUID;
+      notes?: string | null;
+    },
   ): Promise<UUID> {
     const pvNumber = await this.nextPvNumber(client);
-    const actor: PaymentActor = { userId: callerContext.userId, roleKey: callerContext.role, locationScope: callerContext.locationIds };
+    const actor: PaymentActor = {
+      userId: callerContext.userId,
+      roleKey: callerContext.role,
+      locationScope: callerContext.locationIds,
+    };
 
-    const id = await this.escalatedInsert(client, actor, async () =>
-      (
-        await client.query<{ id: UUID }>(
-          `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, submitted_by, location_id, notes)
+    const id = await this.escalatedInsert(
+      client,
+      actor,
+      async () =>
+        (
+          await client.query<{ id: UUID }>(
+            `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, submitted_by, location_id, notes)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
            RETURNING id`,
-          [pvNumber, params.refType, params.refId, params.payeeType, params.payeeId, params.amount, params.submittedBy, params.locationId, params.notes ?? null],
-        )
-      ).rows[0]!.id,
+            [
+              pvNumber,
+              params.refType,
+              params.refId,
+              params.payeeType,
+              params.payeeId,
+              params.amount,
+              params.submittedBy,
+              params.locationId,
+              params.notes ?? null,
+            ],
+          )
+        ).rows[0]!.id,
     );
 
     // Same reasoning as `create()` above — no 'submitted'/'created' op exists in the wire vocabulary.
@@ -184,22 +264,42 @@ export class PaymentVerificationsService {
    * `finally` restores even if `fn` throws (e.g. a CHECK constraint
    * violation) — an escalated role must never leak past its one write.
    */
-  private async escalatedInsert<T>(client: PoolClient, actor: PaymentActor, fn: () => Promise<T>): Promise<T> {
+  private async escalatedInsert<T>(
+    client: PoolClient,
+    actor: PaymentActor,
+    fn: () => Promise<T>,
+  ): Promise<T> {
     await assertSystemContext(client, { role: SYSTEM_CENTRAL_ROLE });
     try {
       return await fn();
     } finally {
-      await assertSystemContext(client, { role: actor.roleKey, userId: actor.userId, locationIds: actor.locationScope ?? [] });
+      await assertSystemContext(client, {
+        role: actor.roleKey,
+        userId: actor.userId,
+        locationIds: actor.locationScope ?? [],
+      });
     }
   }
 
-  async uploadProof(client: PoolClient, _actor: PaymentActor, id: UUID, proofAttachmentId: UUID, referenceNumber?: string): Promise<PaymentVerification> {
+  async uploadProof(
+    client: PoolClient,
+    _actor: PaymentActor,
+    id: UUID,
+    proofAttachmentId: UUID,
+    referenceNumber?: string,
+  ): Promise<PaymentVerification> {
     const row = await this.requireRow(client, id);
     if (row.status !== 'pending') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PV ${row.pv_number} is '${row.status}' — proof can only be attached while pending` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PV ${row.pv_number} is '${row.status}' — proof can only be attached while pending`,
+      });
     }
     return withWrite(client, async () => {
-      await client.query(`UPDATE payment_verifications SET proof_attachment_id = $2, reference_number = COALESCE($3, reference_number), updated_at = NOW() WHERE id = $1`, [id, proofAttachmentId, referenceNumber ?? null]);
+      await client.query(
+        `UPDATE payment_verifications SET proof_attachment_id = $2, reference_number = COALESCE($3, reference_number), updated_at = NOW() WHERE id = $1`,
+        [id, proofAttachmentId, referenceNumber ?? null],
+      );
       // No wire op for 'proof_uploaded' either (see `create()`'s note) — the eventual 'verified' emit is
       // the first point in this ladder a device-facing subscriber needs to hear about.
       return this.getOne(client, id);
@@ -207,19 +307,37 @@ export class PaymentVerificationsService {
   }
 
   /** FR-ACCT-02/03 — requires proof attached (`ERR_PROOF_REQUIRED`). */
-  async verify(client: PoolClient, actor: PaymentActor, id: UUID, _note: string | undefined): Promise<PaymentVerification> {
+  async verify(
+    client: PoolClient,
+    actor: PaymentActor,
+    id: UUID,
+    _note: string | undefined,
+  ): Promise<PaymentVerification> {
     const row = await this.requireRow(client, id);
     if (row.status !== 'pending') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PV ${row.pv_number} is '${row.status}', not 'pending'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PV ${row.pv_number} is '${row.status}', not 'pending'`,
+      });
     }
     if (!row.proof_attachment_id) {
-      throw new BadRequestException({ code: ERR_PROOF_REQUIRED, message: `PV ${row.pv_number} has no proof attachment — upload one before verifying` });
+      throw new BadRequestException({
+        code: ERR_PROOF_REQUIRED,
+        message: `PV ${row.pv_number} has no proof attachment — upload one before verifying`,
+      });
     }
     return withWrite(client, async () => {
       const verifiedAt = new Date().toISOString();
-      await client.query(`UPDATE payment_verifications SET status = 'verified', verified_by = $2, verified_at = $3 WHERE id = $1`, [id, actor.userId, verifiedAt]);
+      await client.query(
+        `UPDATE payment_verifications SET status = 'verified', verified_by = $2, verified_at = $3 WHERE id = $1`,
+        [id, actor.userId, verifiedAt],
+      );
       await this.sync.emit(client, {
-        entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'verified', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
+        entity: SyncEntity.PAYMENT_VERIFICATIONS,
+        op: 'verified',
+        entityId: id,
+        locationId: row.location_id,
+        actorUserId: actor.userId,
         data: { verifiedBy: actor.userId, verifiedAt },
       });
       return this.getOne(client, id);
@@ -233,16 +351,31 @@ export class PaymentVerificationsService {
    * directly — this module is a producer of the same event its own engine
    * consumes, kept as one seam rather than two).
    */
-  async pay(client: PoolClient, actor: PaymentActor, id: UUID, dto: PayPaymentDto): Promise<PaymentVerification> {
+  async pay(
+    client: PoolClient,
+    actor: PaymentActor,
+    id: UUID,
+    dto: PayPaymentDto,
+  ): Promise<PaymentVerification> {
     const row = await this.requireRow(client, id);
     if (row.status !== 'verified') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PV ${row.pv_number} is '${row.status}', not 'verified'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PV ${row.pv_number} is '${row.status}', not 'verified'`,
+      });
     }
     return withWrite(client, async () => {
       const paidAt = dto.paidAt ?? new Date().toISOString();
-      await client.query(`UPDATE payment_verifications SET status = 'paid', paid_by = $2, paid_at = $3, paid_via = $4 WHERE id = $1`, [id, actor.userId, paidAt, dto.paidVia]);
+      await client.query(
+        `UPDATE payment_verifications SET status = 'paid', paid_by = $2, paid_at = $3, paid_via = $4 WHERE id = $1`,
+        [id, actor.userId, paidAt, dto.paidVia],
+      );
       await this.sync.emit(client, {
-        entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'paid', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
+        entity: SyncEntity.PAYMENT_VERIFICATIONS,
+        op: 'paid',
+        entityId: id,
+        locationId: row.location_id,
+        actorUserId: actor.userId,
         data: { paidBy: actor.userId, paidAt, paidVia: dto.paidVia },
       });
 
@@ -251,15 +384,30 @@ export class PaymentVerificationsService {
     });
   }
 
-  async reject(client: PoolClient, actor: PaymentActor, id: UUID, reason: string): Promise<PaymentVerification> {
+  async reject(
+    client: PoolClient,
+    actor: PaymentActor,
+    id: UUID,
+    reason: string,
+  ): Promise<PaymentVerification> {
     const row = await this.requireRow(client, id);
     if (row.status === 'paid' || row.status === 'rejected') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `PV ${row.pv_number} is '${row.status}' — cannot reject` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PV ${row.pv_number} is '${row.status}' — cannot reject`,
+      });
     }
     return withWrite(client, async () => {
-      await client.query(`UPDATE payment_verifications SET status = 'rejected', rejection_reason = $2 WHERE id = $1`, [id, reason]);
+      await client.query(
+        `UPDATE payment_verifications SET status = 'rejected', rejection_reason = $2 WHERE id = $1`,
+        [id, reason],
+      );
       await this.sync.emit(client, {
-        entity: SyncEntity.PAYMENT_VERIFICATIONS, op: 'rejected', entityId: id, locationId: row.location_id, actorUserId: actor.userId,
+        entity: SyncEntity.PAYMENT_VERIFICATIONS,
+        op: 'rejected',
+        entityId: id,
+        locationId: row.location_id,
+        actorUserId: actor.userId,
         data: { reason },
       });
       return this.getOne(client, id);
@@ -273,22 +421,44 @@ export class PaymentVerificationsService {
    * `ref_type`/`paid_via`/the `notes` kind marker (see `accounting.types.ts`
    * for why `notes` carries the marker instead of a new column/enum value).
    */
-  private async publishPaymentJournal(row: PaymentVerificationRow, paidVia: string, paidAt: string): Promise<void> {
+  private async publishPaymentJournal(
+    row: PaymentVerificationRow,
+    paidVia: string,
+    paidAt: string,
+  ): Promise<void> {
     const kind = extractPvKind(row.notes);
-    const base = { documentType: 'payment_verification', documentId: row.id, locationId: row.location_id, amount: row.amount, occurredAt: paidAt };
+    const base = {
+      documentType: 'payment_verification',
+      documentId: row.id,
+      locationId: row.location_id,
+      amount: row.amount,
+      occurredAt: paidAt,
+    };
 
     if (kind === 'petty_cash_topup') {
-      await this.eventBus.publish('journal.action', { ...base, eventType: 'petty_cash_topup', context: {} });
+      await this.eventBus.publish('journal.action', {
+        ...base,
+        eventType: 'petty_cash_topup',
+        context: {},
+      });
       return;
     }
     if (kind === 'employee_loan_disbursement') {
-      await this.eventBus.publish('journal.action', { ...base, eventType: 'employee_loan_disbursement', context: {} });
+      await this.eventBus.publish('journal.action', {
+        ...base,
+        eventType: 'employee_loan_disbursement',
+        context: {},
+      });
       return;
     }
 
     switch (row.ref_type) {
       case 'payroll_run':
-        await this.eventBus.publish('journal.action', { ...base, eventType: 'payroll_payment', context: {} });
+        await this.eventBus.publish('journal.action', {
+          ...base,
+          eventType: 'payroll_payment',
+          context: {},
+        });
         return;
       case 'sale_payment':
         // Distinguish QRIS settlement (X3) vs. transfer verification (X4) by paid_via, per §6.3.
@@ -299,11 +469,19 @@ export class PaymentVerificationsService {
         });
         return;
       case 'online_order':
-        await this.eventBus.publish('journal.action', { ...base, eventType: 'platform_settlement', context: {} });
+        await this.eventBus.publish('journal.action', {
+          ...base,
+          eventType: 'platform_settlement',
+          context: {},
+        });
         return;
       case 'other':
         if (row.location_id) {
-          await this.eventBus.publish('journal.action', { ...base, eventType: 'outlet_operating_expense', context: { paidVia } });
+          await this.eventBus.publish('journal.action', {
+            ...base,
+            eventType: 'outlet_operating_expense',
+            context: { paidVia },
+          });
         }
         return;
       default:
@@ -319,7 +497,11 @@ export class PaymentVerificationsService {
   private async requireRow(client: PoolClient, id: UUID): Promise<PaymentVerificationRow> {
     const res = await client.query<PaymentVerificationRow>(`${PV_SELECT} WHERE pv.id = $1`, [id]);
     const row = res.rows[0];
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Payment verification ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Payment verification ${id} not found`,
+      });
     return row;
   }
 
@@ -336,14 +518,21 @@ export class PaymentVerificationsService {
        RETURNING last_number`,
       [DocumentPrefix.PAYMENT_VERIFICATION, period],
     );
-    return formatCloudDocNumber(DocumentPrefix.PAYMENT_VERIFICATION, period, res.rows[0]!.last_number);
+    return formatCloudDocNumber(
+      DocumentPrefix.PAYMENT_VERIFICATION,
+      period,
+      res.rows[0]!.last_number,
+    );
   }
 
   /** `payment.proof.upload` (§3) is granted to nearly every role including scoped ones (Kasir, Supervisor) — RLS on `payment_verifications` itself is central-role-only (migration 095), so a scoped submitter's OWN location check has to happen here, in application code, same shape as every other module's `assertLocationInScope`. */
   private assertScope(actor: PaymentActor, locationId: UUID | null): void {
     if (actor.locationScope === null || locationId === null) return;
     if (!actor.locationScope.includes(locationId)) {
-      throw new ForbiddenException({ code: ERR_FORBIDDEN, message: `Not assigned to location ${locationId}` });
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: `Not assigned to location ${locationId}`,
+      });
     }
   }
 }

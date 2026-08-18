@@ -59,14 +59,19 @@ export interface RlsSessionContext {
   locationIds: readonly string[];
 }
 
-export async function asRequest<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function asRequest<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -81,7 +86,10 @@ export interface TestNode {
 }
 
 /** A second, DIFFERENT real outlet location than the one a test's primary fixture already used — for cross-location authorization tests (spoofing/mismatch cases). Delegates to `fetchAnotherLocationId`'s exact query shape but is named separately here for call-site clarity in node/device pairing tests. */
-export async function insertTestNode(locationId: string, version = '1.0.0-test'): Promise<TestNode> {
+export async function insertTestNode(
+  locationId: string,
+  version = '1.0.0-test',
+): Promise<TestNode> {
   const token = randomBytes(24).toString('hex');
   const tokenHash = hashDeviceToken(token);
   const res = await getOwnerPool().query<{ id: string }>(
@@ -93,7 +101,11 @@ export async function insertTestNode(locationId: string, version = '1.0.0-test')
   return { id: res.rows[0]!.id, token, tokenHash };
 }
 
-export async function insertTestDeviceForNode(locationId: string, nodeId: string, tokenHash: string): Promise<string> {
+export async function insertTestDeviceForNode(
+  locationId: string,
+  nodeId: string,
+  tokenHash: string,
+): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
     `INSERT INTO devices (location_id, node_id, category, name, status, device_token_hash, last_seen_at)
      VALUES ($1, $2, 'tablet', 'W3-10 test device', 'online', $3, NOW())
@@ -104,30 +116,55 @@ export async function insertTestDeviceForNode(locationId: string, nodeId: string
 }
 
 export async function backdateDeviceLastSeen(deviceId: string, secondsAgo: number): Promise<void> {
-  await getOwnerPool().query(`UPDATE devices SET last_seen_at = NOW() - ($2 || ' seconds')::interval WHERE id = $1`, [deviceId, secondsAgo]);
+  await getOwnerPool().query(
+    `UPDATE devices SET last_seen_at = NOW() - ($2 || ' seconds')::interval WHERE id = $1`,
+    [deviceId, secondsAgo],
+  );
 }
 
 export async function backdateNodeLastSeen(nodeId: string, secondsAgo: number): Promise<void> {
-  await getOwnerPool().query(`UPDATE branch_nodes SET last_seen_at = NOW() - ($2 || ' seconds')::interval WHERE id = $1`, [nodeId, secondsAgo]);
+  await getOwnerPool().query(
+    `UPDATE branch_nodes SET last_seen_at = NOW() - ($2 || ' seconds')::interval WHERE id = $1`,
+    [nodeId, secondsAgo],
+  );
 }
 
 export async function readDeviceStatus(deviceId: string): Promise<string> {
-  const res = await getOwnerPool().query<{ status: string }>(`SELECT status FROM devices WHERE id = $1`, [deviceId]);
+  const res = await getOwnerPool().query<{ status: string }>(
+    `SELECT status FROM devices WHERE id = $1`,
+    [deviceId],
+  );
   return res.rows[0]!.status;
 }
 
 export async function readNodeStatus(nodeId: string): Promise<string> {
-  const res = await getOwnerPool().query<{ status: string }>(`SELECT status FROM branch_nodes WHERE id = $1`, [nodeId]);
+  const res = await getOwnerPool().query<{ status: string }>(
+    `SELECT status FROM branch_nodes WHERE id = $1`,
+    [nodeId],
+  );
   return res.rows[0]!.status;
 }
 
-export async function deviceEventsFor(params: { deviceId?: string; nodeId?: string; locationId?: string }): Promise<{ type: string; created_at: string }[]> {
+export async function deviceEventsFor(params: {
+  deviceId?: string;
+  nodeId?: string;
+  locationId?: string;
+}): Promise<{ type: string; created_at: string }[]> {
   const conds: string[] = [];
   const args: unknown[] = [];
   let i = 1;
-  if (params.deviceId) { conds.push(`device_id = $${i++}`); args.push(params.deviceId); }
-  if (params.nodeId) { conds.push(`node_id = $${i++}`); args.push(params.nodeId); }
-  if (params.locationId && !params.deviceId && !params.nodeId) { conds.push(`location_id = $${i} AND device_id IS NULL AND node_id IS NULL`); args.push(params.locationId); }
+  if (params.deviceId) {
+    conds.push(`device_id = $${i++}`);
+    args.push(params.deviceId);
+  }
+  if (params.nodeId) {
+    conds.push(`node_id = $${i++}`);
+    args.push(params.nodeId);
+  }
+  if (params.locationId && !params.deviceId && !params.nodeId) {
+    conds.push(`location_id = $${i} AND device_id IS NULL AND node_id IS NULL`);
+    args.push(params.locationId);
+  }
   const res = await getOwnerPool().query<{ type: string; created_at: string }>(
     `SELECT type, created_at FROM device_events WHERE ${conds.join(' AND ')} ORDER BY created_at ASC`,
     args,
@@ -136,12 +173,18 @@ export async function deviceEventsFor(params: { deviceId?: string; nodeId?: stri
 }
 
 /** Cleans up everything a device/node lifecycle test could plausibly have created for the given synthetic ids — child rows before parents (FK order). */
-export async function cleanupNodesAndDevices(params: { nodeIds?: string[]; deviceIds?: string[]; locationIds?: string[] }): Promise<void> {
+export async function cleanupNodesAndDevices(params: {
+  nodeIds?: string[];
+  deviceIds?: string[];
+  locationIds?: string[];
+}): Promise<void> {
   const pool = getOwnerPool();
   const deviceIds = params.deviceIds ?? [];
   const nodeIds = params.nodeIds ?? [];
   if (deviceIds.length > 0) {
-    await pool.query(`DELETE FROM device_heartbeats WHERE device_id = ANY($1::uuid[])`, [deviceIds]);
+    await pool.query(`DELETE FROM device_heartbeats WHERE device_id = ANY($1::uuid[])`, [
+      deviceIds,
+    ]);
     await pool.query(`DELETE FROM device_events WHERE device_id = ANY($1::uuid[])`, [deviceIds]);
     await pool.query(`DELETE FROM devices WHERE id = ANY($1::uuid[])`, [deviceIds]);
   }
@@ -156,8 +199,13 @@ export async function cleanupNodesAndDevices(params: { nodeIds?: string[]; devic
     await pool.query(`DELETE FROM branch_nodes WHERE id = ANY($1::uuid[])`, [nodeIds]);
   }
   if (params.locationIds && params.locationIds.length > 0) {
-    await pool.query(`DELETE FROM device_events WHERE location_id = ANY($1::uuid[]) AND device_id IS NULL AND node_id IS NULL`, [params.locationIds]);
-    await pool.query(`DELETE FROM pairing_tokens WHERE location_id = ANY($1::uuid[])`, [params.locationIds]);
+    await pool.query(
+      `DELETE FROM device_events WHERE location_id = ANY($1::uuid[]) AND device_id IS NULL AND node_id IS NULL`,
+      [params.locationIds],
+    );
+    await pool.query(`DELETE FROM pairing_tokens WHERE location_id = ANY($1::uuid[])`, [
+      params.locationIds,
+    ]);
   }
 }
 

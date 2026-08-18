@@ -16,4 +16,7 @@ export interface MinimalSocket {
   disconnect(): void;
 }
 
-export type SocketFactory = (url: string, opts: { auth: { token: string }; reconnection: boolean; transports: string[] }) => MinimalSocket;
+export type SocketFactory = (
+  url: string,
+  opts: { auth: { token: string }; reconnection: boolean; transports: string[] },
+) => MinimalSocket;

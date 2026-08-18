@@ -15,7 +15,12 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Money, UUID } from '@mimi/shared';
-import { businessDateOf, compareMoney, DEFAULT_MAX_OFFLINE_WINDOW_HOURS, DEFAULT_OFFLINE_APPROVAL_VOLUME_CAP } from '@mimi/shared';
+import {
+  businessDateOf,
+  compareMoney,
+  DEFAULT_MAX_OFFLINE_WINDOW_HOURS,
+  DEFAULT_OFFLINE_APPROVAL_VOLUME_CAP,
+} from '@mimi/shared';
 import type { SyncEventEnvelope } from '@mimi/sync-protocol';
 import type { OfflineAuthorizationMeta } from '@mimi/sync-protocol';
 import type { DbClient } from './sync-events.repository';
@@ -38,7 +43,11 @@ const ENTITY_DOCUMENT_TYPE: Record<string, string> = {
 };
 
 /** `defensible_at` (§6.4): `occurred_at` clamped to `[relay_received_at - maxOfflineWindow, relay_received_at]`. */
-function defensibleAt(occurredAt: string, relayReceivedAt: string, maxOfflineWindowMs: number): string {
+function defensibleAt(
+  occurredAt: string,
+  relayReceivedAt: string,
+  maxOfflineWindowMs: number,
+): string {
   const occurredMs = new Date(occurredAt).getTime();
   const relayMs = new Date(relayReceivedAt).getTime();
   const lower = relayMs - maxOfflineWindowMs;
@@ -65,23 +74,52 @@ export class OfflineAuthService {
     const documentType = ENTITY_DOCUMENT_TYPE[event.entity] ?? event.entity;
 
     if (!auth) {
-      await this.persist(client, event, documentType, null, null, 'failed', 'missing meta.authorization on an *_offline op — malformed approval, not a mere sync reject (fact still applies, §3.4 step 4)');
+      await this.persist(
+        client,
+        event,
+        documentType,
+        null,
+        null,
+        'failed',
+        'missing meta.authorization on an *_offline op — malformed approval, not a mere sync reject (fact still applies, §3.4 step 4)',
+      );
       return;
     }
 
     const result = await this.reverify(client, event, auth);
-    await this.persist(client, event, documentType, auth, result.credentialId, result.outcome, result.reason);
+    await this.persist(
+      client,
+      event,
+      documentType,
+      auth,
+      result.credentialId,
+      result.outcome,
+      result.reason,
+    );
   }
 
-  private async reverify(client: DbClient, event: SyncEventEnvelope, auth: OfflineAuthorizationMeta): Promise<ReverifyResult> {
+  private async reverify(
+    client: DbClient,
+    event: SyncEventEnvelope,
+    auth: OfflineAuthorizationMeta,
+  ): Promise<ReverifyResult> {
     // check 1 — credential exists, minted for this sub. NOTE: `credentialId: null` in the two returns
     // below is load-bearing, not incidental — `offline_authorizations.credential_id` is NOT NULL + FK'd
     // to `offline_credentials`, so a forged/unknown id has no row `persist()` can legally attribute a
     // "use" to; see that method for how a `null` here routes straight to `sync_conflicts` instead.
     const cred = await this.offlineCreds.findCredential(client, auth.credentialId);
-    if (!cred) return { outcome: 'failed', reason: 'credential_id not found in offline_credentials — forged or unknown (fraud alert)', credentialId: null };
+    if (!cred)
+      return {
+        outcome: 'failed',
+        reason: 'credential_id not found in offline_credentials — forged or unknown (fraud alert)',
+        credentialId: null,
+      };
     if (cred.user_id !== auth.approverUserId) {
-      return { outcome: 'failed', reason: 'credential was not minted for the claimed approver_user_id', credentialId: cred.credential_id };
+      return {
+        outcome: 'failed',
+        reason: 'credential was not minted for the claimed approver_user_id',
+        credentialId: cred.credential_id,
+      };
     }
 
     // check 2 — binding HMAC recomputes over the event's own fields with the stored k.
@@ -90,47 +128,96 @@ export class OfflineAuthService {
     try {
       k = decryptBindingSecret(cred.binding_secret_enc, encKey);
     } catch {
-      return { outcome: 'failed', reason: 'binding secret could not be decrypted (corrupt or tampered credential row)', credentialId: cred.credential_id };
+      return {
+        outcome: 'failed',
+        reason: 'binding secret could not be decrypted (corrupt or tampered credential row)',
+        credentialId: cred.credential_id,
+      };
     }
     const amountIdr = auth.amountIdr ?? '';
     const hmacOk = verifyBindingHmac(
       k,
-      { eventId: event.eventId, entity: event.entity, entityId: event.entityId, op: event.op, amountIdr, occurredAt: event.occurredAt },
+      {
+        eventId: event.eventId,
+        entity: event.entity,
+        entityId: event.entityId,
+        op: event.op,
+        amountIdr,
+        occurredAt: event.occurredAt,
+      },
       auth.binding,
     );
     if (!hmacOk) {
-      return { outcome: 'failed', reason: 'binding HMAC does not verify — tampered action, or a binding replayed onto a different document/amount', credentialId: cred.credential_id };
+      return {
+        outcome: 'failed',
+        reason:
+          'binding HMAC does not verify — tampered action, or a binding replayed onto a different document/amount',
+        credentialId: cred.credential_id,
+      };
     }
 
     const relayReceivedAt = event.relayReceivedAt ?? new Date().toISOString();
 
     // check 3 — not revoked before relay_received_at.
-    if (cred.revoked_at && new Date(cred.revoked_at).getTime() <= new Date(relayReceivedAt).getTime()) {
-      return { outcome: 'failed', reason: `credential revoked at ${cred.revoked_at}, effective before this action's server sighting`, credentialId: cred.credential_id };
+    if (
+      cred.revoked_at &&
+      new Date(cred.revoked_at).getTime() <= new Date(relayReceivedAt).getTime()
+    ) {
+      return {
+        outcome: 'failed',
+        reason: `credential revoked at ${cred.revoked_at}, effective before this action's server sighting`,
+        credentialId: cred.credential_id,
+      };
     }
 
     // check 4 — expiry, §6.4 provable/unprovable/failed.
     const expiryVerdict = this.checkExpiry(event.occurredAt, relayReceivedAt, cred.expires_at);
     if (expiryVerdict === 'failed') {
-      return { outcome: 'failed', reason: `claim (${event.occurredAt}) is outside the credential's validity window even accounting for the defensible clamp`, credentialId: cred.credential_id };
+      return {
+        outcome: 'failed',
+        reason: `claim (${event.occurredAt}) is outside the credential's validity window even accounting for the defensible clamp`,
+        credentialId: cred.credential_id,
+      };
     }
 
     // check 5 — scope covers (entity, op); amount <= max_idr.
     const scopeKey = scopeKeyForEntity(event.entity);
     const scope = cred.scopes[scopeKey];
     if (!scope) {
-      return { outcome: 'failed', reason: `credential scopes do not include '${scopeKey}'`, credentialId: cred.credential_id };
+      return {
+        outcome: 'failed',
+        reason: `credential scopes do not include '${scopeKey}'`,
+        credentialId: cred.credential_id,
+      };
     }
     if (scope.max_idr && auth.amountIdr && compareMoney(auth.amountIdr, scope.max_idr) > 0) {
-      return { outcome: 'failed', reason: `amount ${auth.amountIdr} exceeds scope cap ${scope.max_idr}`, credentialId: cred.credential_id };
+      return {
+        outcome: 'failed',
+        reason: `amount ${auth.amountIdr} exceeds scope cap ${scope.max_idr}`,
+        credentialId: cred.credential_id,
+      };
     }
 
     // check 6 — approver active + held role/location at defensible_at (best-effort: current state; see note below).
     const active = await this.offlineCreds.userIsActive(client, auth.approverUserId);
-    if (!active) return { outcome: 'failed', reason: 'approver is no longer an active user', credentialId: cred.credential_id };
+    if (!active)
+      return {
+        outcome: 'failed',
+        reason: 'approver is no longer an active user',
+        credentialId: cred.credential_id,
+      };
     if (event.locationId) {
-      const holdsLocation = await this.offlineCreds.userHoldsLocation(client, auth.approverUserId, event.locationId);
-      if (!holdsLocation) return { outcome: 'failed', reason: 'approver no longer holds the location this event was recorded at', credentialId: cred.credential_id };
+      const holdsLocation = await this.offlineCreds.userHoldsLocation(
+        client,
+        auth.approverUserId,
+        event.locationId,
+      );
+      if (!holdsLocation)
+        return {
+          outcome: 'failed',
+          reason: 'approver no longer holds the location this event was recorded at',
+          credentialId: cred.credential_id,
+        };
     }
 
     // check 7 — selfie present when required; PIN telemetry sane.
@@ -146,28 +233,49 @@ export class OfflineAuthService {
         // of anything; the R3 evidence-SLA job (24h) is the actual enforcement point for that lag.
       }
     }
-    if (typeof auth.pinAttemptsBeforeSuccess !== 'number' || auth.pinAttemptsBeforeSuccess < 1 || auth.pinAttemptsBeforeSuccess > 5) {
+    if (
+      typeof auth.pinAttemptsBeforeSuccess !== 'number' ||
+      auth.pinAttemptsBeforeSuccess < 1 ||
+      auth.pinAttemptsBeforeSuccess > 5
+    ) {
       degraded = true;
     }
 
     // check 8 — volume cap: uses under this credential within its TTL.
-    const priorUses = await this.offlineCreds.countPriorUses(client, cred.credential_id, new Date().toISOString());
+    const priorUses = await this.offlineCreds.countPriorUses(
+      client,
+      cred.credential_id,
+      new Date().toISOString(),
+    );
     if (priorUses >= (cred.volume_cap || DEFAULT_OFFLINE_APPROVAL_VOLUME_CAP)) {
       degraded = true;
     }
 
     if (degraded) {
-      return { outcome: 'unprovable', reason: 'degraded evidence — missing/incomplete selfie or PIN telemetry, or volume cap exceeded (§7.4 checks 7/8)', credentialId: cred.credential_id };
+      return {
+        outcome: 'unprovable',
+        reason:
+          'degraded evidence — missing/incomplete selfie or PIN telemetry, or volume cap exceeded (§7.4 checks 7/8)',
+        credentialId: cred.credential_id,
+      };
     }
     if (expiryVerdict === 'unprovable') {
-      return { outcome: 'unprovable', reason: 'expiry is in-window by claim but the first server sighting is after expiry (§6.4)', credentialId: cred.credential_id };
+      return {
+        outcome: 'unprovable',
+        reason: 'expiry is in-window by claim but the first server sighting is after expiry (§6.4)',
+        credentialId: cred.credential_id,
+      };
     }
 
     return { outcome: 'verified', reason: null, credentialId: cred.credential_id };
   }
 
   /** §7.4 check 4 / §6.4: provable / unprovable / failed. */
-  private checkExpiry(occurredAt: string, relayReceivedAt: string, expiresAt: string): 'provable' | 'unprovable' | 'failed' {
+  private checkExpiry(
+    occurredAt: string,
+    relayReceivedAt: string,
+    expiresAt: string,
+  ): 'provable' | 'unprovable' | 'failed' {
     const relayMs = new Date(relayReceivedAt).getTime();
     const expMs = new Date(expiresAt).getTime();
     const occurredMs = new Date(occurredAt).getTime();
@@ -224,21 +332,40 @@ export class OfflineAuthService {
         locationId: event.locationId,
         loserEventId: event.eventId,
         physicalEffectSuspected: true, // §7.5: operations already acted on the offline decision
-        detail: { outcome, reason, claimedCredentialId: auth?.credentialId ?? null, resolvedCredentialId: credentialId, approverUserId: auth?.approverUserId ?? null },
+        detail: {
+          outcome,
+          reason,
+          claimedCredentialId: auth?.credentialId ?? null,
+          resolvedCredentialId: credentialId,
+          approverUserId: auth?.approverUserId ?? null,
+        },
         assigneeRole: 'finance',
       });
     }
   }
 
   /** §7.5 finance verdict: `upheld` (converts to verified) or `rejected` (converts to failed). */
-  async recordVerdict(client: DbClient, offlineAuthorizationId: UUID, verdict: OfflineAuthVerdictRow, reviewedBy: UUID) {
+  async recordVerdict(
+    client: DbClient,
+    offlineAuthorizationId: UUID,
+    verdict: OfflineAuthVerdictRow,
+    reviewedBy: UUID,
+  ) {
     const newOutcome: OfflineAuthOutcomeRow = verdict === 'upheld' ? 'verified' : 'failed';
-    return this.offlineCreds.recordVerdict(client, offlineAuthorizationId, verdict, reviewedBy, newOutcome);
+    return this.offlineCreds.recordVerdict(
+      client,
+      offlineAuthorizationId,
+      verdict,
+      reviewedBy,
+      newOutcome,
+    );
   }
 }
 
 /** §7.6 closed-list scope key, verbatim per §7.2's `scopes` shape (`void_refund.approve`, `replenishment.supervisor_approve`, `waste.approve`). */
-function scopeKeyForEntity(entity: string): 'void_refund.approve' | 'replenishment.supervisor_approve' | 'waste.approve' {
+function scopeKeyForEntity(
+  entity: string,
+): 'void_refund.approve' | 'replenishment.supervisor_approve' | 'waste.approve' {
   switch (entity) {
     case 'void_refunds':
       return 'void_refund.approve';

@@ -31,7 +31,13 @@ describe('toCsvRow', () => {
 
 describe('writeCsv', () => {
   it('produces a header row, CRLF-joined data rows, a trailing CRLF, and a leading UTF-8 BOM', () => {
-    const csv = writeCsv(['itemName', 'qty'], [['Ayam Fillet', '10.000'], ['Tepung', '25.000']]);
+    const csv = writeCsv(
+      ['itemName', 'qty'],
+      [
+        ['Ayam Fillet', '10.000'],
+        ['Tepung', '25.000'],
+      ],
+    );
     expect(csv.startsWith('﻿')).toBe(true);
     const body = csv.slice(1);
     expect(body).toBe('itemName,qty\r\nAyam Fillet,10.000\r\nTepung,25.000\r\n');

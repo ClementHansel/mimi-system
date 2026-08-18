@@ -22,7 +22,7 @@ describe('ErrorCode — closed literal union, same discipline as PermissionKey/S
     expect(ERROR_CODE_LIST).toContain(ERR_INTERNAL);
   });
 
-  it('rejects a typo\'d code at COMPILE time', () => {
+  it("rejects a typo'd code at COMPILE time", () => {
     // @ts-expect-error - 'ERR_RESOLVE_IN_DOMIAN' (typo) is not a member of ErrorCode; this must fail to compile.
     const typo: ErrorCode = 'ERR_RESOLVE_IN_DOMIAN';
     expect(typo).toBeDefined();
@@ -46,7 +46,7 @@ describe('isErrorCode — derived from the same source as ErrorCode, not a hand-
     expect(isErrorCode('ERR_TOTALLY_MADE_UP')).toBe(false);
   });
 
-  it('is false for a non-string value, including one that happens to equal a code\'s runtime shape', () => {
+  it("is false for a non-string value, including one that happens to equal a code's runtime shape", () => {
     expect(isErrorCode(42)).toBe(false);
     expect(isErrorCode(null)).toBe(false);
     expect(isErrorCode(undefined)).toBe(false);
@@ -64,9 +64,19 @@ describe('isErrorCode — derived from the same source as ErrorCode, not a hand-
   });
 
   it('agrees exactly with ERROR_CODE_LIST membership for every code plus a battery of non-codes', () => {
-    const candidates: unknown[] = [...ERROR_CODE_LIST, 'ERR_NOT_A_REAL_CODE', '', 'err_stock_insufficient', 123, null, undefined, {}];
+    const candidates: unknown[] = [
+      ...ERROR_CODE_LIST,
+      'ERR_NOT_A_REAL_CODE',
+      '',
+      'err_stock_insufficient',
+      123,
+      null,
+      undefined,
+      {},
+    ];
     for (const candidate of candidates) {
-      const expected = typeof candidate === 'string' && (ERROR_CODE_LIST as readonly string[]).includes(candidate);
+      const expected =
+        typeof candidate === 'string' && (ERROR_CODE_LIST as readonly string[]).includes(candidate);
       expect(isErrorCode(candidate)).toBe(expected);
     }
   });

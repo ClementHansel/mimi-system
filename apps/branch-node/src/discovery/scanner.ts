@@ -69,10 +69,21 @@ export function classifyByPorts(openPorts: number[]): DeviceType | null {
 /** Map an mDNS service type to a device type — printers/scanners and cast-capable tablets only (no camera/RTSP/ONVIF path). */
 export function classifyMdnsService(serviceType: string): DeviceType {
   const s = serviceType.toLowerCase();
-  if (s.includes('ipp') || s.includes('printer') || s.includes('pdl-datastream') || s.includes('scanner') || s.includes('uscan')) {
+  if (
+    s.includes('ipp') ||
+    s.includes('printer') ||
+    s.includes('pdl-datastream') ||
+    s.includes('scanner') ||
+    s.includes('uscan')
+  ) {
     return 'printer';
   }
-  if (s.includes('airplay') || s.includes('raop') || s.includes('googlecast') || s.includes('androidtvremote')) {
+  if (
+    s.includes('airplay') ||
+    s.includes('raop') ||
+    s.includes('googlecast') ||
+    s.includes('androidtvremote')
+  ) {
     return 'tablet';
   }
   return 'router';
@@ -90,7 +101,9 @@ function isPrivateV4(address: string): boolean {
 
 /** Virtual/host-only adapter names (WSL, Docker, VPN, ...) — de-prioritised so a scan doesn't silently pick a fake subnet. */
 function isVirtualAdapter(name: string): boolean {
-  return /vethernet|wsl|docker|hyper-v|virtualbox|vmware|vmnet|loopback|tailscale|zerotier|utun|tun\d|tap\d/i.test(name);
+  return /vethernet|wsl|docker|hyper-v|virtualbox|vmware|vmnet|loopback|tailscale|zerotier|utun|tun\d|tap\d/i.test(
+    name,
+  );
 }
 
 /** Every distinct private /24 across the host's interfaces, physical adapters first. */
@@ -133,7 +146,11 @@ export function hostsInSubnet(cidr: string): string[] {
 }
 
 /** Single TCP connect attempt; 'closed' = actively refused (definitive), 'timeout' = no response (ambiguous, worth one retry). */
-export function probePortStatus(ip: string, port: number, timeoutMs: number): Promise<'open' | 'closed' | 'timeout'> {
+export function probePortStatus(
+  ip: string,
+  port: number,
+  timeoutMs: number,
+): Promise<'open' | 'closed' | 'timeout'> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let settled = false;
@@ -158,7 +175,11 @@ async function probePortReliable(ip: string, port: number, timeoutMs: number): P
   return (await probePortStatus(ip, port, timeoutMs)) === 'open'; // timeout -> one retry
 }
 
-async function mapWithConcurrency<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let cursor = 0;
   const workers = new Array(Math.min(concurrency, items.length)).fill(0).map(async () => {
@@ -239,7 +260,10 @@ async function scanMdns(timeoutMs: number): Promise<ProtocolResult> {
   try {
     const browsers = serviceTypes.map((svc) =>
       bonjour.find({ type: svc.type, protocol: svc.protocol }, (service) => {
-        const ip = (service.addresses || []).find((a) => net.isIPv4(a)) || service.referer?.address || service.host;
+        const ip =
+          (service.addresses || []).find((a) => net.isIPv4(a)) ||
+          service.referer?.address ||
+          service.host;
         if (!ip) return;
         devices.push({
           ipAddress: ip,
@@ -247,7 +271,11 @@ async function scanMdns(timeoutMs: number): Promise<ProtocolResult> {
           deviceType: classifyMdnsService(svc.type),
           vendor: null,
           model: service.name || service.fqdn || null,
-          connectionParams: { mdns_service: `_${svc.type}._${svc.protocol}`, port: service.port, host: service.host },
+          connectionParams: {
+            mdns_service: `_${svc.type}._${svc.protocol}`,
+            port: service.port,
+            host: service.host,
+          },
           source: 'mdns',
         });
       }),
@@ -305,7 +333,8 @@ async function readArpTable(): Promise<Map<string, string>> {
   const { promisify } = await import('node:util');
   const execFileAsync = promisify(execFile);
   const parse = (text: string) => {
-    const re = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[^\n]*?([0-9a-fA-F]{2}([:-])[0-9a-fA-F]{2}(\3[0-9a-fA-F]{2}){4})/g;
+    const re =
+      /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})[^\n]*?([0-9a-fA-F]{2}([:-])[0-9a-fA-F]{2}(\3[0-9a-fA-F]{2}){4})/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
       const ip = m[1]!;
@@ -314,7 +343,12 @@ async function readArpTable(): Promise<Map<string, string>> {
     }
   };
   const cmds: [string, string[]][] =
-    process.platform === 'win32' ? [['arp', ['-a']]] : [['ip', ['neigh']], ['arp', ['-an']]];
+    process.platform === 'win32'
+      ? [['arp', ['-a']]]
+      : [
+          ['ip', ['neigh']],
+          ['arp', ['-an']],
+        ];
   for (const [cmd, args] of cmds) {
     try {
       const { stdout } = await execFileAsync(cmd, args, { timeout: 4000 });
@@ -332,19 +366,33 @@ async function scanTcpSubnet(subnet: string, timeoutMs: number): Promise<Protoco
   try {
     const hosts = hostsInSubnet(subnet);
     if (hosts.length === 0) {
-      return { protocol, devices: [], error: { protocol, message: `unsupported subnet: ${subnet}` } };
+      return {
+        protocol,
+        devices: [],
+        error: { protocol, message: `unsupported subnet: ${subnet}` },
+      };
     }
     const devices: DiscoveredDeviceInput[] = [];
     // Probe every host's ports IN PARALLEL — a filtering host makes every probe a
     // full timeout, so a serial per-host sweep would blow past a bounded scan window.
     await mapWithConcurrency(hosts, 48, async (ip) => {
       const probed = await Promise.all(
-        PROBE_PORTS.map((port) => probePortReliable(ip, port, timeoutMs).then((open) => (open ? port : null))),
+        PROBE_PORTS.map((port) =>
+          probePortReliable(ip, port, timeoutMs).then((open) => (open ? port : null)),
+        ),
       );
       const openPorts = probed.filter((p): p is number => p !== null);
       const type = classifyByPorts(openPorts);
       if (type) {
-        devices.push({ ipAddress: ip, macAddress: null, deviceType: type, vendor: null, model: null, connectionParams: { open_ports: openPorts }, source: 'tcp_probe' });
+        devices.push({
+          ipAddress: ip,
+          macAddress: null,
+          deviceType: type,
+          vendor: null,
+          model: null,
+          connectionParams: { open_ports: openPorts },
+          source: 'tcp_probe',
+        });
       }
     });
     const arp = await readArpTable();
@@ -363,7 +411,10 @@ async function scanTcpSubnet(subnet: string, timeoutMs: number): Promise<Protoco
  * so one failure never aborts the others. In SIMULATE mode, returns
  * `simulatedDevices()` immediately — no bonjour/ssdp/socket activity at all.
  */
-export async function runScan(options: ScanOptions, onDevice?: (device: DiscoveredDeviceInput) => void): Promise<ScanOutcome> {
+export async function runScan(
+  options: ScanOptions,
+  onDevice?: (device: DiscoveredDeviceInput) => void,
+): Promise<ScanOutcome> {
   if (options.simulate) {
     const devices = simulatedDevices();
     devices.forEach((d) => onDevice?.(d));
@@ -382,7 +433,13 @@ export async function runScan(options: ScanOptions, onDevice?: (device: Discover
     if (subnets.length > 0) {
       for (const subnet of subnets) tasks.push(scanTcpSubnet(subnet, 800));
     } else {
-      tasks.push(Promise.resolve<ProtocolResult>({ protocol: 'tcp', devices: [], error: { protocol: 'tcp', message: 'could not derive a local /24 subnet' } }));
+      tasks.push(
+        Promise.resolve<ProtocolResult>({
+          protocol: 'tcp',
+          devices: [],
+          error: { protocol: 'tcp', message: 'could not derive a local /24 subnet' },
+        }),
+      );
     }
   }
 

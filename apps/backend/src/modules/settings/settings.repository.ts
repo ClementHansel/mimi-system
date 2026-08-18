@@ -58,7 +58,12 @@ export class SettingsRepository {
   }
 
   /** Returns `undefined` if the key doesn't exist as a row yet (shouldn't happen — every `SettingsKey` is seeded, migration 007). */
-  async updateValue(client: PoolClient, key: string, value: unknown, updatedBy: UUID): Promise<SettingRow | undefined> {
+  async updateValue(
+    client: PoolClient,
+    key: string,
+    value: unknown,
+    updatedBy: UUID,
+  ): Promise<SettingRow | undefined> {
     const res = await client.query<{ key: string }>(
       `UPDATE settings SET value = $2::jsonb, updated_by = $3, updated_at = NOW() WHERE key = $1 RETURNING key`,
       [key, JSON.stringify(value), updatedBy],
@@ -91,7 +96,12 @@ export class SettingsRepository {
   async replaceChainSteps(
     client: PoolClient,
     documentType: string,
-    steps: { stepNo: number; approverRole: string; minAmount: string | null; maxAmount: string | null }[],
+    steps: {
+      stepNo: number;
+      approverRole: string;
+      minAmount: string | null;
+      maxAmount: string | null;
+    }[],
   ): Promise<void> {
     await client.query(`DELETE FROM approval_chain_steps WHERE document_type = $1`, [documentType]);
     for (const step of steps) {
@@ -126,7 +136,12 @@ export class SettingsRepository {
    * migration from W1-C: reusing the already-generic, already-seeded `settings`
    * table's existing JSONB-value shape rather than a new table/column).
    */
-  async upsertApprovalMode(client: PoolClient, documentType: string, mode: ApprovalMode, updatedBy: UUID): Promise<Record<string, ApprovalMode>> {
+  async upsertApprovalMode(
+    client: PoolClient,
+    documentType: string,
+    mode: ApprovalMode,
+    updatedBy: UUID,
+  ): Promise<Record<string, ApprovalMode>> {
     const res = await client.query<{ value: Record<string, ApprovalMode> }>(
       `INSERT INTO settings (key, value, description, updated_by, updated_at)
        VALUES ($1, jsonb_build_object($2::text, $3::text), 'Per-document-type approval mode (D-23)', $4, NOW())

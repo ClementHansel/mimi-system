@@ -1,6 +1,6 @@
 # n8n (automation: WhatsApp + payroll-slip notifications)
 
-Config-only directory (no application code) — the n8n *service* is defined
+Config-only directory (no application code) — the n8n _service_ is defined
 in `docker-compose.yml` (dev) and gets Traefik routing labels in
 `docker-compose.prod.yml`.
 
@@ -9,7 +9,7 @@ in `docker-compose.yml` (dev) and gets Traefik routing labels in
 - `workflows/` — exported workflow JSON, mounted read-only into the n8n
   container at `/home/node/.n8n/workflows`. `wa-notify.json` (W2-C) is the
   WhatsApp send path: `Webhook /wa-notify` → validate payload → `HTTP
-  Request` to the real WA gateway (retried 3x, then a wired error output) →
+Request` to the real WA gateway (retried 3x, then a wired error output) →
   `Respond to Webhook` (200/400/502). The HTTP Request node's URL
   (`WA_GATEWAY_URL` env var) and credential (`httpHeaderAuth`, id
   `REPLACE_WITH_REAL_WA_GATEWAY_CREDENTIAL_ID`) are PLACEHOLDERS until RISK-P4

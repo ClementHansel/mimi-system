@@ -83,11 +83,16 @@ export async function commitFact<TData = unknown>(
     const outboxStore = tx.store<OutboxRecord>('outbox');
     const existing = await findExisting(outboxStore, input.entity, input.entityId, input.op);
     if (existing) {
-      return { record: existing, wasAlreadyCommitted: true, envelope: existing.envelope as SyncEventEnvelope<TData> };
+      return {
+        record: existing,
+        wasAlreadyCommitted: true,
+        envelope: existing.envelope as SyncEventEnvelope<TData>,
+      };
     }
 
     const identity = await tx.store<DeviceIdentity>('device_identity').get('self');
-    if (!identity) throw new Error('Device identity not initialized — call ensureDeviceIdentity() first');
+    if (!identity)
+      throw new Error('Device identity not initialized — call ensureDeviceIdentity() first');
 
     const counterStore = tx.store<ClientSeqCounter>('client_seq_counter');
     const counterRow = await counterStore.get('self');
@@ -155,7 +160,9 @@ async function findExisting(
   op: string,
 ): Promise<OutboxRecord | undefined> {
   const all = await store.getAll();
-  return all.find((r) => r.envelope.entity === entity && r.envelope.entityId === entityId && r.envelope.op === op);
+  return all.find(
+    (r) => r.envelope.entity === entity && r.envelope.entityId === entityId && r.envelope.op === op,
+  );
 }
 
 /** Convenience: read the outbox depth (queued, not yet cloud-confirmed) — feeds `SyncStatusPill`/heartbeats. */

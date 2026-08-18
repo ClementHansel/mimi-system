@@ -25,7 +25,8 @@ import { DevicesController } from './devices.controller';
 import { TopologyController } from './topology.controller';
 
 const DB_ENV = {
-  DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://mimi_app:mimi_app_secret@localhost:55433/mimi',
+  DATABASE_URL:
+    process.env.DATABASE_URL ?? 'postgres://mimi_app:mimi_app_secret@localhost:55433/mimi',
 };
 
 describe('M21/M22 module wiring — live database, real Nest DI graph', () => {

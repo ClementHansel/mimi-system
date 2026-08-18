@@ -48,7 +48,12 @@ describe('EmailChannelService', () => {
     );
 
     expect(service.isConfigured()).toBe(true);
-    const result = await service.send('owner@mimichicken.local', 'low_stock', 'Stok menipis', 'Body text');
+    const result = await service.send(
+      'owner@mimichicken.local',
+      'low_stock',
+      'Stok menipis',
+      'Body text',
+    );
 
     expect(result.success).toBe(true);
     expect(sendMailMock).toHaveBeenCalledWith({

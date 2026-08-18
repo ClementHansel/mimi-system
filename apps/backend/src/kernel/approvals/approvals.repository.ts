@@ -50,15 +50,23 @@ export interface ApprovalStepRow {
 }
 
 /** Per-document-type "human number" column — a fixed, code-reviewed whitelist (never user input) safe to splice into SQL identifiers. */
-const DOCUMENT_NUMBER_SOURCE: Partial<Record<ApprovalDocumentType, { table: string; column: string }>> = {
-  [ApprovalDocumentType.REPLENISHMENT_REQUEST]: { table: 'replenishment_requests', column: 'request_number' },
+const DOCUMENT_NUMBER_SOURCE: Partial<
+  Record<ApprovalDocumentType, { table: string; column: string }>
+> = {
+  [ApprovalDocumentType.REPLENISHMENT_REQUEST]: {
+    table: 'replenishment_requests',
+    column: 'request_number',
+  },
   [ApprovalDocumentType.PURCHASE_REQUEST]: { table: 'purchase_requests', column: 'pr_number' },
   [ApprovalDocumentType.PURCHASE_ORDER]: { table: 'purchase_orders', column: 'po_number' },
   [ApprovalDocumentType.STOCK_OPNAME]: { table: 'stock_opname', column: 'opname_number' },
   [ApprovalDocumentType.RETURN]: { table: 'returns', column: 'return_number' },
   [ApprovalDocumentType.WASTE]: { table: 'waste_records', column: 'waste_number' },
   [ApprovalDocumentType.PAYROLL_RUN]: { table: 'payroll_runs', column: 'run_number' },
-  [ApprovalDocumentType.PAYMENT_VERIFICATION]: { table: 'payment_verifications', column: 'pv_number' },
+  [ApprovalDocumentType.PAYMENT_VERIFICATION]: {
+    table: 'payment_verifications',
+    column: 'pv_number',
+  },
   [ApprovalDocumentType.EMPLOYEE_LOAN]: { table: 'employee_loans', column: 'loan_number' },
   // VOID_REFUND, LEAVE_REQUEST, CASH_VARIANCE_PROPOSAL carry no human-facing document number.
 };
@@ -66,8 +74,18 @@ const DOCUMENT_NUMBER_SOURCE: Partial<Record<ApprovalDocumentType, { table: stri
 /** Hard cap on the pre-role-filter candidate fetch (see `findPendingCandidates`'s doc comment). */
 export const PENDING_CANDIDATE_CAP = 2000;
 
-function mapChainStep(row: { step_no: number; approver_role: string; min_amount: string | null; max_amount: string | null }): ChainStepConfigRow {
-  return { stepNo: row.step_no, approverRole: row.approver_role, minAmount: row.min_amount, maxAmount: row.max_amount };
+function mapChainStep(row: {
+  step_no: number;
+  approver_role: string;
+  min_amount: string | null;
+  max_amount: string | null;
+}): ChainStepConfigRow {
+  return {
+    stepNo: row.step_no,
+    approverRole: row.approver_role,
+    minAmount: row.min_amount,
+    maxAmount: row.max_amount,
+  };
 }
 
 function mapApproval(row: {
@@ -147,7 +165,10 @@ export class ApprovalsRepository {
    * admin module writes, never import its service" relationship this
    * repository already has with `approval_chain_steps`/`modules/settings`.
    */
-  async getApprovalMode(client: DbClient, documentType: ApprovalDocumentType): Promise<ApprovalMode> {
+  async getApprovalMode(
+    client: DbClient,
+    documentType: ApprovalDocumentType,
+  ): Promise<ApprovalMode> {
     const res = await client.query<{ value: Record<string, ApprovalMode> }>(
       `SELECT value FROM settings WHERE key = $1`,
       [APPROVAL_MODE_SETTINGS_KEY],
@@ -167,7 +188,13 @@ export class ApprovalsRepository {
    */
   async insertAutoApprovedStep(
     client: DbClient,
-    input: { approvalId: string; stepNo: number; approverRole: string; actedBy: string; reason: string },
+    input: {
+      approvalId: string;
+      stepNo: number;
+      approverRole: string;
+      actedBy: string;
+      reason: string;
+    },
   ): Promise<ApprovalStepRow> {
     const res = await client.query(
       `INSERT INTO approval_steps (approval_id, step_no, approver_role, state, acted_by, acted_at, reason, offline_authorized)
@@ -178,7 +205,10 @@ export class ApprovalsRepository {
     return mapStep(res.rows[0]);
   }
 
-  async loadChainSteps(client: DbClient, documentType: ApprovalDocumentType): Promise<ChainStepConfigRow[]> {
+  async loadChainSteps(
+    client: DbClient,
+    documentType: ApprovalDocumentType,
+  ): Promise<ChainStepConfigRow[]> {
     const res = await client.query(
       `SELECT step_no, approver_role, min_amount, max_amount
          FROM approval_chain_steps
@@ -189,7 +219,11 @@ export class ApprovalsRepository {
     return res.rows.map(mapChainStep);
   }
 
-  async findApproval(client: DbClient, documentType: ApprovalDocumentType, documentId: string): Promise<ApprovalRow | null> {
+  async findApproval(
+    client: DbClient,
+    documentType: ApprovalDocumentType,
+    documentId: string,
+  ): Promise<ApprovalRow | null> {
     const res = await client.query(
       `SELECT * FROM approvals WHERE document_type = $1 AND document_id = $2 FOR UPDATE`,
       [documentType, documentId],
@@ -199,20 +233,39 @@ export class ApprovalsRepository {
 
   async insertApproval(
     client: DbClient,
-    input: { documentType: ApprovalDocumentType; documentId: string; amount: Money | null; locationId: string | null; requestedBy: string; currentStep: number },
+    input: {
+      documentType: ApprovalDocumentType;
+      documentId: string;
+      amount: Money | null;
+      locationId: string | null;
+      requestedBy: string;
+      currentStep: number;
+    },
   ): Promise<ApprovalRow> {
     const res = await client.query(
       `INSERT INTO approvals (document_type, document_id, amount, location_id, requested_by, current_step)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [input.documentType, input.documentId, input.amount, input.locationId, input.requestedBy, input.currentStep],
+      [
+        input.documentType,
+        input.documentId,
+        input.amount,
+        input.locationId,
+        input.requestedBy,
+        input.currentStep,
+      ],
     );
     return mapApproval(res.rows[0]);
   }
 
   async insertStep(
     client: DbClient,
-    input: { approvalId: string; stepNo: number; approverRole: string; state: 'pending' | 'skipped' },
+    input: {
+      approvalId: string;
+      stepNo: number;
+      approverRole: string;
+      state: 'pending' | 'skipped';
+    },
   ): Promise<ApprovalStepRow> {
     const res = await client.query(
       `INSERT INTO approval_steps (approval_id, step_no, approver_role, state)
@@ -223,8 +276,15 @@ export class ApprovalsRepository {
     return mapStep(res.rows[0]);
   }
 
-  async findStep(client: DbClient, approvalId: string, stepNo: number): Promise<ApprovalStepRow | null> {
-    const res = await client.query(`SELECT * FROM approval_steps WHERE approval_id = $1 AND step_no = $2`, [approvalId, stepNo]);
+  async findStep(
+    client: DbClient,
+    approvalId: string,
+    stepNo: number,
+  ): Promise<ApprovalStepRow | null> {
+    const res = await client.query(
+      `SELECT * FROM approval_steps WHERE approval_id = $1 AND step_no = $2`,
+      [approvalId, stepNo],
+    );
     return res.rows[0] ? mapStep(res.rows[0]) : null;
   }
 
@@ -234,7 +294,10 @@ export class ApprovalsRepository {
   }
 
   async listSteps(client: DbClient, approvalId: string): Promise<ApprovalStepRow[]> {
-    const res = await client.query(`SELECT * FROM approval_steps WHERE approval_id = $1 ORDER BY step_no`, [approvalId]);
+    const res = await client.query(
+      `SELECT * FROM approval_steps WHERE approval_id = $1 ORDER BY step_no`,
+      [approvalId],
+    );
     return res.rows.map(mapStep);
   }
 
@@ -257,12 +320,25 @@ export class ApprovalsRepository {
               offline_authorized = $4, offline_credential_id = $5
         WHERE approval_id = $6 AND step_no = $7 AND state = 'pending'
         RETURNING *`,
-      [input.state, input.actedBy, input.reason, input.offlineAuthorized, input.offlineCredentialId, input.approvalId, input.stepNo],
+      [
+        input.state,
+        input.actedBy,
+        input.reason,
+        input.offlineAuthorized,
+        input.offlineCredentialId,
+        input.approvalId,
+        input.stepNo,
+      ],
     );
     return res.rows[0] ? mapStep(res.rows[0]) : null;
   }
 
-  async markStepSkipped(client: DbClient, approvalId: string, stepNo: number, approverRole: string): Promise<void> {
+  async markStepSkipped(
+    client: DbClient,
+    approvalId: string,
+    stepNo: number,
+    approverRole: string,
+  ): Promise<void> {
     await client.query(
       `INSERT INTO approval_steps (approval_id, step_no, approver_role, state)
        VALUES ($1, $2, $3, 'skipped')
@@ -271,7 +347,11 @@ export class ApprovalsRepository {
     );
   }
 
-  async advanceApproval(client: DbClient, approvalId: string, nextStep: number): Promise<ApprovalRow> {
+  async advanceApproval(
+    client: DbClient,
+    approvalId: string,
+    nextStep: number,
+  ): Promise<ApprovalRow> {
     const res = await client.query(
       `UPDATE approvals SET current_step = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
       [nextStep, approvalId],
@@ -290,7 +370,11 @@ export class ApprovalsRepository {
    * a trap for any future reader or reporting query that reads the column
    * directly instead of going through the service.
    */
-  async finalizeApproval(client: DbClient, approvalId: string, state: 'approved' | 'rejected' | 'cancelled'): Promise<ApprovalRow> {
+  async finalizeApproval(
+    client: DbClient,
+    approvalId: string,
+    state: 'approved' | 'rejected' | 'cancelled',
+  ): Promise<ApprovalRow> {
     const res = await client.query(
       `UPDATE approvals SET state = $1, current_step = NULL, decided_at = NOW(), updated_at = NOW() WHERE id = $2 RETURNING *`,
       [state, approvalId],
@@ -342,7 +426,11 @@ export class ApprovalsRepository {
     }>
   > {
     const params: unknown[] = [];
-    const conditions: string[] = [`s.state = 'pending'`, `a.state = 'pending'`, `s.step_no = a.current_step`];
+    const conditions: string[] = [
+      `s.state = 'pending'`,
+      `a.state = 'pending'`,
+      `s.step_no = a.current_step`,
+    ];
 
     if (filter.documentType) {
       params.push(filter.documentType);
@@ -405,7 +493,10 @@ export class ApprovalsRepository {
    * block from seeing another user's row at all) because it runs with the function owner's
    * privileges, not the calling session's `app.role`.
    */
-  private async loadUserDisplayNames(client: DbClient, userIds: readonly string[]): Promise<Map<string, string>> {
+  private async loadUserDisplayNames(
+    client: DbClient,
+    userIds: readonly string[],
+  ): Promise<Map<string, string>> {
     const result = new Map<string, string>();
     if (userIds.length === 0) return result;
     const res = await client.query<{ id: string; name: string }>(
@@ -425,12 +516,18 @@ export class ApprovalsRepository {
    * locations` already relied on by `findPendingCandidates` above.
    */
   async findLocationName(client: DbClient, locationId: string): Promise<string | null> {
-    const res = await client.query<{ name: string }>(`SELECT name FROM locations WHERE id = $1`, [locationId]);
+    const res = await client.query<{ name: string }>(`SELECT name FROM locations WHERE id = $1`, [
+      locationId,
+    ]);
     return res.rows[0]?.name ?? null;
   }
 
   /** Batched "human document number" lookup — one query per distinct document type present on the page, from the fixed whitelist only. */
-  async loadDocumentNumbers(client: DbClient, documentType: ApprovalDocumentType, documentIds: readonly string[]): Promise<Map<string, string>> {
+  async loadDocumentNumbers(
+    client: DbClient,
+    documentType: ApprovalDocumentType,
+    documentIds: readonly string[],
+  ): Promise<Map<string, string>> {
     const result = new Map<string, string>();
     const source = DOCUMENT_NUMBER_SOURCE[documentType];
     if (!source || documentIds.length === 0) return result;
@@ -439,7 +536,8 @@ export class ApprovalsRepository {
       `SELECT id, ${source.column} AS number FROM ${source.table} WHERE id = ANY($1::uuid[])`,
       [documentIds],
     );
-    for (const row of res.rows as Array<{ id: string; number: string }>) result.set(row.id, row.number);
+    for (const row of res.rows as Array<{ id: string; number: string }>)
+      result.set(row.id, row.number);
     return result;
   }
 }

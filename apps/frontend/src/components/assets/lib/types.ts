@@ -6,10 +6,12 @@
  */
 import type { Money, UUID, ISODate, ISODateTime } from '@/lib/shared-types';
 
-export type AssetCategory = 'machine' | 'vehicle' | 'equipment' | 'electronics' | 'furniture' | 'other';
+export type AssetCategory =
+  'machine' | 'vehicle' | 'equipment' | 'electronics' | 'furniture' | 'other';
 export type AssetCondition = 'good' | 'fair' | 'poor';
 export type AssetStatus = 'active' | 'in_maintenance' | 'retired' | 'lost';
-export type MaintenanceJobStatus = 'scheduled' | 'due' | 'in_progress' | 'done' | 'verified' | 'skipped';
+export type MaintenanceJobStatus =
+  'scheduled' | 'due' | 'in_progress' | 'done' | 'verified' | 'skipped';
 export type MaintenanceJobType = 'scheduled' | 'corrective';
 
 export interface Schedule {

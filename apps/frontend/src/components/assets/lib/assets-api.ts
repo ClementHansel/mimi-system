@@ -53,10 +53,20 @@ export function createAsset(body: {
   return api.post<Asset>('/assets', body);
 }
 
-export function updateAsset(id: string, body: Partial<{
-  name: string; category: string; locationId: string; serialNumber: string; brand: string; model: string;
-  condition: string; status: string; assignedToEmployeeId: string | null;
-}>) {
+export function updateAsset(
+  id: string,
+  body: Partial<{
+    name: string;
+    category: string;
+    locationId: string;
+    serialNumber: string;
+    brand: string;
+    model: string;
+    condition: string;
+    status: string;
+    assignedToEmployeeId: string | null;
+  }>,
+) {
   return api.patch<Asset>(`/assets/${id}`, body);
 }
 
@@ -64,15 +74,30 @@ export function getSchedules(assetId: string) {
   return api.get<Schedule[]>(`/assets/${assetId}/schedules`);
 }
 
-export function createSchedule(assetId: string, body: {
-  name: string; intervalType: 'days' | 'months'; intervalValue: number; nextDueAt: string; reminderDaysBefore?: number;
-}) {
+export function createSchedule(
+  assetId: string,
+  body: {
+    name: string;
+    intervalType: 'days' | 'months';
+    intervalValue: number;
+    nextDueAt: string;
+    reminderDaysBefore?: number;
+  },
+) {
   return api.post<Schedule>(`/assets/${assetId}/schedules`, body);
 }
 
-export function updateSchedule(scheduleId: string, body: Partial<{
-  name: string; intervalType: 'days' | 'months'; intervalValue: number; nextDueAt: string; reminderDaysBefore: number; isActive: boolean;
-}>) {
+export function updateSchedule(
+  scheduleId: string,
+  body: Partial<{
+    name: string;
+    intervalType: 'days' | 'months';
+    intervalValue: number;
+    nextDueAt: string;
+    reminderDaysBefore: number;
+    isActive: boolean;
+  }>,
+) {
   return api.patch<Schedule>(`/assets/schedules/${scheduleId}`, body);
 }
 
@@ -97,21 +122,28 @@ export function getJobs(params: JobListParams) {
 }
 
 export function createJob(assetId: string, description: string, assignedToEmployeeId?: string) {
-  return api.post<Job>(`/assets/${assetId}/jobs`, { type: 'corrective', description, assignedToEmployeeId });
+  return api.post<Job>(`/assets/${assetId}/jobs`, {
+    type: 'corrective',
+    description,
+    assignedToEmployeeId,
+  });
 }
 
 export function startJob(jobId: string) {
   return api.post<Job>(`/assets/jobs/${jobId}/start`);
 }
 
-export function completeJob(jobId: string, body: {
-  proofAttachmentIds: string[];
-  cost?: string;
-  vendor?: string;
-  conditionAfter: string;
-  odometerKm?: number;
-  notes?: string;
-}) {
+export function completeJob(
+  jobId: string,
+  body: {
+    proofAttachmentIds: string[];
+    cost?: string;
+    vendor?: string;
+    conditionAfter: string;
+    odometerKm?: number;
+    notes?: string;
+  },
+) {
   return api.post<Job>(`/assets/jobs/${jobId}/complete`, body);
 }
 

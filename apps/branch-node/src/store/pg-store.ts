@@ -75,7 +75,14 @@ export class PgStore implements Store {
     const { rows } = await this.q('SELECT * FROM node_identity WHERE singleton = TRUE');
     const row = rows[0];
     if (!row) {
-      return { nodeId: null, nodeToken: null, locationId: null, locationCode: null, locationName: null, lanCert: null };
+      return {
+        nodeId: null,
+        nodeToken: null,
+        locationId: null,
+        locationCode: null,
+        locationName: null,
+        lanCert: null,
+      };
     }
     return {
       nodeId: (row.node_id as UUID) ?? null,
@@ -207,7 +214,9 @@ export class PgStore implements Store {
   }
 
   async getMaxServerSeq(): Promise<number> {
-    const { rows } = await this.q<{ max: string | null }>('SELECT MAX(server_seq)::text AS max FROM sync_events');
+    const { rows } = await this.q<{ max: string | null }>(
+      'SELECT MAX(server_seq)::text AS max FROM sync_events',
+    );
     return rows[0]?.max ? Number(rows[0].max) : 0;
   }
 
@@ -267,7 +276,9 @@ export class PgStore implements Store {
   }
 
   async getLanDeviceByTokenHash(tokenHash: string): Promise<LanDeviceRecord | undefined> {
-    const { rows } = await this.q('SELECT * FROM lan_devices WHERE device_token_hash = $1', [tokenHash]);
+    const { rows } = await this.q('SELECT * FROM lan_devices WHERE device_token_hash = $1', [
+      tokenHash,
+    ]);
     return rows[0] ? this.mapLanDevice(rows[0]) : undefined;
   }
 
@@ -373,7 +384,12 @@ export class PgStore implements Store {
   }
 
   // ── whitelisted fan-out projections ──────────────────────────────────
-  async upsertProjection(entity: string, entityId: UUID, locationId: UUID | null, payload: unknown): Promise<void> {
+  async upsertProjection(
+    entity: string,
+    entityId: UUID,
+    locationId: UUID | null,
+    payload: unknown,
+  ): Promise<void> {
     await this.q(
       `INSERT INTO entity_projections (entity, entity_id, location_id, payload, updated_at)
        VALUES ($1, $2, $3, $4::jsonb, NOW())
@@ -389,9 +405,10 @@ export class PgStore implements Store {
           'SELECT entity_id, location_id, payload, updated_at FROM entity_projections WHERE entity = $1 AND location_id = $2',
           [entity, locationId],
         )
-      : await this.q('SELECT entity_id, location_id, payload, updated_at FROM entity_projections WHERE entity = $1', [
-          entity,
-        ]);
+      : await this.q(
+          'SELECT entity_id, location_id, payload, updated_at FROM entity_projections WHERE entity = $1',
+          [entity],
+        );
     return rows.map((r) => ({
       entityId: r.entity_id as UUID,
       locationId: (r.location_id as UUID) ?? null,
@@ -407,7 +424,18 @@ export class PgStore implements Store {
         `INSERT INTO stock_movements (fact_id, location_id, storage_area_id, item_id, movement_type, qty, unit_cost, ref_type, ref_id, occurred_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (fact_id) DO NOTHING`,
-        [m.factId, m.locationId, m.storageAreaId, m.itemId, m.movementType, m.qty, m.unitCost, m.refType, m.refId, m.occurredAt],
+        [
+          m.factId,
+          m.locationId,
+          m.storageAreaId,
+          m.itemId,
+          m.movementType,
+          m.qty,
+          m.unitCost,
+          m.refType,
+          m.refId,
+          m.occurredAt,
+        ],
       );
     }
   }

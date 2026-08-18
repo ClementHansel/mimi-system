@@ -54,20 +54,56 @@ export class PettyCashRepository {
     return formatCloudDocNumber('PC', period, res.rows[0]!.last_number);
   }
 
-  async insertHeader(client: PoolClient, input: { pcNumber: string; locationId: UUID; purchasedBy: UUID; purchaseDate: string; storeName: string; totalAmount: Money }): Promise<string> {
+  async insertHeader(
+    client: PoolClient,
+    input: {
+      pcNumber: string;
+      locationId: UUID;
+      purchasedBy: UUID;
+      purchaseDate: string;
+      storeName: string;
+      totalAmount: Money;
+    },
+  ): Promise<string> {
     const res = await client.query<{ id: string }>(
       `INSERT INTO petty_cash (pc_number, location_id, purchased_by, purchase_date, store_name, total_amount)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [input.pcNumber, input.locationId, input.purchasedBy, input.purchaseDate, input.storeName, input.totalAmount],
+      [
+        input.pcNumber,
+        input.locationId,
+        input.purchasedBy,
+        input.purchaseDate,
+        input.storeName,
+        input.totalAmount,
+      ],
     );
     return res.rows[0]!.id;
   }
 
-  async insertLine(client: PoolClient, input: { pettyCashId: UUID; description: string; itemId: UUID | null; storageAreaId: UUID | null; qty: Qty | null; amount: Money; expenseCategory: string }): Promise<string> {
+  async insertLine(
+    client: PoolClient,
+    input: {
+      pettyCashId: UUID;
+      description: string;
+      itemId: UUID | null;
+      storageAreaId: UUID | null;
+      qty: Qty | null;
+      amount: Money;
+      expenseCategory: string;
+    },
+  ): Promise<string> {
     const res = await client.query<{ id: string }>(
       `INSERT INTO petty_cash_lines (petty_cash_id, description, item_id, storage_area_id, qty, amount, expense_category)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [input.pettyCashId, input.description, input.itemId, input.storageAreaId, input.qty, input.amount, input.expenseCategory],
+      [
+        input.pettyCashId,
+        input.description,
+        input.itemId,
+        input.storageAreaId,
+        input.qty,
+        input.amount,
+        input.expenseCategory,
+      ],
     );
     return res.rows[0]!.id;
   }
@@ -87,38 +123,80 @@ export class PettyCashRepository {
 
   async listHeaders(
     client: PoolClient,
-    query: { locationId?: string; status?: string; from?: string; to?: string; page: number; pageSize: number },
+    query: {
+      locationId?: string;
+      status?: string;
+      from?: string;
+      to?: string;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<{ rows: PettyCashHeaderRow[]; total: number }> {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (query.locationId) { conds.push(`pc.location_id = $${i++}`); args.push(query.locationId); }
-    if (query.status) { conds.push(`pc.status = $${i++}`); args.push(query.status); }
-    if (query.from) { conds.push(`pc.purchase_date >= $${i++}`); args.push(query.from); }
-    if (query.to) { conds.push(`pc.purchase_date <= $${i++}`); args.push(query.to); }
+    if (query.locationId) {
+      conds.push(`pc.location_id = $${i++}`);
+      args.push(query.locationId);
+    }
+    if (query.status) {
+      conds.push(`pc.status = $${i++}`);
+      args.push(query.status);
+    }
+    if (query.from) {
+      conds.push(`pc.purchase_date >= $${i++}`);
+      args.push(query.from);
+    }
+    if (query.to) {
+      conds.push(`pc.purchase_date <= $${i++}`);
+      args.push(query.to);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (query.page - 1) * query.pageSize;
 
     const [rows, count] = await Promise.all([
-      client.query<PettyCashHeaderRow>(`${HEADER_SELECT} ${where} ORDER BY pc.purchase_date DESC LIMIT $${i} OFFSET $${i + 1}`, [...args, query.pageSize, offset]),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM petty_cash pc ${where}`, args),
+      client.query<PettyCashHeaderRow>(
+        `${HEADER_SELECT} ${where} ORDER BY pc.purchase_date DESC LIMIT $${i} OFFSET $${i + 1}`,
+        [...args, query.pageSize, offset],
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM petty_cash pc ${where}`,
+        args,
+      ),
     ]);
     return { rows: rows.rows, total: Number(count.rows[0]?.count ?? '0') };
   }
 
-  async setVerified(client: PoolClient, id: string, verifiedBy: UUID, verifiedAt: string): Promise<void> {
-    await client.query(`UPDATE petty_cash SET status = 'verified', verified_by = $2, verified_at = $3, updated_at = NOW() WHERE id = $1`, [id, verifiedBy, verifiedAt]);
+  async setVerified(
+    client: PoolClient,
+    id: string,
+    verifiedBy: UUID,
+    verifiedAt: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE petty_cash SET status = 'verified', verified_by = $2, verified_at = $3, updated_at = NOW() WHERE id = $1`,
+      [id, verifiedBy, verifiedAt],
+    );
   }
 
   async setRejected(client: PoolClient, id: string, reason: string): Promise<void> {
-    await client.query(`UPDATE petty_cash SET status = 'rejected', rejection_reason = $2, updated_at = NOW() WHERE id = $1`, [id, reason]);
+    await client.query(
+      `UPDATE petty_cash SET status = 'rejected', rejection_reason = $2, updated_at = NOW() WHERE id = $1`,
+      [id, reason],
+    );
   }
 
   async setPaymentVerificationId(client: PoolClient, id: string, pvId: string): Promise<void> {
-    await client.query(`UPDATE petty_cash SET payment_verification_id = $2 WHERE id = $1`, [id, pvId]);
+    await client.query(`UPDATE petty_cash SET payment_verification_id = $2 WHERE id = $1`, [
+      id,
+      pvId,
+    ]);
   }
 
-  async itemCosting(client: PoolClient, itemId: UUID): Promise<{ avgCost: Money; qtyOnHand: Qty } | undefined> {
+  async itemCosting(
+    client: PoolClient,
+    itemId: UUID,
+  ): Promise<{ avgCost: Money; qtyOnHand: Qty } | undefined> {
     const res = await client.query<{ avg_cost: string; qty_on_hand: string }>(
       `SELECT avg_cost, COALESCE((SELECT SUM(qty_on_hand) FROM stock_balances WHERE item_id = $1), 0)::numeric(14,3)::text AS qty_on_hand FROM items WHERE id = $1`,
       [itemId],
@@ -127,7 +205,15 @@ export class PettyCashRepository {
     return row ? { avgCost: row.avg_cost as Money, qtyOnHand: row.qty_on_hand as Qty } : undefined;
   }
 
-  async updateItemCost(client: PoolClient, itemId: UUID, avgCost: Money, lastPurchaseCost: Money): Promise<void> {
-    await client.query(`UPDATE items SET avg_cost = $2, last_purchase_cost = $3, updated_at = NOW() WHERE id = $1`, [itemId, avgCost, lastPurchaseCost]);
+  async updateItemCost(
+    client: PoolClient,
+    itemId: UUID,
+    avgCost: Money,
+    lastPurchaseCost: Money,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE items SET avg_cost = $2, last_purchase_cost = $3, updated_at = NOW() WHERE id = $1`,
+      [itemId, avgCost, lastPurchaseCost],
+    );
   }
 }

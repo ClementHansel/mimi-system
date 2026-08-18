@@ -29,7 +29,13 @@ function unreachableTransport(): SyncTransport {
   const fail = () => {
     throw new Error('network disabled — this transport must never be called by a local commit');
   };
-  return { health: fail, hello: fail, push: fail, pull: fail, heartbeat: fail } as unknown as SyncTransport;
+  return {
+    health: fail,
+    hello: fail,
+    push: fail,
+    pull: fail,
+    heartbeat: fail,
+  } as unknown as SyncTransport;
 }
 
 const noopConnectivity: ConnectivityReporter = {
@@ -65,7 +71,14 @@ describe('Stock opname — commitOpnameOpened/AreaCounted/Submitted/Cancelled (R
 
     await runtime.commitOpnameOpened(
       opnameId,
-      { id: opnameId, opnameNumber: 'OPN-0001', locationId: LOCATION_ID, storageAreaId: null, countedBy: ACTOR.actorUserId, startedAt: new Date().toISOString() },
+      {
+        id: opnameId,
+        opnameNumber: 'OPN-0001',
+        locationId: LOCATION_ID,
+        storageAreaId: null,
+        countedBy: ACTOR.actorUserId,
+        startedAt: new Date().toISOString(),
+      },
       ACTOR,
     );
     expect(await runtime.getOutboxDepth()).toBe(1);
@@ -74,7 +87,18 @@ describe('Stock opname — commitOpnameOpened/AreaCounted/Submitted/Cancelled (R
     const gudangCountId = crypto.randomUUID();
     await runtime.commitOpnameAreaCounted(
       gudangCountId,
-      { opnameId, storageAreaId: gudangAreaId, lines: [{ itemId: crypto.randomUUID(), systemQty: '10.000', countedQty: '9.500', varianceReason: 'susut' }] },
+      {
+        opnameId,
+        storageAreaId: gudangAreaId,
+        lines: [
+          {
+            itemId: crypto.randomUUID(),
+            systemQty: '10.000',
+            countedQty: '9.500',
+            varianceReason: 'susut',
+          },
+        ],
+      },
       ACTOR,
     );
     expect(await runtime.getOutboxDepth()).toBe(2);
@@ -85,12 +109,20 @@ describe('Stock opname — commitOpnameOpened/AreaCounted/Submitted/Cancelled (R
     const kitchenCountId = crypto.randomUUID();
     await runtime.commitOpnameAreaCounted(
       kitchenCountId,
-      { opnameId, storageAreaId: kitchenAreaId, lines: [{ itemId: crypto.randomUUID(), systemQty: '5.000', countedQty: '5.000' }] },
+      {
+        opnameId,
+        storageAreaId: kitchenAreaId,
+        lines: [{ itemId: crypto.randomUUID(), systemQty: '5.000', countedQty: '5.000' }],
+      },
       ACTOR,
     );
     expect(await runtime.getOutboxDepth()).toBe(3);
 
-    await runtime.commitOpnameSubmitted(opnameId, { opnameId, submittedAt: new Date().toISOString() }, ACTOR);
+    await runtime.commitOpnameSubmitted(
+      opnameId,
+      { opnameId, submittedAt: new Date().toISOString() },
+      ACTOR,
+    );
     expect(await runtime.getOutboxDepth()).toBe(4);
   });
 
@@ -101,7 +133,11 @@ describe('Stock opname — commitOpnameOpened/AreaCounted/Submitted/Cancelled (R
     const opnameId = crypto.randomUUID();
     const areaId = crypto.randomUUID();
     const areaCountId = crypto.randomUUID();
-    const payload = { opnameId, storageAreaId: areaId, lines: [{ itemId: crypto.randomUUID(), systemQty: '10.000', countedQty: '10.000' }] };
+    const payload = {
+      opnameId,
+      storageAreaId: areaId,
+      lines: [{ itemId: crypto.randomUUID(), systemQty: '10.000', countedQty: '10.000' }],
+    };
 
     await runtime.commitOpnameAreaCounted(areaCountId, payload, ACTOR);
     await runtime.commitOpnameAreaCounted(areaCountId, payload, ACTOR); // double-tap submit, same area
@@ -116,7 +152,14 @@ describe('Stock opname — commitOpnameOpened/AreaCounted/Submitted/Cancelled (R
     const opnameId = crypto.randomUUID();
     await runtime.commitOpnameOpened(
       opnameId,
-      { id: opnameId, opnameNumber: 'OPN-0002', locationId: LOCATION_ID, storageAreaId: null, countedBy: ACTOR.actorUserId, startedAt: new Date().toISOString() },
+      {
+        id: opnameId,
+        opnameNumber: 'OPN-0002',
+        locationId: LOCATION_ID,
+        storageAreaId: null,
+        countedBy: ACTOR.actorUserId,
+        startedAt: new Date().toISOString(),
+      },
       ACTOR,
     );
     await runtime.commitOpnameCancelled(opnameId, { opnameId }, ACTOR);
@@ -139,7 +182,9 @@ describe('Replenishment requests — commitReplenishmentSubmitted/Cancelled/Supe
         locationId: LOCATION_ID,
         neededBy: null,
         source: 'manual',
-        lines: [{ itemId: crypto.randomUUID(), qtyRequested: '20.000', unitId: crypto.randomUUID() }],
+        lines: [
+          { itemId: crypto.randomUUID(), qtyRequested: '20.000', unitId: crypto.randomUUID() },
+        ],
       },
       ACTOR,
     );
@@ -176,13 +221,24 @@ describe('Replenishment requests — commitReplenishmentSubmitted/Cancelled/Supe
     const requestId = crypto.randomUUID();
     await runtime.commitReplenishmentSubmitted(
       requestId,
-      { id: requestId, requestNumber: 'REQ-0003', locationId: LOCATION_ID, neededBy: null, source: 'manual', lines: [] },
+      {
+        id: requestId,
+        requestNumber: 'REQ-0003',
+        locationId: LOCATION_ID,
+        neededBy: null,
+        source: 'manual',
+        lines: [],
+      },
       ACTOR,
     );
     await runtime.commitReplenishmentSupervisorApproved(requestId, { id: requestId }, ACTOR);
     expect(await runtime.getOutboxDepth()).toBe(2);
 
-    await runtime.commitReplenishmentSupervisorRejected(crypto.randomUUID(), { id: requestId, reason: 'stok masih cukup' }, ACTOR);
+    await runtime.commitReplenishmentSupervisorRejected(
+      crypto.randomUUID(),
+      { id: requestId, reason: 'stok masih cukup' },
+      ACTOR,
+    );
     expect(await runtime.getOutboxDepth()).toBe(3);
   });
 
@@ -231,8 +287,16 @@ describe('Petty cash — commitPettyCashRecorded (RISK-02, wajib dua foto)', () 
     await runtime.init();
     expect(await runtime.getOutboxDepth()).toBe(0);
 
-    const paymentProofRef = await runtime.captureEvidence(new Blob(['fake-payment-proof-bytes'], { type: 'image/jpeg' }), 'image/jpeg', 'petty_cash_payment_proof');
-    const goodsPhotoRef = await runtime.captureEvidence(new Blob(['fake-goods-photo-bytes'], { type: 'image/jpeg' }), 'image/jpeg', 'petty_cash_goods_photo');
+    const paymentProofRef = await runtime.captureEvidence(
+      new Blob(['fake-payment-proof-bytes'], { type: 'image/jpeg' }),
+      'image/jpeg',
+      'petty_cash_payment_proof',
+    );
+    const goodsPhotoRef = await runtime.captureEvidence(
+      new Blob(['fake-goods-photo-bytes'], { type: 'image/jpeg' }),
+      'image/jpeg',
+      'petty_cash_goods_photo',
+    );
 
     // Two distinct blobs must get two distinct canonical ids (attachment-store's
     // "two identities, one row") — a single shared id here would mean one of
@@ -248,7 +312,15 @@ describe('Petty cash — commitPettyCashRecorded (RISK-02, wajib dua foto)', () 
         purchasedBy: ACTOR.actorUserId,
         purchaseDate: new Date().toISOString().slice(0, 10),
         storeName: 'Toko Sembako Pak Budi',
-        lines: [{ description: 'Bumbu dapur', itemId: null, qty: '2.000', amount: '50000.00', expenseCategory: 'ingredients' }],
+        lines: [
+          {
+            description: 'Bumbu dapur',
+            itemId: null,
+            qty: '2.000',
+            amount: '50000.00',
+            expenseCategory: 'ingredients',
+          },
+        ],
         paymentProofAttachmentId: paymentProofRef.attachmentId,
         goodsPhotoAttachmentId: goodsPhotoRef.attachmentId,
       },
@@ -262,9 +334,18 @@ describe('Petty cash — commitPettyCashRecorded (RISK-02, wajib dua foto)', () 
     // The property that matters: the QUEUED event's own attachment
     // references resolve back to the exact blobs captured — not merely that
     // some UUID-shaped field is populated.
-    const queued = result.envelope.payload.data as { paymentProofAttachmentId: string; goodsPhotoAttachmentId: string };
-    const resolvedPaymentProof = await getAttachmentByAttachmentId(runtime.db, queued.paymentProofAttachmentId);
-    const resolvedGoodsPhoto = await getAttachmentByAttachmentId(runtime.db, queued.goodsPhotoAttachmentId);
+    const queued = result.envelope.payload.data as {
+      paymentProofAttachmentId: string;
+      goodsPhotoAttachmentId: string;
+    };
+    const resolvedPaymentProof = await getAttachmentByAttachmentId(
+      runtime.db,
+      queued.paymentProofAttachmentId,
+    );
+    const resolvedGoodsPhoto = await getAttachmentByAttachmentId(
+      runtime.db,
+      queued.goodsPhotoAttachmentId,
+    );
     expect(resolvedPaymentProof?.sha256).toBe(paymentProofRef.sha256);
     expect(resolvedGoodsPhoto?.sha256).toBe(goodsPhotoRef.sha256);
   });
@@ -273,8 +354,16 @@ describe('Petty cash — commitPettyCashRecorded (RISK-02, wajib dua foto)', () 
     const runtime = makeRuntime();
     await runtime.init();
 
-    const paymentProofRef = await runtime.captureEvidence(new Blob(['a']), 'image/jpeg', 'petty_cash_payment_proof');
-    const goodsPhotoRef = await runtime.captureEvidence(new Blob(['b']), 'image/jpeg', 'petty_cash_goods_photo');
+    const paymentProofRef = await runtime.captureEvidence(
+      new Blob(['a']),
+      'image/jpeg',
+      'petty_cash_payment_proof',
+    );
+    const goodsPhotoRef = await runtime.captureEvidence(
+      new Blob(['b']),
+      'image/jpeg',
+      'petty_cash_goods_photo',
+    );
     const pettyCashId = crypto.randomUUID();
     const payload = {
       id: pettyCashId,
@@ -282,7 +371,15 @@ describe('Petty cash — commitPettyCashRecorded (RISK-02, wajib dua foto)', () 
       purchasedBy: ACTOR.actorUserId,
       purchaseDate: new Date().toISOString().slice(0, 10),
       storeName: 'Toko Sembako Pak Budi',
-      lines: [{ description: 'Bumbu dapur', itemId: null, qty: '2.000', amount: '50000.00', expenseCategory: 'ingredients' }],
+      lines: [
+        {
+          description: 'Bumbu dapur',
+          itemId: null,
+          qty: '2.000',
+          amount: '50000.00',
+          expenseCategory: 'ingredients',
+        },
+      ],
       paymentProofAttachmentId: paymentProofRef.attachmentId,
       goodsPhotoAttachmentId: goodsPhotoRef.attachmentId,
     };
@@ -300,7 +397,11 @@ describe('Waste records — commitWasteReported/ApprovedOffline (RISK-02, FR-WST
     await runtime.init();
     expect(await runtime.getOutboxDepth()).toBe(0);
 
-    const photoRef = await runtime.captureEvidence(new Blob(['fake-waste-photo-bytes'], { type: 'image/jpeg' }), 'image/jpeg', 'waste_photo');
+    const photoRef = await runtime.captureEvidence(
+      new Blob(['fake-waste-photo-bytes'], { type: 'image/jpeg' }),
+      'image/jpeg',
+      'waste_photo',
+    );
     expect(photoRef.attachmentId).toBeTruthy();
 
     const batchId = crypto.randomUUID();
@@ -319,7 +420,8 @@ describe('Waste records — commitWasteReported/ApprovedOffline (RISK-02, FR-WST
     expect(result.wasAlreadyCommitted).toBe(false);
     expect(await runtime.getOutboxDepth()).toBe(1);
 
-    const queuedPhotoId = (result.envelope.payload.data as { photoAttachmentIds: string[] }).photoAttachmentIds[0]!;
+    const queuedPhotoId = (result.envelope.payload.data as { photoAttachmentIds: string[] })
+      .photoAttachmentIds[0]!;
     const resolved = await getAttachmentByAttachmentId(runtime.db, queuedPhotoId);
     expect(resolved?.sha256).toBe(photoRef.sha256);
   });
@@ -330,7 +432,12 @@ describe('Waste records — commitWasteReported/ApprovedOffline (RISK-02, FR-WST
 
     const photoRef = await runtime.captureEvidence(new Blob(['x']), 'image/jpeg', 'waste_photo');
     const batchId = crypto.randomUUID();
-    const payload = { batchId, locationId: LOCATION_ID, items: [{ itemId: crypto.randomUUID(), qty: '1.000', reason: 'expired' }], photoAttachmentIds: [photoRef.attachmentId] };
+    const payload = {
+      batchId,
+      locationId: LOCATION_ID,
+      items: [{ itemId: crypto.randomUUID(), qty: '1.000', reason: 'expired' }],
+      photoAttachmentIds: [photoRef.attachmentId],
+    };
 
     await runtime.commitWasteReported(batchId, payload, ACTOR);
     await runtime.commitWasteReported(batchId, payload, ACTOR); // double-tap

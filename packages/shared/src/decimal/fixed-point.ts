@@ -87,7 +87,7 @@ export function sumFixed(values: bigint[]): bigint {
 
 function divideRound(numerator: bigint, divisor: bigint, mode: RoundingMode): bigint {
   if (divisor === 0n) throw new RangeError('Division by zero');
-  const resultNegative = (numerator < 0n) !== (divisor < 0n);
+  const resultNegative = numerator < 0n !== divisor < 0n;
   const n = numerator < 0n ? -numerator : numerator;
   const d = divisor < 0n ? -divisor : divisor;
   const quotient = n / d;

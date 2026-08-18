@@ -7,7 +7,16 @@
  * the inputs from real rows. Always active regardless of the D-18 statutory
  * flag (that layer is additive, see `./statutory`).
  */
-import { addMoney, isNegativeMoney, minMoney, mulMoneyByQty, subMoney, sumMoney, ZERO_MONEY, MONEY_SCALE } from '../money';
+import {
+  addMoney,
+  isNegativeMoney,
+  minMoney,
+  mulMoneyByQty,
+  subMoney,
+  sumMoney,
+  ZERO_MONEY,
+  MONEY_SCALE,
+} from '../money';
 import { divFixed, formatFixed, parseFixed } from '../decimal/fixed-point';
 import type { ISODate, Money } from '../types';
 
@@ -28,7 +37,14 @@ export function dailyRateFromMonthlySalary(monthlyBaseSalary: Money, daysInMonth
     throw new RangeError(`daysInMonth must be a positive integer, got ${daysInMonth}`);
   }
   return formatFixed(
-    divFixed(parseFixed(monthlyBaseSalary, MONEY_SCALE), MONEY_SCALE, BigInt(daysInMonth), 0, MONEY_SCALE, 'ceil'),
+    divFixed(
+      parseFixed(monthlyBaseSalary, MONEY_SCALE),
+      MONEY_SCALE,
+      BigInt(daysInMonth),
+      0,
+      MONEY_SCALE,
+      'ceil',
+    ),
     MONEY_SCALE,
   );
 }
@@ -77,13 +93,19 @@ export function yearsOfService(joinDate: ISODate, asOfDate: ISODate): number {
     throw new RangeError('Invalid date passed to yearsOfService');
   }
   let years = asOf.getUTCFullYear() - join.getUTCFullYear();
-  const anniversaryThisYear = new Date(Date.UTC(asOf.getUTCFullYear(), join.getUTCMonth(), join.getUTCDate()));
+  const anniversaryThisYear = new Date(
+    Date.UTC(asOf.getUTCFullYear(), join.getUTCMonth(), join.getUTCDate()),
+  );
   if (asOf < anniversaryThisYear) years -= 1;
   return Math.max(0, years);
 }
 
 /** PIN-05 — highest tier whose `minYears` the employee has reached; `0` when no tier matches (tiers sorted descending internally). */
-export function tenureAllowance(joinDate: ISODate, asOfDate: ISODate, tiers: readonly TenureTier[]): Money {
+export function tenureAllowance(
+  joinDate: ISODate,
+  asOfDate: ISODate,
+  tiers: readonly TenureTier[],
+): Money {
   const years = yearsOfService(joinDate, asOfDate);
   const sorted = [...tiers].sort((a, b) => b.minYears - a.minYears);
   const matched = sorted.find((t) => years >= t.minYears);
@@ -113,7 +135,11 @@ export function deductionSick(sickDays: number, dailyRate: Money, sickPaid: bool
 }
 
 /** POUT-02 — izin (permission) deduction; `permissionPaid` makes it a no-op when true. */
-export function deductionPermission(permissionDays: number, dailyRate: Money, permissionPaid: boolean): Money {
+export function deductionPermission(
+  permissionDays: number,
+  dailyRate: Money,
+  permissionPaid: boolean,
+): Money {
   if (permissionPaid || permissionDays <= 0) return ZERO_MONEY;
   return mulMoneyByQty(dailyRate, permissionDays.toFixed(3));
 }
@@ -129,7 +155,11 @@ export function deductionAbsence(absentDays: number, dailyRate: Money): Money {
 // ── POUT-04: leave beyond quota ────────────────────────────────────────────────
 
 /** POUT-04 — only days taken beyond the annual/marriage quota are deducted. */
-export function deductionLeaveExcess(daysTaken: number, quotaDays: number, dailyRate: Money): Money {
+export function deductionLeaveExcess(
+  daysTaken: number,
+  quotaDays: number,
+  dailyRate: Money,
+): Money {
   const excessDays = Math.max(0, daysTaken - quotaDays);
   if (excessDays <= 0) return ZERO_MONEY;
   return mulMoneyByQty(dailyRate, excessDays.toFixed(3));

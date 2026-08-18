@@ -26,8 +26,14 @@ const ALL_ROLES = Object.values(RoleKey);
 type ControllerClass = new (...args: any[]) => unknown;
 
 function requiredKeysFor(target: ControllerClass, method: string): string[] {
-  const meta = Reflect.getMetadata(REQUIRE_PERMISSION_KEY, (target.prototype as Record<string, unknown>)[method]) as string[] | undefined;
-  if (!meta) throw new Error(`No @RequirePermission() metadata found on ${target.name}.${method} — did the decorator get removed?`);
+  const meta = Reflect.getMetadata(
+    REQUIRE_PERMISSION_KEY,
+    (target.prototype as Record<string, unknown>)[method],
+  ) as string[] | undefined;
+  if (!meta)
+    throw new Error(
+      `No @RequirePermission() metadata found on ${target.name}.${method} — did the decorator get removed?`,
+    );
   return meta;
 }
 
@@ -85,8 +91,16 @@ describe('M10 delivery — RBAC matrix, both directions', () => {
 
   // Spot checks against CONTRACTS.md §3's literal table, named explicitly (not just derived from the
   // decorator) so a change to the RBAC matrix itself that silently loosens/tightens delivery is visible here.
-  it('Kasir (KSR) can never touch any delivery endpoint — not in the RBAC matrix\'s delivery column at all', () => {
-    for (const key of ['delivery.read', 'delivery.sj.create', 'delivery.sj.dispatch', 'delivery.sj.cancel', 'delivery.drop.execute', 'delivery.receive', 'delivery.master.manage'] as const) {
+  it("Kasir (KSR) can never touch any delivery endpoint — not in the RBAC matrix's delivery column at all", () => {
+    for (const key of [
+      'delivery.read',
+      'delivery.sj.create',
+      'delivery.sj.dispatch',
+      'delivery.sj.cancel',
+      'delivery.drop.execute',
+      'delivery.receive',
+      'delivery.master.manage',
+    ] as const) {
       expect(can(RoleKey.KASIR, key)).toBe(false);
     }
   });

@@ -37,7 +37,9 @@ describe('loadConfig', () => {
   });
 
   it('only wires a database URL when explicitly set', () => {
-    expect(loadConfig({ BRANCH_NODE_DATABASE_URL: 'postgresql://x' }).databaseUrl).toBe('postgresql://x');
+    expect(loadConfig({ BRANCH_NODE_DATABASE_URL: 'postgresql://x' }).databaseUrl).toBe(
+      'postgresql://x',
+    );
     expect(loadConfig({}).databaseUrl).toBeUndefined();
   });
 });

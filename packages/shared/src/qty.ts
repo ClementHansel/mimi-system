@@ -83,9 +83,19 @@ export function convertQty(qtyFrom: Qty, factor: string, mode: RoundingMode = 'h
   const FACTOR_SCALE = 6;
   const scaledFactor = parseFixed(factor, FACTOR_SCALE);
   if (scaledFactor <= 0n) throw new RangeError(`Unit conversion factor must be > 0, got ${factor}`);
-  return formatQty(mulFixed(parseQty(qtyFrom), QTY_SCALE, scaledFactor, FACTOR_SCALE, QTY_SCALE, mode));
+  return formatQty(
+    mulFixed(parseQty(qtyFrom), QTY_SCALE, scaledFactor, FACTOR_SCALE, QTY_SCALE, mode),
+  );
 }
 
-export function divQty(a: Qty, b: Qty, resultScale = QTY_SCALE, mode: RoundingMode = 'half_up'): Qty {
-  return formatFixed(divFixed(parseQty(a), QTY_SCALE, parseQty(b), QTY_SCALE, resultScale, mode), resultScale);
+export function divQty(
+  a: Qty,
+  b: Qty,
+  resultScale = QTY_SCALE,
+  mode: RoundingMode = 'half_up',
+): Qty {
+  return formatFixed(
+    divFixed(parseQty(a), QTY_SCALE, parseQty(b), QTY_SCALE, resultScale, mode),
+    resultScale,
+  );
 }

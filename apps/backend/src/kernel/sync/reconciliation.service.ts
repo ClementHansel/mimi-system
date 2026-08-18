@@ -85,7 +85,11 @@ export class ReconciliationService {
       }));
       const folded = foldMovementsToBalances(movements);
 
-      const balancesRes = await client.query<{ storage_area_id: UUID; item_id: UUID; qty_on_hand: Qty }>(
+      const balancesRes = await client.query<{
+        storage_area_id: UUID;
+        item_id: UUID;
+        qty_on_hand: Qty;
+      }>(
         `SELECT storage_area_id, item_id, qty_on_hand FROM stock_balances WHERE location_id = $1`,
         [locationId],
       );
@@ -102,14 +106,32 @@ export class ReconciliationService {
         );
         if (!check.matches) {
           mismatches++;
-          await this.openStockReconciliation(client, locationId, row.storage_area_id, row.item_id, 'cloud', check.expectedQty, check.storedQty, { job: 'R1' });
+          await this.openStockReconciliation(
+            client,
+            locationId,
+            row.storage_area_id,
+            row.item_id,
+            'cloud',
+            check.expectedQty,
+            check.storedQty,
+            { job: 'R1' },
+          );
         }
       }
       // Folded keys with NO stored balance row at all (balance never initialized) are also a divergence.
       for (const [key, bal] of folded) {
         if (seenKeys.has(key)) continue;
         mismatches++;
-        await this.openStockReconciliation(client, locationId, bal.storageAreaId, bal.itemId, 'cloud', bal.qtyOnHand, '0.000', { job: 'R1', note: 'no stock_balances row exists yet' });
+        await this.openStockReconciliation(
+          client,
+          locationId,
+          bal.storageAreaId,
+          bal.itemId,
+          'cloud',
+          bal.qtyOnHand,
+          '0.000',
+          { job: 'R1', note: 'no stock_balances row exists yet' },
+        );
       }
 
       return { checked: seenKeys.size + folded.size, mismatches };
@@ -124,7 +146,11 @@ export class ReconciliationService {
    * `sync:checksum` message) against the cloud's own per-area checksum
    * computed from CURRENT `stock_balances`.
    */
-  async runR2(locationId: UUID, originId: UUID, edgeAreaHashes: Record<string, string>): Promise<{ divergentAreas: string[] }> {
+  async runR2(
+    locationId: UUID,
+    originId: UUID,
+    edgeAreaHashes: Record<string, string>,
+  ): Promise<{ divergentAreas: string[] }> {
     return withSystemContext(this.pool, async (client) => {
       const balancesRes = await client.query<AreaBalanceRow>(
         `SELECT storage_area_id AS "storageAreaId", item_id AS "itemId", qty_on_hand::text AS "qtyOnHand"
@@ -143,7 +169,14 @@ export class ReconciliationService {
             entity: 'stock_balances',
             entityId: null,
             locationId,
-            detail: { job: 'R2', reason: 'tier_divergence', storageAreaId: areaId, originId, cloudHash: cloudHashes[areaId] ?? null, edgeHash },
+            detail: {
+              job: 'R2',
+              reason: 'tier_divergence',
+              storageAreaId: areaId,
+              originId,
+              cloudHash: cloudHashes[areaId] ?? null,
+              edgeHash,
+            },
             assigneeRole: 'kepala_gudang',
           });
         }
@@ -155,7 +188,13 @@ export class ReconciliationService {
   // ── R3: evidence SLA ────────────────────────────────────────────────────
   async runR3(): Promise<{ flagged: number }> {
     return withSystemContext(this.pool, async (client) => {
-      const res = await client.query<{ event_id: UUID; entity: string; entity_id: UUID; location_id: UUID | null; payload: unknown }>(
+      const res = await client.query<{
+        event_id: UUID;
+        entity: string;
+        entity_id: UUID;
+        location_id: UUID | null;
+        payload: unknown;
+      }>(
         `SELECT event_id, entity, entity_id, location_id, payload FROM sync_events
           WHERE apply_status = 'applied' AND applied_at < NOW() - INTERVAL '24 hours'
             AND (payload->'data' @> '{}'::jsonb)
@@ -165,10 +204,15 @@ export class ReconciliationService {
       let flagged = 0;
       for (const row of res.rows) {
         const data = (row.payload as { data?: Record<string, unknown> }).data ?? {};
-        const ref = (data.attachmentRef ?? data.attachment_ref ?? data.photoRef ?? data.photo_ref) as { sha256?: string } | undefined;
+        const ref = (data.attachmentRef ??
+          data.attachment_ref ??
+          data.photoRef ??
+          data.photo_ref) as { sha256?: string } | undefined;
         const sha256 = ref?.sha256;
         if (!sha256) continue;
-        const resolved = await client.query(`SELECT 1 FROM attachments WHERE sha256 = $1`, [sha256]);
+        const resolved = await client.query(`SELECT 1 FROM attachments WHERE sha256 = $1`, [
+          sha256,
+        ]);
         if ((resolved.rowCount ?? 0) > 0) continue;
         flagged++;
         await this.conflicts.recordConflictIfAbsent(client, {
@@ -187,10 +231,20 @@ export class ReconciliationService {
   // ── R4: price variance ─────────────────────────────────────────────────
   async runR4(sinceIso: string): Promise<{ flagged: number }> {
     return withSystemContext(this.pool, async (client) => {
-      const tolerancePct = await this.registry.getSetting<{ pct?: string }>(client, 'sync.price_variance_tolerance', { pct: '1.0' });
+      const tolerancePct = await this.registry.getSetting<{ pct?: string }>(
+        client,
+        'sync.price_variance_tolerance',
+        { pct: '1.0' },
+      );
       const tolerance = Number(tolerancePct.pct ?? '1.0') / 100;
 
-      const res = await client.query<{ event_id: UUID; entity_id: UUID; location_id: UUID | null; payload: unknown; occurred_at: string }>(
+      const res = await client.query<{
+        event_id: UUID;
+        entity_id: UUID;
+        location_id: UUID | null;
+        payload: unknown;
+        occurred_at: string;
+      }>(
         `SELECT event_id, entity_id, location_id, payload, occurred_at FROM sync_events
           WHERE entity = 'sales' AND op = 'completed' AND apply_status = 'applied' AND occurred_at >= $1`,
         [sinceIso],
@@ -199,7 +253,10 @@ export class ReconciliationService {
       for (const row of res.rows) {
         const lines = readSaleLines((row.payload as { data?: unknown }).data);
         for (const line of lines) {
-          const catalog = await client.query<{ price: Money }>(`SELECT price FROM products WHERE id = $1`, [line.productId]);
+          const catalog = await client.query<{ price: Money }>(
+            `SELECT price FROM products WHERE id = $1`,
+            [line.productId],
+          );
           const catalogPrice = catalog.rows[0]?.price;
           if (!catalogPrice) continue;
           const diff = Number(subMoney(line.unitPrice, catalogPrice));
@@ -212,7 +269,14 @@ export class ReconciliationService {
               entity: 'sales',
               entityId: row.entity_id,
               locationId: row.location_id,
-              detail: { job: 'R4', reason: 'price_variance', productId: line.productId, soldAt: line.unitPrice, catalogPrice, ratio },
+              detail: {
+                job: 'R4',
+                reason: 'price_variance',
+                productId: line.productId,
+                soldAt: line.unitPrice,
+                catalogPrice,
+                ratio,
+              },
             });
           }
         }
@@ -297,7 +361,9 @@ export class ReconciliationService {
       let expectedCash = '0.00' as Money;
       for (const row of salesRes.rows) {
         // `sales.completed`'s `payments[]` shape — packages/sync-protocol/src/schema/registry.ts GROUP_6_SCHEMAS.
-        const data = (row.payload as { data?: { payments?: { method?: string; amount?: Money }[] } }).data ?? {};
+        const data =
+          (row.payload as { data?: { payments?: { method?: string; amount?: Money }[] } }).data ??
+          {};
         for (const payment of data.payments ?? []) {
           if (payment.method === 'cash' && payment.amount) {
             expectedCash = (Number(expectedCash) + Number(payment.amount)).toFixed(2) as Money;
@@ -321,7 +387,11 @@ export class ReconciliationService {
       });
 
       if (compareMoney(variance, '0.00') < 0) {
-        const proposeAbove = await this.registry.getSettingMoney(client, 'pos.cash_variance_propose_above', '0.00');
+        const proposeAbove = await this.registry.getSettingMoney(
+          client,
+          'pos.cash_variance_propose_above',
+          '0.00',
+        );
         const shortfall = subMoney(expectedCash, countedCash);
         if (compareMoney(shortfall, proposeAbove) > 0 || compareMoney(proposeAbove, '0.00') === 0) {
           await client.query(
@@ -404,7 +474,13 @@ export class ReconciliationService {
             entity: 'sync_events',
             entityId: null,
             locationId: null,
-            detail: { job: 'R9', reason: 'possible_data_loss', originDeviceId: row.origin_device_id, ageMs, alsoFrozen: frozen },
+            detail: {
+              job: 'R9',
+              reason: 'possible_data_loss',
+              originDeviceId: row.origin_device_id,
+              ageMs,
+              alsoFrozen: frozen,
+            },
           });
         }
       }
@@ -420,7 +496,12 @@ export class ReconciliationService {
           WHERE (subscriber_type = 'device' AND updated_at < NOW() - INTERVAL '14 days')
              OR (subscriber_type = 'node' AND updated_at < NOW() - INTERVAL '90 days')`,
       );
-      return { expired: res.rows.map((r) => ({ subscriberId: r.subscriber_id, subscriberType: r.subscriber_type })) };
+      return {
+        expired: res.rows.map((r) => ({
+          subscriberId: r.subscriber_id,
+          subscriberType: r.subscriber_type,
+        })),
+      };
     });
   }
 
@@ -442,7 +523,16 @@ export class ReconciliationService {
          SELECT 1 FROM stock_reconciliations
           WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3 AND tier = $4 AND status = 'open'
        )`,
-      [locationId, storageAreaId, itemId, tier, expectedQty, storedQty, divergence, JSON.stringify(detail)],
+      [
+        locationId,
+        storageAreaId,
+        itemId,
+        tier,
+        expectedQty,
+        storedQty,
+        divergence,
+        JSON.stringify(detail),
+      ],
     );
   }
 }

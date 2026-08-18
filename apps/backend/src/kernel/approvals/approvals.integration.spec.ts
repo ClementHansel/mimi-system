@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ApprovalDocumentType, ApprovalMode, ERR_APPROVAL_STEP_ROLE, ERR_OFFLINE_NOT_ELIGIBLE, ERR_REASON_REQUIRED, RoleKey } from '@mimi/shared';
+import {
+  ApprovalDocumentType,
+  ApprovalMode,
+  ERR_APPROVAL_STEP_ROLE,
+  ERR_OFFLINE_NOT_ELIGIBLE,
+  ERR_REASON_REQUIRED,
+  RoleKey,
+} from '@mimi/shared';
 import { SettingsRepository } from '../../modules/settings/settings.repository';
 import type { NotificationService } from '../notification/notification.service';
 import { ApprovalsRepository } from './approvals.repository';
@@ -115,7 +122,11 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
       // column nullable so this could be fixed at all). Read it back via `getDetail()` — a fresh query
       // against the table, not the object `approve()` already returned — so this actually exercises
       // what's in the database.
-      const persisted = await svc.getDetail(client, ApprovalDocumentType.REPLENISHMENT_REQUEST, documentId);
+      const persisted = await svc.getDetail(
+        client,
+        ApprovalDocumentType.REPLENISHMENT_REQUEST,
+        documentId,
+      );
       expect(persisted.currentStep).toBeNull();
       expect(persisted.state).toBe('approved');
     });
@@ -154,7 +165,11 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
       expect(rejected.approvalState).toBe('rejected');
       expect(rejected.currentStep).toBeNull();
 
-      const detail = await svc.getDetail(client, ApprovalDocumentType.REPLENISHMENT_REQUEST, documentId);
+      const detail = await svc.getDetail(
+        client,
+        ApprovalDocumentType.REPLENISHMENT_REQUEST,
+        documentId,
+      );
       expect(detail.steps[0]!.reason).toBe('stok gudang tidak cukup');
     });
   });
@@ -234,7 +249,11 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
   });
 
   it('void_refund: offline-provisional approval is allowed (§7.6) and stamps offline_authorized', async () => {
-    const credentialId = await createOfflineCredential(fx.usersByRole[RoleKey.SUPERVISOR], RoleKey.SUPERVISOR, [fx.outletId]);
+    const credentialId = await createOfflineCredential(
+      fx.usersByRole[RoleKey.SUPERVISOR],
+      RoleKey.SUPERVISOR,
+      [fx.outletId],
+    );
     try {
       await withRollback(async (client) => {
         const svc = service();
@@ -440,7 +459,10 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
     });
 
     it('a warehouse opname routes to Kepala Gudang; Supervisor is rejected — the seeded chain role is only "supervisor"', async () => {
-      const opnameId = await createStockOpname(fx.warehouseId, fx.usersByRole[RoleKey.KEPALA_GUDANG]);
+      const opnameId = await createStockOpname(
+        fx.warehouseId,
+        fx.usersByRole[RoleKey.KEPALA_GUDANG],
+      );
       try {
         await withRollback(async (client) => {
           const svc = service();
@@ -515,7 +537,10 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
     });
 
     it('reject requires a reason regardless of location type', async () => {
-      const opnameId = await createStockOpname(fx.warehouseId, fx.usersByRole[RoleKey.KEPALA_GUDANG]);
+      const opnameId = await createStockOpname(
+        fx.warehouseId,
+        fx.usersByRole[RoleKey.KEPALA_GUDANG],
+      );
       try {
         await withRollback(async (client) => {
           const svc = service();
@@ -545,7 +570,11 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
   // ── 6. return (IRREGULAR — direction routing) ──────────────────────────
   describe('return — carried-forward item 2 (direction routing)', () => {
     it('outlet_to_warehouse routes to Supervisor', async () => {
-      const returnId = await createReturnOutletToWarehouse(fx.outletId, fx.warehouseId, fx.usersByRole[RoleKey.LEADER_OUTLET]);
+      const returnId = await createReturnOutletToWarehouse(
+        fx.outletId,
+        fx.warehouseId,
+        fx.usersByRole[RoleKey.LEADER_OUTLET],
+      );
       try {
         await withRollback(async (client) => {
           const svc = service();
@@ -581,7 +610,11 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
     });
 
     it('warehouse_to_supplier routes to Kepala Gudang — the seeded chain role is only "supervisor"', async () => {
-      const returnId = await createReturnWarehouseToSupplier(fx.warehouseId, fx.supplierId, fx.usersByRole[RoleKey.KEPALA_GUDANG]);
+      const returnId = await createReturnWarehouseToSupplier(
+        fx.warehouseId,
+        fx.supplierId,
+        fx.usersByRole[RoleKey.KEPALA_GUDANG],
+      );
       try {
         await withRollback(async (client) => {
           const svc = service();
@@ -620,8 +653,17 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
   // ── 7. waste (IRREGULAR — location-type routing + offline eligibility) ─
   describe('waste — carried-forward item 2 + D-17 offline eligibility', () => {
     it('an outlet waste report routes to Supervisor and MAY be approved offline (§7.6)', async () => {
-      const wasteId = await createWasteRecord(fx.outletId, fx.storageAreaOutlet, fx.itemId, fx.usersByRole[RoleKey.LEADER_OUTLET]);
-      const credentialId = await createOfflineCredential(fx.usersByRole[RoleKey.SUPERVISOR], RoleKey.SUPERVISOR, [fx.outletId]);
+      const wasteId = await createWasteRecord(
+        fx.outletId,
+        fx.storageAreaOutlet,
+        fx.itemId,
+        fx.usersByRole[RoleKey.LEADER_OUTLET],
+      );
+      const credentialId = await createOfflineCredential(
+        fx.usersByRole[RoleKey.SUPERVISOR],
+        RoleKey.SUPERVISOR,
+        [fx.outletId],
+      );
       try {
         await withRollback(async (client) => {
           const svc = service();
@@ -652,7 +694,12 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
     });
 
     it('a warehouse waste report routes to Kepala Gudang and MUST NOT be approved offline', async () => {
-      const wasteId = await createWasteRecord(fx.warehouseId, fx.storageAreaWarehouse, fx.itemId, fx.usersByRole[RoleKey.KEPALA_GUDANG]);
+      const wasteId = await createWasteRecord(
+        fx.warehouseId,
+        fx.storageAreaWarehouse,
+        fx.itemId,
+        fx.usersByRole[RoleKey.KEPALA_GUDANG],
+      );
       try {
         await withRollback(async (client) => {
           const svc = service();
@@ -795,26 +842,29 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
 
   // ── 10. leave_request (IRREGULAR — any-of role set) ────────────────────
   describe('leave_request — carried-forward item 2 (any-of Supervisor/HR Admin/Manager)', () => {
-    it.each([RoleKey.SUPERVISOR, RoleKey.HR_ADMIN, RoleKey.MANAGER])('%s may approve step 1 even though the seeded chain role is only "supervisor"', async (approverRole) => {
-      await withRollback(async (client) => {
-        const svc = service();
-        const documentId = randomUUID();
-        await svc.submit(client, {
-          documentType: ApprovalDocumentType.LEAVE_REQUEST,
-          documentId,
-          requestedBy: fx.usersByRole[RoleKey.LEADER_OUTLET],
-          locationId: fx.outletId,
+    it.each([RoleKey.SUPERVISOR, RoleKey.HR_ADMIN, RoleKey.MANAGER])(
+      '%s may approve step 1 even though the seeded chain role is only "supervisor"',
+      async (approverRole) => {
+        await withRollback(async (client) => {
+          const svc = service();
+          const documentId = randomUUID();
+          await svc.submit(client, {
+            documentType: ApprovalDocumentType.LEAVE_REQUEST,
+            documentId,
+            requestedBy: fx.usersByRole[RoleKey.LEADER_OUTLET],
+            locationId: fx.outletId,
+          });
+          const result = await svc.approve(client, {
+            documentType: ApprovalDocumentType.LEAVE_REQUEST,
+            documentId,
+            currentState: 'pending',
+            actorUserId: fx.usersByRole[approverRole],
+            actorRole: approverRole,
+          });
+          expect(result.approvalState).toBe('approved');
         });
-        const result = await svc.approve(client, {
-          documentType: ApprovalDocumentType.LEAVE_REQUEST,
-          documentId,
-          currentState: 'pending',
-          actorUserId: fx.usersByRole[approverRole],
-          actorRole: approverRole,
-        });
-        expect(result.approvalState).toBe('approved');
-      });
-    });
+      },
+    );
 
     it('Kasir may not approve a leave request', async () => {
       await withRollback(async (client) => {
@@ -962,14 +1012,22 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
 
         const inScope = await svc.getPending(
           client,
-          { userId: fx.usersByRole[RoleKey.SUPERVISOR], roleKey: RoleKey.SUPERVISOR, locationIds: [fx.outletId] },
+          {
+            userId: fx.usersByRole[RoleKey.SUPERVISOR],
+            roleKey: RoleKey.SUPERVISOR,
+            locationIds: [fx.outletId],
+          },
           { page: 1, pageSize: 50 },
         );
         expect(inScope.rows.some((r) => r.documentId === opnameId)).toBe(true);
 
         const outOfScope = await svc.getPending(
           client,
-          { userId: fx.usersByRole[RoleKey.SUPERVISOR], roleKey: RoleKey.SUPERVISOR, locationIds: [fx.warehouseId] },
+          {
+            userId: fx.usersByRole[RoleKey.SUPERVISOR],
+            roleKey: RoleKey.SUPERVISOR,
+            locationIds: [fx.warehouseId],
+          },
           { page: 1, pageSize: 50 },
         );
         expect(outOfScope.rows.some((r) => r.documentId === opnameId)).toBe(false);
@@ -994,14 +1052,22 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
 
         const kgdView = await svc.getPending(
           client,
-          { userId: fx.usersByRole[RoleKey.KEPALA_GUDANG], roleKey: RoleKey.KEPALA_GUDANG, locationIds: [fx.warehouseId] },
+          {
+            userId: fx.usersByRole[RoleKey.KEPALA_GUDANG],
+            roleKey: RoleKey.KEPALA_GUDANG,
+            locationIds: [fx.warehouseId],
+          },
           { page: 1, pageSize: 50 },
         );
         expect(kgdView.rows.some((r) => r.documentId === opnameId)).toBe(true);
 
         const spvView = await svc.getPending(
           client,
-          { userId: fx.usersByRole[RoleKey.SUPERVISOR], roleKey: RoleKey.SUPERVISOR, locationIds: [fx.warehouseId] },
+          {
+            userId: fx.usersByRole[RoleKey.SUPERVISOR],
+            roleKey: RoleKey.SUPERVISOR,
+            locationIds: [fx.warehouseId],
+          },
           { page: 1, pageSize: 50 },
         );
         expect(spvView.rows.some((r) => r.documentId === opnameId)).toBe(false);
@@ -1037,38 +1103,41 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
    * (unchanged) fails at `expect(row).toBeDefined()` — the row is dropped,
    * not just unnamed. With the `app_user_display()` fix, it passes.
    */
-  it('a Supervisor (real, non-central RLS session) sees a pending request raised by ANOTHER user in their inbox, with the requester\'s real name populated', async () => {
+  it("a Supervisor (real, non-central RLS session) sees a pending request raised by ANOTHER user in their inbox, with the requester's real name populated", async () => {
     const requesterId = fx.usersByRole[RoleKey.LEADER_OUTLET];
     const approverId = fx.usersByRole[RoleKey.SUPERVISOR];
     expect(requesterId).not.toBe(approverId); // the exact case app_is_self() cannot satisfy for the approver
 
-    await withRollbackAs({ role: RoleKey.SUPERVISOR, userId: approverId, locationIds: [fx.outletId] }, async (client) => {
-      const svc = service();
-      const documentId = randomUUID();
+    await withRollbackAs(
+      { role: RoleKey.SUPERVISOR, userId: approverId, locationIds: [fx.outletId] },
+      async (client) => {
+        const svc = service();
+        const documentId = randomUUID();
 
-      await svc.submit(client, {
-        documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
-        documentId,
-        requestedBy: requesterId,
-        amount: '150000.00',
-        locationId: fx.outletId,
-      });
+        await svc.submit(client, {
+          documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
+          documentId,
+          requestedBy: requesterId,
+          amount: '150000.00',
+          locationId: fx.outletId,
+        });
 
-      const inbox = await svc.getPending(
-        client,
-        { userId: approverId, roleKey: RoleKey.SUPERVISOR, locationIds: [fx.outletId] },
-        { page: 1, pageSize: 50 },
-      );
+        const inbox = await svc.getPending(
+          client,
+          { userId: approverId, roleKey: RoleKey.SUPERVISOR, locationIds: [fx.outletId] },
+          { page: 1, pageSize: 50 },
+        );
 
-      const row = inbox.rows.find((r) => r.documentId === documentId);
-      expect(row).toBeDefined(); // the row itself must survive — this is what the INNER JOIN used to eliminate
-      expect(row!.requestedBy).not.toBe(requesterId); // a real name, not the raw id echoed back as a fallback
-      expect(row!.requestedBy.length).toBeGreaterThan(0);
-      expect(row!.requestedBy).not.toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/i); // not a UUID-shaped fallback
-    });
+        const row = inbox.rows.find((r) => r.documentId === documentId);
+        expect(row).toBeDefined(); // the row itself must survive — this is what the INNER JOIN used to eliminate
+        expect(row!.requestedBy).not.toBe(requesterId); // a real name, not the raw id echoed back as a fallback
+        expect(row!.requestedBy.length).toBeGreaterThan(0);
+        expect(row!.requestedBy).not.toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/i); // not a UUID-shaped fallback
+      },
+    );
   });
 
-  it('a Kepala Gudang (real, non-central RLS session) also resolves a non-self requester\'s name (not just Supervisor)', async () => {
+  it("a Kepala Gudang (real, non-central RLS session) also resolves a non-self requester's name (not just Supervisor)", async () => {
     const requesterId = fx.usersByRole[RoleKey.LEADER_OUTLET];
     const kgdApproverId = fx.usersByRole[RoleKey.KEPALA_GUDANG];
     expect(requesterId).not.toBe(kgdApproverId);
@@ -1077,44 +1146,57 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
     // session; the session then switches to the Kepala Gudang's real, non-central session for the
     // inbox read — one transaction, `set_config` is re-assertable mid-transaction, `SET LOCAL ROLE
     // app_user` (the actual Postgres role) never needs reissuing.
-    await withRollbackAs({ role: RoleKey.SUPERVISOR, userId: fx.usersByRole[RoleKey.SUPERVISOR], locationIds: [fx.outletId] }, async (client) => {
-      const svc = service();
-      const documentId = randomUUID();
+    await withRollbackAs(
+      {
+        role: RoleKey.SUPERVISOR,
+        userId: fx.usersByRole[RoleKey.SUPERVISOR],
+        locationIds: [fx.outletId],
+      },
+      async (client) => {
+        const svc = service();
+        const documentId = randomUUID();
 
-      await svc.submit(client, {
-        documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
-        documentId,
-        requestedBy: requesterId,
-        amount: '150000.00',
-        locationId: fx.outletId,
-      });
-      await svc.approve(client, {
-        documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
-        documentId,
-        currentState: 'submitted',
-        actorUserId: fx.usersByRole[RoleKey.SUPERVISOR],
-        actorRole: RoleKey.SUPERVISOR,
-      });
+        await svc.submit(client, {
+          documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
+          documentId,
+          requestedBy: requesterId,
+          amount: '150000.00',
+          locationId: fx.outletId,
+        });
+        await svc.approve(client, {
+          documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
+          documentId,
+          currentState: 'submitted',
+          actorUserId: fx.usersByRole[RoleKey.SUPERVISOR],
+          actorRole: RoleKey.SUPERVISOR,
+        });
 
-      await client.query(`SELECT set_config('app.role', $1, true)`, [RoleKey.KEPALA_GUDANG]);
-      await client.query(`SELECT set_config('app.user_id', $1, true)`, [kgdApproverId]);
-      // ScopeService's real kepalaGudangScope() is "their warehouse UNION every outlet that
-      // warehouse has shipped to" — this replenishment request's `approvals.location_id` is the
-      // REQUESTING outlet (set at submit()), so a Kepala Gudang who serves it legitimately has
-      // both in scope. `app.location_ids` (the RLS session var) is irrelevant to this read (no RLS
-      // on approvals/approval_steps); `CallerScope.locationIds` below is the one that matters.
-      await client.query(`SELECT set_config('app.location_ids', $1, true)`, [`${fx.warehouseId},${fx.outletId}`]);
+        await client.query(`SELECT set_config('app.role', $1, true)`, [RoleKey.KEPALA_GUDANG]);
+        await client.query(`SELECT set_config('app.user_id', $1, true)`, [kgdApproverId]);
+        // ScopeService's real kepalaGudangScope() is "their warehouse UNION every outlet that
+        // warehouse has shipped to" — this replenishment request's `approvals.location_id` is the
+        // REQUESTING outlet (set at submit()), so a Kepala Gudang who serves it legitimately has
+        // both in scope. `app.location_ids` (the RLS session var) is irrelevant to this read (no RLS
+        // on approvals/approval_steps); `CallerScope.locationIds` below is the one that matters.
+        await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+          `${fx.warehouseId},${fx.outletId}`,
+        ]);
 
-      const inbox = await svc.getPending(
-        client,
-        { userId: kgdApproverId, roleKey: RoleKey.KEPALA_GUDANG, locationIds: [fx.warehouseId, fx.outletId] },
-        { page: 1, pageSize: 50 },
-      );
-      const row = inbox.rows.find((r) => r.documentId === documentId);
-      expect(row).toBeDefined();
-      expect(row!.requestedBy).not.toBe(requesterId);
-      expect(row!.requestedBy.length).toBeGreaterThan(0);
-    });
+        const inbox = await svc.getPending(
+          client,
+          {
+            userId: kgdApproverId,
+            roleKey: RoleKey.KEPALA_GUDANG,
+            locationIds: [fx.warehouseId, fx.outletId],
+          },
+          { page: 1, pageSize: 50 },
+        );
+        const row = inbox.rows.find((r) => r.documentId === documentId);
+        expect(row).toBeDefined();
+        expect(row!.requestedBy).not.toBe(requesterId);
+        expect(row!.requestedBy.length).toBeGreaterThan(0);
+      },
+    );
   });
 
   it('a second decision on an already-decided approval is rejected (idempotency / no double-spend)', async () => {
@@ -1186,19 +1268,33 @@ describe('ApprovalService — D-23 per-document-type approval modes', () => {
       expect(await svc.getMode(client, ApprovalDocumentType.VOID_REFUND)).toBe(ApprovalMode.MANUAL);
       expect(await svc.getMode(client, ApprovalDocumentType.WASTE)).toBe(ApprovalMode.MANUAL);
       expect(await svc.getMode(client, ApprovalDocumentType.PAYROLL_RUN)).toBe(ApprovalMode.MANUAL);
-      expect(await svc.resolveNotificationChannels(client, ApprovalDocumentType.VOID_REFUND)).toEqual(['in_app', 'email']);
+      expect(
+        await svc.resolveNotificationChannels(client, ApprovalDocumentType.VOID_REFUND),
+      ).toEqual(['in_app', 'email']);
     });
   });
 
-  it("off (waste, routine): submit() auto-approves with NO human step, yet still records the real actor — never anonymous", async () => {
-    const wasteId = await createWasteRecord(fx.outletId, fx.storageAreaOutlet, fx.itemId, fx.usersByRole[RoleKey.LEADER_OUTLET]);
+  it('off (waste, routine): submit() auto-approves with NO human step, yet still records the real actor — never anonymous', async () => {
+    const wasteId = await createWasteRecord(
+      fx.outletId,
+      fx.storageAreaOutlet,
+      fx.itemId,
+      fx.usersByRole[RoleKey.LEADER_OUTLET],
+    );
     try {
       await withRollback(async (client) => {
-        await settingsRepo.upsertApprovalMode(client, ApprovalDocumentType.WASTE, ApprovalMode.OFF, fx.usersByRole[RoleKey.OWNER]);
+        await settingsRepo.upsertApprovalMode(
+          client,
+          ApprovalDocumentType.WASTE,
+          ApprovalMode.OFF,
+          fx.usersByRole[RoleKey.OWNER],
+        );
         const svc = service();
         const requester = fx.usersByRole[RoleKey.LEADER_OUTLET];
 
-        expect(await svc.resolveNotificationChannels(client, ApprovalDocumentType.WASTE)).toEqual([]); // nothing pending to notify anyone about
+        expect(await svc.resolveNotificationChannels(client, ApprovalDocumentType.WASTE)).toEqual(
+          [],
+        ); // nothing pending to notify anyone about
 
         const submitted = await svc.submit(client, {
           documentType: ApprovalDocumentType.WASTE,
@@ -1241,13 +1337,28 @@ describe('ApprovalService — D-23 per-document-type approval modes', () => {
   });
 
   it('off with no requestedByRole supplied: actor is still captured, role label degrades to the documented "system" sentinel', async () => {
-    const wasteId = await createWasteRecord(fx.outletId, fx.storageAreaOutlet, fx.itemId, fx.usersByRole[RoleKey.LEADER_OUTLET]);
+    const wasteId = await createWasteRecord(
+      fx.outletId,
+      fx.storageAreaOutlet,
+      fx.itemId,
+      fx.usersByRole[RoleKey.LEADER_OUTLET],
+    );
     try {
       await withRollback(async (client) => {
-        await settingsRepo.upsertApprovalMode(client, ApprovalDocumentType.WASTE, ApprovalMode.OFF, fx.usersByRole[RoleKey.OWNER]);
+        await settingsRepo.upsertApprovalMode(
+          client,
+          ApprovalDocumentType.WASTE,
+          ApprovalMode.OFF,
+          fx.usersByRole[RoleKey.OWNER],
+        );
         const svc = service();
         const requester = fx.usersByRole[RoleKey.LEADER_OUTLET];
-        await svc.submit(client, { documentType: ApprovalDocumentType.WASTE, documentId: wasteId, requestedBy: requester, locationId: fx.outletId });
+        await svc.submit(client, {
+          documentType: ApprovalDocumentType.WASTE,
+          documentId: wasteId,
+          requestedBy: requester,
+          locationId: fx.outletId,
+        });
         const detail = await svc.getDetail(client, ApprovalDocumentType.WASTE, wasteId);
         expect(detail.steps[0]!.actedBy).toBe(requester); // actor recorded regardless
         expect(detail.steps[0]!.approverRole).toBe('system');
@@ -1259,9 +1370,16 @@ describe('ApprovalService — D-23 per-document-type approval modes', () => {
 
   it('whatsapp (void_refund, high-risk): chain still requires the real authenticated decision; only the notify channel changes (D-24)', async () => {
     await withRollback(async (client) => {
-      await settingsRepo.upsertApprovalMode(client, ApprovalDocumentType.VOID_REFUND, ApprovalMode.WHATSAPP, fx.usersByRole[RoleKey.OWNER]);
+      await settingsRepo.upsertApprovalMode(
+        client,
+        ApprovalDocumentType.VOID_REFUND,
+        ApprovalMode.WHATSAPP,
+        fx.usersByRole[RoleKey.OWNER],
+      );
       const svc = service();
-      expect(await svc.resolveNotificationChannels(client, ApprovalDocumentType.VOID_REFUND)).toEqual(['in_app', 'whatsapp']);
+      expect(
+        await svc.resolveNotificationChannels(client, ApprovalDocumentType.VOID_REFUND),
+      ).toEqual(['in_app', 'whatsapp']);
 
       const documentId = randomUUID();
       const submitted = await svc.submit(client, {
@@ -1298,9 +1416,16 @@ describe('ApprovalService — D-23 per-document-type approval modes', () => {
 
   it('auto (payroll_run, financial): the request is system-created without a separate submit step, but BOTH human decisions (Finance, Owner) are still required — auto never decides', async () => {
     await withRollback(async (client) => {
-      await settingsRepo.upsertApprovalMode(client, ApprovalDocumentType.PAYROLL_RUN, ApprovalMode.AUTO, fx.usersByRole[RoleKey.OWNER]);
+      await settingsRepo.upsertApprovalMode(
+        client,
+        ApprovalDocumentType.PAYROLL_RUN,
+        ApprovalMode.AUTO,
+        fx.usersByRole[RoleKey.OWNER],
+      );
       const svc = service();
-      expect(await svc.resolveNotificationChannels(client, ApprovalDocumentType.PAYROLL_RUN)).toEqual(['in_app', 'email']);
+      expect(
+        await svc.resolveNotificationChannels(client, ApprovalDocumentType.PAYROLL_RUN),
+      ).toEqual(['in_app', 'email']);
 
       const documentId = randomUUID();
       const submitted = await svc.submit(client, {
@@ -1339,7 +1464,12 @@ describe('ApprovalService — D-23 per-document-type approval modes', () => {
       const svc = service();
       expect(await svc.getMode(client, ApprovalDocumentType.PAYROLL_RUN)).toBe(ApprovalMode.MANUAL);
 
-      await settingsRepo.upsertApprovalMode(client, ApprovalDocumentType.PAYROLL_RUN, ApprovalMode.OFF, fx.usersByRole[RoleKey.OWNER]);
+      await settingsRepo.upsertApprovalMode(
+        client,
+        ApprovalDocumentType.PAYROLL_RUN,
+        ApprovalMode.OFF,
+        fx.usersByRole[RoleKey.OWNER],
+      );
       expect(await svc.getMode(client, ApprovalDocumentType.PAYROLL_RUN)).toBe(ApprovalMode.OFF);
 
       const documentId = randomUUID();
@@ -1381,7 +1511,9 @@ describe('ApprovalService × NotificationService — B-07 (live DB, real notify(
     const before = await readOwnNotifications(fx.usersByRole[RoleKey.SUPERVISOR]);
 
     await withRollback(async (client) => {
-      expect(await svc.getMode(client, ApprovalDocumentType.REPLENISHMENT_REQUEST)).toBe(ApprovalMode.MANUAL);
+      expect(await svc.getMode(client, ApprovalDocumentType.REPLENISHMENT_REQUEST)).toBe(
+        ApprovalMode.MANUAL,
+      );
       const documentId = randomUUID();
       await svc.submit(client, {
         documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST,
@@ -1407,7 +1539,12 @@ describe('ApprovalService × NotificationService — B-07 (live DB, real notify(
     await ensureUserContact(approverId, '628111000111', 'spv-b07-test@example.com');
 
     await withRollback(async (client) => {
-      await settingsRepo.upsertApprovalMode(client, ApprovalDocumentType.VOID_REFUND, ApprovalMode.WHATSAPP, fx.usersByRole[RoleKey.OWNER]);
+      await settingsRepo.upsertApprovalMode(
+        client,
+        ApprovalDocumentType.VOID_REFUND,
+        ApprovalMode.WHATSAPP,
+        fx.usersByRole[RoleKey.OWNER],
+      );
       const documentId = randomUUID();
       await svc.submit(client, {
         documentType: ApprovalDocumentType.VOID_REFUND,
@@ -1422,14 +1559,24 @@ describe('ApprovalService × NotificationService — B-07 (live DB, real notify(
     });
   });
 
-  it('off mode: submit() notifies nobody — no new notification row for the role that would otherwise be step 1\'s approver', async () => {
+  it("off mode: submit() notifies nobody — no new notification row for the role that would otherwise be step 1's approver", async () => {
     const svc = buildApprovalServiceWithNotifications();
     const approverId = fx.usersByRole[RoleKey.LEADER_OUTLET];
-    const wasteId = await createWasteRecord(fx.outletId, fx.storageAreaOutlet, fx.itemId, fx.usersByRole[RoleKey.LEADER_OUTLET]);
+    const wasteId = await createWasteRecord(
+      fx.outletId,
+      fx.storageAreaOutlet,
+      fx.itemId,
+      fx.usersByRole[RoleKey.LEADER_OUTLET],
+    );
     try {
       const before = await readOwnNotifications(approverId);
       await withRollback(async (client) => {
-        await settingsRepo.upsertApprovalMode(client, ApprovalDocumentType.WASTE, ApprovalMode.OFF, fx.usersByRole[RoleKey.OWNER]);
+        await settingsRepo.upsertApprovalMode(
+          client,
+          ApprovalDocumentType.WASTE,
+          ApprovalMode.OFF,
+          fx.usersByRole[RoleKey.OWNER],
+        );
         await svc.submit(client, {
           documentType: ApprovalDocumentType.WASTE,
           documentId: wasteId,
@@ -1470,7 +1617,9 @@ describe('ApprovalService × NotificationService — B-07 (live DB, real notify(
       });
 
       const rows = await readOwnNotifications(requesterId);
-      const decided = rows.find((r) => r.type === 'approval_decided' && r.body.includes(documentId));
+      const decided = rows.find(
+        (r) => r.type === 'approval_decided' && r.body.includes(documentId),
+      );
       expect(decided).toBeDefined();
       expect(decided!.body).toContain(reason);
       expect(decided!.body).toContain('ditolak'); // outcome mapped to its Indonesian verb, not the raw 'rejected' data value
@@ -1478,7 +1627,11 @@ describe('ApprovalService × NotificationService — B-07 (live DB, real notify(
   });
 
   it('a failing notification channel never blocks or rolls back the approval itself', async () => {
-    const failingNotifications = { notify: async () => { throw new Error('simulated notify failure'); } } as unknown as NotificationService;
+    const failingNotifications = {
+      notify: async () => {
+        throw new Error('simulated notify failure');
+      },
+    } as unknown as NotificationService;
     const svc = new ApprovalService(new ApprovalsRepository(), failingNotifications, getAppPool());
 
     await withRollback(async (client) => {

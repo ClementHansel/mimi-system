@@ -83,11 +83,18 @@ export class PosCatalogService {
       sortOrder: r.sort_order,
       isActive: r.is_active,
       hasRecipe: r.has_recipe,
-      ...(r.has_recipe ? { recipeYieldQty: yieldQtyByProduct.get(r.id), recipeLines: linesByProduct.get(r.id) ?? [] } : {}),
+      ...(r.has_recipe
+        ? {
+            recipeYieldQty: yieldQtyByProduct.get(r.id),
+            recipeLines: linesByProduct.get(r.id) ?? [],
+          }
+        : {}),
     }));
 
     const categories = [...new Set(products.map((p) => p.category))].sort();
-    const version = res.rows[0]?.max_updated_at ? new Date(res.rows[0].max_updated_at).toISOString() : '0';
+    const version = res.rows[0]?.max_updated_at
+      ? new Date(res.rows[0].max_updated_at).toISOString()
+      : '0';
 
     return { products, categories, version };
   }

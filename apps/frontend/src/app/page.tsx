@@ -54,7 +54,10 @@ const DASBOR_EXCLUDED_IDS = new Set(['pos', 'me']);
  * `/warehouse`, etc., exactly like the old hero card did — falling back to
  * the first reachable item in nav order for any role/permission combo whose
  * landing route isn't itself one of that role's visible items. */
-function findDasborTarget(user: SessionUser, can: (k?: PermissionKeyOrKeys) => boolean): string | undefined {
+function findDasborTarget(
+  user: SessionUser,
+  can: (k?: PermissionKeyOrKeys) => boolean,
+): string | undefined {
   const landingHref = getLandingRoute(user);
   let fallback: string | undefined;
   for (const section of NAV_SECTIONS) {
@@ -122,7 +125,9 @@ export default function HomePage() {
       <main className="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:px-6">
         <div className="flex w-full max-w-4xl flex-col items-center gap-8">
           <div className="flex flex-col items-center gap-1.5 text-center">
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">{t('hub.overline')}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">
+              {t('hub.overline')}
+            </p>
             <h1 className="font-display text-3xl font-bold text-text-primary sm:text-4xl">
               {t('hub.greeting', { name: firstName })}
             </h1>
@@ -133,7 +138,12 @@ export default function HomePage() {
           </div>
 
           {!dasborTarget && !kasirVisible && (
-            <EmptyState icon={LayoutGrid} title={t('hub.emptyTitle')} description={t('hub.emptyDescription')} size="lg" />
+            <EmptyState
+              icon={LayoutGrid}
+              title={t('hub.emptyTitle')}
+              description={t('hub.emptyDescription')}
+              size="lg"
+            />
           )}
 
           <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

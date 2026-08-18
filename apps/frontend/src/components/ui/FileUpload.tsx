@@ -24,7 +24,16 @@ export interface FileUploadProps {
 }
 
 export function FileUpload({
-  label, hint, error, accept, multiple = false, maxSizeMb = 8, value, onChange, disabled, className,
+  label,
+  hint,
+  error,
+  accept,
+  multiple = false,
+  maxSizeMb = 8,
+  value,
+  onChange,
+  disabled,
+  className,
 }: FileUploadProps) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,7 +80,11 @@ export function FileUpload({
         className={cn(
           'flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors',
           disabled && 'cursor-not-allowed opacity-60',
-          dragOver ? 'border-brand-500 bg-brand-50' : error ? 'border-danger-600/40' : 'border-border-strong bg-surface-sunken',
+          dragOver
+            ? 'border-brand-500 bg-brand-50'
+            : error
+              ? 'border-danger-600/40'
+              : 'border-border-strong bg-surface-sunken',
         )}
       >
         <UploadCloud className="size-8 text-text-muted" aria-hidden />
@@ -93,7 +106,10 @@ export function FileUpload({
       {value.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {value.map((file, idx) => (
-            <li key={`${file.name}-${idx}`} className="flex items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-sm">
+            <li
+              key={`${file.name}-${idx}`}
+              className="flex items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-sm"
+            >
               <FileIcon className="size-4 flex-none text-text-muted" aria-hidden />
               <span className="flex-1 truncate">{file.name}</span>
               <button

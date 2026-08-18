@@ -82,33 +82,53 @@ describe('SyncStatusPill', () => {
 
 describe('SyncRetryButton — the D-25b manual "Coba Sinkron" action', () => {
   it('is idle by default, labelled "Coba Sinkron"', () => {
-    mockedUseManualConnectivityCheck.mockReturnValue({ status: 'idle', errorKey: null, run: vi.fn() });
+    mockedUseManualConnectivityCheck.mockReturnValue({
+      status: 'idle',
+      errorKey: null,
+      run: vi.fn(),
+    });
     render(<SyncRetryButton />);
     expect(screen.getByRole('button', { name: 'Coba Sinkron' })).toBeInTheDocument();
     expect(screen.queryByText('Berhasil')).not.toBeInTheDocument();
   });
 
   it('shows an in-progress state and disables the button while checking', () => {
-    mockedUseManualConnectivityCheck.mockReturnValue({ status: 'checking', errorKey: null, run: vi.fn() });
+    mockedUseManualConnectivityCheck.mockReturnValue({
+      status: 'checking',
+      errorKey: null,
+      run: vi.fn(),
+    });
     render(<SyncRetryButton />);
     const button = screen.getByRole('button', { name: 'Memeriksa…' });
     expect(button).toBeDisabled();
   });
 
   it('shows an honest success outcome', () => {
-    mockedUseManualConnectivityCheck.mockReturnValue({ status: 'success', errorKey: null, run: vi.fn() });
+    mockedUseManualConnectivityCheck.mockReturnValue({
+      status: 'success',
+      errorKey: null,
+      run: vi.fn(),
+    });
     render(<SyncRetryButton />);
     expect(screen.getByText('Berhasil')).toBeInTheDocument();
   });
 
   it('shows an honest failure outcome with its reason when the device is still offline', () => {
-    mockedUseManualConnectivityCheck.mockReturnValue({ status: 'error', errorKey: 'offline', run: vi.fn() });
+    mockedUseManualConnectivityCheck.mockReturnValue({
+      status: 'error',
+      errorKey: 'offline',
+      run: vi.fn(),
+    });
     render(<SyncRetryButton />);
     expect(screen.getByText('Masih offline — server tidak dapat dihubungi')).toBeInTheDocument();
   });
 
   it('shows an honest failure outcome when connectivity was fine but the sync attempt itself failed', () => {
-    mockedUseManualConnectivityCheck.mockReturnValue({ status: 'error', errorKey: 'syncFailed', run: vi.fn() });
+    mockedUseManualConnectivityCheck.mockReturnValue({
+      status: 'error',
+      errorKey: 'syncFailed',
+      run: vi.fn(),
+    });
     render(<SyncRetryButton />);
     expect(screen.getByText('Sinkronisasi gagal — coba lagi')).toBeInTheDocument();
   });

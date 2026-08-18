@@ -72,7 +72,9 @@ export class TopologyService {
       `SELECT id, code, name, type, city, COALESCE((settings->>'nodeEnabled')::boolean, false) AS node_enabled
          FROM locations WHERE is_active ORDER BY city, name`,
     );
-    const nodes = await client.query<NodeRow>(`SELECT id, location_id, name, status, version, last_seen_at FROM branch_nodes WHERE status <> 'retired'`);
+    const nodes = await client.query<NodeRow>(
+      `SELECT id, location_id, name, status, version, last_seen_at FROM branch_nodes WHERE status <> 'retired'`,
+    );
     const devices = await client.query<DeviceRowLite>(
       `SELECT id, location_id, name, category, status, app_version, queue_depth, last_seen_at, ip_address FROM devices`,
     );
@@ -115,9 +117,12 @@ export class TopologyService {
     const conflictBucket = conflictsByLocation.get(loc.id) ?? { conflicts: 0, exceptions: 0 };
 
     const nodeAbsentOrOffline = !node || node.status === 'offline';
-    const allDevicesDown = activeDevices.length === 0 || activeDevices.every((d) => d.status === 'offline');
-    const allOnline = (!node || node.status === 'online') && activeDevices.every((d) => d.status === 'online');
-    const outletStatus: 'online' | 'degraded' | 'offline' = allDevicesDown && nodeAbsentOrOffline ? 'offline' : allOnline ? 'online' : 'degraded';
+    const allDevicesDown =
+      activeDevices.length === 0 || activeDevices.every((d) => d.status === 'offline');
+    const allOnline =
+      (!node || node.status === 'online') && activeDevices.every((d) => d.status === 'online');
+    const outletStatus: 'online' | 'degraded' | 'offline' =
+      allDevicesDown && nodeAbsentOrOffline ? 'offline' : allOnline ? 'online' : 'degraded';
 
     return {
       location: { id: loc.id, code: loc.code, name: loc.name, type: loc.type, city: loc.city },
@@ -163,11 +168,25 @@ export class TopologyService {
 
   async buildTree(client?: DbClient) {
     const run = async (c: DbClient) => {
-      const { locations, nodesByLocation, devicesByLocation, discoveredByNode, quarantineByLocation, conflictsByLocation } = await this.loadRows(c);
+      const {
+        locations,
+        nodesByLocation,
+        devicesByLocation,
+        discoveredByNode,
+        quarantineByLocation,
+        conflictsByLocation,
+      } = await this.loadRows(c);
 
       const pusatRow = locations.find((l) => l.type === 'warehouse');
       const pusat = pusatRow
-        ? this.buildLocation(pusatRow, nodesByLocation.get(pusatRow.id), devicesByLocation.get(pusatRow.id) ?? [], discoveredByNode, quarantineByLocation, conflictsByLocation)
+        ? this.buildLocation(
+            pusatRow,
+            nodesByLocation.get(pusatRow.id),
+            devicesByLocation.get(pusatRow.id) ?? [],
+            discoveredByNode,
+            quarantineByLocation,
+            conflictsByLocation,
+          )
         : null;
 
       const outlets = locations.filter((l) => l.type === 'outlet');
@@ -175,7 +194,14 @@ export class TopologyService {
 
       const cities = Array.from(byCity.entries()).map(([city, locs]) => {
         const builtOutlets = locs.map((loc) =>
-          this.buildLocation(loc, nodesByLocation.get(loc.id), devicesByLocation.get(loc.id) ?? [], discoveredByNode, quarantineByLocation, conflictsByLocation),
+          this.buildLocation(
+            loc,
+            nodesByLocation.get(loc.id),
+            devicesByLocation.get(loc.id) ?? [],
+            discoveredByNode,
+            quarantineByLocation,
+            conflictsByLocation,
+          ),
         );
         const counts = emptyCounts();
         for (const o of builtOutlets) {
@@ -238,7 +264,9 @@ function groupBy<T, K>(rows: T[], keyFn: (row: T) => K): Map<K, T[]> {
   return map;
 }
 
-function aggregateConflicts(rows: { location_id: UUID; queue: string; n: string }[]): Map<UUID, { conflicts: number; exceptions: number }> {
+function aggregateConflicts(
+  rows: { location_id: UUID; queue: string; n: string }[],
+): Map<UUID, { conflicts: number; exceptions: number }> {
   const map = new Map<UUID, { conflicts: number; exceptions: number }>();
   for (const row of rows) {
     const bucket = map.get(row.location_id) ?? { conflicts: 0, exceptions: 0 };

@@ -1,6 +1,18 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION, type OfflineAuthCase, type Paginated, type UUID } from '@mimi/shared';
+import {
+  ERR_CONFLICT,
+  ERR_NOT_FOUND,
+  ERR_VALIDATION,
+  type OfflineAuthCase,
+  type Paginated,
+  type UUID,
+} from '@mimi/shared';
 import { EventBus } from '../../kernel/events/event-bus.service';
 import type { ExceptionVerdictDto, ListExceptionsQueryDto } from './dto/accounting.dto';
 import { withWrite } from './db-tx';
@@ -62,13 +74,19 @@ const CASE_SELECT = `
 export class ExceptionsService {
   constructor(private readonly eventBus: EventBus) {}
 
-  async list(client: PoolClient, query: ListExceptionsQueryDto): Promise<Paginated<OfflineAuthCase>> {
+  async list(
+    client: PoolClient,
+    query: ListExceptionsQueryDto,
+  ): Promise<Paginated<OfflineAuthCase>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (query.status) { conds.push(`sc.status = $${i++}`); args.push(query.status); }
+    if (query.status) {
+      conds.push(`sc.status = $${i++}`);
+      args.push(query.status);
+    }
     if (query.class) {
       conds.push(`oa.outcome = $${i++}`);
       args.push(query.class === 'offline_auth_failed' ? 'failed' : 'unprovable');
@@ -77,21 +95,47 @@ export class ExceptionsService {
     const offset = (page - 1) * pageSize;
 
     const [rows, count] = await Promise.all([
-      client.query<OfflineAuthConflictRow>(`${CASE_SELECT} ${where} ORDER BY sc.created_at DESC LIMIT $${i} OFFSET $${i + 1}`, [...args, pageSize, offset]),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM sync_conflicts sc LEFT JOIN offline_authorizations oa ON oa.id = sc.entity_id AND sc.entity = 'offline_authorizations' WHERE sc.kind = 'offline_auth' ${where}`, args),
+      client.query<OfflineAuthConflictRow>(
+        `${CASE_SELECT} ${where} ORDER BY sc.created_at DESC LIMIT $${i} OFFSET $${i + 1}`,
+        [...args, pageSize, offset],
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM sync_conflicts sc LEFT JOIN offline_authorizations oa ON oa.id = sc.entity_id AND sc.entity = 'offline_authorizations' WHERE sc.kind = 'offline_auth' ${where}`,
+        args,
+      ),
     ]);
-    return { rows: rows.rows.map(toOfflineAuthCase), total: Number(count.rows[0]?.count ?? '0'), page, pageSize };
+    return {
+      rows: rows.rows.map(toOfflineAuthCase),
+      total: Number(count.rows[0]?.count ?? '0'),
+      page,
+      pageSize,
+    };
   }
 
-  async recordVerdict(client: PoolClient, actorId: UUID, id: UUID, dto: ExceptionVerdictDto): Promise<OfflineAuthCase> {
+  async recordVerdict(
+    client: PoolClient,
+    actorId: UUID,
+    id: UUID,
+    dto: ExceptionVerdictDto,
+  ): Promise<OfflineAuthCase> {
     const res = await client.query<OfflineAuthConflictRow>(`${CASE_SELECT} AND sc.id = $1`, [id]);
     const row = res.rows[0];
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Exception case ${id} not found` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Exception case ${id} not found`,
+      });
     if (row.status !== 'open') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Exception case ${id} is '${row.status}', not 'open'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Exception case ${id} is '${row.status}', not 'open'`,
+      });
     }
     if (!row.oa_id || !row.document_type || !row.document_id) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Exception case ${id} has no linked offline_authorizations row — cannot record a verdict` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Exception case ${id} has no linked offline_authorizations row — cannot record a verdict`,
+      });
     }
 
     // Capture the narrowed values as consts BEFORE entering the callback below.
@@ -125,12 +169,17 @@ export class ExceptionsService {
           documentId,
           locationId: row.location_id,
           amount: row.amount,
-          context: { source: row.document_type === 'waste' ? 'waste' : 'refund_or_void', routeToPayrollDeduction: !!dto.routeToPayrollDeduction },
+          context: {
+            source: row.document_type === 'waste' ? 'waste' : 'refund_or_void',
+            routeToPayrollDeduction: !!dto.routeToPayrollDeduction,
+          },
           occurredAt: new Date().toISOString(),
         });
       }
 
-      const updated = await client.query<OfflineAuthConflictRow>(`${CASE_SELECT} AND sc.id = $1`, [id]);
+      const updated = await client.query<OfflineAuthConflictRow>(`${CASE_SELECT} AND sc.id = $1`, [
+        id,
+      ]);
       return toOfflineAuthCase(updated.rows[0]!);
     });
   }

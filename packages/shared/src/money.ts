@@ -91,7 +91,9 @@ export function clampMoneyToZero(a: Money): Money {
 
 /** unit price (Money) × quantity (Qty) → line total (Money), rounded half-up to 2dp by default. */
 export function mulMoneyByQty(price: Money, qty: Qty, mode: RoundingMode = 'half_up'): Money {
-  return formatMoney(mulFixed(parseMoney(price), MONEY_SCALE, parseQty(qty), QTY_SCALE, MONEY_SCALE, mode));
+  return formatMoney(
+    mulFixed(parseMoney(price), MONEY_SCALE, parseQty(qty), QTY_SCALE, MONEY_SCALE, mode),
+  );
 }
 
 /**
@@ -106,7 +108,9 @@ export function mulMoneyByRate(
   mode: RoundingMode = 'half_up',
 ): Money {
   const scaledRate = parseFixed(rate, rateScale);
-  return formatMoney(mulFixed(parseMoney(amount), MONEY_SCALE, scaledRate, rateScale, MONEY_SCALE, mode));
+  return formatMoney(
+    mulFixed(parseMoney(amount), MONEY_SCALE, scaledRate, rateScale, MONEY_SCALE, mode),
+  );
 }
 
 export function divMoney(

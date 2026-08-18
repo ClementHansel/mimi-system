@@ -16,7 +16,11 @@ function pulledEvent(overrides: Partial<SyncEventEnvelope>): SyncEventEnvelope {
     entity: 'settings',
     entityId: 'settings-1',
     op: 'updated',
-    payload: { v: 1, data: {}, meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' } },
+    payload: {
+      v: 1,
+      data: {},
+      meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
+    },
     clientSeq: 1n,
     occurredAt: new Date().toISOString(),
     relayReceivedAt: new Date().toISOString(),
@@ -30,7 +34,17 @@ function pulledEvent(overrides: Partial<SyncEventEnvelope>): SyncEventEnvelope {
 describe('reconciler (pulled-event apply, §4.5)', () => {
   it('upserts a master_data row for a pulled class-M event', async () => {
     const db = createTestDatabase();
-    const event = pulledEvent({ eventId: 'evt-1', entity: 'items', entityId: 'item-1', op: 'created', payload: { v: 1, data: { name: 'Ayam' }, meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' } } });
+    const event = pulledEvent({
+      eventId: 'evt-1',
+      entity: 'items',
+      entityId: 'item-1',
+      op: 'created',
+      payload: {
+        v: 1,
+        data: { name: 'Ayam' },
+        meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
+      },
+    });
 
     await reconcilePulledEvents(db, [event]);
 
@@ -61,13 +75,24 @@ describe('reconciler (pulled-event apply, §4.5)', () => {
       op: 'posted',
       payload: {
         v: 1,
-        data: { locationId: 'loc-1', storageAreaId: 'area-1', itemId: 'item-1', qty: '4.000', unitCost: '1000.00', direction: 'overage' },
+        data: {
+          locationId: 'loc-1',
+          storageAreaId: 'area-1',
+          itemId: 'item-1',
+          qty: '4.000',
+          unitCost: '1000.00',
+          direction: 'overage',
+        },
         meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
       },
     });
 
     await reconcilePulledEvents(db, [event]);
-    const balance = await getBalance(db, { locationId: 'loc-1', storageAreaId: 'area-1', itemId: 'item-1' });
+    const balance = await getBalance(db, {
+      locationId: 'loc-1',
+      storageAreaId: 'area-1',
+      itemId: 'item-1',
+    });
     expect(balance).toBe('4.000');
   });
 
@@ -83,7 +108,11 @@ describe('reconciler (pulled-event apply, §4.5)', () => {
         entity: 'recipes',
         entityId: 'product-bad',
         op: 'updated',
-        payload: { v: 1, data: { lines: [{ itemId: 'item-1', qtyPerUnit: '1.000', unitCost: '2000.00' }] }, meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' } },
+        payload: {
+          v: 1,
+          data: { lines: [{ itemId: 'item-1', qtyPerUnit: '1.000', unitCost: '2000.00' }] },
+          meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
+        },
       }),
     ]);
 
@@ -94,13 +123,18 @@ describe('reconciler (pulled-event apply, §4.5)', () => {
       op: 'completed',
       payload: {
         v: 1,
-        data: { lines: [{ productId: 'product-bad', qty: 'not-a-decimal' }], target: { locationId: 'loc-1', storageAreaId: 'area-1' } },
+        data: {
+          lines: [{ productId: 'product-bad', qty: 'not-a-decimal' }],
+          target: { locationId: 'loc-1', storageAreaId: 'area-1' },
+        },
         meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
       },
     });
 
     const warnings: string[] = [];
-    const result = await reconcilePulledEvents(db, [event], { onWarning: (msg) => warnings.push(msg) });
+    const result = await reconcilePulledEvents(db, [event], {
+      onWarning: (msg) => warnings.push(msg),
+    });
 
     expect(result.applied).toBe(1); // master-data upsert still happened
     expect(warnings.length).toBeGreaterThan(0);
@@ -113,7 +147,11 @@ describe('reconciler (pulled-event apply, §4.5)', () => {
       entity: 'offline_authorizations',
       entityId: 'auth-1',
       op: 'revoked',
-      payload: { v: 1, data: { credentialId: 'cred-1' }, meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' } },
+      payload: {
+        v: 1,
+        data: { credentialId: 'cred-1' },
+        meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
+      },
     });
 
     await reconcilePulledEvents(db, [event]);
@@ -129,7 +167,11 @@ describe('reconciler (pulled-event apply, §4.5)', () => {
         entity: 'recipes',
         entityId: 'product-1',
         op: 'updated',
-        payload: { v: 1, data: { lines: [{ itemId: 'item-1', qtyPerUnit: '1.000', unitCost: '2000.00' }] }, meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' } },
+        payload: {
+          v: 1,
+          data: { lines: [{ itemId: 'item-1', qtyPerUnit: '1.000', unitCost: '2000.00' }] },
+          meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
+        },
       }),
     ]);
     await reconcilePulledEvents(db, [
@@ -138,7 +180,18 @@ describe('reconciler (pulled-event apply, §4.5)', () => {
         entity: 'stock_adjustments',
         entityId: 'adj-pre',
         op: 'posted',
-        payload: { v: 1, data: { locationId: 'loc-1', storageAreaId: 'area-1', itemId: 'item-1', qty: '10.000', unitCost: '2000.00', direction: 'overage' }, meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' } },
+        payload: {
+          v: 1,
+          data: {
+            locationId: 'loc-1',
+            storageAreaId: 'area-1',
+            itemId: 'item-1',
+            qty: '10.000',
+            unitCost: '2000.00',
+            direction: 'overage',
+          },
+          meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
+        },
       }),
     ]);
     await reconcilePulledEvents(db, [
@@ -149,13 +202,20 @@ describe('reconciler (pulled-event apply, §4.5)', () => {
         op: 'completed',
         payload: {
           v: 1,
-          data: { lines: [{ productId: 'product-1', qty: '3.000' }], target: { locationId: 'loc-1', storageAreaId: 'area-1' } },
+          data: {
+            lines: [{ productId: 'product-1', qty: '3.000' }],
+            target: { locationId: 'loc-1', storageAreaId: 'area-1' },
+          },
           meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0.0' },
         },
       }),
     ]);
 
-    const balance = await getBalance(db, { locationId: 'loc-1', storageAreaId: 'area-1', itemId: 'item-1' });
+    const balance = await getBalance(db, {
+      locationId: 'loc-1',
+      storageAreaId: 'area-1',
+      itemId: 'item-1',
+    });
     expect(balance).toBe('7.000'); // 10 - 3
   });
 });

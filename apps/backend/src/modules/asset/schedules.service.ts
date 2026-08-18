@@ -67,7 +67,10 @@ export class SchedulesService {
   }
 
   private async requireScheduleRow(client: PoolClient, scheduleId: string): Promise<ScheduleRow> {
-    const res = await client.query<ScheduleRow>('SELECT * FROM maintenance_schedules WHERE id = $1', [scheduleId]);
+    const res = await client.query<ScheduleRow>(
+      'SELECT * FROM maintenance_schedules WHERE id = $1',
+      [scheduleId],
+    );
     const row = res.rows[0];
     if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Schedule not found' });
     return row;
@@ -103,7 +106,14 @@ export class SchedulesService {
         `INSERT INTO maintenance_schedules (asset_id, name, interval_type, interval_value, next_due_at, reminder_days_before)
          VALUES ($1,$2,$3,$4,$5, COALESCE($6, 7))
          RETURNING id`,
-        [assetId, dto.name, dto.intervalType, dto.intervalValue, dto.nextDueAt, dto.reminderDaysBefore ?? null],
+        [
+          assetId,
+          dto.name,
+          dto.intervalType,
+          dto.intervalValue,
+          dto.nextDueAt,
+          dto.reminderDaysBefore ?? null,
+        ],
       );
       const row = await this.requireScheduleRow(client, res.rows[0]!.id);
       const schedule = this.map(row);
@@ -163,7 +173,10 @@ export class SchedulesService {
 
       if (sets.length > 0) {
         params.push(scheduleId);
-        await client.query(`UPDATE maintenance_schedules SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+        await client.query(
+          `UPDATE maintenance_schedules SET ${sets.join(', ')} WHERE id = $${params.length}`,
+          params,
+        );
       }
 
       const row = await this.requireScheduleRow(client, scheduleId);
@@ -206,8 +219,16 @@ export class SchedulesService {
     user: JwtAccessPayload,
     locationScope: string[] | null,
   ): Promise<DueItem[]> {
-    if (locationIdFilter && !ASSET_CENTRAL_ROLES.has(user.roleKey) && locationScope !== null && !locationScope.includes(locationIdFilter)) {
-      throw new ForbiddenException({ code: ERR_FORBIDDEN, message: 'Not assigned to that location' });
+    if (
+      locationIdFilter &&
+      !ASSET_CENTRAL_ROLES.has(user.roleKey) &&
+      locationScope !== null &&
+      !locationScope.includes(locationIdFilter)
+    ) {
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: 'Not assigned to that location',
+      });
     }
 
     const params: unknown[] = [windowDays];

@@ -178,7 +178,11 @@ export interface DailyRecap {
   date: ISODate;
   sjCount: number;
   dropCount: number;
-  byCity: { city: string; outlets: number; items: { itemId: UUID; itemName: string; qty: Qty }[] }[];
+  byCity: {
+    city: string;
+    outlets: number;
+    items: { itemId: UUID; itemName: string; qty: Qty }[];
+  }[];
   frozenSjCount: number;
   drySjCount: number;
 }

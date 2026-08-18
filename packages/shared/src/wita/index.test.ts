@@ -66,19 +66,31 @@ describe('shiftWindow', () => {
 
 describe('payrollPeriodBoundaries', () => {
   it('handles a 31-day month', () => {
-    expect(payrollPeriodBoundaries('2026-08')).toEqual({ startDate: '2026-08-01', endDate: '2026-08-31' });
+    expect(payrollPeriodBoundaries('2026-08')).toEqual({
+      startDate: '2026-08-01',
+      endDate: '2026-08-31',
+    });
   });
 
   it('handles a 30-day month', () => {
-    expect(payrollPeriodBoundaries('2026-09')).toEqual({ startDate: '2026-09-01', endDate: '2026-09-30' });
+    expect(payrollPeriodBoundaries('2026-09')).toEqual({
+      startDate: '2026-09-01',
+      endDate: '2026-09-30',
+    });
   });
 
   it('handles February in a non-leap year', () => {
-    expect(payrollPeriodBoundaries('2026-02')).toEqual({ startDate: '2026-02-01', endDate: '2026-02-28' });
+    expect(payrollPeriodBoundaries('2026-02')).toEqual({
+      startDate: '2026-02-01',
+      endDate: '2026-02-28',
+    });
   });
 
   it('handles February in a leap year', () => {
-    expect(payrollPeriodBoundaries('2028-02')).toEqual({ startDate: '2028-02-01', endDate: '2028-02-29' });
+    expect(payrollPeriodBoundaries('2028-02')).toEqual({
+      startDate: '2028-02-01',
+      endDate: '2028-02-29',
+    });
   });
 
   it('rejects a malformed period code', () => {

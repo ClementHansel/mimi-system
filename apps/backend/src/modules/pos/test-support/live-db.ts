@@ -95,13 +95,18 @@ export interface RlsContext {
  * seed data.
  */
 export async function neutralizeOpenShifts(client: PoolClient, locationId: string): Promise<void> {
-  await client.query(`UPDATE pos_shifts SET status = 'closed' WHERE location_id = $1 AND status = 'open'`, [locationId]);
+  await client.query(
+    `UPDATE pos_shifts SET status = 'closed' WHERE location_id = $1 AND status = 'open'`,
+    [locationId],
+  );
 }
 
 export async function switchActor(client: PoolClient, ctx: RlsContext): Promise<void> {
   await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
   await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.roleKey]);
-  await client.query(`SELECT set_config('app.location_ids', $1, true)`, [(ctx.locationIds ?? []).join(',')]);
+  await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+    (ctx.locationIds ?? []).join(','),
+  ]);
 }
 
 /**
@@ -114,7 +119,10 @@ export async function switchActor(client: PoolClient, ctx: RlsContext): Promise<
  * their own void" by literally trying it as Kasir and observing the
  * rejection, not by inspecting the RBAC matrix.
  */
-export async function withRollback<T>(ctx: RlsContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollback<T>(
+  ctx: RlsContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
@@ -162,16 +170,25 @@ export async function loadOutletFixture(): Promise<OutletFixture> {
       ORDER BY l.code
       LIMIT 1`,
   );
-  if (!outlet.rows[0]) throw new Error('Seed data has no outlet with a kitchen_line storage area — run database/seed.ts first.');
+  if (!outlet.rows[0])
+    throw new Error(
+      'Seed data has no outlet with a kitchen_line storage area — run database/seed.ts first.',
+    );
   const { id: locationId, code: locationCode, area_id: kitchenLineAreaId } = outlet.rows[0];
 
   const kasirUsername = `kasir1_${locationCode.toLowerCase()}`;
   const supervisorUsername = `spv_${locationCode.toLowerCase()}`;
 
-  const kasir = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [kasirUsername]);
-  const supervisor = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [supervisorUsername]);
+  const kasir = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [
+    kasirUsername,
+  ]);
+  const supervisor = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [
+    supervisorUsername,
+  ]);
   if (!kasir.rows[0] || !supervisor.rows[0]) {
-    throw new Error(`Seed data is missing '${kasirUsername}'/'${supervisorUsername}' for outlet ${locationCode}.`);
+    throw new Error(
+      `Seed data is missing '${kasirUsername}'/'${supervisorUsername}' for outlet ${locationCode}.`,
+    );
   }
 
   const owner = await pool.query<{ id: string }>(
@@ -180,7 +197,8 @@ export async function loadOutletFixture(): Promise<OutletFixture> {
   const manager = await pool.query<{ id: string }>(
     `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = 'manager' LIMIT 1`,
   );
-  if (!owner.rows[0] || !manager.rows[0]) throw new Error('Seed data is missing an owner/manager user.');
+  if (!owner.rows[0] || !manager.rows[0])
+    throw new Error('Seed data is missing an owner/manager user.');
 
   // Requires at least one recipe line whose unit ALREADY matches the ingredient's base unit — some
   // seeded recipe lines pair a unit with no `unit_conversions` path at all (e.g. a `kg`-authored
@@ -197,7 +215,8 @@ export async function loadOutletFixture(): Promise<OutletFixture> {
       ORDER BY p.id
       LIMIT 1`,
   );
-  if (!product.rows[0]) throw new Error('Seed data has no active product with a directly-postable recipe line.');
+  if (!product.rows[0])
+    throw new Error('Seed data has no active product with a directly-postable recipe line.');
 
   return {
     locationId,
@@ -258,7 +277,9 @@ function fakeConfigService(values: Record<string, string> = {}) {
  */
 export function buildNotificationService(pool: Pool): NotificationService {
   const outbox = new NotificationOutboxRepository(pool);
-  const fakeGateway = { pushToUser: () => undefined } as unknown as ConstructorParameters<typeof InAppChannelService>[1];
+  const fakeGateway = { pushToUser: () => undefined } as unknown as ConstructorParameters<
+    typeof InAppChannelService
+  >[1];
   return new NotificationService(
     pool,
     new InAppChannelService(pool, fakeGateway),

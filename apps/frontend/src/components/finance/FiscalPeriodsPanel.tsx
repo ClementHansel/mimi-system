@@ -31,11 +31,17 @@ export function FiscalPeriodsPanel() {
   const { can } = usePermissions();
   const [periods, setPeriods] = useState<FiscalPeriodRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState<{ kind: 'close' | 'reopen'; period: FiscalPeriodRow } | null>(null);
+  const [action, setAction] = useState<{
+    kind: 'close' | 'reopen';
+    period: FiscalPeriodRow;
+  } | null>(null);
 
   function reload() {
     setLoading(true);
-    api.get<FiscalPeriodRow[]>('/accounting/periods').then(setPeriods).finally(() => setLoading(false));
+    api
+      .get<FiscalPeriodRow[]>('/accounting/periods')
+      .then(setPeriods)
+      .finally(() => setLoading(false));
   }
   useEffect(reload, []);
 
@@ -48,28 +54,54 @@ export function FiscalPeriodsPanel() {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-sunken">
-              <th className="px-3 py-2.5 text-left font-medium text-text-secondary">{t('finance.periods.columnCode')}</th>
-              <th className="px-3 py-2.5 text-left font-medium text-text-secondary">{t('finance.periods.columnRange')}</th>
-              <th className="px-3 py-2.5 text-left font-medium text-text-secondary">{t('finance.periods.columnStatus')}</th>
-              <th className="px-3 py-2.5 text-left font-medium text-text-secondary">{t('finance.periods.columnClosedAt')}</th>
-              <th className="px-3 py-2.5 text-right font-medium text-text-secondary">{t('common.actions')}</th>
+              <th className="px-3 py-2.5 text-left font-medium text-text-secondary">
+                {t('finance.periods.columnCode')}
+              </th>
+              <th className="px-3 py-2.5 text-left font-medium text-text-secondary">
+                {t('finance.periods.columnRange')}
+              </th>
+              <th className="px-3 py-2.5 text-left font-medium text-text-secondary">
+                {t('finance.periods.columnStatus')}
+              </th>
+              <th className="px-3 py-2.5 text-left font-medium text-text-secondary">
+                {t('finance.periods.columnClosedAt')}
+              </th>
+              <th className="px-3 py-2.5 text-right font-medium text-text-secondary">
+                {t('common.actions')}
+              </th>
             </tr>
           </thead>
           <tbody>
             {periods.map((p) => (
               <tr key={p.id} className="border-b border-border last:border-0">
                 <td className="px-3 py-2.5 font-medium text-text-primary">{p.period_code}</td>
-                <td className="px-3 py-2.5 text-text-secondary">{fmtDate(p.start_date)} – {fmtDate(p.end_date)}</td>
-                <td className="px-3 py-2.5"><StatusBadge domain="fiscalPeriod" status={p.status} /></td>
-                <td className="px-3 py-2.5 text-text-secondary">{p.closed_at ? fmtDateTime(p.closed_at) : '—'}</td>
+                <td className="px-3 py-2.5 text-text-secondary">
+                  {fmtDate(p.start_date)} – {fmtDate(p.end_date)}
+                </td>
+                <td className="px-3 py-2.5">
+                  <StatusBadge domain="fiscalPeriod" status={p.status} />
+                </td>
+                <td className="px-3 py-2.5 text-text-secondary">
+                  {p.closed_at ? fmtDateTime(p.closed_at) : '—'}
+                </td>
                 <td className="px-3 py-2.5 text-right">
                   {can('accounting.period.close') && p.status === 'open' && (
-                    <Button size="sm" variant="outline" leftIcon={<Lock className="size-3.5" />} onClick={() => setAction({ kind: 'close', period: p })}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      leftIcon={<Lock className="size-3.5" />}
+                      onClick={() => setAction({ kind: 'close', period: p })}
+                    >
                       {t('finance.periods.closeButton')}
                     </Button>
                   )}
                   {can('accounting.period.close') && p.status === 'closed' && (
-                    <Button size="sm" variant="outline" leftIcon={<Unlock className="size-3.5" />} onClick={() => setAction({ kind: 'reopen', period: p })}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      leftIcon={<Unlock className="size-3.5" />}
+                      onClick={() => setAction({ kind: 'reopen', period: p })}
+                    >
                       {t('finance.periods.reopenButton')}
                     </Button>
                   )}
@@ -81,14 +113,30 @@ export function FiscalPeriodsPanel() {
       </div>
 
       {action && (
-        <PeriodActionModal kind={action.kind} period={action.period} onClose={() => setAction(null)} onDone={() => { setAction(null); reload(); }} />
+        <PeriodActionModal
+          kind={action.kind}
+          period={action.period}
+          onClose={() => setAction(null)}
+          onDone={() => {
+            setAction(null);
+            reload();
+          }}
+        />
       )}
     </div>
   );
 }
 
-function PeriodActionModal({ kind, period, onClose, onDone }: {
-  kind: 'close' | 'reopen'; period: FiscalPeriodRow; onClose: () => void; onDone: () => void;
+function PeriodActionModal({
+  kind,
+  period,
+  onClose,
+  onDone,
+}: {
+  kind: 'close' | 'reopen';
+  period: FiscalPeriodRow;
+  onClose: () => void;
+  onDone: () => void;
 }) {
   const { t } = useI18n();
   const [text, setText] = useState('');
@@ -96,20 +144,49 @@ function PeriodActionModal({ kind, period, onClose, onDone }: {
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
-      if (kind === 'close') await api.post(`/accounting/periods/${period.id}/close`, { note: text || undefined });
+      if (kind === 'close')
+        await api.post(`/accounting/periods/${period.id}/close`, { note: text || undefined });
       else await api.post(`/accounting/periods/${period.id}/reopen`, { reason: text });
-      toast({ title: t(kind === 'close' ? 'finance.periods.closeSuccess' : 'finance.periods.reopenSuccess'), variant: 'success' });
+      toast({
+        title: t(
+          kind === 'close' ? 'finance.periods.closeSuccess' : 'finance.periods.reopenSuccess',
+        ),
+        variant: 'success',
+      });
       onDone();
     } catch (err) {
       setError(errMsg(err, t('auth.genericError')));
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <Modal open onClose={onClose} title={t(kind === 'close' ? 'finance.periods.closeTitle' : 'finance.periods.reopenTitle', { period: period.period_code })}
-      footer={<><Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button><Button variant={kind === 'reopen' ? 'danger' : 'primary'} onClick={submit} loading={busy} disabled={kind === 'reopen' && !text}>{t(kind === 'close' ? 'finance.periods.closeButton' : 'finance.periods.reopenButton')}</Button></>}>
+    <Modal
+      open
+      onClose={onClose}
+      title={t(kind === 'close' ? 'finance.periods.closeTitle' : 'finance.periods.reopenTitle', {
+        period: period.period_code,
+      })}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant={kind === 'reopen' ? 'danger' : 'primary'}
+            onClick={submit}
+            loading={busy}
+            disabled={kind === 'reopen' && !text}
+          >
+            {t(kind === 'close' ? 'finance.periods.closeButton' : 'finance.periods.reopenButton')}
+          </Button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-3">
         {error && <p className="text-sm text-danger-600">{error}</p>}
         <Textarea

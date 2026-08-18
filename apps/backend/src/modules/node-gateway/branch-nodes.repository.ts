@@ -49,26 +49,51 @@ export class BranchNodesRepository {
   }
 
   async findByLocationId(client: DbClient, locationId: UUID): Promise<BranchNodeRow | undefined> {
-    const res = await client.query<BranchNodeRow>(`SELECT * FROM branch_nodes WHERE location_id = $1 AND status <> 'retired'`, [locationId]);
+    const res = await client.query<BranchNodeRow>(
+      `SELECT * FROM branch_nodes WHERE location_id = $1 AND status <> 'retired'`,
+      [locationId],
+    );
     return res.rows[0];
   }
 
-  async list(client: DbClient, filters: { locationId?: UUID; status?: string; locationIds?: readonly UUID[] | null }): Promise<BranchNodeWithLocation[]> {
+  async list(
+    client: DbClient,
+    filters: { locationId?: UUID; status?: string; locationIds?: readonly UUID[] | null },
+  ): Promise<BranchNodeWithLocation[]> {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (filters.locationId) { conds.push(`n.location_id = $${i++}`); args.push(filters.locationId); }
-    else if (filters.locationIds) { conds.push(`n.location_id = ANY($${i++}::uuid[])`); args.push(filters.locationIds); }
-    if (filters.status) { conds.push(`n.status = $${i}`); args.push(filters.status); }
+    if (filters.locationId) {
+      conds.push(`n.location_id = $${i++}`);
+      args.push(filters.locationId);
+    } else if (filters.locationIds) {
+      conds.push(`n.location_id = ANY($${i++}::uuid[])`);
+      args.push(filters.locationIds);
+    }
+    if (filters.status) {
+      conds.push(`n.status = $${i}`);
+      args.push(filters.status);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-    const res = await client.query<BranchNodeWithLocation>(`${NODE_SELECT} ${where} ORDER BY n.created_at DESC`, args);
+    const res = await client.query<BranchNodeWithLocation>(
+      `${NODE_SELECT} ${where} ORDER BY n.created_at DESC`,
+      args,
+    );
     return res.rows;
   }
 
   /** `POST /api/nodes/register` (CONTRACTS §4.22) — one node max per location (`branch_nodes.location_id UNIQUE`), so this is idempotent-by-conflict: a location that already has a (non-retired) node is a caller error, checked by `NodesController` before this insert. */
   async create(
     client: DbClient,
-    params: { locationId: UUID; name: string; version: string; hostname: string; osInfo: Record<string, unknown>; nodeTokenHash: string; pairedBy: UUID | null },
+    params: {
+      locationId: UUID;
+      name: string;
+      version: string;
+      hostname: string;
+      osInfo: Record<string, unknown>;
+      nodeTokenHash: string;
+      pairedBy: UUID | null;
+    },
   ): Promise<BranchNodeRow> {
     // `last_seen_at` stamped NOW at registration — same "first sighting is silent" reasoning as
     // `DeviceRegistryRepository.create` (§7.3): a NULL `last_seen_at` must mean "never contacted,"
@@ -77,17 +102,34 @@ export class BranchNodesRepository {
       `INSERT INTO branch_nodes (location_id, name, status, version, node_token_hash, hostname, os_info, last_seen_at, paired_at, paired_by)
        VALUES ($1,$2,'online',$3,$4,$5,$6,NOW(),NOW(),$7)
        RETURNING *`,
-      [params.locationId, params.name, params.version, params.nodeTokenHash, params.hostname, JSON.stringify(params.osInfo ?? {}), params.pairedBy],
+      [
+        params.locationId,
+        params.name,
+        params.version,
+        params.nodeTokenHash,
+        params.hostname,
+        JSON.stringify(params.osInfo ?? {}),
+        params.pairedBy,
+      ],
     );
     return res.rows[0]!;
   }
 
-  async update(client: DbClient, id: UUID, patch: { name?: string }): Promise<BranchNodeRow | undefined> {
+  async update(
+    client: DbClient,
+    id: UUID,
+    patch: { name?: string },
+  ): Promise<BranchNodeRow | undefined> {
     if (patch.name === undefined) {
-      const res = await client.query<BranchNodeRow>(`SELECT * FROM branch_nodes WHERE id = $1`, [id]);
+      const res = await client.query<BranchNodeRow>(`SELECT * FROM branch_nodes WHERE id = $1`, [
+        id,
+      ]);
       return res.rows[0];
     }
-    const res = await client.query<BranchNodeRow>(`UPDATE branch_nodes SET name = $2 WHERE id = $1 RETURNING *`, [id, patch.name]);
+    const res = await client.query<BranchNodeRow>(
+      `UPDATE branch_nodes SET name = $2 WHERE id = $1 RETURNING *`,
+      [id, patch.name],
+    );
     return res.rows[0];
   }
 
@@ -113,7 +155,11 @@ export class BranchNodesRepository {
    * available. Omitted (`undefined`) leaves the previous reading untouched rather than zeroing it —
    * a heartbeat that doesn't carry the field must never be misread as "queue is now empty."
    */
-  async recordHeartbeat(client: DbClient, id: UUID, beat: { version: string; ipAddress?: string | null; relayQueueDepth?: number }): Promise<void> {
+  async recordHeartbeat(
+    client: DbClient,
+    id: UUID,
+    beat: { version: string; ipAddress?: string | null; relayQueueDepth?: number },
+  ): Promise<void> {
     await client.query(
       `UPDATE branch_nodes
           SET last_seen_at = NOW(), version = $2, status = 'online', ip_address = COALESCE($3, ip_address),
@@ -125,7 +171,11 @@ export class BranchNodesRepository {
     );
   }
 
-  async setSettings(client: DbClient, id: UUID, patch: Record<string, unknown>): Promise<BranchNodeRow | undefined> {
+  async setSettings(
+    client: DbClient,
+    id: UUID,
+    patch: Record<string, unknown>,
+  ): Promise<BranchNodeRow | undefined> {
     const res = await client.query<BranchNodeRow>(
       `UPDATE branch_nodes SET settings = settings || $2::jsonb WHERE id = $1 RETURNING *`,
       [id, JSON.stringify(patch)],
@@ -134,12 +184,19 @@ export class BranchNodesRepository {
   }
 
   async findByTokenHash(client: DbClient, tokenHash: string): Promise<BranchNodeRow | undefined> {
-    const res = await client.query<BranchNodeRow>(`SELECT * FROM branch_nodes WHERE node_token_hash = $1`, [tokenHash]);
+    const res = await client.query<BranchNodeRow>(
+      `SELECT * FROM branch_nodes WHERE node_token_hash = $1`,
+      [tokenHash],
+    );
     return res.rows[0];
   }
 
   /** §7.3 sweep read side — `last_seen_at IS NULL` excluded (never swept), same "first sighting is silent" reasoning as `DeviceRegistryRepository.findDevicesPastThreshold`. */
-  async findNodesPastThreshold(client: DbClient, cutoffIso: string, fromStatuses: readonly NodeStatusRow[]): Promise<BranchNodeRow[]> {
+  async findNodesPastThreshold(
+    client: DbClient,
+    cutoffIso: string,
+    fromStatuses: readonly NodeStatusRow[],
+  ): Promise<BranchNodeRow[]> {
     const res = await client.query<BranchNodeRow>(
       `SELECT * FROM branch_nodes WHERE status = ANY($1::text[]) AND last_seen_at IS NOT NULL AND last_seen_at < $2`,
       [fromStatuses, cutoffIso],

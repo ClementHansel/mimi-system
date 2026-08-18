@@ -114,7 +114,13 @@ function SetPinForm() {
             required
           />
           {error && <p className="text-sm text-danger-600">{error}</p>}
-          <Button type="submit" size="lg" fullWidth loading={submitting} leftIcon={<KeyRound className="size-4" />}>
+          <Button
+            type="submit"
+            size="lg"
+            fullWidth
+            loading={submitting}
+            leftIcon={<KeyRound className="size-4" />}
+          >
             {submitting ? t('setPin.submitting') : t('setPin.submit')}
           </Button>
         </form>

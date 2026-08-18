@@ -29,7 +29,11 @@ describe('EmployeesService (integration, live Postgres)', () => {
   beforeAll(async () => {
     try {
       fixtures = await loadHrFixtures();
-      if (!fixtures.usersByRole[RoleKey.HR_ADMIN] && !fixtures.usersByRole[RoleKey.OWNER] && !fixtures.usersByRole[RoleKey.KASIR]) {
+      if (
+        !fixtures.usersByRole[RoleKey.HR_ADMIN] &&
+        !fixtures.usersByRole[RoleKey.OWNER] &&
+        !fixtures.usersByRole[RoleKey.KASIR]
+      ) {
         dbAvailable = false;
         return;
       }
@@ -40,7 +44,10 @@ describe('EmployeesService (integration, live Postgres)', () => {
       });
       await pool.query('SELECT 1');
       const eventsRepo = new SyncEventsRepository(pool);
-      const conflictDetector = new ConflictDetectorService(eventsRepo, new SyncConflictsRepository(pool));
+      const conflictDetector = new ConflictDetectorService(
+        eventsRepo,
+        new SyncConflictsRepository(pool),
+      );
       service = new EmployeesService(new SyncEmitService(eventsRepo, conflictDetector));
     } catch {
       dbAvailable = false;
@@ -57,7 +64,8 @@ describe('EmployeesService (integration, live Postgres)', () => {
   function actorRls() {
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN];
     const owner = fixtures.usersByRole[RoleKey.OWNER];
-    if (hrAdmin) return { userId: hrAdmin.userId, roleKey: RoleKey.HR_ADMIN, locationIds: [] as string[] };
+    if (hrAdmin)
+      return { userId: hrAdmin.userId, roleKey: RoleKey.HR_ADMIN, locationIds: [] as string[] };
     if (owner) return { userId: owner.userId, roleKey: RoleKey.OWNER, locationIds: [] as string[] };
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
     return { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
@@ -112,7 +120,9 @@ describe('EmployeesService (integration, live Postgres)', () => {
         },
       };
       // Separate connection from `create` above — `create`'s `withWrite` already committed for real.
-      const updated = await asRequest(rls, (client) => service.update(client, rls.userId, created.id, update));
+      const updated = await asRequest(rls, (client) =>
+        service.update(client, rls.userId, created.id, update),
+      );
       expect(updated.position).toBe('Supervisor');
 
       // A THIRD, still-different connection — proves `update`'s employments-history append (close
@@ -121,7 +131,9 @@ describe('EmployeesService (integration, live Postgres)', () => {
       const reread = await asRequest(rls, (client) => service.getById(client, created.id, true));
       expect(reread.employments).toHaveLength(2);
       expect(reread.employments.some((e) => e.position === 'Supervisor')).toBe(true);
-      expect(reread.employments.some((e) => e.position === 'Kasir' && e.endDate !== null)).toBe(true);
+      expect(reread.employments.some((e) => e.position === 'Kasir' && e.endDate !== null)).toBe(
+        true,
+      );
     });
   });
 });

@@ -4,7 +4,17 @@ import { useEffect, useState } from 'react';
 import { CalendarPlus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
-import { Button, Card, CardContent, Modal, Select, Input, Textarea, StatusBadge, EmptyState } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  Modal,
+  Select,
+  Input,
+  Textarea,
+  StatusBadge,
+  EmptyState,
+} from '@/components/ui';
 import { fmtDateRange } from '@/lib/dates';
 import { newUuid } from '@/lib/uuid';
 import { createLeaveRequest, cancelLeaveRequest, getMyLeaves } from './lib/me-api';
@@ -21,7 +31,10 @@ function mintId(): string {
 export function CutiPanel() {
   const { t } = useI18n();
   const [leaves, setLeaves] = useState<Leave[]>([]);
-  const [quota, setQuota] = useState<LeaveQuota>({ annual: { total: 12, used: 0 }, marriage: { total: 3, used: 0 } });
+  const [quota, setQuota] = useState<LeaveQuota>({
+    annual: { total: 12, used: 0 },
+    marriage: { total: 3, used: 0 },
+  });
   const [quotaUnavailable, setQuotaUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -51,11 +64,26 @@ export function CutiPanel() {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
-        <QuotaCard label={t('me.cuti.annualLabel')} used={quota.annual.used} total={quota.annual.total} unavailable={quotaUnavailable} />
-        <QuotaCard label={t('me.cuti.marriageLabel')} used={quota.marriage.used} total={quota.marriage.total} unavailable={quotaUnavailable} />
+        <QuotaCard
+          label={t('me.cuti.annualLabel')}
+          used={quota.annual.used}
+          total={quota.annual.total}
+          unavailable={quotaUnavailable}
+        />
+        <QuotaCard
+          label={t('me.cuti.marriageLabel')}
+          used={quota.marriage.used}
+          total={quota.marriage.total}
+          unavailable={quotaUnavailable}
+        />
       </div>
 
-      <Button size="touch-lg" fullWidth leftIcon={<CalendarPlus className="size-5" />} onClick={() => setFormOpen(true)}>
+      <Button
+        size="touch-lg"
+        fullWidth
+        leftIcon={<CalendarPlus className="size-5" />}
+        onClick={() => setFormOpen(true)}
+      >
         {t('me.cuti.newRequest')}
       </Button>
 
@@ -69,13 +97,22 @@ export function CutiPanel() {
             <Card key={leave.id}>
               <CardContent className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-text-primary">{t(`me.cuti.type.${leave.type}`)}</span>
+                  <span className="font-medium text-text-primary">
+                    {t(`me.cuti.type.${leave.type}`)}
+                  </span>
                   <StatusBadge domain="leave" status={leave.status} size="sm" />
                 </div>
-                <p className="text-sm text-text-secondary">{fmtDateRange(leave.startDate, leave.endDate)} · {leave.days} {t('me.cuti.days')}</p>
+                <p className="text-sm text-text-secondary">
+                  {fmtDateRange(leave.startDate, leave.endDate)} · {leave.days} {t('me.cuti.days')}
+                </p>
                 {leave.reason && <p className="text-sm text-text-muted">{leave.reason}</p>}
                 {leave.status === 'pending' && (
-                  <Button size="sm" variant="outline" onClick={() => cancel(leave.id)} className="mt-1 w-fit">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => cancel(leave.id)}
+                    className="mt-1 w-fit"
+                  >
                     {t('me.cuti.cancelButton')}
                   </Button>
                 )}
@@ -98,7 +135,17 @@ export function CutiPanel() {
   );
 }
 
-function QuotaCard({ label, used, total, unavailable }: { label: string; used: number; total: number; unavailable: boolean }) {
+function QuotaCard({
+  label,
+  used,
+  total,
+  unavailable,
+}: {
+  label: string;
+  used: number;
+  total: number;
+  unavailable: boolean;
+}) {
   const { t } = useI18n();
   return (
     <Card>
@@ -107,7 +154,9 @@ function QuotaCard({ label, used, total, unavailable }: { label: string; used: n
         <span className="text-xl font-semibold tabular-nums text-text-primary">
           {unavailable ? '—' : `${total - used}/${total}`}
         </span>
-        <span className="text-xs text-text-muted">{unavailable ? t('me.cuti.quotaUnavailable') : t('me.cuti.remaining')}</span>
+        <span className="text-xs text-text-muted">
+          {unavailable ? t('me.cuti.quotaUnavailable') : t('me.cuti.remaining')}
+        </span>
       </CardContent>
     </Card>
   );
@@ -127,7 +176,13 @@ function NewLeaveModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     setBusy(true);
     setError(null);
     try {
-      await createLeaveRequest({ clientId: mintId(), type, startDate, endDate, reason: reason || undefined });
+      await createLeaveRequest({
+        clientId: mintId(),
+        type,
+        startDate,
+        endDate,
+        reason: reason || undefined,
+      });
       toast({ title: t('me.cuti.createSuccess'), variant: 'success' });
       onCreated();
     } catch {
@@ -142,13 +197,43 @@ function NewLeaveModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       open
       onClose={onClose}
       title={t('me.cuti.newRequest')}
-      footer={<><Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button><Button onClick={submit} loading={busy} disabled={!startDate || !endDate}>{t('common.save')}</Button></>}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={!startDate || !endDate}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
     >
       <div className="flex flex-col gap-3">
-        <Select label={t('me.cuti.typeLabel')} value={type} onValueChange={setType} options={LEAVE_TYPES.map((lt) => ({ value: lt, label: t(`me.cuti.type.${lt}`) }))} />
-        <Input type="date" label={t('me.cuti.startDate')} value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
-        <Input type="date" label={t('me.cuti.endDate')} value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
-        <Textarea label={t('me.cuti.reasonLabel')} value={reason} onChange={(e) => setReason(e.target.value)} />
+        <Select
+          label={t('me.cuti.typeLabel')}
+          value={type}
+          onValueChange={setType}
+          options={LEAVE_TYPES.map((lt) => ({ value: lt, label: t(`me.cuti.type.${lt}`) }))}
+        />
+        <Input
+          type="date"
+          label={t('me.cuti.startDate')}
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          required
+        />
+        <Input
+          type="date"
+          label={t('me.cuti.endDate')}
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          required
+        />
+        <Textarea
+          label={t('me.cuti.reasonLabel')}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
         {error && <p className="text-sm text-danger-600">{error}</p>}
       </div>
     </Modal>

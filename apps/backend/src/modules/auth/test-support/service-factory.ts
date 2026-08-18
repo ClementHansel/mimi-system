@@ -30,10 +30,16 @@ export function buildConfigService(overrides: Record<string, string> = {}): Conf
 
 export function buildSyncEmit(pool: Pool): SyncEmitService {
   const events = new SyncEventsRepository(pool);
-  return new SyncEmitService(events, new ConflictDetectorService(events, new SyncConflictsRepository()));
+  return new SyncEmitService(
+    events,
+    new ConflictDetectorService(events, new SyncConflictsRepository()),
+  );
 }
 
-export function buildAuthService(pool: Pool, config: ConfigService = buildConfigService()): AuthService {
+export function buildAuthService(
+  pool: Pool,
+  config: ConfigService = buildConfigService(),
+): AuthService {
   return new AuthService(
     new AuthRepository(),
     new OfflineCredentialMintService(new AuthRepository(), config),

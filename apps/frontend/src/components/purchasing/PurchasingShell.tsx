@@ -30,9 +30,27 @@ export function PurchasingShell() {
 
   const tabs = useMemo(
     () => [
-      { value: 'requests', labelKey: 'purchasing.tabs.requests', icon: ClipboardList, visible: can('purchasing.read'), content: <PurchaseRequestsPanel /> },
-      { value: 'orders', labelKey: 'purchasing.tabs.orders', icon: Truck, visible: can('purchasing.read'), content: <PurchaseOrdersPanel /> },
-      { value: 'priceHistory', labelKey: 'purchasing.tabs.priceHistory', icon: History, visible: can('supplier.price.read'), content: <SupplierPriceHistoryPanel /> },
+      {
+        value: 'requests',
+        labelKey: 'purchasing.tabs.requests',
+        icon: ClipboardList,
+        visible: can('purchasing.read'),
+        content: <PurchaseRequestsPanel />,
+      },
+      {
+        value: 'orders',
+        labelKey: 'purchasing.tabs.orders',
+        icon: Truck,
+        visible: can('purchasing.read'),
+        content: <PurchaseOrdersPanel />,
+      },
+      {
+        value: 'priceHistory',
+        labelKey: 'purchasing.tabs.priceHistory',
+        icon: History,
+        visible: can('supplier.price.read'),
+        content: <SupplierPriceHistoryPanel />,
+      },
     ],
     [can],
   );

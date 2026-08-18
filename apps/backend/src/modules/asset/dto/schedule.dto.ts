@@ -1,4 +1,12 @@
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsPositive,
+  IsString,
+} from 'class-validator';
 
 /** `POST /api/assets/:id/schedules` — CONTRACTS.md §4.16 (FR-PMS-02). */
 export class CreateScheduleDto {

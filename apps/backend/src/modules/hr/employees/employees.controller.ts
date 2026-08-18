@@ -33,7 +33,10 @@ export class EmployeesController {
 
   @Get(':id')
   @RequirePermission('hr.employee.read')
-  async getById(@Req() req: RequestWithDbContext, @Param('id') id: string): Promise<EmployeeDetail> {
+  async getById(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+  ): Promise<EmployeeDetail> {
     // Salary is only included in the response when the caller ALSO holds `hr.employee.manage`
     // (CONTRACTS.md §4.14: "salary needs hr.employee.manage") — `hr.employee.read` alone (e.g.
     // Supervisor) sees the roster/position history without base_salary.
@@ -44,7 +47,10 @@ export class EmployeesController {
   @Post()
   @RequirePermission('hr.employee.manage')
   @Audited({ module: 'hr', entityType: 'employees', action: 'hr.employee.manage' })
-  async create(@Req() req: RequestWithDbContext, @Body() dto: CreateEmployeeDto): Promise<Employee> {
+  async create(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: CreateEmployeeDto,
+  ): Promise<Employee> {
     return this.service.create(req.dbClient!, req.user!.sub, dto);
   }
 

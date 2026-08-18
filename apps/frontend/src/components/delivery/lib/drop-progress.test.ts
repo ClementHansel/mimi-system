@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { isDropTerminal, dropProgressRank, dropProgressTotal, routeCompletion, type DropStatusKey } from './drop-progress';
+import {
+  isDropTerminal,
+  dropProgressRank,
+  dropProgressTotal,
+  routeCompletion,
+  type DropStatusKey,
+} from './drop-progress';
 
 describe('drop status ladder — pending -> en_route -> arrived -> terminal', () => {
   it('ranks the live statuses in strict increasing order', () => {
@@ -49,7 +55,10 @@ describe('routeCompletion — truck-level rollup for the dispatcher list/detail'
   });
 
   it('a fully completed route reports done === total', () => {
-    const drops = [{ id: '1', status: 'completed' as const }, { id: '2', status: 'failed' as const }];
+    const drops = [
+      { id: '1', status: 'completed' as const },
+      { id: '2', status: 'failed' as const },
+    ];
     expect(routeCompletion(drops)).toEqual({ done: 2, total: 2 });
   });
 });

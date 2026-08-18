@@ -46,9 +46,17 @@ export function DropDepartModal({ open, onClose, sj, drop, onDone }: DropDepartM
       // earlier at render — the event's own instant, per this ticket's
       // "timestamp from the event, never new Date() at render" rule.
       const at = new Date().toISOString();
-      await runtime.commitDropDeparted(drop.id, { dropId: drop.id, at, tempC: tempC ?? undefined }, actor);
+      await runtime.commitDropDeparted(
+        drop.id,
+        { dropId: drop.id, at, tempC: tempC ?? undefined },
+        actor,
+      );
       if (tempC !== null) {
-        await runtime.commitTempLog(mintId(), { sjId: sj.id, dropId: drop.id, stage: 'depart', tempC }, actor);
+        await runtime.commitTempLog(
+          mintId(),
+          { sjId: sj.id, dropId: drop.id, stage: 'depart', tempC },
+          actor,
+        );
       }
       toast({ title: t('driver.depart.queued'), variant: 'success' });
       // Optimistic local patch — the whole point of committing offline is
@@ -64,7 +72,12 @@ export function DropDepartModal({ open, onClose, sj, drop, onDone }: DropDepartM
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={t('driver.depart.title', { location: drop.locationName })} size="sm">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('driver.depart.title', { location: drop.locationName })}
+      size="sm"
+    >
       <div className="flex flex-col gap-4">
         <TempInput
           label={t('driver.depart.tempLabel')}
@@ -73,7 +86,14 @@ export function DropDepartModal({ open, onClose, sj, drop, onDone }: DropDepartM
           required={isFrozen}
           size="touch"
         />
-        <Button type="button" size="touch-lg" fullWidth loading={submitting} disabled={!canSubmit} onClick={handleSubmit}>
+        <Button
+          type="button"
+          size="touch-lg"
+          fullWidth
+          loading={submitting}
+          disabled={!canSubmit}
+          onClick={handleSubmit}
+        >
           {t('driver.depart.submit')}
         </Button>
       </div>

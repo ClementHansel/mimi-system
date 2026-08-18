@@ -15,28 +15,48 @@ export class DropController {
   @Post(':dropId/depart')
   @RequirePermission('delivery.drop.execute')
   @Audited({ entityType: 'sj_drop', action: 'delivery.drop.execute' })
-  depart(@Req() req: Request, @Param('dropId') dropId: string, @Body() dto: DepartDropDto, @CurrentUser() user: JwtAccessPayload) {
+  depart(
+    @Req() req: Request,
+    @Param('dropId') dropId: string,
+    @Body() dto: DepartDropDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.drops.depart(requireDbClient(req), dropId, dto, user.sub);
   }
 
   @Post(':dropId/arrive')
   @RequirePermission('delivery.drop.execute')
   @Audited({ entityType: 'sj_drop', action: 'delivery.drop.execute' })
-  arrive(@Req() req: Request, @Param('dropId') dropId: string, @Body() dto: ArriveDropDto, @CurrentUser() user: JwtAccessPayload) {
+  arrive(
+    @Req() req: Request,
+    @Param('dropId') dropId: string,
+    @Body() dto: ArriveDropDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.drops.arrive(requireDbClient(req), dropId, dto, user.sub);
   }
 
   @Post(':dropId/receive')
   @RequirePermission('delivery.receive')
   @Audited({ entityType: 'sj_drop', action: 'delivery.receive' })
-  receive(@Req() req: Request, @Param('dropId') dropId: string, @Body() dto: ReceiveDropDto, @CurrentUser() user: JwtAccessPayload) {
+  receive(
+    @Req() req: Request,
+    @Param('dropId') dropId: string,
+    @Body() dto: ReceiveDropDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.drops.receive(requireDbClient(req), dropId, dto, user.sub, user.roleKey as RoleKey);
   }
 
   @Post(':dropId/fail')
   @RequirePermission('delivery.drop.execute')
   @Audited({ entityType: 'sj_drop', action: 'delivery.drop.execute' })
-  fail(@Req() req: Request, @Param('dropId') dropId: string, @Body() dto: FailDropDto, @CurrentUser() user: JwtAccessPayload) {
+  fail(
+    @Req() req: Request,
+    @Param('dropId') dropId: string,
+    @Body() dto: FailDropDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.drops.fail(requireDbClient(req), dropId, dto, user.sub);
   }
 }

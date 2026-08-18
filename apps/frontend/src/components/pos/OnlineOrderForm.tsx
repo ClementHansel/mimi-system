@@ -44,7 +44,10 @@ export function OnlineOrderForm({
     platformFee: platformFee ?? ZERO_MONEY,
     otherFee: otherFee ?? ZERO_MONEY,
   };
-  const net = useMemo(() => calculateOnlineOrderNet(amounts), [amounts.grossAmount, amounts.discountAmount, amounts.platformFee, amounts.otherFee]);
+  const net = useMemo(
+    () => calculateOnlineOrderNet(amounts),
+    [amounts.grossAmount, amounts.discountAmount, amounts.platformFee, amounts.otherFee],
+  );
   const netIsNegative = isNegativeMoney(net);
 
   async function handleSubmit() {
@@ -81,7 +84,11 @@ export function OnlineOrderForm({
       setPlatformFee(null);
       setOtherFee(null);
     } catch (err) {
-      toast({ title: t('pos.onlineOrderFailed'), description: err instanceof Error ? err.message : undefined, variant: 'danger' });
+      toast({
+        title: t('pos.onlineOrderFailed'),
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'danger',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -99,18 +106,42 @@ export function OnlineOrderForm({
             { value: 'shopeefood', label: 'ShopeeFood' },
           ]}
         />
-        <Input label={t('pos.orderRef')} value={orderRef} onChange={(e) => setOrderRef(e.target.value)} required />
-        <MoneyInput label={t('pos.grossAmount')} value={gross} onChange={setGross} required size="touch" />
+        <Input
+          label={t('pos.orderRef')}
+          value={orderRef}
+          onChange={(e) => setOrderRef(e.target.value)}
+          required
+        />
+        <MoneyInput
+          label={t('pos.grossAmount')}
+          value={gross}
+          onChange={setGross}
+          required
+          size="touch"
+        />
         <div className="grid grid-cols-2 gap-3">
           <MoneyInput label={t('pos.discountAmount')} value={discount} onChange={setDiscount} />
           <MoneyInput label={t('pos.platformFee')} value={platformFee} onChange={setPlatformFee} />
         </div>
-        <MoneyInput label={t('pos.otherFee')} value={otherFee} onChange={setOtherFee} hint={t('common.optional')} />
+        <MoneyInput
+          label={t('pos.otherFee')}
+          value={otherFee}
+          onChange={setOtherFee}
+          hint={t('common.optional')}
+        />
         <div className="flex items-center justify-between rounded-md bg-surface-sunken p-3 text-base font-semibold">
           <span>{t('pos.netReceived')}</span>
-          <span className={netIsNegative ? 'text-danger-600' : 'text-text-primary'}>{formatMoney(net)}</span>
+          <span className={netIsNegative ? 'text-danger-600' : 'text-text-primary'}>
+            {formatMoney(net)}
+          </span>
         </div>
-        <Button size="touch-lg" fullWidth loading={submitting} disabled={!gross || netIsNegative} onClick={handleSubmit}>
+        <Button
+          size="touch-lg"
+          fullWidth
+          loading={submitting}
+          disabled={!gross || netIsNegative}
+          onClick={handleSubmit}
+        >
           {t('pos.onlineOrderSave')}
         </Button>
       </CardContent>

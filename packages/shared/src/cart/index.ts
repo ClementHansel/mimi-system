@@ -4,7 +4,15 @@
  * decimal-safe via `../money`; nothing here touches a JS `number` for an
  * amount.
  */
-import { addMoney, clampMoneyToZero, isNegativeMoney, mulMoneyByQty, subMoney, sumMoney, ZERO_MONEY } from '../money';
+import {
+  addMoney,
+  clampMoneyToZero,
+  isNegativeMoney,
+  mulMoneyByQty,
+  subMoney,
+  sumMoney,
+  ZERO_MONEY,
+} from '../money';
 import { ERR_NET_MISMATCH } from '../error-codes';
 import type { Money, Qty, UUID } from '../types';
 
@@ -38,7 +46,10 @@ export interface CartSummary {
  * `subtotal = Σ lineTotal`; `total = max(0, subtotal − discount)`. Mirrors
  * `sales.subtotal/discount/total` (CONTRACTS.md §1.6).
  */
-export function calculateCartSummary(lines: readonly CartLine[], saleDiscount: Money = ZERO_MONEY): CartSummary {
+export function calculateCartSummary(
+  lines: readonly CartLine[],
+  saleDiscount: Money = ZERO_MONEY,
+): CartSummary {
   const resolvedLines = lines.map((l) => ({ ...l, lineTotal: calculateLineTotal(l) }));
   const subtotal = sumMoney(resolvedLines.map((l) => l.lineTotal));
   const total = clampMoneyToZero(subMoney(subtotal, saleDiscount));
@@ -61,16 +72,23 @@ export interface OnlineOrderAmounts {
 
 /** `net = gross − discount − platformFee − otherFee` (CONTRACTS.md `online_orders`). */
 export function calculateOnlineOrderNet(amounts: OnlineOrderAmounts): Money {
-  return subMoney(subMoney(subMoney(amounts.grossAmount, amounts.discountAmount), amounts.platformFee), amounts.otherFee);
+  return subMoney(
+    subMoney(subMoney(amounts.grossAmount, amounts.discountAmount), amounts.platformFee),
+    amounts.otherFee,
+  );
 }
 
-export type NetValidationResult = { ok: true } | { ok: false; code: string; message: string; expectedNet: Money };
+export type NetValidationResult =
+  { ok: true } | { ok: false; code: string; message: string; expectedNet: Money };
 
 /**
  * `POST /api/pos/online-orders` rejects a mismatched `netReceived` with
  * `ERR_NET_MISMATCH` (CONTRACTS.md §4.13) — this is that check, pure.
  */
-export function validateOnlineOrderNet(amounts: OnlineOrderAmounts, netReceived: Money): NetValidationResult {
+export function validateOnlineOrderNet(
+  amounts: OnlineOrderAmounts,
+  netReceived: Money,
+): NetValidationResult {
   const expectedNet = calculateOnlineOrderNet(amounts);
   if (expectedNet !== netReceived) {
     return {
@@ -84,7 +102,10 @@ export function validateOnlineOrderNet(amounts: OnlineOrderAmounts, netReceived:
 }
 
 /** The platform-fee-driven journal split for `OUTLET_SALES` online rows (JOUT-03: net to 1030, fees+discount to 6300). */
-export function calculateOnlineOrderJournalSplit(amounts: OnlineOrderAmounts): { netLeg: Money; feeLeg: Money } {
+export function calculateOnlineOrderJournalSplit(amounts: OnlineOrderAmounts): {
+  netLeg: Money;
+  feeLeg: Money;
+} {
   return {
     netLeg: calculateOnlineOrderNet(amounts),
     feeLeg: addMoney(addMoney(amounts.discountAmount, amounts.platformFee), amounts.otherFee),

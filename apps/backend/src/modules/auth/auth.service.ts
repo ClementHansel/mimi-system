@@ -25,7 +25,14 @@
  *   `withSystemContext` on a dedicated connection, matching the documented
  *   pattern.
  */
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Pool, PoolClient } from 'pg';
@@ -51,14 +58,25 @@ import { ScopeService } from '../../common/scope/scope.service';
 import { TokenService } from '../../common/jwt/token.service';
 import { accessSecret } from '../../common/jwt/jwt-secrets';
 import type { JwtAccessPayload, JwtRefreshPayload } from '../../common/jwt/jwt-payload.interface';
-import { assertSystemContext, withSystemContext, SYSTEM_CENTRAL_ROLE } from '../../common/database/system-context';
+import {
+  assertSystemContext,
+  withSystemContext,
+  SYSTEM_CENTRAL_ROLE,
+} from '../../common/database/system-context';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { AuthRepository } from './auth.repository';
 import { OfflineCredentialMintService } from './offline-credential-mint.service';
 import { hashPin, verifyPin as verifyPinHash } from './pin-hash.util';
 import { parseDurationMs } from './duration.util';
 import { hashRefreshToken, verifyRefreshTokenHash } from './token-hash.util';
-import type { LoginDto, OfflineCredentialRefreshDto, RefreshDto, RevokeCredentialDto, SetPinDto, VerifyPinDto } from './auth.dto';
+import type {
+  LoginDto,
+  OfflineCredentialRefreshDto,
+  RefreshDto,
+  RevokeCredentialDto,
+  SetPinDto,
+  VerifyPinDto,
+} from './auth.dto';
 
 export interface RequestMeta {
   ipAddress: string | null;
@@ -81,7 +99,10 @@ export class AuthService {
     private readonly config: ConfigService,
     @Inject(DATABASE_POOL) private readonly pool: Pool,
   ) {
-    this.verifierJwt = new JwtService({ secret: accessSecret(config), signOptions: { expiresIn: VERIFIER_TOKEN_TTL } });
+    this.verifierJwt = new JwtService({
+      secret: accessSecret(config),
+      signOptions: { expiresIn: VERIFIER_TOKEN_TTL },
+    });
   }
 
   // ── login ────────────────────────────────────────────────────────────────
@@ -98,11 +119,17 @@ export class AuthService {
 
       const user = await this.repo.findUserAuthByUsername(client, dto.username);
       if (!user || !user.is_active) {
-        throw new UnauthorizedException({ code: ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid username or password' });
+        throw new UnauthorizedException({
+          code: ERR_AUTH_INVALID_CREDENTIALS,
+          message: 'Invalid username or password',
+        });
       }
       const passwordOk = await compare(dto.password, user.password_hash);
       if (!passwordOk) {
-        throw new UnauthorizedException({ code: ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid username or password' });
+        throw new UnauthorizedException({
+          code: ERR_AUTH_INVALID_CREDENTIALS,
+          message: 'Invalid username or password',
+        });
       }
 
       // Re-establish the transaction's RLS context as the now-VERIFIED
@@ -110,8 +137,13 @@ export class AuthService {
       // every subsequent request for this user.
       await client.query(`SELECT set_config('app.user_id', $1, true)`, [user.id]);
       await client.query(`SELECT set_config('app.role', $1, true)`, [user.role_key]);
-      const locationScope = await this.scope.resolveLocationIds(client, { sub: user.id, roleKey: user.role_key });
-      await client.query(`SELECT set_config('app.location_ids', $1, true)`, [locationScope === null ? '' : locationScope.join(',')]);
+      const locationScope = await this.scope.resolveLocationIds(client, {
+        sub: user.id,
+        roleKey: user.role_key,
+      });
+      await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+        locationScope === null ? '' : locationScope.join(','),
+      ]);
 
       const rawLocationIds = await this.repo.rawLocationIds(client, user.id);
       const locationDetails = await this.repo.locationDetails(client, user.id);
@@ -128,7 +160,10 @@ export class AuthService {
       const sessionId = randomUUID();
       const refreshToken = this.signRefreshTokenUnique(user.id, sessionId);
       const refreshTokenHash = hashRefreshToken(refreshToken);
-      const refreshTtlMs = parseDurationMs(this.config.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'), REFRESH_DEFAULT_MS);
+      const refreshTtlMs = parseDurationMs(
+        this.config.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
+        REFRESH_DEFAULT_MS,
+      );
       await this.repo.insertSession(client, {
         id: sessionId,
         userId: user.id,
@@ -165,7 +200,12 @@ export class AuthService {
         mustSetPin: !user.pin_hash,
       };
 
-      return { accessToken, refreshToken, user: me, ...(offlineCredentials ? { offlineCredentials } : {}) };
+      return {
+        accessToken,
+        refreshToken,
+        user: me,
+        ...(offlineCredentials ? { offlineCredentials } : {}),
+      };
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
       throw err;
@@ -181,7 +221,10 @@ export class AuthService {
     try {
       payload = this.tokens.verifyRefreshToken(dto.refreshToken);
     } catch {
-      throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Invalid or expired refresh token' });
+      throw new UnauthorizedException({
+        code: ERR_AUTH_TOKEN_INVALID,
+        message: 'Invalid or expired refresh token',
+      });
     }
 
     const client = await this.pool.connect();
@@ -193,15 +236,24 @@ export class AuthService {
 
       const user = await this.repo.findUserAuthById(client, payload.sub);
       if (!user || !user.is_active) {
-        throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Invalid or expired refresh token' });
+        throw new UnauthorizedException({
+          code: ERR_AUTH_TOKEN_INVALID,
+          message: 'Invalid or expired refresh token',
+        });
       }
       await client.query(`SELECT set_config('app.role', $1, true)`, [user.role_key]);
 
       const session = await this.repo.findSession(client, payload.sessionId);
       const sessionValid =
-        session && session.user_id === user.id && !session.revoked_at && new Date(session.expires_at).getTime() > Date.now();
+        session &&
+        session.user_id === user.id &&
+        !session.revoked_at &&
+        new Date(session.expires_at).getTime() > Date.now();
       if (!session || !sessionValid) {
-        throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Invalid or expired refresh token' });
+        throw new UnauthorizedException({
+          code: ERR_AUTH_TOKEN_INVALID,
+          message: 'Invalid or expired refresh token',
+        });
       }
 
       const tokenOk = verifyRefreshTokenHash(dto.refreshToken, session.refresh_token_hash);
@@ -212,7 +264,10 @@ export class AuthService {
         // what a stolen-and-replayed refresh token looks like.
         await this.repo.revokeSession(client, session.id);
         await client.query('COMMIT');
-        throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Invalid or expired refresh token' });
+        throw new UnauthorizedException({
+          code: ERR_AUTH_TOKEN_INVALID,
+          message: 'Invalid or expired refresh token',
+        });
       }
 
       const rawLocationIds = await this.repo.rawLocationIds(client, user.id);
@@ -224,7 +279,10 @@ export class AuthService {
       });
       const refreshToken = this.signRefreshTokenUnique(user.id, session.id);
       const refreshTokenHash = hashRefreshToken(refreshToken);
-      const refreshTtlMs = parseDurationMs(this.config.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'), REFRESH_DEFAULT_MS);
+      const refreshTtlMs = parseDurationMs(
+        this.config.get<string>('JWT_REFRESH_EXPIRES_IN', '7d'),
+        REFRESH_DEFAULT_MS,
+      );
       await this.repo.rotateSession(client, session.id, {
         refreshTokenHash,
         expiresAt: new Date(Date.now() + refreshTtlMs).toISOString(),
@@ -242,7 +300,11 @@ export class AuthService {
 
   // ── logout ───────────────────────────────────────────────────────────────
 
-  async logout(dto: RefreshDto, caller: JwtAccessPayload, client: PoolClient): Promise<{ ok: true }> {
+  async logout(
+    dto: RefreshDto,
+    caller: JwtAccessPayload,
+    client: PoolClient,
+  ): Promise<{ ok: true }> {
     let payload: JwtRefreshPayload;
     try {
       payload = this.tokens.verifyRefreshToken(dto.refreshToken);
@@ -250,7 +312,10 @@ export class AuthService {
       return { ok: true }; // already dead — logout is idempotent, nothing to revoke
     }
     if (payload.sub !== caller.sub) {
-      throw new ForbiddenException({ code: ERR_FORBIDDEN, message: 'refresh token does not belong to the authenticated user' });
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: 'refresh token does not belong to the authenticated user',
+      });
     }
     await this.repo.revokeSession(client, payload.sessionId);
     return { ok: true };
@@ -277,18 +342,30 @@ export class AuthService {
 
   // ── PIN set / verify ─────────────────────────────────────────────────────
 
-  async setPin(dto: SetPinDto, caller: JwtAccessPayload, client: PoolClient): Promise<{ ok: true }> {
+  async setPin(
+    dto: SetPinDto,
+    caller: JwtAccessPayload,
+    client: PoolClient,
+  ): Promise<{ ok: true }> {
     const row = await this.repo.findUserAuthById(client, caller.sub);
     if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'User not found' });
     const passwordOk = await compare(dto.currentPassword, row.password_hash);
     if (!passwordOk) {
-      throw new UnauthorizedException({ code: ERR_AUTH_INVALID_CREDENTIALS, message: 'Current password is incorrect' });
+      throw new UnauthorizedException({
+        code: ERR_AUTH_INVALID_CREDENTIALS,
+        message: 'Current password is incorrect',
+      });
     }
     const pinHash = await hashPin(dto.pin);
     await this.repo.updatePinHash(client, caller.sub, pinHash);
 
     const locationIds = await this.repo.rawLocationIds(client, caller.sub);
-    await this.emitUsersSyncEvent(client, { op: 'pin_rotated', userId: caller.sub, actorUserId: caller.sub, locationIds });
+    await this.emitUsersSyncEvent(client, {
+      op: 'pin_rotated',
+      userId: caller.sub,
+      actorUserId: caller.sub,
+      locationIds,
+    });
 
     return { ok: true };
   }
@@ -317,7 +394,9 @@ export class AuthService {
    * bypassed read with no further phase, which is exactly what
    * `withSystemContext` is for).
    */
-  async verifyPin(dto: VerifyPinDto): Promise<{ ok: true; verifierToken: string; expiresAt: string }> {
+  async verifyPin(
+    dto: VerifyPinDto,
+  ): Promise<{ ok: true; verifierToken: string; expiresAt: string }> {
     await withSystemContext(this.pool, { role: SYSTEM_CENTRAL_ROLE }, async (client) => {
       const target = await this.repo.findUserAuthById(client, dto.userId);
       if (!target || !target.is_active || !target.pin_hash) {
@@ -329,7 +408,11 @@ export class AuthService {
       }
     });
 
-    const verifierToken = this.verifierJwt.sign({ sub: dto.userId, context: dto.context, purpose: 'pin_verified' });
+    const verifierToken = this.verifierJwt.sign({
+      sub: dto.userId,
+      context: dto.context,
+      purpose: 'pin_verified',
+    });
     const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
     return { ok: true, verifierToken, expiresAt };
   }
@@ -355,7 +438,8 @@ export class AuthService {
     if (!cred) {
       throw new BadRequestException({
         code: ERR_VALIDATION,
-        message: 'This role holds no offline-eligible approval scope, or the PIN has not been set yet (POST /api/auth/pin first)',
+        message:
+          'This role holds no offline-eligible approval scope, or the PIN has not been set yet (POST /api/auth/pin first)',
       });
     }
     return cred;
@@ -368,11 +452,15 @@ export class AuthService {
     client: PoolClient,
   ): Promise<{ ok: true }> {
     const cred = await this.repo.findOfflineCredential(client, credentialId);
-    if (!cred) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Offline credential not found' });
+    if (!cred)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Offline credential not found' });
 
     const isOwn = cred.user_id === caller.sub;
     if (!isOwn && !can(caller.roleKey as RoleKey, 'user.update')) {
-      throw new ForbiddenException({ code: ERR_FORBIDDEN, message: "Cannot revoke another user's offline credential" });
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: "Cannot revoke another user's offline credential",
+      });
     }
 
     await this.repo.revokeOfflineCredential(client, credentialId);
@@ -395,7 +483,12 @@ export class AuthService {
   /** Shared with `UsersModule` conceptually (one event per assigned location — §3.2/§3.3 `users` pull scope is `own_location`); central roles with no `user_locations` rows emit nothing (no location-scoped device needs to cache their row). */
   private async emitUsersSyncEvent(
     client: PoolClient,
-    params: { op: 'created' | 'updated' | 'deactivated' | 'pin_rotated'; userId: string; actorUserId: string; locationIds: string[] },
+    params: {
+      op: 'created' | 'updated' | 'deactivated' | 'pin_rotated';
+      userId: string;
+      actorUserId: string;
+      locationIds: string[];
+    },
   ): Promise<void> {
     for (const locationId of params.locationIds) {
       await this.syncEmit.emit(client, {

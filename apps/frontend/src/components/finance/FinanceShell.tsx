@@ -28,12 +28,48 @@ export function FinanceShell() {
 
   const tabs = useMemo(
     () => [
-      { value: 'payments', labelKey: 'finance.tabs.payments', icon: Wallet, visible: can('payment.read'), content: <PaymentsPanel /> },
-      { value: 'journal', labelKey: 'finance.tabs.journal', icon: BookText, visible: can('accounting.journal.read'), content: <JournalPanel /> },
-      { value: 'coa', labelKey: 'finance.tabs.coa', icon: ListTree, visible: can('accounting.coa.read'), content: <ChartOfAccountsPanel /> },
-      { value: 'reports', labelKey: 'finance.tabs.reports', icon: FileBarChart, visible: can('accounting.report.read'), content: <ReportsPanel /> },
-      { value: 'periods', labelKey: 'finance.tabs.periods', icon: CalendarClock, visible: can('accounting.coa.read'), content: <FiscalPeriodsPanel /> },
-      { value: 'exceptions', labelKey: 'finance.tabs.exceptions', icon: ShieldAlert, visible: can('sync.exception.review'), content: <ExceptionsPanel /> },
+      {
+        value: 'payments',
+        labelKey: 'finance.tabs.payments',
+        icon: Wallet,
+        visible: can('payment.read'),
+        content: <PaymentsPanel />,
+      },
+      {
+        value: 'journal',
+        labelKey: 'finance.tabs.journal',
+        icon: BookText,
+        visible: can('accounting.journal.read'),
+        content: <JournalPanel />,
+      },
+      {
+        value: 'coa',
+        labelKey: 'finance.tabs.coa',
+        icon: ListTree,
+        visible: can('accounting.coa.read'),
+        content: <ChartOfAccountsPanel />,
+      },
+      {
+        value: 'reports',
+        labelKey: 'finance.tabs.reports',
+        icon: FileBarChart,
+        visible: can('accounting.report.read'),
+        content: <ReportsPanel />,
+      },
+      {
+        value: 'periods',
+        labelKey: 'finance.tabs.periods',
+        icon: CalendarClock,
+        visible: can('accounting.coa.read'),
+        content: <FiscalPeriodsPanel />,
+      },
+      {
+        value: 'exceptions',
+        labelKey: 'finance.tabs.exceptions',
+        icon: ShieldAlert,
+        visible: can('sync.exception.review'),
+        content: <ExceptionsPanel />,
+      },
     ],
     [can],
   );

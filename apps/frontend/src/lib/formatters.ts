@@ -45,7 +45,10 @@ export interface FormatMoneyOptions {
  * NUMERIC(18,2) — `cents: 'always'` is available for GL/payroll views where
  * an exact-to-the-sen reconciliation matters.
  */
-export function formatMoney(value: Money | null | undefined, opts: FormatMoneyOptions = {}): string {
+export function formatMoney(
+  value: Money | null | undefined,
+  opts: FormatMoneyOptions = {},
+): string {
   if (value === null || value === undefined || value === '') return '—';
   const { cents = 'auto', withSymbol = true } = opts;
   const { negative, intPart, fracPart } = splitDecimalString(value);

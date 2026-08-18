@@ -43,7 +43,9 @@ export * from './registry';
 /** Every registered `"<entity>.<op>"` key. */
 export type PayloadSchemaKey = keyof typeof PAYLOAD_SCHEMAS;
 
-export const PAYLOAD_SCHEMA_KEYS: readonly PayloadSchemaKey[] = Object.keys(PAYLOAD_SCHEMAS) as PayloadSchemaKey[];
+export const PAYLOAD_SCHEMA_KEYS: readonly PayloadSchemaKey[] = Object.keys(
+  PAYLOAD_SCHEMAS,
+) as PayloadSchemaKey[];
 
 /** The TypeScript type of `payload.data` for a given registered `(entity, op)` key — e.g. `PayloadDataFor<'sales.completed'>`. */
 export type PayloadDataFor<K extends PayloadSchemaKey> = Infer<(typeof PAYLOAD_SCHEMAS)[K]>;
@@ -77,7 +79,10 @@ export function isRegisteredPayloadKey(entity: string, op: string): boolean {
 export function validatePayloadData(entity: string, op: string, data: unknown): ValidationResult {
   const schema = getPayloadSchema(entity, op);
   if (!schema) {
-    return { ok: false, issues: [{ path: '$', message: `No payload schema registered for "${entity}.${op}"` }] };
+    return {
+      ok: false,
+      issues: [{ path: '$', message: `No payload schema registered for "${entity}.${op}"` }],
+    };
   }
   return validate(schema, data);
 }

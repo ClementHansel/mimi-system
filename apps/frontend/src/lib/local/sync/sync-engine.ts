@@ -17,7 +17,11 @@ import type { UpstreamKind } from '../types';
 import { drainOutboxOnce, type DrainResult } from './outbox-drain';
 import { pullUntilCaughtUp, type PullResult } from './pull-loop';
 import { getOutboxDepth } from '../idempotent-commit';
-import { UpstreamSelector, type UpstreamCandidate, type UpstreamState } from '../upstream/upstream-selector';
+import {
+  UpstreamSelector,
+  type UpstreamCandidate,
+  type UpstreamState,
+} from '../upstream/upstream-selector';
 import { UPSTREAM_PROBE_INTERVAL_MS, HEARTBEAT_INTERVAL_MS } from '../constants';
 import type { ReconcileOptions } from './reconciler';
 import type { ClockState, DeviceIdentity } from '../types';
@@ -94,7 +98,11 @@ export class SyncEngine {
     this.connectivity = opts.connectivity;
     this.reconcileOptions = opts.reconcileOptions ?? {};
     this.now = opts.now ?? Date.now;
-    this.selector = new UpstreamSelector(opts.candidates, (baseUrl) => this.transport.health(baseUrl), this.now);
+    this.selector = new UpstreamSelector(
+      opts.candidates,
+      (baseUrl) => this.transport.health(baseUrl),
+      this.now,
+    );
     this.selector.onChange((state) => this.onUpstreamChange(state));
   }
 
@@ -179,7 +187,13 @@ export class SyncEngine {
     this.connectivity.setSyncing(true);
     try {
       const upstreamKind: UpstreamKind = state.current.kind;
-      const result = await runSyncCycle(this.db, this.transport, state.current.baseUrl, upstreamKind, this.reconcileOptions);
+      const result = await runSyncCycle(
+        this.db,
+        this.transport,
+        state.current.baseUrl,
+        upstreamKind,
+        this.reconcileOptions,
+      );
 
       if (!result.offline) {
         await this.updateClockFromHealth(state.current.baseUrl);
@@ -201,8 +215,19 @@ export class SyncEngine {
       const health = await this.transport.health(baseUrl);
       const rtt = this.now() - start;
       const clockStore = this.db.store<ClockState>('clock_state');
-      const current = (await clockStore.get('self')) ?? { id: 'self' as const, offsetMs: 0, samples: [], lastMeasuredAt: null };
-      const updated = recordOffsetSample(current, health.serverTime, start, rtt, new Date(this.now()).toISOString());
+      const current = (await clockStore.get('self')) ?? {
+        id: 'self' as const,
+        offsetMs: 0,
+        samples: [],
+        lastMeasuredAt: null,
+      };
+      const updated = recordOffsetSample(
+        current,
+        health.serverTime,
+        start,
+        rtt,
+        new Date(this.now()).toISOString(),
+      );
       await clockStore.put(updated);
     } catch {
       // best-effort; clock sync never blocks the pipe (§6.2/§6.3)

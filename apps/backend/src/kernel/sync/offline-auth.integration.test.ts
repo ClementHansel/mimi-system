@@ -25,7 +25,12 @@ import { formatUuidV7, type SyncEventEnvelope } from '@mimi/sync-protocol';
 import { SyncConflictsRepository } from './sync-conflicts.repository';
 import { OfflineCredentialsRepository } from './offline-credentials.repository';
 import { OfflineAuthService } from './offline-auth.service';
-import { computeBindingHmac, encryptBindingSecret, generateBindingSecret, encKeyFromConfig } from './binding-crypto';
+import {
+  computeBindingHmac,
+  encryptBindingSecret,
+  generateBindingSecret,
+  encKeyFromConfig,
+} from './binding-crypto';
 import {
   assignUserToLocation,
   cleanupCredentials,
@@ -44,7 +49,11 @@ const encKey = encKeyFromConfig(fakeConfig);
 
 const pool = getOwnerPool(); // see file header: the ONE unresolved RLS gap this ticket flags, not weakened here
 const conflictsRepo = new SyncConflictsRepository();
-const offlineAuth = new OfflineAuthService(new OfflineCredentialsRepository(), conflictsRepo, fakeConfig);
+const offlineAuth = new OfflineAuthService(
+  new OfflineCredentialsRepository(),
+  conflictsRepo,
+  fakeConfig,
+);
 
 let locationId: string;
 let approverUserId: string;
@@ -66,7 +75,9 @@ interface Rig {
   k: Buffer;
 }
 
-async function mintCredential(overrides: { expiresAt?: string; volumeCap?: number; selfieRequiredAbove?: string } = {}): Promise<Rig> {
+async function mintCredential(
+  overrides: { expiresAt?: string; volumeCap?: number; selfieRequiredAbove?: string } = {},
+): Promise<Rig> {
   const deviceId = await insertTestDevice(locationId, randomUUID());
   createdDeviceIds.push(deviceId);
   const credentialId = randomUUID();
@@ -100,8 +111,18 @@ async function insertBackingEvent(event: SyncEventEnvelope): Promise<void> {
     `INSERT INTO sync_events (event_id, origin_tier, origin_device_id, location_id, entity, entity_id, op, payload, client_seq, occurred_at, actor_user_id, schema_v, apply_status, applied_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'applied',NOW())`,
     [
-      event.eventId, event.originTier, event.originDeviceId, event.locationId, event.entity, event.entityId,
-      event.op, JSON.stringify(event.payload), event.clientSeq.toString(), event.occurredAt, event.actorUserId, event.schemaV,
+      event.eventId,
+      event.originTier,
+      event.originDeviceId,
+      event.locationId,
+      event.entity,
+      event.entityId,
+      event.op,
+      JSON.stringify(event.payload),
+      event.clientSeq.toString(),
+      event.occurredAt,
+      event.actorUserId,
+      event.schemaV,
     ],
   );
 }
@@ -110,14 +131,31 @@ function mkVoidRefundOfflineApproval(
   deviceId: string,
   credentialId: string,
   k: Buffer,
-  opts: { amountIdr?: string; entityIdOverrideForReplay?: string; occurredAt?: string; relayReceivedAt?: string; bindingOverride?: string; pinAttempts?: number; selfieRef?: { sha256: string; size: number; mime: string } } = {},
+  opts: {
+    amountIdr?: string;
+    entityIdOverrideForReplay?: string;
+    occurredAt?: string;
+    relayReceivedAt?: string;
+    bindingOverride?: string;
+    pinAttempts?: number;
+    selfieRef?: { sha256: string; size: number; mime: string };
+  } = {},
 ): SyncEventEnvelope {
   const eventId = formatUuidV7(Date.now(), randomBytes(16));
   const entityId = randomUUID();
   const amountIdr = opts.amountIdr ?? '100000.00';
   const occurredAt = opts.occurredAt ?? new Date().toISOString();
   const bindingEntityId = opts.entityIdOverrideForReplay ?? entityId; // (iii) replay: binding computed for a DIFFERENT document
-  const binding = opts.bindingOverride ?? computeBindingHmac(k, { eventId, entity: 'void_refunds', entityId: bindingEntityId, op: 'approved_offline', amountIdr, occurredAt });
+  const binding =
+    opts.bindingOverride ??
+    computeBindingHmac(k, {
+      eventId,
+      entity: 'void_refunds',
+      entityId: bindingEntityId,
+      op: 'approved_offline',
+      amountIdr,
+      occurredAt,
+    });
 
   return {
     eventId,
@@ -152,7 +190,9 @@ function mkVoidRefundOfflineApproval(
   };
 }
 
-async function outcomeFor(eventId: string): Promise<{ outcome: string; failure_reason: string | null } | undefined> {
+async function outcomeFor(
+  eventId: string,
+): Promise<{ outcome: string; failure_reason: string | null } | undefined> {
   const res = await pool.query<{ outcome: string; failure_reason: string | null }>(
     `SELECT outcome, failure_reason FROM offline_authorizations WHERE approval_event_id = $1`,
     [eventId],
@@ -204,10 +244,11 @@ describe('OfflineAuthService — live database (§7.4 adversarial)', () => {
     const row = await outcomeFor(event.eventId);
     expect(row).toBeUndefined();
 
-    const conflictRes = await pool.query<{ detail: { claimedCredentialId: string; outcome: string } }>(
-      `SELECT detail FROM sync_conflicts WHERE kind = 'offline_auth' AND loser_event_id = $1`,
-      [event.eventId],
-    );
+    const conflictRes = await pool.query<{
+      detail: { claimedCredentialId: string; outcome: string };
+    }>(`SELECT detail FROM sync_conflicts WHERE kind = 'offline_auth' AND loser_event_id = $1`, [
+      event.eventId,
+    ]);
     expect(conflictRes.rows).toHaveLength(1);
     expect(conflictRes.rows[0]!.detail.claimedCredentialId).toBe(forgedCredentialId);
     expect(conflictRes.rows[0]!.detail.outcome).toBe('failed');
@@ -220,12 +261,43 @@ describe('OfflineAuthService — live database (§7.4 adversarial)', () => {
     const eventId = formatUuidV7(Date.now(), randomBytes(16));
     const entityId = randomUUID();
     const occurredAt = new Date().toISOString();
-    const bindingForWrongAmount = computeBindingHmac(rig.k, { eventId, entity: 'void_refunds', entityId, op: 'approved_offline', amountIdr: '100000.00', occurredAt });
+    const bindingForWrongAmount = computeBindingHmac(rig.k, {
+      eventId,
+      entity: 'void_refunds',
+      entityId,
+      op: 'approved_offline',
+      amountIdr: '100000.00',
+      occurredAt,
+    });
     const event: SyncEventEnvelope = {
-      eventId, originTier: SyncOriginType.DEVICE, originDeviceId: rig.deviceId, locationId,
-      entity: 'void_refunds', entityId, op: 'approved_offline',
-      payload: { v: 1, data: {}, meta: { actorUserId: approverUserId, actorRole: 'supervisor', appVersion: '1.0.0', authorization: { credentialId: rig.credentialId, approverUserId, binding: bindingForWrongAmount, pinAttemptsBeforeSuccess: 1, amountIdr: '400000.00' } } },
-      clientSeq: 1n, occurredAt, relayReceivedAt: occurredAt, actorUserId: approverUserId, schemaV: 1,
+      eventId,
+      originTier: SyncOriginType.DEVICE,
+      originDeviceId: rig.deviceId,
+      locationId,
+      entity: 'void_refunds',
+      entityId,
+      op: 'approved_offline',
+      payload: {
+        v: 1,
+        data: {},
+        meta: {
+          actorUserId: approverUserId,
+          actorRole: 'supervisor',
+          appVersion: '1.0.0',
+          authorization: {
+            credentialId: rig.credentialId,
+            approverUserId,
+            binding: bindingForWrongAmount,
+            pinAttemptsBeforeSuccess: 1,
+            amountIdr: '400000.00',
+          },
+        },
+      },
+      clientSeq: 1n,
+      occurredAt,
+      relayReceivedAt: occurredAt,
+      actorUserId: approverUserId,
+      schemaV: 1,
     };
     await insertBackingEvent(event);
 
@@ -240,7 +312,9 @@ describe('OfflineAuthService — live database (§7.4 adversarial)', () => {
     await ensureFixtures();
     const rig = await mintCredential();
     const otherDocumentId = randomUUID(); // the binding is computed for THIS document...
-    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, { entityIdOverrideForReplay: otherDocumentId }); // ...but claimed against event.entityId
+    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, {
+      entityIdOverrideForReplay: otherDocumentId,
+    }); // ...but claimed against event.entityId
     await insertBackingEvent(event);
 
     await offlineAuth.verifyAndRecord(pool, event);
@@ -255,7 +329,10 @@ describe('OfflineAuthService — live database (§7.4 adversarial)', () => {
     const rig = await mintCredential({ expiresAt: new Date(Date.now() - 3600_000).toISOString() }); // expired 1h ago
     const occurredAt = new Date(Date.now() - 2 * 3600_000).toISOString(); // claims 2h ago (before expiry — in-window claim)
     const relayReceivedAt = new Date().toISOString(); // but first server sighting is NOW (after expiry)
-    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, { occurredAt, relayReceivedAt });
+    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, {
+      occurredAt,
+      relayReceivedAt,
+    });
     await insertBackingEvent(event);
 
     await offlineAuth.verifyAndRecord(pool, event);
@@ -266,9 +343,14 @@ describe('OfflineAuthService — live database (§7.4 adversarial)', () => {
 
   it('(iv-b) claim itself is outside the window even accounting for the clamp — failed', async () => {
     await ensureFixtures();
-    const rig = await mintCredential({ expiresAt: new Date(Date.now() - 48 * 3600_000).toISOString() }); // expired 2 days ago
+    const rig = await mintCredential({
+      expiresAt: new Date(Date.now() - 48 * 3600_000).toISOString(),
+    }); // expired 2 days ago
     const occurredAt = new Date(Date.now() - 47 * 3600_000).toISOString(); // claim itself is AFTER expiry too
-    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, { occurredAt, relayReceivedAt: new Date().toISOString() });
+    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, {
+      occurredAt,
+      relayReceivedAt: new Date().toISOString(),
+    });
     await insertBackingEvent(event);
 
     await offlineAuth.verifyAndRecord(pool, event);
@@ -280,7 +362,9 @@ describe('OfflineAuthService — live database (§7.4 adversarial)', () => {
   it('(v) missing selfie above the threshold degrades to unprovable, not verified', async () => {
     await ensureFixtures();
     const rig = await mintCredential({ selfieRequiredAbove: '50000.00' });
-    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, { amountIdr: '250000.00' }); // above threshold, no selfieRef supplied
+    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, {
+      amountIdr: '250000.00',
+    }); // above threshold, no selfieRef supplied
     await insertBackingEvent(event);
 
     await offlineAuth.verifyAndRecord(pool, event);
@@ -293,7 +377,9 @@ describe('OfflineAuthService — live database (§7.4 adversarial)', () => {
   it('scope cap: amount exceeding the credential max_idr fails', async () => {
     await ensureFixtures();
     const rig = await mintCredential(); // scope max_idr = 500000.00
-    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, { amountIdr: '900000.00' });
+    const event = mkVoidRefundOfflineApproval(rig.deviceId, rig.credentialId, rig.k, {
+      amountIdr: '900000.00',
+    });
     await insertBackingEvent(event);
 
     await offlineAuth.verifyAndRecord(pool, event);

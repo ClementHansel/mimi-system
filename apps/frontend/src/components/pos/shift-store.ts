@@ -28,7 +28,9 @@ export interface OpenShift {
 
 interface ShiftState {
   current: OpenShift | null;
-  open: (shift: Omit<OpenShift, 'cashCollected' | 'grossSales' | 'salesCount' | 'voidCount'>) => void;
+  open: (
+    shift: Omit<OpenShift, 'cashCollected' | 'grossSales' | 'salesCount' | 'voidCount'>,
+  ) => void;
   recordSale: (args: { total: Money; cashPortion: Money }) => void;
   recordVoid: () => void;
   close: () => void;
@@ -38,7 +40,16 @@ export const usePosShiftStore = create<ShiftState>()(
   persist(
     (set) => ({
       current: null,
-      open: (shift) => set({ current: { ...shift, cashCollected: ZERO_MONEY, grossSales: ZERO_MONEY, salesCount: 0, voidCount: 0 } }),
+      open: (shift) =>
+        set({
+          current: {
+            ...shift,
+            cashCollected: ZERO_MONEY,
+            grossSales: ZERO_MONEY,
+            salesCount: 0,
+            voidCount: 0,
+          },
+        }),
       recordSale: ({ total, cashPortion }) =>
         set((s) =>
           s.current
@@ -52,7 +63,10 @@ export const usePosShiftStore = create<ShiftState>()(
               }
             : s,
         ),
-      recordVoid: () => set((s) => (s.current ? { current: { ...s.current, voidCount: s.current.voidCount + 1 } } : s)),
+      recordVoid: () =>
+        set((s) =>
+          s.current ? { current: { ...s.current, voidCount: s.current.voidCount + 1 } } : s,
+        ),
       close: () => set({ current: null }),
     }),
     { name: 'mimi-pos-shift' },

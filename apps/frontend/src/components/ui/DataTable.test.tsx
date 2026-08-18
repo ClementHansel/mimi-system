@@ -51,7 +51,12 @@ describe('DataTable', () => {
 
   it('shows skeleton rows while loading, not the data or empty state', () => {
     const { container } = render(
-      <DataTable columns={columns} data={paginated([{ id: '1', name: 'X', qty: 1 }])} keyField={(r) => r.id} loading />,
+      <DataTable
+        columns={columns}
+        data={paginated([{ id: '1', name: 'X', qty: 1 }])}
+        keyField={(r) => r.id}
+        loading
+      />,
     );
     expect(screen.queryByText('X')).not.toBeInTheDocument();
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
@@ -73,7 +78,12 @@ describe('DataTable', () => {
   it('calls onSortChange with the column key when a sortable header is clicked', () => {
     const onSortChange = vi.fn();
     render(
-      <DataTable columns={columns} data={paginated([{ id: '1', name: 'X', qty: 1 }])} keyField={(r) => r.id} onSortChange={onSortChange} />,
+      <DataTable
+        columns={columns}
+        data={paginated([{ id: '1', name: 'X', qty: 1 }])}
+        keyField={(r) => r.id}
+        onSortChange={onSortChange}
+      />,
     );
     screen.getByRole('button', { name: /Nama/ }).click();
     expect(onSortChange).toHaveBeenCalledWith('name');
@@ -81,7 +91,9 @@ describe('DataTable', () => {
 
   it('paginates: shows page info and disables Next on the last page', () => {
     const data = paginated([{ id: '1', name: 'X', qty: 1 }], { total: 120, page: 3, pageSize: 50 });
-    render(<DataTable columns={columns} data={data} keyField={(r) => r.id} onPageChange={() => {}} />);
+    render(
+      <DataTable columns={columns} data={data} keyField={(r) => r.id} onPageChange={() => {}} />,
+    );
     expect(screen.getByText('Halaman 3 dari 3')).toBeInTheDocument();
     expect(screen.getByLabelText('Lanjut')).toBeDisabled();
     expect(screen.getByLabelText('Kembali')).not.toBeDisabled();
@@ -90,7 +102,14 @@ describe('DataTable', () => {
   it('calls onPageChange with the next page number', () => {
     const onPageChange = vi.fn();
     const data = paginated([{ id: '1', name: 'X', qty: 1 }], { total: 120, page: 1, pageSize: 50 });
-    render(<DataTable columns={columns} data={data} keyField={(r) => r.id} onPageChange={onPageChange} />);
+    render(
+      <DataTable
+        columns={columns}
+        data={data}
+        keyField={(r) => r.id}
+        onPageChange={onPageChange}
+      />,
+    );
     screen.getByLabelText('Lanjut').click();
     expect(onPageChange).toHaveBeenCalledWith(2);
   });
@@ -98,8 +117,18 @@ describe('DataTable', () => {
   it('calls onRowClick with the clicked row', () => {
     const onRowClick = vi.fn();
     const row = { id: '1', name: 'Ayam Goreng', qty: 12 };
-    render(<DataTable columns={columns} data={paginated([row])} keyField={(r) => r.id} onRowClick={onRowClick} />);
-    screen.getByText('Ayam Goreng').closest('tr')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    render(
+      <DataTable
+        columns={columns}
+        data={paginated([row])}
+        keyField={(r) => r.id}
+        onRowClick={onRowClick}
+      />,
+    );
+    screen
+      .getByText('Ayam Goreng')
+      .closest('tr')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(onRowClick).toHaveBeenCalledWith(row);
   });
 });

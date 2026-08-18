@@ -5,13 +5,28 @@ import { Play, Send } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
 import {
-  Button, Card, CardHeader, CardTitle, CardContent, Input, StatusBadge, ApprovalTimeline, PermissionGate, EmptyState,
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Input,
+  StatusBadge,
+  ApprovalTimeline,
+  PermissionGate,
+  EmptyState,
 } from '@/components/ui';
 import { usePermissions } from '@/lib/permissions';
 import { formatMoney } from '@/lib/formatters';
 import {
-  approvePayrollRun, calculatePayrollRun, createPayrollPeriod, getPayrollRun, listPayrollPeriods,
-  rejectPayrollRun, sendPayrollSlips, submitPayrollRun,
+  approvePayrollRun,
+  calculatePayrollRun,
+  createPayrollPeriod,
+  getPayrollRun,
+  listPayrollPeriods,
+  rejectPayrollRun,
+  sendPayrollSlips,
+  submitPayrollRun,
 } from './lib/hr-api';
 import type { PayrollPeriod, PayrollRunDetail } from './lib/types';
 
@@ -48,7 +63,9 @@ export function PayrollPanel() {
       return;
     }
     setRunLoading(true);
-    getPayrollRun(selectedRunId).then(setRun).finally(() => setRunLoading(false));
+    getPayrollRun(selectedRunId)
+      .then(setRun)
+      .finally(() => setRunLoading(false));
   }, [selectedRunId]);
 
   async function startPeriod() {
@@ -109,7 +126,12 @@ export function PayrollPanel() {
               onChange={(e) => setPeriodCode(e.target.value)}
               wrapperClassName="w-40"
             />
-            <Button leftIcon={<Play className="size-4" />} onClick={startPeriod} loading={creating} disabled={!periodCode}>
+            <Button
+              leftIcon={<Play className="size-4" />}
+              onClick={startPeriod}
+              loading={creating}
+              disabled={!periodCode}
+            >
               {t('hr.payroll.calculateButton')}
             </Button>
           </CardContent>
@@ -147,7 +169,12 @@ export function PayrollPanel() {
                         </button>
                       ))}
                       {p.runs.length === 0 && can('payroll.run.calculate') && (
-                        <Button size="sm" variant="outline" onClick={() => calculateForPeriod(p)} loading={busy}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => calculateForPeriod(p)}
+                          loading={busy}
+                        >
                           {t('hr.payroll.calculateButton')}
                         </Button>
                       )}
@@ -173,13 +200,20 @@ export function PayrollPanel() {
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="font-medium text-text-primary">{run.runNumber}</span>
                   <StatusBadge domain="payrollRun" status={run.status} />
-                  {run.statutoryMode && <span className="text-xs text-text-muted">{t('hr.payroll.statutoryModeOn')}</span>}
+                  {run.statutoryMode && (
+                    <span className="text-xs text-text-muted">
+                      {t('hr.payroll.statutoryModeOn')}
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <Stat label={t('hr.payroll.employeeCount')} value={String(run.employeeCount)} />
                   <Stat label={t('hr.payroll.totalGross')} value={formatMoney(run.totalGross)} />
-                  <Stat label={t('hr.payroll.totalDeductions')} value={formatMoney(run.totalDeductions)} />
+                  <Stat
+                    label={t('hr.payroll.totalDeductions')}
+                    value={formatMoney(run.totalDeductions)}
+                  />
                   <Stat label={t('hr.payroll.totalNet')} value={formatMoney(run.totalNet)} />
                 </div>
 
@@ -196,10 +230,18 @@ export function PayrollPanel() {
                     <tbody>
                       {run.employees.map((p) => (
                         <tr key={p.employee.id} className="border-b border-border last:border-0">
-                          <td className="px-3 py-2.5 font-medium text-text-primary">{p.employee.name}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(p.gross)}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(p.deductions)}</td>
-                          <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(p.net)}</td>
+                          <td className="px-3 py-2.5 font-medium text-text-primary">
+                            {p.employee.name}
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">
+                            {formatMoney(p.gross)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">
+                            {formatMoney(p.deductions)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">
+                            {formatMoney(p.net)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -208,7 +250,9 @@ export function PayrollPanel() {
 
                 {run.approval && (
                   <div>
-                    <h4 className="mb-2 text-sm font-medium text-text-primary">{t('hr.payroll.approvalTitle')}</h4>
+                    <h4 className="mb-2 text-sm font-medium text-text-primary">
+                      {t('hr.payroll.approvalTitle')}
+                    </h4>
                     <ApprovalTimeline steps={run.approval.steps} />
                   </div>
                 )}
@@ -216,7 +260,13 @@ export function PayrollPanel() {
                 <div className="flex flex-wrap gap-2">
                   <PermissionGate permission="payroll.run.calculate">
                     {run.status === 'calculated' && (
-                      <Button variant="outline" onClick={() => act(() => submitPayrollRun(run.id), 'hr.payroll.submitSuccess')} loading={busy}>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          act(() => submitPayrollRun(run.id), 'hr.payroll.submitSuccess')
+                        }
+                        loading={busy}
+                      >
                         {t('hr.payroll.submitButton')}
                       </Button>
                     )}
@@ -224,10 +274,24 @@ export function PayrollPanel() {
                   <PermissionGate permission="payroll.run.approve">
                     {run.status === 'pending_approval' && (
                       <>
-                        <Button onClick={() => act(() => approvePayrollRun(run.id), 'hr.payroll.approveSuccess')} loading={busy}>
+                        <Button
+                          onClick={() =>
+                            act(() => approvePayrollRun(run.id), 'hr.payroll.approveSuccess')
+                          }
+                          loading={busy}
+                        >
                           {t('common.approve')}
                         </Button>
-                        <Button variant="outline" onClick={() => act(() => rejectPayrollRun(run.id, t('hr.payroll.defaultRejectReason')), 'hr.payroll.rejectSuccess')} loading={busy}>
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            act(
+                              () => rejectPayrollRun(run.id, t('hr.payroll.defaultRejectReason')),
+                              'hr.payroll.rejectSuccess',
+                            )
+                          }
+                          loading={busy}
+                        >
                           {t('common.reject')}
                         </Button>
                       </>
@@ -235,14 +299,25 @@ export function PayrollPanel() {
                   </PermissionGate>
                   <PermissionGate permission="payroll.slip.send">
                     {run.status === 'approved' && (
-                      <Button leftIcon={<Send className="size-4" />} onClick={() => act(() => sendPayrollSlips(run.id, ['email', 'whatsapp']), 'hr.payroll.sendSlipsSuccess')} loading={busy}>
+                      <Button
+                        leftIcon={<Send className="size-4" />}
+                        onClick={() =>
+                          act(
+                            () => sendPayrollSlips(run.id, ['email', 'whatsapp']),
+                            'hr.payroll.sendSlipsSuccess',
+                          )
+                        }
+                        loading={busy}
+                      >
                         {t('hr.payroll.sendSlipsButton')}
                       </Button>
                     )}
                   </PermissionGate>
                   <PermissionGate permission="payroll.run.pay">
                     {run.status === 'approved' && (
-                      <p className="self-center text-sm text-text-muted">{t('hr.payroll.markPaidHint')}</p>
+                      <p className="self-center text-sm text-text-muted">
+                        {t('hr.payroll.markPaidHint')}
+                      </p>
                     )}
                   </PermissionGate>
                 </div>

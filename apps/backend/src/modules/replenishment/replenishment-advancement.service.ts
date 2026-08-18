@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { ApprovalDocumentType, SYSTEM_ACTOR, transition, type Actor, type Qty, type RoleKey, type UUID } from '@mimi/shared';
+import {
+  ApprovalDocumentType,
+  SYSTEM_ACTOR,
+  transition,
+  type Actor,
+  type Qty,
+  type RoleKey,
+  type UUID,
+} from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import type { ReplenishmentFulfillmentPort } from '../delivery/ports/replenishment-fulfillment.port';
 import { ReplenishmentRepository } from './replenishment.repository';
@@ -55,7 +63,12 @@ export class ReplenishmentAdvancementService implements ReplenishmentFulfillment
     await this.repo.setSjLink(client, requestId, sjId);
   }
 
-  async markProcessing(client: PoolClient, requestId: UUID, actorUserId: UUID, actorRole: RoleKey): Promise<void> {
+  async markProcessing(
+    client: PoolClient,
+    requestId: UUID,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+  ): Promise<void> {
     const row = await this.repo.findByIdForUpdate(client, requestId);
     if (!row) return this.skip(requestId, 'process', 'request not found');
     const next = this.tryTransition(requestId, row.status, 'process', actorRole);
@@ -100,7 +113,9 @@ export class ReplenishmentAdvancementService implements ReplenishmentFulfillment
         data: { id: requestId, sjId },
       });
     } else {
-      this.logger.warn(`replenishment_requests/${requestId} marked shipped with no sj_id set — linkSuratJalan should have run at SJ creation`);
+      this.logger.warn(
+        `replenishment_requests/${requestId} marked shipped with no sj_id set — linkSuratJalan should have run at SJ creation`,
+      );
     }
   }
 
@@ -177,6 +192,8 @@ export class ReplenishmentAdvancementService implements ReplenishmentFulfillment
   }
 
   private skip(requestId: UUID, action: string, detail: string): void {
-    this.logger.warn(`replenishment_requests/${requestId}: skipping '${action}' (${detail}) — the SJ/drop-side fact still applies`);
+    this.logger.warn(
+      `replenishment_requests/${requestId}: skipping '${action}' (${detail}) — the SJ/drop-side fact still applies`,
+    );
   }
 }

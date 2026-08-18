@@ -3,7 +3,15 @@
 import { useState } from 'react';
 import { LockOpen } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, MoneyInput } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  MoneyInput,
+} from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 import type { ActorMeta } from '@/lib/local/api/local-runtime';
@@ -50,7 +58,11 @@ export function ShiftOpenForm({
       openShift({ shiftId, locationId, openingCash, openedAt: occurredAt, kasirName });
       toast({ title: t('pos.shiftOpenedTitle'), variant: 'success' });
     } catch (err) {
-      toast({ title: t('pos.shiftOpenFailed'), description: err instanceof Error ? err.message : undefined, variant: 'danger' });
+      toast({
+        title: t('pos.shiftOpenFailed'),
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'danger',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -76,7 +88,13 @@ export function ShiftOpenForm({
               size="touch"
               hint={t('pos.openingCashHint')}
             />
-            <Button type="submit" size="touch-lg" fullWidth loading={submitting} disabled={!openingCash}>
+            <Button
+              type="submit"
+              size="touch-lg"
+              fullWidth
+              loading={submitting}
+              disabled={!openingCash}
+            >
               {t('pos.openShiftSubmit')}
             </Button>
           </form>

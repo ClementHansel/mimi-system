@@ -54,7 +54,10 @@ const SYSTEM_ROLE = 'owner';
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 /** Runs `fn` inside a fresh transaction with the central-role RLS bypass asserted, committing on success (read-only callers may also just let this commit — a plain SELECT has nothing to lose by committing an empty write set). */
-export async function withSystemContext<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withSystemContext<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

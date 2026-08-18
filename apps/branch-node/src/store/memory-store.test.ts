@@ -14,7 +14,11 @@ function makeEvent(overrides: Partial<Omit<StoredSyncEvent, 'serverSeq'>> = {}) 
     entity: 'sales',
     entityId: 'sale-1' as UUID,
     op: 'completed',
-    payload: { v: 1, data: {}, meta: { actorUserId: 'user-1', actorRole: 'kasir', appVersion: '1.0.0' } },
+    payload: {
+      v: 1,
+      data: {},
+      meta: { actorUserId: 'user-1', actorRole: 'kasir', appVersion: '1.0.0' },
+    },
     clientSeq: 1n,
     occurredAt: new Date().toISOString(),
     relayReceivedAt: new Date().toISOString(),
@@ -50,7 +54,9 @@ describe('MemoryStore', () => {
 
   it('detects seq_conflict via eventIdAtOriginSeq', async () => {
     const store = new MemoryStore();
-    await store.appendEvent(makeEvent({ eventId: 'evt-a' as UUID, originDeviceId: 'origin-x' as UUID, clientSeq: 7n }));
+    await store.appendEvent(
+      makeEvent({ eventId: 'evt-a' as UUID, originDeviceId: 'origin-x' as UUID, clientSeq: 7n }),
+    );
     const conflicting = await store.eventIdAtOriginSeq('origin-x' as UUID, 7n);
     expect(conflicting).toBe('evt-a');
     const clean = await store.eventIdAtOriginSeq('origin-x' as UUID, 8n);
@@ -68,8 +74,12 @@ describe('MemoryStore', () => {
 
   it('tracks the relay outbox via per-origin cloud-confirmed high-water', async () => {
     const store = new MemoryStore();
-    await store.appendEvent(makeEvent({ eventId: 'evt-1' as UUID, originDeviceId: 'origin-a' as UUID, clientSeq: 1n }));
-    await store.appendEvent(makeEvent({ eventId: 'evt-2' as UUID, originDeviceId: 'origin-a' as UUID, clientSeq: 2n }));
+    await store.appendEvent(
+      makeEvent({ eventId: 'evt-1' as UUID, originDeviceId: 'origin-a' as UUID, clientSeq: 1n }),
+    );
+    await store.appendEvent(
+      makeEvent({ eventId: 'evt-2' as UUID, originDeviceId: 'origin-a' as UUID, clientSeq: 2n }),
+    );
     let unconfirmed = await store.getUnconfirmedByCloud(10);
     expect(unconfirmed.map((e) => e.eventId).sort()).toEqual(['evt-1', 'evt-2']);
     await store.setCloudConfirmedHighWater('origin-a' as UUID, 1n);
@@ -113,10 +123,32 @@ describe('MemoryStore', () => {
 
   it('derives stock balances from movements, deduped by factId (D-16a)', async () => {
     const store = new MemoryStore();
-    const key = { locationId: 'loc-1' as UUID, storageAreaId: 'area-1' as UUID, itemId: 'item-1' as UUID };
+    const key = {
+      locationId: 'loc-1' as UUID,
+      storageAreaId: 'area-1' as UUID,
+      itemId: 'item-1' as UUID,
+    };
     const movements: MovementFact[] = [
-      { ...key, factId: 'fact-1', movementType: MovementType.PURCHASE_IN, qty: '10.000', unitCost: '5000.00', refType: 'receipt', refId: 'r1' as UUID, occurredAt: new Date().toISOString() },
-      { ...key, factId: 'fact-2', movementType: MovementType.USAGE_OUT, qty: '3.000', unitCost: '5000.00', refType: 'sale', refId: 's1' as UUID, occurredAt: new Date().toISOString() },
+      {
+        ...key,
+        factId: 'fact-1',
+        movementType: MovementType.PURCHASE_IN,
+        qty: '10.000',
+        unitCost: '5000.00',
+        refType: 'receipt',
+        refId: 'r1' as UUID,
+        occurredAt: new Date().toISOString(),
+      },
+      {
+        ...key,
+        factId: 'fact-2',
+        movementType: MovementType.USAGE_OUT,
+        qty: '3.000',
+        unitCost: '5000.00',
+        refType: 'sale',
+        refId: 's1' as UUID,
+        occurredAt: new Date().toISOString(),
+      },
     ];
     await store.appendMovements(movements);
     await store.appendMovements(movements); // replay — must not double-count (T-02)

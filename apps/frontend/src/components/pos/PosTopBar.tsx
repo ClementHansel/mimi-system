@@ -55,7 +55,9 @@ export function PosTopBar() {
         </span>
         <div className="leading-tight">
           <p className="font-display text-sm font-semibold text-text-primary">{t('nav.pos')}</p>
-          <p className="text-xs text-text-muted">{t('pos.branchLabel', { name: locationName ?? t('pos.noLocation') })}</p>
+          <p className="text-xs text-text-muted">
+            {t('pos.branchLabel', { name: locationName ?? t('pos.noLocation') })}
+          </p>
         </div>
       </div>
 

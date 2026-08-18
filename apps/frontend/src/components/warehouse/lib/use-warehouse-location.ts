@@ -19,6 +19,8 @@ export function useWarehouseLocation(): {
 } {
   const user = useSessionStore((s) => s.user);
   const warehouse = user?.locations.find((l) => l.type === 'warehouse') ?? null;
-  const outlets = (user?.locations ?? []).filter((l) => l.type === 'outlet').map((l) => ({ id: l.id, name: l.name, city: l.city }));
+  const outlets = (user?.locations ?? [])
+    .filter((l) => l.type === 'outlet')
+    .map((l) => ({ id: l.id, name: l.name, city: l.city }));
   return { locationId: warehouse?.id ?? null, locationName: warehouse?.name ?? null, outlets };
 }

@@ -65,7 +65,10 @@ export const useConnectivityStore = create<ConnectivityState>((set) => ({
   setLastSyncAt: (lastSyncAt) => set({ lastSyncAt }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setManualCheckStatus: (manualCheckStatus, errorKey = null) =>
-    set({ manualCheckStatus, manualCheckErrorKey: manualCheckStatus === 'error' ? errorKey : null }),
+    set({
+      manualCheckStatus,
+      manualCheckErrorKey: manualCheckStatus === 'error' ? errorKey : null,
+    }),
 }));
 
 /**

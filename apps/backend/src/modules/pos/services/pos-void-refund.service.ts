@@ -1,4 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import type { Pool, PoolClient } from 'pg';
 import { DATABASE_POOL } from '../../../common/database/database-pool.provider';
@@ -85,19 +93,28 @@ export class PosVoidRefundService {
     kasirId: UUID,
     input: { clientId: UUID; type: VoidRefundType; reason: string; amount?: Money },
   ): Promise<{ voidRefundId: UUID; status: 'pending' }> {
-    const existing = await client.query<{ id: UUID }>(`SELECT id FROM void_refunds WHERE client_id = $1`, [input.clientId]);
+    const existing = await client.query<{ id: UUID }>(
+      `SELECT id FROM void_refunds WHERE client_id = $1`,
+      [input.clientId],
+    );
     if (existing.rows[0]) return { voidRefundId: existing.rows[0].id, status: 'pending' };
 
     const sale = await this.loadSaleForVoid(client, saleId);
     if (sale.status !== 'completed') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Sale ${saleId} is not in a voidable state (status=${sale.status})` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Sale ${saleId} is not in a voidable state (status=${sale.status})`,
+      });
     }
     const pendingAlready = await client.query<{ id: UUID }>(
       `SELECT id FROM void_refunds WHERE sale_id = $1 AND status = 'pending'`,
       [saleId],
     );
     if (pendingAlready.rows[0]) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: 'A void/refund is already pending for this sale' });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: 'A void/refund is already pending for this sale',
+      });
     }
 
     const amount = input.amount ?? sale.total;
@@ -119,7 +136,11 @@ export class PosVoidRefundService {
 
     // `users`/`user_locations` RLS (migration 009) only lets a Kasir see their OWN row — see
     // `notify-eligible-users.util.ts`'s header for why this lookup needs its own connection.
-    const supervisorIds = await findUsersByRoleAtLocation(this.pool, ['supervisor', 'manager', 'owner'], sale.location_id);
+    const supervisorIds = await findUsersByRoleAtLocation(
+      this.pool,
+      ['supervisor', 'manager', 'owner'],
+      sale.location_id,
+    );
     if (supervisorIds.length > 0) {
       const saleRow = await client.query<{ receipt_number: string; location_name: string }>(
         `SELECT s.receipt_number, l.name AS location_name FROM sales s JOIN locations l ON l.id = s.location_id WHERE s.id = $1`,
@@ -140,7 +161,9 @@ export class PosVoidRefundService {
           locationId: sale.location_id,
         });
       } catch (err) {
-        this.logger.error(`Failed to notify supervisors of void/refund request ${voidId}: ${err instanceof Error ? err.message : String(err)}`);
+        this.logger.error(
+          `Failed to notify supervisors of void/refund request ${voidId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -158,7 +181,10 @@ export class PosVoidRefundService {
 
     const row = await this.loadVoidRefund(client, voidId);
     if (row.status !== 'pending') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Void/refund ${voidId} is already ${row.status}` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Void/refund ${voidId} is already ${row.status}`,
+      });
     }
     const sale = await this.loadSaleForVoid(client, row.sale_id);
 
@@ -175,7 +201,9 @@ export class PosVoidRefundService {
     });
 
     const fullyApproved = decision.approvalState === 'approved';
-    const nextStatus: VoidRefundStatus = fullyApproved ? VoidRefundStatus.APPROVED : VoidRefundStatus.PENDING;
+    const nextStatus: VoidRefundStatus = fullyApproved
+      ? VoidRefundStatus.APPROVED
+      : VoidRefundStatus.PENDING;
 
     // `fullyApproved` decides `approved_at` in JS, not a repeated `$2` inside a SQL `CASE` — reusing
     // one placeholder in both a plain assignment and a comparison made `pg` infer inconsistent
@@ -202,10 +230,19 @@ export class PosVoidRefundService {
     return { id: voidId, status: nextStatus, offlineAuthorized: false };
   }
 
-  async reject(client: PoolClient, voidId: UUID, actorUserId: UUID, actorRole: RoleKey, reason: string): Promise<{ id: UUID; status: 'rejected' }> {
+  async reject(
+    client: PoolClient,
+    voidId: UUID,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+    reason: string,
+  ): Promise<{ id: UUID; status: 'rejected' }> {
     const row = await this.loadVoidRefund(client, voidId);
     if (row.status !== 'pending') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Void/refund ${voidId} is already ${row.status}` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Void/refund ${voidId} is already ${row.status}`,
+      });
     }
     const sale = await this.loadSaleForVoid(client, row.sale_id);
 
@@ -218,7 +255,10 @@ export class PosVoidRefundService {
       reason,
     });
 
-    await client.query(`UPDATE void_refunds SET status = 'rejected', rejection_reason = $2 WHERE id = $1`, [voidId, reason]);
+    await client.query(
+      `UPDATE void_refunds SET status = 'rejected', rejection_reason = $2 WHERE id = $1`,
+      [voidId, reason],
+    );
 
     await this.syncEmit.emit(client, {
       entity: 'void_refunds',
@@ -234,7 +274,13 @@ export class PosVoidRefundService {
 
   async list(
     client: PoolClient,
-    query: { locationId?: UUID; status?: VoidRefundStatus; date?: string; page: number; pageSize: number },
+    query: {
+      locationId?: UUID;
+      status?: VoidRefundStatus;
+      date?: string;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<Paginated<VoidRefundRow>> {
     const params: unknown[] = [];
     let where = '1=1';
@@ -287,7 +333,10 @@ export class PosVoidRefundService {
       params,
     );
 
-    const names = await resolveUserNames(this.pool, [...res.rows.map((r) => r.requested_by), ...res.rows.map((r) => r.approved_by)]);
+    const names = await resolveUserNames(this.pool, [
+      ...res.rows.map((r) => r.requested_by),
+      ...res.rows.map((r) => r.approved_by),
+    ]);
     const rows: VoidRefundRow[] = res.rows.map((r) => ({
       id: r.id,
       saleId: r.sale_id,
@@ -314,13 +363,22 @@ export class PosVoidRefundService {
    * apply its effect. Idempotent: a non-`pending` row (already decided, by this call or a sibling)
    * is a safe no-op.
    */
-  async applyVoidApprovedOffline(client: PoolClient, saleId: UUID, approverUserId: UUID, occurredAt: string, isConflictLoser: boolean): Promise<void> {
+  async applyVoidApprovedOffline(
+    client: PoolClient,
+    saleId: UUID,
+    approverUserId: UUID,
+    occurredAt: string,
+    isConflictLoser: boolean,
+  ): Promise<void> {
     if (isConflictLoser) return;
     const row = await client.query<{ id: UUID; status: string }>(
       `SELECT id, status FROM void_refunds WHERE sale_id = $1 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [saleId],
     );
-    if (!row.rows[0]) throw new Error(`void_refunds.approved_offline: no void_refunds row for sale ${saleId} (its 'requested' sibling has not projected)`);
+    if (!row.rows[0])
+      throw new Error(
+        `void_refunds.approved_offline: no void_refunds row for sale ${saleId} (its 'requested' sibling has not projected)`,
+      );
     if (row.rows[0].status !== 'pending') return;
 
     await client.query(
@@ -336,7 +394,13 @@ export class PosVoidRefundService {
    * `completed` has already been reversed (by this call or a replay) — safe no-op.
    */
   async applyVoidExecuted(client: PoolClient, saleId: UUID, actorUserId: UUID): Promise<void> {
-    const voidRes = await client.query<{ id: UUID; sale_id: UUID; type: VoidRefundType; amount: Money; status: VoidRefundStatus }>(
+    const voidRes = await client.query<{
+      id: UUID;
+      sale_id: UUID;
+      type: VoidRefundType;
+      amount: Money;
+      status: VoidRefundStatus;
+    }>(
       `SELECT id, sale_id, type, amount, status FROM void_refunds WHERE sale_id = $1 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
       [saleId],
     );
@@ -353,9 +417,18 @@ export class PosVoidRefundService {
   // ── internals ──────────────────────────────────────────────────────────────
 
   /** Reverses the sale's payments/status and the recipe usage it drove — CONTRACTS.md §1.6 comment on `void_refunds`. */
-  private async executeReversal(client: PoolClient, voidRow: { sale_id: UUID; type: VoidRefundType; amount: Money }, sale: SaleForVoid, actorId: UUID): Promise<void> {
-    const newSaleStatus: SaleStatus = voidRow.type === 'void' ? SaleStatus.VOIDED : SaleStatus.REFUNDED;
-    await client.query(`UPDATE sales SET status = $2 WHERE id = $1`, [voidRow.sale_id, newSaleStatus]);
+  private async executeReversal(
+    client: PoolClient,
+    voidRow: { sale_id: UUID; type: VoidRefundType; amount: Money },
+    sale: SaleForVoid,
+    actorId: UUID,
+  ): Promise<void> {
+    const newSaleStatus: SaleStatus =
+      voidRow.type === 'void' ? SaleStatus.VOIDED : SaleStatus.REFUNDED;
+    await client.query(`UPDATE sales SET status = $2 WHERE id = $1`, [
+      voidRow.sale_id,
+      newSaleStatus,
+    ]);
 
     const lines = await client.query<{ product_id: UUID; qty: string }>(
       `SELECT product_id, qty FROM sale_lines WHERE sale_id = $1`,
@@ -397,10 +470,16 @@ export class PosVoidRefundService {
   }
 
   private async verifyPin(client: PoolClient, actorUserId: UUID, pin: string): Promise<void> {
-    const res = await client.query<{ pin_hash: string | null }>(`SELECT pin_hash FROM users WHERE id = $1`, [actorUserId]);
+    const res = await client.query<{ pin_hash: string | null }>(
+      `SELECT pin_hash FROM users WHERE id = $1`,
+      [actorUserId],
+    );
     const hash = res.rows[0]?.pin_hash;
     if (!hash) {
-      throw new ForbiddenException({ code: ERR_AUTH_PIN_INVALID, message: 'This user has no PIN configured' });
+      throw new ForbiddenException({
+        code: ERR_AUTH_PIN_INVALID,
+        message: 'This user has no PIN configured',
+      });
     }
     const ok = await bcrypt.compare(pin, hash);
     if (!ok) {
@@ -413,19 +492,30 @@ export class PosVoidRefundService {
       `SELECT id, location_id, shift_id, status, total FROM sales WHERE id = $1`,
       [saleId],
     );
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Sale not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Sale not found' });
     return res.rows[0];
   }
 
   private async loadVoidRefund(
     client: PoolClient,
     id: UUID,
-  ): Promise<{ id: UUID; sale_id: UUID; type: VoidRefundType; amount: Money; status: VoidRefundStatus }> {
-    const res = await client.query<{ id: UUID; sale_id: UUID; type: VoidRefundType; amount: Money; status: VoidRefundStatus }>(
-      `SELECT id, sale_id, type, amount, status FROM void_refunds WHERE id = $1 FOR UPDATE`,
-      [id],
-    );
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Void/refund not found' });
+  ): Promise<{
+    id: UUID;
+    sale_id: UUID;
+    type: VoidRefundType;
+    amount: Money;
+    status: VoidRefundStatus;
+  }> {
+    const res = await client.query<{
+      id: UUID;
+      sale_id: UUID;
+      type: VoidRefundType;
+      amount: Money;
+      status: VoidRefundStatus;
+    }>(`SELECT id, sale_id, type, amount, status FROM void_refunds WHERE id = $1 FOR UPDATE`, [id]);
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Void/refund not found' });
     return res.rows[0];
   }
 }

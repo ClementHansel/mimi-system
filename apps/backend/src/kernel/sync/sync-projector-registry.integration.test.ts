@@ -25,7 +25,12 @@ import { RegistryRepository } from './registry.repository';
 import { SyncIngestService } from './sync-ingest.service';
 import { SyncProjectorRegistry } from './sync-projector-registry.service';
 import type { ProjectionContext, SyncProjector } from './sync-projector.types';
-import { cleanupOrigins, fetchOneLocationId, getAppPool, getOwnerPool } from './test-support/live-db';
+import {
+  cleanupOrigins,
+  fetchOneLocationId,
+  getAppPool,
+  getOwnerPool,
+} from './test-support/live-db';
 
 const fakeConfig = { get: (_key: string, def?: string) => def } as unknown as ConfigService;
 const pool = getAppPool();
@@ -36,8 +41,13 @@ class FakeAttendanceProjector implements SyncProjector {
   readonly projectedEventIds: string[] = [];
   shouldFail = false;
 
-  async project(_client: PoolClient, event: SyncEventEnvelope, _context: ProjectionContext): Promise<void> {
-    if (this.shouldFail) throw new Error('simulated domain-table failure (e.g. a FK violation on employees)');
+  async project(
+    _client: PoolClient,
+    event: SyncEventEnvelope,
+    _context: ProjectionContext,
+  ): Promise<void> {
+    if (this.shouldFail)
+      throw new Error('simulated domain-table failure (e.g. a FK violation on employees)');
     this.projectedEventIds.push(event.eventId); // idempotency is THIS projector's job in real life; here we just record calls
   }
 }
@@ -63,7 +73,14 @@ function mkEvent(originDeviceId: string, clientSeq: number): SyncEventEnvelope {
     op: 'checked_in',
     payload: {
       v: 1,
-      data: { clientId: randomUUID(), locationId, lat: '-1.24', lng: '116.83', accuracyM: 10, selfieAttachmentId: randomUUID() },
+      data: {
+        clientId: randomUUID(),
+        locationId,
+        lat: '-1.24',
+        lng: '116.83',
+        accuracyM: 10,
+        selfieAttachmentId: randomUUID(),
+      },
       meta: { actorUserId, actorRole: 'kasir', appVersion: '1.0.0' },
     },
     clientSeq: BigInt(clientSeq),
@@ -99,12 +116,27 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
     const eventsRepo = new SyncEventsRepository(pool);
     const conflictsRepo = new SyncConflictsRepository();
     const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-    const offlineAuth = new OfflineAuthService(new OfflineCredentialsRepository(), conflictsRepo, fakeConfig);
-    const reconciliation = new ReconciliationService(pool, eventsRepo, conflictsRepo, new RegistryRepository(pool));
+    const offlineAuth = new OfflineAuthService(
+      new OfflineCredentialsRepository(),
+      conflictsRepo,
+      fakeConfig,
+    );
+    const reconciliation = new ReconciliationService(
+      pool,
+      eventsRepo,
+      conflictsRepo,
+      new RegistryRepository(pool),
+    );
     const projectors = new SyncProjectorRegistry();
     const fake = new FakeAttendanceProjector();
     projectors.register(fake);
-    const ingest = new SyncIngestService(eventsRepo, conflictDetector, offlineAuth, reconciliation, projectors);
+    const ingest = new SyncIngestService(
+      eventsRepo,
+      conflictDetector,
+      offlineAuth,
+      reconciliation,
+      projectors,
+    );
 
     const origin = freshOrigin();
     const event = mkEvent(origin, 1);
@@ -125,13 +157,28 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
     const eventsRepo = new SyncEventsRepository(pool);
     const conflictsRepo = new SyncConflictsRepository();
     const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-    const offlineAuth = new OfflineAuthService(new OfflineCredentialsRepository(), conflictsRepo, fakeConfig);
-    const reconciliation = new ReconciliationService(pool, eventsRepo, conflictsRepo, new RegistryRepository(pool));
+    const offlineAuth = new OfflineAuthService(
+      new OfflineCredentialsRepository(),
+      conflictsRepo,
+      fakeConfig,
+    );
+    const reconciliation = new ReconciliationService(
+      pool,
+      eventsRepo,
+      conflictsRepo,
+      new RegistryRepository(pool),
+    );
     const projectors = new SyncProjectorRegistry();
     const fake = new FakeAttendanceProjector();
     fake.shouldFail = true;
     projectors.register(fake);
-    const ingest = new SyncIngestService(eventsRepo, conflictDetector, offlineAuth, reconciliation, projectors);
+    const ingest = new SyncIngestService(
+      eventsRepo,
+      conflictDetector,
+      offlineAuth,
+      reconciliation,
+      projectors,
+    );
 
     const origin = freshOrigin();
     const event = mkEvent(origin, 1);
@@ -141,7 +188,9 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
     expect(ack.acceptedThrough[origin]).toBe(1);
     expect(ack.rejected).toEqual([]);
 
-    const row = await assertPool.query(`SELECT apply_status FROM sync_events WHERE event_id = $1`, [event.eventId]);
+    const row = await assertPool.query(`SELECT apply_status FROM sync_events WHERE event_id = $1`, [
+      event.eventId,
+    ]);
     expect(row.rows[0]?.apply_status).toBe('applied'); // NOT rolled back by the projector's failure
 
     const conflictRes = await assertPool.query<{ detail: { reason: string } }>(
@@ -159,10 +208,25 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
     const eventsRepo = new SyncEventsRepository(pool);
     const conflictsRepo = new SyncConflictsRepository();
     const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-    const offlineAuth = new OfflineAuthService(new OfflineCredentialsRepository(), conflictsRepo, fakeConfig);
-    const reconciliation = new ReconciliationService(pool, eventsRepo, conflictsRepo, new RegistryRepository(pool));
+    const offlineAuth = new OfflineAuthService(
+      new OfflineCredentialsRepository(),
+      conflictsRepo,
+      fakeConfig,
+    );
+    const reconciliation = new ReconciliationService(
+      pool,
+      eventsRepo,
+      conflictsRepo,
+      new RegistryRepository(pool),
+    );
     const projectors = new SyncProjectorRegistry(); // nothing registered
-    const ingest = new SyncIngestService(eventsRepo, conflictDetector, offlineAuth, reconciliation, projectors);
+    const ingest = new SyncIngestService(
+      eventsRepo,
+      conflictDetector,
+      offlineAuth,
+      reconciliation,
+      projectors,
+    );
 
     const origin = freshOrigin();
     const event = mkEvent(origin, 1);
@@ -170,7 +234,10 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
 
     expect(ack.acceptedThrough[origin]).toBe(1);
     expect(ack.rejected).toEqual([]);
-    const conflictRes = await assertPool.query(`SELECT id FROM sync_conflicts WHERE loser_event_id = $1`, [event.eventId]);
+    const conflictRes = await assertPool.query(
+      `SELECT id FROM sync_conflicts WHERE loser_event_id = $1`,
+      [event.eventId],
+    );
     expect(conflictRes.rows).toHaveLength(0); // no projector registered is not itself an error
   });
 });

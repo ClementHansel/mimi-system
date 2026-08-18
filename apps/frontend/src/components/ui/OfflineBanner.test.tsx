@@ -8,11 +8,21 @@ vi.mock('@/components/layout/useManualConnectivityCheck', () => ({
   useManualConnectivityCheck: vi.fn(),
 }));
 
-vi.mocked(useManualConnectivityCheck).mockReturnValue({ status: 'idle', errorKey: null, run: vi.fn() });
+vi.mocked(useManualConnectivityCheck).mockReturnValue({
+  status: 'idle',
+  errorKey: null,
+  run: vi.fn(),
+});
 
 describe('OfflineBanner', () => {
   beforeEach(() => {
-    useConnectivityStore.setState({ tier: 'online', queueDepth: 0, lastSyncAt: null, isSyncing: false, cloudReachable: true });
+    useConnectivityStore.setState({
+      tier: 'online',
+      queueDepth: 0,
+      lastSyncAt: null,
+      isSyncing: false,
+      cloudReachable: true,
+    });
   });
 
   it('renders nothing while fully online', () => {

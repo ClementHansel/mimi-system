@@ -68,7 +68,11 @@ export class SyncProjectorRegistry {
    * (a Wave 3+ module simply hasn't landed); `{ok:true, ran:false}` says so
    * explicitly rather than silently looking identical to success.
    */
-  async project(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<ProjectionOutcome> {
+  async project(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<ProjectionOutcome> {
     const projector = this.byKey.get(`${event.entity}.${event.op}`);
     if (!projector) return { ok: true, ran: false };
 
@@ -77,7 +81,10 @@ export class SyncProjectorRegistry {
     // (regex-checked, never raw user input at this point), not string-interpolated from a request body.
     const savepoint = `sp_${event.eventId.replace(/-/g, '')}`;
     if (!SAVEPOINT_NAME_RE.test(savepoint.slice(3))) {
-      return { ok: false, error: `refusing to run projector: event_id '${event.eventId}' is not a well-formed UUID` };
+      return {
+        ok: false,
+        error: `refusing to run projector: event_id '${event.eventId}' is not a well-formed UUID`,
+      };
     }
 
     await client.query(`SAVEPOINT ${savepoint}`);
@@ -88,7 +95,9 @@ export class SyncProjectorRegistry {
     } catch (err) {
       await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`projector for '${event.entity}.${event.op}' failed on event ${event.eventId}: ${message}`);
+      this.logger.error(
+        `projector for '${event.entity}.${event.op}' failed on event ${event.eventId}: ${message}`,
+      );
       return { ok: false, error: message };
     }
   }

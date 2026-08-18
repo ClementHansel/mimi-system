@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { can, RoleKey } from '@mimi/shared';
-import { closePool, createAsset, deleteAsset, loadFixtures, withRollbackAs, type Fixtures } from './test-support/live-db';
+import {
+  closePool,
+  createAsset,
+  deleteAsset,
+  loadFixtures,
+  withRollbackAs,
+  type Fixtures,
+} from './test-support/live-db';
 
 /**
  * RBAC + RLS proof for M16 `asset` (this ticket's explicit deliverable):
@@ -85,27 +92,38 @@ describe('asset module RBAC + RLS (integration, live Postgres)', () => {
   it('a Supervisor at outlet A CANNOT see an asset at outlet B (cross-location isolation)', async () => {
     if (!dbAvailable || !assetBId) return;
     const spv = fixtures.usersByRole[RoleKey.SUPERVISOR];
-    await withRollbackAs({ role: RoleKey.SUPERVISOR, userId: spv, locationIds: [fixtures.outletId] }, async (client) => {
-      const res = await client.query('SELECT id FROM assets WHERE id = $1', [assetBId]);
-      expect(res.rows.length).toBe(0);
-    });
+    await withRollbackAs(
+      { role: RoleKey.SUPERVISOR, userId: spv, locationIds: [fixtures.outletId] },
+      async (client) => {
+        const res = await client.query('SELECT id FROM assets WHERE id = $1', [assetBId]);
+        expect(res.rows.length).toBe(0);
+      },
+    );
   });
 
-  it('a Supervisor at outlet A CAN see their OWN outlet\'s asset', async () => {
+  it("a Supervisor at outlet A CAN see their OWN outlet's asset", async () => {
     if (!dbAvailable || !assetAId) return;
     const spv = fixtures.usersByRole[RoleKey.SUPERVISOR];
-    await withRollbackAs({ role: RoleKey.SUPERVISOR, userId: spv, locationIds: [fixtures.outletId] }, async (client) => {
-      const res = await client.query('SELECT id FROM assets WHERE id = $1', [assetAId]);
-      expect(res.rows.length).toBe(1);
-    });
+    await withRollbackAs(
+      { role: RoleKey.SUPERVISOR, userId: spv, locationIds: [fixtures.outletId] },
+      async (client) => {
+        const res = await client.query('SELECT id FROM assets WHERE id = $1', [assetAId]);
+        expect(res.rows.length).toBe(1);
+      },
+    );
   });
 
-  it('an Owner (central role) sees BOTH outlets\' assets', async () => {
+  it("an Owner (central role) sees BOTH outlets' assets", async () => {
     if (!dbAvailable || !assetAId || !assetBId) return;
     const owner = fixtures.usersByRole[RoleKey.OWNER];
-    await withRollbackAs({ role: RoleKey.OWNER, userId: owner, locationIds: [] }, async (client) => {
-      const res = await client.query('SELECT id FROM assets WHERE id = ANY($1::uuid[])', [[assetAId, assetBId]]);
-      expect(res.rows.length).toBe(2);
-    });
+    await withRollbackAs(
+      { role: RoleKey.OWNER, userId: owner, locationIds: [] },
+      async (client) => {
+        const res = await client.query('SELECT id FROM assets WHERE id = ANY($1::uuid[])', [
+          [assetAId, assetBId],
+        ]);
+        expect(res.rows.length).toBe(2);
+      },
+    );
   });
 });

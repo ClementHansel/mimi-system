@@ -61,8 +61,16 @@ export function ApprovalTimeline({ steps, className }: ApprovalTimelineProps) {
         const isLast = idx === steps.length - 1;
         return (
           <li key={step.stepNo} className="relative flex gap-3 pb-6 last:pb-0">
-            {!isLast && <span className="absolute left-[0.3rem] top-4 h-full w-px bg-border" aria-hidden />}
-            <span className={cn('relative z-10 mt-1.5 size-2.5 flex-none rounded-full', DOT_CLASSES[step.state])} aria-hidden />
+            {!isLast && (
+              <span className="absolute left-[0.3rem] top-4 h-full w-px bg-border" aria-hidden />
+            )}
+            <span
+              className={cn(
+                'relative z-10 mt-1.5 size-2.5 flex-none rounded-full',
+                DOT_CLASSES[step.state],
+              )}
+              aria-hidden
+            />
             <div className="flex-1 pt-0.5">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium text-text-primary">
@@ -76,10 +84,16 @@ export function ApprovalTimeline({ steps, className }: ApprovalTimelineProps) {
                   </Badge>
                 )}
                 {step.reverificationStatus && (
-                  <Badge variant={step.reverificationStatus === 'verified' ? 'success' : 'danger'} size="sm">
-                    {step.reverificationStatus === 'verified' && t('approvalTimeline.reverificationVerified')}
-                    {step.reverificationStatus === 'failed' && t('approvalTimeline.reverificationFailed')}
-                    {step.reverificationStatus === 'unprovable' && t('approvalTimeline.reverificationUnprovable')}
+                  <Badge
+                    variant={step.reverificationStatus === 'verified' ? 'success' : 'danger'}
+                    size="sm"
+                  >
+                    {step.reverificationStatus === 'verified' &&
+                      t('approvalTimeline.reverificationVerified')}
+                    {step.reverificationStatus === 'failed' &&
+                      t('approvalTimeline.reverificationFailed')}
+                    {step.reverificationStatus === 'unprovable' &&
+                      t('approvalTimeline.reverificationUnprovable')}
                   </Badge>
                 )}
               </div>
@@ -95,7 +109,9 @@ export function ApprovalTimeline({ steps, className }: ApprovalTimelineProps) {
                       {step.actedBy && ` ${t('approvalTimeline.actedBy', { name: step.actedBy })}`}
                     </p>
                   )}
-                  {step.reason && <p className="mt-1 text-sm text-text-secondary">&ldquo;{step.reason}&rdquo;</p>}
+                  {step.reason && (
+                    <p className="mt-1 text-sm text-text-secondary">&ldquo;{step.reason}&rdquo;</p>
+                  )}
                 </>
               )}
             </div>

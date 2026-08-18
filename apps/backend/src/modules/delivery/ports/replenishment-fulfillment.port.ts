@@ -37,7 +37,12 @@ export interface ReplenishmentFulfillmentPort {
   linkSuratJalan(client: PoolClient, requestId: UUID, sjId: UUID): Promise<void>;
 
   /** `approved -> processing` — SJ `ready` (CONTRACTS.md §4.10: "picking done; linked requests → processing"). */
-  markProcessing(client: PoolClient, requestId: UUID, actorUserId: UUID, actorRole: RoleKey): Promise<void>;
+  markProcessing(
+    client: PoolClient,
+    requestId: UUID,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+  ): Promise<void>;
 
   /** `processing -> shipped` at SJ `dispatch` — stamps each line's `qty_shipped`. */
   markShipped(

@@ -62,9 +62,15 @@ const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
 
 /** Only the two methods either controller actually calls on a real `BridgeGateway`. */
 class FakeBridge {
-  isConnected(_nodeId: string) { return false; }
-  sendRevoked(_nodeId: string) { return true; }
-  sendCommand() { return true; }
+  isConnected(_nodeId: string) {
+    return false;
+  }
+  sendRevoked(_nodeId: string) {
+    return true;
+  }
+  sendCommand() {
+    return true;
+  }
 }
 
 function reqAs(sub: string) {
@@ -89,7 +95,9 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
   afterEach(async () => {
     await cleanupNodesAndDevices({ nodeIds: createdNodeIds, locationIds: createdLocationIds });
     if (createdPairingTokenIds.length > 0) {
-      await assertPool.query(`DELETE FROM pairing_tokens WHERE id = ANY($1::uuid[])`, [createdPairingTokenIds]);
+      await assertPool.query(`DELETE FROM pairing_tokens WHERE id = ANY($1::uuid[])`, [
+        createdPairingTokenIds,
+      ]);
     }
     for (const id of createdLocationIds) await deleteLocation(id);
     createdNodeIds.length = 0;
@@ -115,7 +123,14 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
   }
 
   function buildOutletSettingController(): OutletNodeSettingController {
-    return new OutletNodeSettingController(outletSetting, branchNodes, deviceRegistry, new FakeBridge() as never, syncEmit, pool);
+    return new OutletNodeSettingController(
+      outletSetting,
+      branchNodes,
+      deviceRegistry,
+      new FakeBridge() as never,
+      syncEmit,
+      pool,
+    );
   }
 
   it('mintPairingToken persists — a later, separate connection finds the pairing_tokens row', async () => {
@@ -132,7 +147,9 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
     expect(minted.token).toBeDefined();
     createdPairingTokenIds.push((minted as { tokenId: string }).tokenId);
 
-    const row = await assertPool.query(`SELECT id FROM pairing_tokens WHERE id = $1`, [(minted as { tokenId: string }).tokenId]);
+    const row = await assertPool.query(`SELECT id FROM pairing_tokens WHERE id = $1`, [
+      (minted as { tokenId: string }).tokenId,
+    ]);
     expect(row.rows).toHaveLength(1);
   });
 
@@ -146,11 +163,16 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
     const controller = buildNodesController();
     const ctx = { role: 'owner', userId: ownerId, locationIds: [] };
     const updated = await asRequest(ctx, (client) =>
-      controller.update({ ...reqAs(ownerId), dbClient: client } as never, node.id, { name: 'BE-TXN-ROLLBACK renamed node' }),
+      controller.update({ ...reqAs(ownerId), dbClient: client } as never, node.id, {
+        name: 'BE-TXN-ROLLBACK renamed node',
+      }),
     );
     expect(updated?.name).toBe('BE-TXN-ROLLBACK renamed node');
 
-    const row = await assertPool.query<{ name: string }>(`SELECT name FROM branch_nodes WHERE id = $1`, [node.id]);
+    const row = await assertPool.query<{ name: string }>(
+      `SELECT name FROM branch_nodes WHERE id = $1`,
+      [node.id],
+    );
     expect(row.rows[0]!.name).toBe('BE-TXN-ROLLBACK renamed node');
   });
 
@@ -164,7 +186,9 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
     const controller = buildNodesController();
     const ctx = { role: 'owner', userId: ownerId, locationIds: [] };
     const unpaired = await asRequest(ctx, (client) =>
-      controller.unpair({ ...reqAs(ownerId), dbClient: client } as never, node.id, { reason: 'test' }),
+      controller.unpair({ ...reqAs(ownerId), dbClient: client } as never, node.id, {
+        reason: 'test',
+      }),
     );
     expect(unpaired?.status).toBe('unpaired');
 
@@ -187,12 +211,18 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
     const controller = buildNodesController();
     const ctx = { role: 'owner', userId: ownerId, locationIds: [] };
     const created = await asRequest(ctx, (client) =>
-      controller.confirmDiscovered({ ...reqAs(ownerId), dbClient: client } as never, discoveredId, { category: 'printer', name: 'Kitchen Printer' }),
+      controller.confirmDiscovered({ ...reqAs(ownerId), dbClient: client } as never, discoveredId, {
+        category: 'printer',
+        name: 'Kitchen Printer',
+      }),
     );
     expect(created).toBeDefined();
     const createdDeviceId = (created as { id: string }).id;
 
-    const deviceRow = await assertPool.query(`SELECT id, name, node_id FROM devices WHERE id = $1`, [createdDeviceId]);
+    const deviceRow = await assertPool.query(
+      `SELECT id, name, node_id FROM devices WHERE id = $1`,
+      [createdDeviceId],
+    );
     expect(deviceRow.rows).toHaveLength(1);
     expect(deviceRow.rows[0].node_id).toBe(node.id);
     // Cleaned up by the shared `afterEach`'s `cleanupNodesAndDevices({ nodeIds: [node.id] })` — it
@@ -222,7 +252,10 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
     );
     expect(result.ok).toBe(true);
 
-    const row = await assertPool.query<{ status: string }>(`SELECT status FROM discovered_devices WHERE id = $1`, [discoveredId]);
+    const row = await assertPool.query<{ status: string }>(
+      `SELECT status FROM discovered_devices WHERE id = $1`,
+      [discoveredId],
+    );
     expect(row.rows[0]!.status).toBe('ignored');
   });
 
@@ -234,11 +267,16 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
     const controller = buildOutletSettingController();
     const ctx = { role: 'owner', userId: ownerId, locationIds: [] };
     const result = await asRequest(ctx, (client) =>
-      controller.setEnabled({ ...reqAs(ownerId), dbClient: client } as never, locationId as never, { nodeEnabled: true }),
+      controller.setEnabled({ ...reqAs(ownerId), dbClient: client } as never, locationId as never, {
+        nodeEnabled: true,
+      }),
     );
     expect(result.nodeEnabled).toBe(true);
 
-    const row = await assertPool.query<{ settings: { nodeEnabled?: boolean } }>(`SELECT settings FROM locations WHERE id = $1`, [locationId]);
+    const row = await assertPool.query<{ settings: { nodeEnabled?: boolean } }>(
+      `SELECT settings FROM locations WHERE id = $1`,
+      [locationId],
+    );
     expect(row.rows[0]!.settings.nodeEnabled).toBe(true);
   });
 });

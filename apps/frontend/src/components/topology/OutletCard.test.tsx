@@ -19,12 +19,25 @@ function device(overrides: Partial<TopologyDevice> = {}): TopologyDevice {
 
 function outlet(overrides: Partial<TopologyLocation> = {}): TopologyLocation {
   return {
-    location: { id: 'l1', code: 'OUT1', name: 'Outlet Balikpapan Baru', type: 'outlet', city: 'Balikpapan' },
+    location: {
+      id: 'l1',
+      code: 'OUT1',
+      name: 'Outlet Balikpapan Baru',
+      type: 'outlet',
+      city: 'Balikpapan',
+    },
     nodeEnabled: false,
     node: null,
     devices: [device()],
     counts: { online: 1, stale: 0, offline: 0, total: 1 },
-    syncHealth: { queueDepth: 0, quarantineDepth: 0, lastSyncAt: new Date().toISOString(), conflictsOpen: 0, exceptionsOpen: 0, offlineAuthPending: 0 },
+    syncHealth: {
+      queueDepth: 0,
+      quarantineDepth: 0,
+      lastSyncAt: new Date().toISOString(),
+      conflictsOpen: 0,
+      exceptionsOpen: 0,
+      offlineAuthPending: 0,
+    },
     outletStatus: 'online',
     ...overrides,
   };
@@ -43,7 +56,10 @@ describe('OutletCard — status rollup', () => {
       <OutletCard
         location={outlet({
           outletStatus: 'offline',
-          devices: [device({ status: 'offline' }), device({ id: 'd2', name: 'Printer Dapur', category: 'printer', status: 'offline' })],
+          devices: [
+            device({ status: 'offline' }),
+            device({ id: 'd2', name: 'Printer Dapur', category: 'printer', status: 'offline' }),
+          ],
           counts: { online: 0, stale: 0, offline: 2, total: 2 },
         })}
       />,
@@ -86,7 +102,15 @@ describe('OutletCard — D-26 no-node case', () => {
       <OutletCard
         location={outlet({
           nodeEnabled: true,
-          node: { id: 'n1', name: 'Node Outlet 1', status: 'online', version: '2.0.0', lastSeenAt: new Date().toISOString(), relayQueueDepth: 0, discoveredNewCount: 0 },
+          node: {
+            id: 'n1',
+            name: 'Node Outlet 1',
+            status: 'online',
+            version: '2.0.0',
+            lastSeenAt: new Date().toISOString(),
+            relayQueueDepth: 0,
+            discoveredNewCount: 0,
+          },
         })}
       />,
     );

@@ -3,7 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
-import { Button, Card, CardContent, DataTable, Modal, Select, StatusBadge, Textarea, PermissionGate } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  DataTable,
+  Modal,
+  Select,
+  StatusBadge,
+  Textarea,
+  PermissionGate,
+} from '@/components/ui';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDateRange } from '@/lib/dates';
 import { approveLeave, listLeaves, rejectLeave } from './lib/hr-api';
@@ -41,7 +51,10 @@ export function LeaveApprovalPanel() {
             onValueChange={setStatus}
             options={[
               { value: '', label: t('hr.leaves.allStatuses') },
-              ...['pending', 'approved', 'rejected', 'cancelled'].map((s) => ({ value: s, label: t(`status.leave.${s}`) })),
+              ...['pending', 'approved', 'rejected', 'cancelled'].map((s) => ({
+                value: s,
+                label: t(`status.leave.${s}`),
+              })),
             ]}
             wrapperClassName="w-48"
           />
@@ -49,7 +62,10 @@ export function LeaveApprovalPanel() {
             label={t('hr.leaves.filterType')}
             value={type}
             onValueChange={setType}
-            options={[{ value: '', label: t('hr.leaves.allTypes') }, ...LEAVE_TYPES.map((lt) => ({ value: lt, label: t(`hr.leaves.type.${lt}`) }))]}
+            options={[
+              { value: '', label: t('hr.leaves.allTypes') },
+              ...LEAVE_TYPES.map((lt) => ({ value: lt, label: t(`hr.leaves.type.${lt}`) })),
+            ]}
             wrapperClassName="w-48"
           />
         </CardContent>
@@ -58,19 +74,39 @@ export function LeaveApprovalPanel() {
       <DataTable
         columns={[
           { key: 'employeeName', header: t('hr.leaves.columnEmployee') },
-          { key: 'type', header: t('hr.leaves.columnType'), render: (r) => t(`hr.leaves.type.${r.type}`) },
-          { key: 'period', header: t('hr.leaves.columnPeriod'), render: (r) => fmtDateRange(r.startDate, r.endDate) },
+          {
+            key: 'type',
+            header: t('hr.leaves.columnType'),
+            render: (r) => t(`hr.leaves.type.${r.type}`),
+          },
+          {
+            key: 'period',
+            header: t('hr.leaves.columnPeriod'),
+            render: (r) => fmtDateRange(r.startDate, r.endDate),
+          },
           { key: 'days', header: t('hr.leaves.columnDays'), align: 'right' },
           { key: 'reason', header: t('hr.leaves.columnReason'), render: (r) => r.reason ?? '—' },
-          { key: 'status', header: t('hr.leaves.columnStatus'), render: (r) => <StatusBadge domain="leave" status={r.status} size="sm" /> },
+          {
+            key: 'status',
+            header: t('hr.leaves.columnStatus'),
+            render: (r) => <StatusBadge domain="leave" status={r.status} size="sm" />,
+          },
           {
             key: 'actions',
             header: '',
             render: (r) =>
               r.status === 'pending' && can('hr.leave.approve') ? (
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => setActing({ leave: r, mode: 'approve' })}>{t('common.approve')}</Button>
-                  <Button size="sm" variant="outline" onClick={() => setActing({ leave: r, mode: 'reject' })}>{t('common.reject')}</Button>
+                  <Button size="sm" onClick={() => setActing({ leave: r, mode: 'approve' })}>
+                    {t('common.approve')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActing({ leave: r, mode: 'reject' })}
+                  >
+                    {t('common.reject')}
+                  </Button>
                 </div>
               ) : null,
           },
@@ -99,7 +135,10 @@ export function LeaveApprovalPanel() {
 }
 
 function DecisionModal({
-  leave, mode, onClose, onDone,
+  leave,
+  mode,
+  onClose,
+  onDone,
 }: {
   leave: Leave;
   mode: 'approve' | 'reject';
@@ -116,7 +155,10 @@ function DecisionModal({
     try {
       if (mode === 'approve') await approveLeave(leave.id, note || undefined);
       else await rejectLeave(leave.id, note);
-      toast({ title: t(mode === 'approve' ? 'hr.leaves.approveSuccess' : 'hr.leaves.rejectSuccess'), variant: 'success' });
+      toast({
+        title: t(mode === 'approve' ? 'hr.leaves.approveSuccess' : 'hr.leaves.rejectSuccess'),
+        variant: 'success',
+      });
       onDone();
     } catch {
       toast({ title: t('auth.genericError'), variant: 'danger' });
@@ -129,8 +171,24 @@ function DecisionModal({
     <Modal
       open
       onClose={onClose}
-      title={t(mode === 'approve' ? 'hr.leaves.approveTitle' : 'hr.leaves.rejectTitle', { name: leave.employeeName })}
-      footer={<><Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button><Button variant={mode === 'reject' ? 'danger' : 'primary'} onClick={submit} loading={busy} disabled={mode === 'reject' && !note.trim()}>{t('common.confirm')}</Button></>}
+      title={t(mode === 'approve' ? 'hr.leaves.approveTitle' : 'hr.leaves.rejectTitle', {
+        name: leave.employeeName,
+      })}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant={mode === 'reject' ? 'danger' : 'primary'}
+            onClick={submit}
+            loading={busy}
+            disabled={mode === 'reject' && !note.trim()}
+          >
+            {t('common.confirm')}
+          </Button>
+        </>
+      }
     >
       <Textarea
         label={t(mode === 'approve' ? 'hr.leaves.approveNote' : 'hr.leaves.rejectReason')}

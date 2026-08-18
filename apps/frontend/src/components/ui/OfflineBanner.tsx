@@ -42,12 +42,24 @@ export function OfflineBanner({ className }: { className?: string }) {
       )}
     >
       <span className="flex items-center gap-2 font-medium">
-        {isIsolated ? <WifiOff className="size-4" aria-hidden /> : <Waypoints className="size-4" aria-hidden />}
+        {isIsolated ? (
+          <WifiOff className="size-4" aria-hidden />
+        ) : (
+          <Waypoints className="size-4" aria-hidden />
+        )}
         {isIsolated ? t('offline.tierIsolated') : t('offline.tierLan')}
       </span>
-      <span className="opacity-90">{isIsolated ? t('offline.isolatedDesc') : t('offline.lanDesc')}</span>
-      {queueDepth > 0 && <span className="font-medium">{t('offline.queuedCount', { count: queueDepth })}</span>}
-      <span className="opacity-70">{lastSyncAt ? t('offline.lastSync', { when: fmtRelative(lastSyncAt) }) : t('offline.neverSynced')}</span>
+      <span className="opacity-90">
+        {isIsolated ? t('offline.isolatedDesc') : t('offline.lanDesc')}
+      </span>
+      {queueDepth > 0 && (
+        <span className="font-medium">{t('offline.queuedCount', { count: queueDepth })}</span>
+      )}
+      <span className="opacity-70">
+        {lastSyncAt
+          ? t('offline.lastSync', { when: fmtRelative(lastSyncAt) })
+          : t('offline.neverSynced')}
+      </span>
       <SyncRetryButton className="ml-auto" />
     </div>
   );

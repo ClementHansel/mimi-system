@@ -12,7 +12,13 @@ import { useConnectivityStore } from '@/stores/connectivity-store';
  */
 describe('PosStatusBar — offline-state indicator', () => {
   beforeEach(() => {
-    useConnectivityStore.setState({ tier: 'online', queueDepth: 0, lastSyncAt: null, isSyncing: false, cloudReachable: true });
+    useConnectivityStore.setState({
+      tier: 'online',
+      queueDepth: 0,
+      lastSyncAt: null,
+      isSyncing: false,
+      cloudReachable: true,
+    });
   });
 
   it('shows no cross-tablet-visibility warning while online', () => {

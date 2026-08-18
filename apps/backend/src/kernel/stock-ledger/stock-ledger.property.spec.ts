@@ -26,12 +26,29 @@ import { StockLedgerService } from './stock-ledger.service';
 import { EventBus } from '../events/event-bus.service';
 import { StockMovedEventEmitter } from './stock-ledger-events';
 import { StockInsufficientError, type PostMovementInput } from './stock-ledger.types';
-import { closeTestPool, closeTestTx, openTestTx, pickUnusedStockKey, readBalance, type StockFixtureKey } from './test-support/live-db';
+import {
+  closeTestPool,
+  closeTestTx,
+  openTestTx,
+  pickUnusedStockKey,
+  readBalance,
+  type StockFixtureKey,
+} from './test-support/live-db';
 
 const service = new StockLedgerService(new StockMovedEventEmitter(new EventBus()));
 
-const IN_TYPES = [MovementType.PURCHASE_IN, MovementType.TRANSFER_IN, MovementType.RETURN_IN, MovementType.ADJUSTMENT_IN] as const;
-const OUT_TYPES = [MovementType.USAGE_OUT, MovementType.WASTE_OUT, MovementType.RETURN_OUT, MovementType.ADJUSTMENT_OUT] as const;
+const IN_TYPES = [
+  MovementType.PURCHASE_IN,
+  MovementType.TRANSFER_IN,
+  MovementType.RETURN_IN,
+  MovementType.ADJUSTMENT_IN,
+] as const;
+const OUT_TYPES = [
+  MovementType.USAGE_OUT,
+  MovementType.WASTE_OUT,
+  MovementType.RETURN_OUT,
+  MovementType.ADJUSTMENT_OUT,
+] as const;
 
 interface Step {
   direction: 'in' | 'out';
@@ -40,11 +57,17 @@ interface Step {
 }
 
 const inStepArb = fc
-  .record({ movementType: fc.constantFrom(...IN_TYPES), qtyWhole: fc.integer({ min: 1, max: 500 }) })
+  .record({
+    movementType: fc.constantFrom(...IN_TYPES),
+    qtyWhole: fc.integer({ min: 1, max: 500 }),
+  })
   .map((r): Step => ({ direction: 'in', movementType: r.movementType, qty: `${r.qtyWhole}.000` }));
 
 const outStepArb = fc
-  .record({ movementType: fc.constantFrom(...OUT_TYPES), qtyWhole: fc.integer({ min: 1, max: 500 }) })
+  .record({
+    movementType: fc.constantFrom(...OUT_TYPES),
+    qtyWhole: fc.integer({ min: 1, max: 500 }),
+  })
   .map((r): Step => ({ direction: 'out', movementType: r.movementType, qty: `${r.qtyWhole}.000` }));
 
 const stepArb = fc.oneof(inStepArb, outStepArb);
@@ -95,11 +118,14 @@ describe('StockLedgerService — property tests (live database)', () => {
         let expected = ZERO_QTY;
 
         for (const step of steps) {
-          const projected = step.direction === 'out' ? subQty(expected, step.qty) : addQty(expected, step.qty);
+          const projected =
+            step.direction === 'out' ? subQty(expected, step.qty) : addQty(expected, step.qty);
           const refId = crypto.randomUUID();
 
           if (isNegativeQty(projected)) {
-            await expect(service.post(client, [movementFor(key, step, refId)], 'strict')).rejects.toThrow(StockInsufficientError);
+            await expect(
+              service.post(client, [movementFor(key, step, refId)], 'strict'),
+            ).rejects.toThrow(StockInsufficientError);
             continue; // rejected — the balance must NOT change
           }
 
@@ -117,7 +143,7 @@ describe('StockLedgerService — property tests (live database)', () => {
     );
   });
 
-  it("fact mode: applies every step regardless of sign (C5), and opens exactly one reconciliation for every crossing into negative — never more, never fewer", async () => {
+  it('fact mode: applies every step regardless of sign (C5), and opens exactly one reconciliation for every crossing into negative — never more, never fewer', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(stepArb, { minLength: 1, maxLength: 12 }), async (steps) => {
         const key = await pickUnusedStockKey(client);
@@ -125,7 +151,8 @@ describe('StockLedgerService — property tests (live database)', () => {
         let expectedReconciliations = 0;
 
         for (const step of steps) {
-          const projected = step.direction === 'out' ? subQty(expected, step.qty) : addQty(expected, step.qty);
+          const projected =
+            step.direction === 'out' ? subQty(expected, step.qty) : addQty(expected, step.qty);
           const refId = crypto.randomUUID();
 
           const result = await service.post(client, [movementFor(key, step, refId)], 'fact');
@@ -173,7 +200,13 @@ describe('StockLedgerService — property tests (live database)', () => {
           .array(stepArb, { minLength: 2, maxLength: 10 })
           .map((steps) => steps.map((step) => ({ ...step, refId: crypto.randomUUID() })))
           .chain((idSteps) =>
-            fc.tuple(fc.constant(idSteps), fc.shuffledSubarray(idSteps, { minLength: idSteps.length, maxLength: idSteps.length })),
+            fc.tuple(
+              fc.constant(idSteps),
+              fc.shuffledSubarray(idSteps, {
+                minLength: idSteps.length,
+                maxLength: idSteps.length,
+              }),
+            ),
           ),
         async ([orderA, orderB]) => {
           const keyA = await pickUnusedStockKey(client);

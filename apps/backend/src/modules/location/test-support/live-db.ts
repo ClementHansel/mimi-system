@@ -74,9 +74,13 @@ export async function withRollback<T>(
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
-    await client.query(`SELECT set_config('app.user_id', $1, true)`, [opts.userId ?? SYSTEM_CONTEXT_USER_ID]);
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [
+      opts.userId ?? SYSTEM_CONTEXT_USER_ID,
+    ]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [opts.roleKey ?? 'owner']);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [(opts.locationIds ?? []).join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      (opts.locationIds ?? []).join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -100,8 +104,12 @@ export interface Fixtures {
 /** Reads real seeded rows over the OWNER pool — never inserts master data this agent's tests don't own. */
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
-  const warehouse = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`);
-  const outlet = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'outlet' LIMIT 1`);
+  const warehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`,
+  );
+  const outlet = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'outlet' LIMIT 1`,
+  );
   const items = await pool.query<{ id: string }>(`SELECT id FROM items ORDER BY id LIMIT 2`);
   const units = await pool.query<{ id: string }>(`SELECT id FROM units ORDER BY code LIMIT 2`);
   const category = await pool.query<{ id: string }>(`SELECT id FROM item_categories LIMIT 1`);
@@ -120,7 +128,10 @@ export async function loadFixtures(): Promise<Fixtures> {
       `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
       [roleKey],
     );
-    if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`);
+    if (!res.rows[0])
+      throw new Error(
+        `Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`,
+      );
     usersByRole[roleKey] = res.rows[0].id;
   }
 

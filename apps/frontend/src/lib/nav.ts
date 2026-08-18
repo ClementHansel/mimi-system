@@ -1,6 +1,19 @@
 import {
-  ShoppingCart, LayoutDashboard, Store, Warehouse, ClipboardList, Landmark,
-  Users, Wrench, ShieldCheck, UserCircle, Waypoints, Truck, Route, ClipboardCheck, type LucideIcon,
+  ShoppingCart,
+  LayoutDashboard,
+  Store,
+  Warehouse,
+  ClipboardList,
+  Landmark,
+  Users,
+  Wrench,
+  ShieldCheck,
+  UserCircle,
+  Waypoints,
+  Truck,
+  Route,
+  ClipboardCheck,
+  type LucideIcon,
 } from 'lucide-react';
 import type { PermissionKeyOrKeys } from './permissions';
 
@@ -77,7 +90,13 @@ export const NAV_SECTIONS: readonly NavSection[] = [
           'payment.verify',
         ],
       },
-      { id: 'pos', labelKey: 'nav.pos', href: '/pos', icon: ShoppingCart, permission: 'pos.catalog.read' },
+      {
+        id: 'pos',
+        labelKey: 'nav.pos',
+        href: '/pos',
+        icon: ShoppingCart,
+        permission: 'pos.catalog.read',
+      },
       {
         id: 'dashboard',
         labelKey: 'nav.dashboard',
@@ -92,21 +111,45 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         icon: Store,
         permission: ['replenishment.create', 'opname.create', 'waste.create', 'pettycash.create'],
       },
-      { id: 'driver', labelKey: 'nav.driver', href: '/driver', icon: Truck, permission: 'delivery.drop.execute' },
+      {
+        id: 'driver',
+        labelKey: 'nav.driver',
+        href: '/driver',
+        icon: Truck,
+        permission: 'delivery.drop.execute',
+      },
     ],
   },
   {
     id: 'logistik',
     labelKey: 'nav.section.logistik',
     items: [
-      { id: 'warehouse', labelKey: 'nav.warehouse', href: '/warehouse', icon: Warehouse, permission: 'delivery.read' },
+      {
+        id: 'warehouse',
+        labelKey: 'nav.warehouse',
+        href: '/warehouse',
+        icon: Warehouse,
+        permission: 'delivery.read',
+      },
       // F-DELIVERY — the dispatcher's own surface for M10 delivery (CONTRACTS
       // §4.10): Surat Jalan list/create/status walk + live per-drop/cold-chain
       // tracking for the central-warehouse dispatcher. Distinct from `driver`
       // above (the driver's own mobile job list, `Truck` icon) — `Route` reads
       // as "the dispatch/route view" rather than duplicating that icon.
-      { id: 'delivery', labelKey: 'nav.delivery', href: '/delivery', icon: Route, permission: 'delivery.read' },
-      { id: 'purchasing', labelKey: 'nav.purchasing', href: '/purchasing', icon: ClipboardList, permission: 'purchasing.read' },
+      {
+        id: 'delivery',
+        labelKey: 'nav.delivery',
+        href: '/delivery',
+        icon: Route,
+        permission: 'delivery.read',
+      },
+      {
+        id: 'purchasing',
+        labelKey: 'nav.purchasing',
+        href: '/purchasing',
+        icon: ClipboardList,
+        permission: 'purchasing.read',
+      },
     ],
   },
   {
@@ -133,8 +176,20 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         icon: Users,
         permission: ['hr.employee.read', 'hr.attendance.read', 'hr.shift.manage'],
       },
-      { id: 'assets', labelKey: 'nav.assets', href: '/assets', icon: Wrench, permission: 'asset.read' },
-      { id: 'me', labelKey: 'nav.me', href: '/me', icon: UserCircle, permission: 'payroll.slip.read.own' },
+      {
+        id: 'assets',
+        labelKey: 'nav.assets',
+        href: '/assets',
+        icon: Wrench,
+        permission: 'asset.read',
+      },
+      {
+        id: 'me',
+        labelKey: 'nav.me',
+        href: '/me',
+        icon: UserCircle,
+        permission: 'payroll.slip.read.own',
+      },
     ],
   },
   {
@@ -148,7 +203,13 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         icon: ShieldCheck,
         permission: ['user.read', 'audit.read', 'settings.manage'],
       },
-      { id: 'topology', labelKey: 'nav.topology', href: '/topology', icon: Waypoints, permission: 'topology.read' },
+      {
+        id: 'topology',
+        labelKey: 'nav.topology',
+        href: '/topology',
+        icon: Waypoints,
+        permission: 'topology.read',
+      },
     ],
   },
 ] as const;

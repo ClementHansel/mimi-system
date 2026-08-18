@@ -15,7 +15,15 @@ import { api } from '@/lib/api';
 import type { LiveDelivery, Paginated, SjPosition, SuratJalan } from '@/lib/shared-types';
 import type { Driver, Vehicle, DailyRecap, Replenishment } from './types';
 
-export function listSuratJalan(params: { status?: string; date?: string; locationId?: string; driverId?: string; page?: number } = {}) {
+export function listSuratJalan(
+  params: {
+    status?: string;
+    date?: string;
+    locationId?: string;
+    driverId?: string;
+    page?: number;
+  } = {},
+) {
   const qs = new URLSearchParams({ page: String(params.page ?? 1) });
   if (params.status) qs.set('status', params.status);
   if (params.date) qs.set('date', params.date);
@@ -33,13 +41,20 @@ export function createSuratJalan(body: {
   driverId: string;
   vehicleId: string;
   plannedDate: string;
-  drops: { locationId: string; replenishmentRequestId?: string; lines: { itemId: string; qty: string; unitId: string; requestLineId?: string }[] }[];
+  drops: {
+    locationId: string;
+    replenishmentRequestId?: string;
+    lines: { itemId: string; qty: string; unitId: string; requestLineId?: string }[];
+  }[];
   notes?: string;
 }) {
   return api.post<SuratJalan>('/delivery/surat-jalan', body);
 }
 
-export function patchSuratJalan(id: string, body: Partial<{ driverId: string; vehicleId: string; plannedDate: string; notes: string }>) {
+export function patchSuratJalan(
+  id: string,
+  body: Partial<{ driverId: string; vehicleId: string; plannedDate: string; notes: string }>,
+) {
   return api.patch<SuratJalan>(`/delivery/surat-jalan/${id}`, body);
 }
 
@@ -47,7 +62,10 @@ export function readySuratJalan(id: string) {
   return api.post<SuratJalan>(`/delivery/surat-jalan/${id}/ready`);
 }
 
-export function loadSuratJalan(id: string, body: { seals: { sealNumber: string }[]; tempC?: string }) {
+export function loadSuratJalan(
+  id: string,
+  body: { seals: { sealNumber: string }[]; tempC?: string },
+) {
   return api.post<SuratJalan>(`/delivery/surat-jalan/${id}/load`, body);
 }
 

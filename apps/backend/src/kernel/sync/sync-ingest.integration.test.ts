@@ -8,7 +8,12 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { ConfigService } from '@nestjs/config';
 import { SyncOriginType } from '@mimi/shared';
-import { computeStateChecksum, formatUuidV7, type SyncEventEnvelope, type SyncPushBatch } from '@mimi/sync-protocol';
+import {
+  computeStateChecksum,
+  formatUuidV7,
+  type SyncEventEnvelope,
+  type SyncPushBatch,
+} from '@mimi/sync-protocol';
 import { SyncEventsRepository } from './sync-events.repository';
 import { SyncConflictsRepository } from './sync-conflicts.repository';
 import { OfflineCredentialsRepository } from './offline-credentials.repository';
@@ -18,7 +23,14 @@ import { OfflineAuthService } from './offline-auth.service';
 import { ReconciliationService } from './reconciliation.service';
 import { SyncIngestService } from './sync-ingest.service';
 import { SyncProjectorRegistry } from './sync-projector-registry.service';
-import { cleanupOrigins, closeTestPool, fetchAnotherLocationId, fetchOneLocationId, getAppPool, getOwnerPool } from './test-support/live-db';
+import {
+  cleanupOrigins,
+  closeTestPool,
+  fetchAnotherLocationId,
+  fetchOneLocationId,
+  getAppPool,
+  getOwnerPool,
+} from './test-support/live-db';
 
 const fakeConfig = { get: (_key: string, def?: string) => def } as unknown as ConfigService;
 
@@ -37,10 +49,20 @@ const eventsRepo = new SyncEventsRepository(pool);
 const conflictsRepo = new SyncConflictsRepository();
 const registryRepo = new RegistryRepository(pool);
 const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-const offlineAuth = new OfflineAuthService(new OfflineCredentialsRepository(), conflictsRepo, fakeConfig);
+const offlineAuth = new OfflineAuthService(
+  new OfflineCredentialsRepository(),
+  conflictsRepo,
+  fakeConfig,
+);
 const reconciliation = new ReconciliationService(pool, eventsRepo, conflictsRepo, registryRepo);
 const projectors = new SyncProjectorRegistry(); // empty registry — no Wave 3+ projector registered in this test process
-const ingest = new SyncIngestService(eventsRepo, conflictDetector, offlineAuth, reconciliation, projectors);
+const ingest = new SyncIngestService(
+  eventsRepo,
+  conflictDetector,
+  offlineAuth,
+  reconciliation,
+  projectors,
+);
 
 let locationId: string;
 let actorUserId: string;
@@ -89,7 +111,11 @@ function mkEvent(
     entity: opts.entity ?? 'attendance',
     entityId: randomUUID(),
     op: opts.op ?? 'checked_in',
-    payload: { v: 1, data: opts.data ?? validAttendanceData(loc), meta: { actorUserId, actorRole: 'kasir', appVersion: '1.0.0' } },
+    payload: {
+      v: 1,
+      data: opts.data ?? validAttendanceData(loc),
+      meta: { actorUserId, actorRole: 'kasir', appVersion: '1.0.0' },
+    },
     clientSeq: BigInt(clientSeq),
     occurredAt: new Date().toISOString(),
     actorUserId,
@@ -110,7 +136,12 @@ async function appliedRowsFor(originDeviceId: string) {
     `SELECT event_id, client_seq, apply_status, reject_code FROM sync_events WHERE origin_device_id = $1 ORDER BY client_seq ASC`,
     [originDeviceId],
   );
-  return res.rows as { event_id: string; client_seq: string; apply_status: string; reject_code: string | null }[];
+  return res.rows as {
+    event_id: string;
+    client_seq: string;
+    apply_status: string;
+    reject_code: string | null;
+  }[];
 }
 
 describe('SyncIngestService — live database', () => {
@@ -159,17 +190,33 @@ describe('SyncIngestService — live database', () => {
     await ingest.ingestBatch(batchOf([eventsC[0]!, eventsA[1]!]), resolveLocation);
     await ingest.ingestBatch(batchOf([eventsB[2]!]), resolveLocation);
 
-    const finalRows = [...(await appliedRowsFor(originA)), ...(await appliedRowsFor(originB)), ...(await appliedRowsFor(originC))];
+    const finalRows = [
+      ...(await appliedRowsFor(originA)),
+      ...(await appliedRowsFor(originB)),
+      ...(await appliedRowsFor(originC)),
+    ];
     expect(finalRows.every((r) => r.apply_status === 'applied')).toBe(true);
     expect(finalRows).toHaveLength(6);
 
     // Order-independent state checksum (packages/sync-protocol/checksum.ts) — canonicalized on event_id so
     // it does not care what order the rows come back from the DB in, only WHICH set of facts converged.
-    const checksum = computeStateChecksum(finalRows.map((r) => ({ eventId: r.event_id, clientSeq: r.client_seq, applyStatus: r.apply_status })));
+    const checksum = computeStateChecksum(
+      finalRows.map((r) => ({
+        eventId: r.event_id,
+        clientSeq: r.client_seq,
+        applyStatus: r.apply_status,
+      })),
+    );
     expect(checksum).toMatch(/^[0-9a-f]{16}$/);
     // Re-deriving from the SAME row set (any order) must reproduce the identical hash — the property itself.
     const shuffled = [...finalRows].reverse();
-    const checksum2 = computeStateChecksum(shuffled.map((r) => ({ eventId: r.event_id, clientSeq: r.client_seq, applyStatus: r.apply_status })));
+    const checksum2 = computeStateChecksum(
+      shuffled.map((r) => ({
+        eventId: r.event_id,
+        clientSeq: r.client_seq,
+        applyStatus: r.apply_status,
+      })),
+    );
     expect(checksum2).toBe(checksum);
   });
 
@@ -209,9 +256,18 @@ describe('SyncIngestService — live database', () => {
       entity: 'locations',
       op: 'created',
       data: {
-        id: randomUUID(), code: 'BPP99', name: 'Test Outlet', type: 'outlet', city: 'Balikpapan',
-        address: null, phone: null, latitude: null, longitude: null,
-        geofenceRadiusM: 100, timezone: 'Asia/Makassar', isActive: true,
+        id: randomUUID(),
+        code: 'BPP99',
+        name: 'Test Outlet',
+        type: 'outlet',
+        city: 'Balikpapan',
+        address: null,
+        phone: null,
+        latitude: null,
+        longitude: null,
+        geofenceRadiusM: 100,
+        timezone: 'Asia/Makassar',
+        isActive: true,
       },
     });
     const ack1 = await ingest.ingestBatch(batchOf([masterDataPush]), resolveLocation);
@@ -249,20 +305,28 @@ describe('SyncIngestService — live database', () => {
 
     const ack = await ingest.ingestBatch(batchOf([before, poison, after]), resolveLocation);
     expect(ack.acceptedThrough[origin]).toBe(3); // the poison event does NOT create a phantom gap
-    expect(ack.rejected).toEqual([expect.objectContaining({ eventId: poison.eventId, code: 'malformed' })]);
+    expect(ack.rejected).toEqual([
+      expect.objectContaining({ eventId: poison.eventId, code: 'malformed' }),
+    ]);
 
     const rows = await appliedRowsFor(origin);
     expect(rows.find((r) => r.event_id === before.eventId)?.apply_status).toBe('applied');
     expect(rows.find((r) => r.event_id === after.eventId)?.apply_status).toBe('applied');
     expect(rows.find((r) => r.event_id === poison.eventId)?.apply_status).toBe('quarantined');
 
-    const conflictRes = await assertPool.query(`SELECT kind, loser_event_id FROM sync_conflicts WHERE loser_event_id = $1`, [poison.eventId]);
+    const conflictRes = await assertPool.query(
+      `SELECT kind, loser_event_id FROM sync_conflicts WHERE loser_event_id = $1`,
+      [poison.eventId],
+    );
     expect(conflictRes.rows).toHaveLength(1);
     expect(conflictRes.rows[0]!.kind).toBe('poison');
 
     // Replaying the SAME batch again must not fabricate a second conflict row (T-01 applied to conflict rows).
     await ingest.ingestBatch(batchOf([before, poison, after]), resolveLocation);
-    const conflictRes2 = await assertPool.query(`SELECT id FROM sync_conflicts WHERE loser_event_id = $1`, [poison.eventId]);
+    const conflictRes2 = await assertPool.query(
+      `SELECT id FROM sync_conflicts WHERE loser_event_id = $1`,
+      [poison.eventId],
+    );
     expect(conflictRes2.rows).toHaveLength(1);
   });
 
@@ -274,11 +338,15 @@ describe('SyncIngestService — live database', () => {
 
     const clashing = mkEvent(origin, 1); // same seq, different event_id — a cloned/corrupted store
     const ack = await ingest.ingestBatch(batchOf([clashing]), resolveLocation);
-    expect(ack.rejected).toEqual([expect.objectContaining({ eventId: clashing.eventId, code: 'seq_conflict' })]);
+    expect(ack.rejected).toEqual([
+      expect.objectContaining({ eventId: clashing.eventId, code: 'seq_conflict' }),
+    ]);
 
     // The origin is now frozen — even a perfectly legitimate NEXT event is rejected until support clears it.
     const nextLegit = mkEvent(origin, 2);
     const ack2 = await ingest.ingestBatch(batchOf([nextLegit]), resolveLocation);
-    expect(ack2.rejected).toEqual([expect.objectContaining({ eventId: nextLegit.eventId, code: 'seq_conflict' })]);
+    expect(ack2.rejected).toEqual([
+      expect.objectContaining({ eventId: nextLegit.eventId, code: 'seq_conflict' }),
+    ]);
   });
 });

@@ -17,10 +17,15 @@
  */
 import type { UUID } from '@/lib/shared-types';
 
-export type DropStatusKey = 'pending' | 'en_route' | 'arrived' | 'completed' | 'completed_discrepancy' | 'failed';
+export type DropStatusKey =
+  'pending' | 'en_route' | 'arrived' | 'completed' | 'completed_discrepancy' | 'failed';
 
 const LADDER: readonly DropStatusKey[] = ['pending', 'en_route', 'arrived'];
-const TERMINAL: ReadonlySet<DropStatusKey> = new Set(['completed', 'completed_discrepancy', 'failed']);
+const TERMINAL: ReadonlySet<DropStatusKey> = new Set([
+  'completed',
+  'completed_discrepancy',
+  'failed',
+]);
 
 export function isDropTerminal(status: DropStatusKey): boolean {
   return TERMINAL.has(status);

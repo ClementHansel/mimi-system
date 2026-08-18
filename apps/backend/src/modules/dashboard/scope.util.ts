@@ -15,7 +15,11 @@ import type { LocationScope } from '../../common/scope/scope.service';
  * returns the SQL fragment to AND onto the query's WHERE clause — `''` when
  * `locationScope` is `null` (central, no filter needed).
  */
-export function scopeClause(locationScope: LocationScope, column: string, params: unknown[]): string {
+export function scopeClause(
+  locationScope: LocationScope,
+  column: string,
+  params: unknown[],
+): string {
   if (locationScope === null) return '';
   params.push(locationScope);
   return ` AND ${column} = ANY($${params.length}::uuid[])`;
@@ -30,7 +34,10 @@ export function scopeClause(locationScope: LocationScope, column: string, params
  * instead ("a scoped caller requesting a :locationId outside their scope
  * must 403, not silently return data" — CONTRACTS.md §4.18).
  */
-export function assertLocationInScope(locationScope: LocationScope, locationId: string | undefined): void {
+export function assertLocationInScope(
+  locationScope: LocationScope,
+  locationId: string | undefined,
+): void {
   if (!locationId) return;
   if (locationScope === null) return;
   if (!locationScope.includes(locationId)) {

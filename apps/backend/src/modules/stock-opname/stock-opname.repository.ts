@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { businessDateOf, DocumentPrefix, formatCloudDocNumber, type Money, type Qty, type UUID } from '@mimi/shared';
+import {
+  businessDateOf,
+  DocumentPrefix,
+  formatCloudDocNumber,
+  type Money,
+  type Qty,
+  type UUID,
+} from '@mimi/shared';
 
 export interface OpnameHeaderRow {
   id: UUID;
@@ -108,15 +115,34 @@ export class StockOpnameRepository {
 
   async listHeaders(
     client: PoolClient,
-    filter: { locationId?: string; status?: string; from?: string; to?: string; page: number; pageSize: number },
+    filter: {
+      locationId?: string;
+      status?: string;
+      from?: string;
+      to?: string;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<{ rows: OpnameHeaderRow[]; total: number }> {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (filter.locationId) { conds.push(`so.location_id = $${i++}`); args.push(filter.locationId); }
-    if (filter.status) { conds.push(`so.status = $${i++}`); args.push(filter.status); }
-    if (filter.from) { conds.push(`so.started_at >= $${i++}`); args.push(filter.from); }
-    if (filter.to) { conds.push(`so.started_at <= $${i++}`); args.push(filter.to); }
+    if (filter.locationId) {
+      conds.push(`so.location_id = $${i++}`);
+      args.push(filter.locationId);
+    }
+    if (filter.status) {
+      conds.push(`so.status = $${i++}`);
+      args.push(filter.status);
+    }
+    if (filter.from) {
+      conds.push(`so.started_at >= $${i++}`);
+      args.push(filter.from);
+    }
+    if (filter.to) {
+      conds.push(`so.started_at <= $${i++}`);
+      args.push(filter.to);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (filter.page - 1) * filter.pageSize;
 
@@ -125,23 +151,41 @@ export class StockOpnameRepository {
         `${HEADER_SELECT} ${where} ORDER BY so.started_at DESC LIMIT $${i} OFFSET $${i + 1}`,
         [...args, filter.pageSize, offset],
       ),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM stock_opname so ${where}`, args),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM stock_opname so ${where}`,
+        args,
+      ),
     ]);
     return { rows: rows.rows, total: Number(count.rows[0]?.count ?? '0') };
   }
 
   async findLines(client: PoolClient, opnameId: UUID): Promise<OpnameLineRow[]> {
-    const res = await client.query<OpnameLineRow>(`${LINE_SELECT} WHERE ol.opname_id = $1 ORDER BY sa.sort_order, i.name`, [opnameId]);
+    const res = await client.query<OpnameLineRow>(
+      `${LINE_SELECT} WHERE ol.opname_id = $1 ORDER BY sa.sort_order, i.name`,
+      [opnameId],
+    );
     return res.rows;
   }
 
-  async findLineById(client: PoolClient, opnameId: UUID, lineId: UUID): Promise<OpnameLineRow | undefined> {
-    const res = await client.query<OpnameLineRow>(`${LINE_SELECT} WHERE ol.opname_id = $1 AND ol.id = $2`, [opnameId, lineId]);
+  async findLineById(
+    client: PoolClient,
+    opnameId: UUID,
+    lineId: UUID,
+  ): Promise<OpnameLineRow | undefined> {
+    const res = await client.query<OpnameLineRow>(
+      `${LINE_SELECT} WHERE ol.opname_id = $1 AND ol.id = $2`,
+      [opnameId, lineId],
+    );
     return res.rows[0];
   }
 
   /** Looks up an existing line by its natural key — used to preserve the ALREADY-snapshotted `system_qty` on a recount (never re-based against a moving `stock_balances`). */
-  async findLineByKey(client: PoolClient, opnameId: UUID, storageAreaId: UUID, itemId: UUID): Promise<{ system_qty: Qty } | undefined> {
+  async findLineByKey(
+    client: PoolClient,
+    opnameId: UUID,
+    storageAreaId: UUID,
+    itemId: UUID,
+  ): Promise<{ system_qty: Qty } | undefined> {
     const res = await client.query<{ system_qty: Qty }>(
       `SELECT system_qty FROM stock_opname_lines WHERE opname_id = $1 AND storage_area_id = $2 AND item_id = $3`,
       [opnameId, storageAreaId, itemId],
@@ -150,7 +194,12 @@ export class StockOpnameRepository {
   }
 
   /** Current `stock_balances.qty_on_hand` for the key, or `'0.000'` when no row exists yet. */
-  async currentSystemQty(client: PoolClient, locationId: UUID, storageAreaId: UUID, itemId: UUID): Promise<Qty> {
+  async currentSystemQty(
+    client: PoolClient,
+    locationId: UUID,
+    storageAreaId: UUID,
+    itemId: UUID,
+  ): Promise<Qty> {
     const res = await client.query<{ qty_on_hand: Qty }>(
       `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
       [locationId, storageAreaId, itemId],
@@ -159,7 +208,10 @@ export class StockOpnameRepository {
   }
 
   async itemUnitCost(client: PoolClient, itemId: UUID): Promise<Money> {
-    const res = await client.query<{ avg_cost: Money }>(`SELECT avg_cost FROM items WHERE id = $1`, [itemId]);
+    const res = await client.query<{ avg_cost: Money }>(
+      `SELECT avg_cost FROM items WHERE id = $1`,
+      [itemId],
+    );
     return res.rows[0]?.avg_cost ?? '0.00';
   }
 
@@ -187,7 +239,15 @@ export class StockOpnameRepository {
        ON CONFLICT (opname_id, storage_area_id, item_id)
        DO UPDATE SET counted_qty = EXCLUDED.counted_qty, diff_qty = EXCLUDED.diff_qty, variance_reason = EXCLUDED.variance_reason
        RETURNING id`,
-      [params.opnameId, params.storageAreaId, params.itemId, params.systemQty, params.countedQty, params.diffQty, params.varianceReason],
+      [
+        params.opnameId,
+        params.storageAreaId,
+        params.itemId,
+        params.systemQty,
+        params.countedQty,
+        params.diffQty,
+        params.varianceReason,
+      ],
     );
     return res.rows[0]!.id;
   }
@@ -212,7 +272,10 @@ export class StockOpnameRepository {
     return Number(res.rows[0]?.count ?? '0');
   }
 
-  async lineSummary(client: PoolClient, opnameId: UUID): Promise<{ lineCount: number; totalVarianceValue: Money }> {
+  async lineSummary(
+    client: PoolClient,
+    opnameId: UUID,
+  ): Promise<{ lineCount: number; totalVarianceValue: Money }> {
     const res = await client.query<{ line_count: string; total_variance: Money }>(
       `SELECT COUNT(*)::text AS line_count,
               COALESCE(SUM(ABS(ol.diff_qty) * i.avg_cost), 0)::text AS total_variance
@@ -221,7 +284,10 @@ export class StockOpnameRepository {
         WHERE ol.opname_id = $1`,
       [opnameId],
     );
-    return { lineCount: Number(res.rows[0]?.line_count ?? '0'), totalVarianceValue: res.rows[0]?.total_variance ?? '0.00' };
+    return {
+      lineCount: Number(res.rows[0]?.line_count ?? '0'),
+      totalVarianceValue: res.rows[0]?.total_variance ?? '0.00',
+    };
   }
 
   async setStatus(client: PoolClient, id: UUID, status: string): Promise<void> {
@@ -229,7 +295,10 @@ export class StockOpnameRepository {
   }
 
   async markSubmitted(client: PoolClient, id: UUID): Promise<void> {
-    await client.query(`UPDATE stock_opname SET status = 'submitted', submitted_at = NOW() WHERE id = $1`, [id]);
+    await client.query(
+      `UPDATE stock_opname SET status = 'submitted', submitted_at = NOW() WHERE id = $1`,
+      [id],
+    );
   }
 
   async setApprovalId(client: PoolClient, id: UUID, approvalId: UUID): Promise<void> {

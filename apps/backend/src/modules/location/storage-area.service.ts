@@ -59,10 +59,15 @@ export class StorageAreaService {
 
   private async ensureLocationExists(client: PoolClient, locationId: string): Promise<void> {
     const res = await client.query(`SELECT 1 FROM locations WHERE id = $1`, [locationId]);
-    if (res.rowCount === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Location not found' });
+    if (res.rowCount === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Location not found' });
   }
 
-  async listForLocation(client: PoolClient, locationId: string, active?: boolean): Promise<StorageArea[]> {
+  async listForLocation(
+    client: PoolClient,
+    locationId: string,
+    active?: boolean,
+  ): Promise<StorageArea[]> {
     await this.ensureLocationExists(client, locationId);
     const params: unknown[] = [locationId];
     let where = 'location_id = $1';
@@ -77,12 +82,17 @@ export class StorageAreaService {
     return res.rows.map((r) => this.map(r));
   }
 
-  private async getRawById(client: PoolClient, locationId: string, areaId: string): Promise<StorageAreaRow> {
+  private async getRawById(
+    client: PoolClient,
+    locationId: string,
+    areaId: string,
+  ): Promise<StorageAreaRow> {
     const res = await client.query<StorageAreaRow>(
       `SELECT * FROM storage_areas WHERE id = $1 AND location_id = $2`,
       [areaId, locationId],
     );
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Storage area not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Storage area not found' });
     return res.rows[0];
   }
 
@@ -98,7 +108,15 @@ export class StorageAreaService {
         `INSERT INTO storage_areas (location_id, code, name, type, temp_min, temp_max, sort_order)
          VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7, 0))
          RETURNING *`,
-        [locationId, dto.code, dto.name, dto.type, dto.tempMin ?? null, dto.tempMax ?? null, dto.sortOrder ?? null],
+        [
+          locationId,
+          dto.code,
+          dto.name,
+          dto.type,
+          dto.tempMin ?? null,
+          dto.tempMax ?? null,
+          dto.sortOrder ?? null,
+        ],
       );
       const area = this.map(res.rows[0]!);
       await this.sync.emit(client, {
@@ -177,10 +195,10 @@ export class StorageAreaService {
         });
       }
 
-      await client.query(`UPDATE storage_areas SET is_active = false WHERE id = $1 AND location_id = $2`, [
-        areaId,
-        locationId,
-      ]);
+      await client.query(
+        `UPDATE storage_areas SET is_active = false WHERE id = $1 AND location_id = $2`,
+        [areaId, locationId],
+      );
       await this.sync.emit(client, {
         entity: SyncEntity.STORAGE_AREAS,
         op: 'deactivated',

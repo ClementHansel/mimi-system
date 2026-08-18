@@ -61,18 +61,43 @@ describe('deriveLocalSubnet', () => {
     expect(subnet).toBe('192.168.1.0/24');
   });
   it('returns null when there is no private interface', () => {
-    expect(deriveLocalSubnet({ lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true } as never] })).toBeNull();
+    expect(
+      deriveLocalSubnet({
+        lo: [{ address: '127.0.0.1', family: 'IPv4', internal: true } as never],
+      }),
+    ).toBeNull();
   });
 });
 
 describe('dedupeByIp', () => {
   it('merges duplicate ips, preferring the more specific device type', () => {
     const merged = dedupeByIp([
-      { ipAddress: '10.0.0.5', macAddress: null, deviceType: 'router', vendor: null, model: null, connectionParams: { a: 1 }, source: 'ssdp' },
-      { ipAddress: '10.0.0.5', macAddress: 'aa:bb:cc:dd:ee:ff', deviceType: 'printer', vendor: 'Epson', model: null, connectionParams: { b: 2 }, source: 'mdns' },
+      {
+        ipAddress: '10.0.0.5',
+        macAddress: null,
+        deviceType: 'router',
+        vendor: null,
+        model: null,
+        connectionParams: { a: 1 },
+        source: 'ssdp',
+      },
+      {
+        ipAddress: '10.0.0.5',
+        macAddress: 'aa:bb:cc:dd:ee:ff',
+        deviceType: 'printer',
+        vendor: 'Epson',
+        model: null,
+        connectionParams: { b: 2 },
+        source: 'mdns',
+      },
     ]);
     expect(merged).toHaveLength(1);
-    expect(merged[0]).toMatchObject({ deviceType: 'printer', vendor: 'Epson', macAddress: 'aa:bb:cc:dd:ee:ff', source: 'mdns' });
+    expect(merged[0]).toMatchObject({
+      deviceType: 'printer',
+      vendor: 'Epson',
+      macAddress: 'aa:bb:cc:dd:ee:ff',
+      source: 'mdns',
+    });
     expect(merged[0]!.connectionParams).toEqual({ a: 1, b: 2 });
   });
 });

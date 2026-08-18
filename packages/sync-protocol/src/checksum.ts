@@ -62,7 +62,9 @@ export function canonicalRowString(row: Record<string, unknown>): string {
   const sortedKeys = Object.keys(row).sort();
   const ordered: Record<string, unknown> = {};
   for (const key of sortedKeys) ordered[key] = row[key];
-  return JSON.stringify(ordered, (_key, value) => (typeof value === 'bigint' ? value.toString() : value));
+  return JSON.stringify(ordered, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value,
+  );
 }
 
 export function computeStateChecksum(rows: readonly Record<string, unknown>[]): string {
@@ -80,7 +82,9 @@ export interface AreaBalanceRow {
  * storage area, so a divergence localizes to a single area rather than the
  * whole outlet.
  */
-export function computeAreaBalanceChecksums(rows: readonly AreaBalanceRow[]): Record<string, string> {
+export function computeAreaBalanceChecksums(
+  rows: readonly AreaBalanceRow[],
+): Record<string, string> {
   const byArea = new Map<string, AreaBalanceRow[]>();
   for (const row of rows) {
     const list = byArea.get(row.storageAreaId);

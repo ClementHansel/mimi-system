@@ -69,7 +69,13 @@ import { applyWhitelistedEvent } from './projector';
 import { runScan } from './discovery/scanner';
 import type { NodeHeartbeat, NodeCommand, DiscoveryReport } from './bridge-types';
 import type { SocketFactory } from './socket-like';
-import { helloAckToWire, helloFromWire, pullResultToWire, pushAckToWire, pushBatchFromWire } from './wire';
+import {
+  helloAckToWire,
+  helloFromWire,
+  pullResultToWire,
+  pushAckToWire,
+  pushBatchFromWire,
+} from './wire';
 
 const MAX_PULL_PAGE = 500;
 
@@ -109,9 +115,11 @@ export class RelayEngine {
         onCertRotated: async (payload) => {
           const current = await this.store.getIdentity();
           await this.store.saveIdentity({ ...current, lanCert: payload.lanCert });
-          if (this.lanServer) await this.lanServer.rotateCert(payload.lanCert, this.config.healthPort);
+          if (this.lanServer)
+            await this.lanServer.rotateCert(payload.lanCert, this.config.healthPort);
         },
-        onRevoked: () => console.warn('[relay] node revoked by cloud — stop pushing (M22 kill switch)'),
+        onRevoked: () =>
+          console.warn('[relay] node revoked by cloud — stop pushing (M22 kill switch)'),
       },
       this.socketFactory,
     );
@@ -154,7 +162,11 @@ export class RelayEngine {
   private async ensureRegistered(): Promise<ReadyIdentity> {
     const existing = await this.store.getIdentity();
     if (existing.nodeId && existing.nodeToken && existing.locationId) {
-      return { nodeId: existing.nodeId, nodeToken: existing.nodeToken, locationId: existing.locationId };
+      return {
+        nodeId: existing.nodeId,
+        nodeToken: existing.nodeToken,
+        locationId: existing.locationId,
+      };
     }
 
     const response = await registerNode(this.config.cloudUrl, {
@@ -172,7 +184,11 @@ export class RelayEngine {
       lanCert: response.lanCert ?? null,
     });
 
-    return { nodeId: response.nodeId, nodeToken: response.nodeToken, locationId: response.location.id };
+    return {
+      nodeId: response.nodeId,
+      nodeToken: response.nodeToken,
+      locationId: response.location.id,
+    };
   }
 
   // ── downstream toward cloud: hello + catch-up pull ───────────────────
@@ -207,7 +223,10 @@ export class RelayEngine {
     }
   }
 
-  private async applyDeliveredEvents(events: SyncEventEnvelope[], nextCursor: number): Promise<void> {
+  private async applyDeliveredEvents(
+    events: SyncEventEnvelope[],
+    nextCursor: number,
+  ): Promise<void> {
     for (const event of events) {
       const relayReceivedAt = event.relayReceivedAt ?? event.receivedAt ?? event.occurredAt;
       const stored = await this.store.appendEvent({ ...event, relayReceivedAt });
@@ -250,18 +269,29 @@ export class RelayEngine {
               const original = batchEvents.find((e) => e.eventId === rejected.eventId);
               if (original) {
                 // §4.4: "Rejected != lost" — a permanent reject still advances confirmed_through (it's dead, not missing).
-                await this.store.setCloudConfirmedHighWater(original.originDeviceId, original.clientSeq);
+                await this.store.setCloudConfirmedHighWater(
+                  original.originDeviceId,
+                  original.clientSeq,
+                );
               }
-              console.warn(`[relay] event ${rejected.eventId} permanently rejected by cloud: ${rejected.code} ${rejected.detail ?? ''}`);
+              console.warn(
+                `[relay] event ${rejected.eventId} permanently rejected by cloud: ${rejected.code} ${rejected.detail ?? ''}`,
+              );
             }
             if (ack.resendFrom) {
               // Diagnostic only: `confirmedThrough` already governs `getUnconfirmedByCloud`'s next
               // read, so the origin's un-relayed events resend automatically on the next loop
               // iteration without needing to branch on this — logged purely for operator visibility.
-              console.warn('[relay] cloud reports a sequence gap (self-healing on next cycle):', ack.resendFrom);
+              console.warn(
+                '[relay] cloud reports a sequence gap (self-healing on next cycle):',
+                ack.resendFrom,
+              );
             }
           } catch (err) {
-            console.error('[relay] push to cloud failed, retrying next cycle:', (err as Error).message);
+            console.error(
+              '[relay] push to cloud failed, retrying next cycle:',
+              (err as Error).message,
+            );
             return;
           }
         }
@@ -275,7 +305,10 @@ export class RelayEngine {
   private buildLanHandlers(identity: ReadyIdentity): LanServerHandlers {
     return {
       nodeHealth: () => this.handleNodeHealth(identity),
-      syncHealth: () => ({ status: 200, body: { ok: true, protocolV: 1, serverTime: new Date().toISOString(), tier: 'node' } }),
+      syncHealth: () => ({
+        status: 200,
+        body: { ok: true, protocolV: 1, serverTime: new Date().toISOString(), tier: 'node' },
+      }),
       hello: (body) => this.handleDeviceHello(body, identity),
       push: (body) => this.handleDevicePush(body, identity),
       pull: (cursor, limit) => this.handleDevicePull(cursor, limit),
@@ -306,7 +339,14 @@ export class RelayEngine {
 
     // §3.4 rule 3 (the only authority check a node makes — "1-lite + location match").
     if (!req.locationIds.includes(identity.locationId)) {
-      return { status: 200, body: { ok: false, error: 'authority_violation', detail: 'location_ids does not include this node\'s paired location' } };
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          error: 'authority_violation',
+          detail: "location_ids does not include this node's paired location",
+        },
+      };
     }
 
     const confirmedThrough: Record<string, number> = {
@@ -347,11 +387,19 @@ export class RelayEngine {
       // the cloud — the only party guaranteed up to date — ever saw it. Only structural envelope
       // validity (rule "1-lite") and location match (rule 3) are checked here.
       if (!isWellFormedEnvelope(event)) {
-        rejected.push({ eventId: event.eventId, code: 'malformed', detail: 'envelope missing or malformed required field(s)' });
+        rejected.push({
+          eventId: event.eventId,
+          code: 'malformed',
+          detail: 'envelope missing or malformed required field(s)',
+        });
         continue;
       }
       if (event.locationId !== identity.locationId) {
-        rejected.push({ eventId: event.eventId, code: 'authority_violation', detail: "location_id does not match this node's paired location" });
+        rejected.push({
+          eventId: event.eventId,
+          code: 'authority_violation',
+          detail: "location_id does not match this node's paired location",
+        });
         continue;
       }
       validEvents.push(event);
@@ -374,7 +422,9 @@ export class RelayEngine {
         }
       }
 
-      const result = processOriginBatch(sorted, currentHighWater, (seq) => knownAtSeq.get(seq.toString()));
+      const result = processOriginBatch(sorted, currentHighWater, (seq) =>
+        knownAtSeq.get(seq.toString()),
+      );
 
       for (const conflict of result.seqConflicts) {
         rejected.push({
@@ -415,7 +465,11 @@ export class RelayEngine {
     const page = await this.store.getEventsSince(cursor, Math.min(limit, MAX_PULL_PAGE));
     return {
       status: 200,
-      body: pullResultToWire({ events: page.events, nextCursor: page.nextCursor, hasMore: page.hasMore }),
+      body: pullResultToWire({
+        events: page.events,
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
+      }),
     };
   }
 
@@ -427,7 +481,10 @@ export class RelayEngine {
    * returns one page always (`done: true`) — fine at Wave-2 data volumes,
    * flagged as a follow-up for W2-E interop testing at real device-fleet scale.
    */
-  private async handleDeviceBootstrap(_body: unknown, identity: ReadyIdentity): Promise<HandlerResult> {
+  private async handleDeviceBootstrap(
+    _body: unknown,
+    identity: ReadyIdentity,
+  ): Promise<HandlerResult> {
     const masterEntities = Object.entries(AUTHORITY)
       .filter(([, meta]) => meta.class === 'M')
       .map(([name]) => name);
@@ -436,10 +493,25 @@ export class RelayEngine {
       masterData[entity] = (await this.store.listMasterData(entity)).map((r) => r.payload);
     }
 
-    const projectionEntities = ['sales', 'pos_shifts', 'void_refunds', 'online_orders', 'sj_drops', 'goods_receipts', 'waste_records', 'stock_opname', 'stock_adjustments', 'replenishment_requests', 'attendance', 'returns'];
+    const projectionEntities = [
+      'sales',
+      'pos_shifts',
+      'void_refunds',
+      'online_orders',
+      'sj_drops',
+      'goods_receipts',
+      'waste_records',
+      'stock_opname',
+      'stock_adjustments',
+      'replenishment_requests',
+      'attendance',
+      'returns',
+    ];
     const projections: Record<string, unknown[]> = {};
     for (const entity of projectionEntities) {
-      projections[entity] = (await this.store.listProjections(entity, identity.locationId)).map((r) => r.payload);
+      projections[entity] = (await this.store.listProjections(entity, identity.locationId)).map(
+        (r) => r.payload,
+      );
     }
 
     return {
@@ -469,7 +541,11 @@ export class RelayEngine {
         uptimeSec: Math.round((Date.now() - this.startedAt) / 1000),
         relayQueueDepth,
         deviceCount: lanDevices.length,
-        deviceSummaries: lanDevices.map((d) => ({ deviceId: d.deviceId, lastSeenAt: d.lastSeenAt ?? new Date(0).toISOString(), queueDepth: d.queueDepth })),
+        deviceSummaries: lanDevices.map((d) => ({
+          deviceId: d.deviceId,
+          lastSeenAt: d.lastSeenAt ?? new Date(0).toISOString(),
+          queueDepth: d.queueDepth,
+        })),
         discoveryLastRunAt: this.discoveryLastRunAt,
         db: { ok: true, sizeMb: 0 }, // real size query is a W5-07 hardening item (needs pg_database_size against the real embedded PG, not meaningful for MemoryStore)
         system: {
@@ -498,7 +574,10 @@ export class RelayEngine {
   // ── LAN discovery (D-13) ──────────────────────────────────────────────
   private startDiscoveryLoop(identity: ReadyIdentity): void {
     const run = async () => {
-      const outcome = await runScan({ simulate: this.config.simulate, subnet: this.config.scanSubnet });
+      const outcome = await runScan({
+        simulate: this.config.simulate,
+        subnet: this.config.scanSubnet,
+      });
       const stillPresentIds: UUID[] = [];
       for (const d of outcome.devices) {
         const row = await this.store.upsertDiscoveredDevice({
@@ -541,12 +620,23 @@ export class RelayEngine {
     // no self-update, no log tailing yet); W5-07 owns turning these into real actions.
     if (cmd.type === 'discovery_scan') {
       // The one command type safe + meaningful to actually honor right now: run discovery early.
-      const outcome = await runScan({ simulate: this.config.simulate, subnet: this.config.scanSubnet });
+      const outcome = await runScan({
+        simulate: this.config.simulate,
+        subnet: this.config.scanSubnet,
+      });
       this.discoveryLastRunAt = new Date().toISOString();
-      this.bridge?.ackCommand({ commandId: cmd.commandId, status: 'done', detail: `${outcome.devices.length} device(s) found` });
+      this.bridge?.ackCommand({
+        commandId: cmd.commandId,
+        status: 'done',
+        detail: `${outcome.devices.length} device(s) found`,
+      });
       return;
     }
-    this.bridge?.ackCommand({ commandId: cmd.commandId, status: 'done', detail: `${cmd.type} acknowledged (no-op in this skeleton — see W5-07)` });
+    this.bridge?.ackCommand({
+      commandId: cmd.commandId,
+      status: 'done',
+      detail: `${cmd.type} acknowledged (no-op in this skeleton — see W5-07)`,
+    });
   }
 }
 
@@ -555,7 +645,9 @@ function isWellFormedEnvelope(event: SyncEventEnvelope): boolean {
   return (
     typeof event.eventId === 'string' &&
     event.eventId.length > 0 &&
-    (event.originTier === 'device' || event.originTier === 'node' || event.originTier === 'cloud') &&
+    (event.originTier === 'device' ||
+      event.originTier === 'node' ||
+      event.originTier === 'cloud') &&
     typeof event.originDeviceId === 'string' &&
     event.originDeviceId.length > 0 &&
     typeof event.entity === 'string' &&
@@ -576,7 +668,9 @@ function isWellFormedEnvelope(event: SyncEventEnvelope): boolean {
 
 /** BigInt-safe stand-in for `assembleBatches`'s default `JSON.stringify`-based size estimator (the envelope's `clientSeq` is a `bigint`, which the native serializer rejects). */
 function estimateEnvelopeBytes(event: SyncEventEnvelope): number {
-  return JSON.stringify(event, (_key, value) => (typeof value === 'bigint' ? value.toString() : value)).length;
+  return JSON.stringify(event, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() : value,
+  ).length;
 }
 
 /** Groups events by origin then concatenates each origin's own ascending run — a valid ordering per §4.3 ("each origin's events in ascending client_seq"); cross-origin interleaving within/between batches is unconstrained. */

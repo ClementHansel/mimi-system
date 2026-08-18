@@ -3,14 +3,27 @@
 import { useEffect, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Modal, Button, Input, MoneyInput, Select, Textarea, PhotoCapture, Badge } from '@/components/ui';
+import {
+  Modal,
+  Button,
+  Input,
+  MoneyInput,
+  Select,
+  Textarea,
+  PhotoCapture,
+  Badge,
+} from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
 import { api, ApiError } from '@/lib/api';
 import { useConnectivityStore } from '@/stores/connectivity-store';
 import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 import type { ActorMeta } from '@/lib/local/api/local-runtime';
 import type { Money, UUID } from '@/lib/shared-types';
-import { mintClientId, listCachedApproverCredentials, type CachedApproverOption } from './pos-runtime';
+import {
+  mintClientId,
+  listCachedApproverCredentials,
+  type CachedApproverOption,
+} from './pos-runtime';
 import { usePosShiftStore } from './shift-store';
 
 /**
@@ -49,7 +62,9 @@ export function VoidRefundModal({
 
   useEffect(() => {
     if (!open || isOnline) return;
-    listCachedApproverCredentials(runtime).then(setApprovers).catch(() => setApprovers([]));
+    listCachedApproverCredentials(runtime)
+      .then(setApprovers)
+      .catch(() => setApprovers([]));
   }, [open, isOnline, runtime]);
 
   async function handleSubmit() {
@@ -61,17 +76,24 @@ export function VoidRefundModal({
     try {
       if (isOnline) {
         const clientId = mintClientId();
-        const req = await api.post<{ voidRefundId: UUID; status: string }>(`/api/pos/sales/${saleId}/void-request`, {
-          clientId,
-          type,
-          reason,
-          amount: amount ?? undefined,
-        });
+        const req = await api.post<{ voidRefundId: UUID; status: string }>(
+          `/api/pos/sales/${saleId}/void-request`,
+          {
+            clientId,
+            type,
+            reason,
+            amount: amount ?? undefined,
+          },
+        );
         if (pin) {
           await api.post(`/api/pos/void-refunds/${req.voidRefundId}/approve`, { pin });
           toast({ title: t('pos.voidApprovedTitle'), variant: 'success' });
         } else {
-          toast({ title: t('pos.voidRequestedTitle'), description: t('pos.voidAwaitingApproval'), variant: 'info' });
+          toast({
+            title: t('pos.voidRequestedTitle'),
+            description: t('pos.voidAwaitingApproval'),
+            variant: 'info',
+          });
         }
       } else {
         if (!credentialId) {
@@ -80,7 +102,12 @@ export function VoidRefundModal({
           return;
         }
         let selfieRef;
-        if (selfie) selfieRef = await runtime.captureEvidence(selfie.file, selfie.file.type, 'void_refund_selfie');
+        if (selfie)
+          selfieRef = await runtime.captureEvidence(
+            selfie.file,
+            selfie.file.type,
+            'void_refund_selfie',
+          );
         const result = await runtime.commitVoidApprovedOffline({
           voidRefundId: mintClientId(),
           credentialId,
@@ -91,16 +118,25 @@ export function VoidRefundModal({
           actor,
         });
         if (!result.authorization.ok) {
-          toast({ title: t('pos.voidAuthFailed'), description: t(`pos.voidAuthReason.${result.authorization.reason}`), variant: 'danger' });
+          toast({
+            title: t('pos.voidAuthFailed'),
+            description: t(`pos.voidAuthReason.${result.authorization.reason}`),
+            variant: 'danger',
+          });
           setSubmitting(false);
           return;
         }
-        toast({ title: t('pos.voidProvisionalTitle'), description: t('pos.voidProvisionalDescription'), variant: 'warning' });
+        toast({
+          title: t('pos.voidProvisionalTitle'),
+          description: t('pos.voidProvisionalDescription'),
+          variant: 'warning',
+        });
       }
       recordVoid();
       onClose();
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined;
+      const message =
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined;
       toast({ title: t('pos.voidFailed'), description: message, variant: 'danger' });
     } finally {
       setSubmitting(false);
@@ -112,11 +148,17 @@ export function VoidRefundModal({
       open={open}
       onClose={onClose}
       title={t('pos.voidRefundTitle')}
-      description={isOnline ? t('pos.voidRefundOnlineDescription') : t('pos.voidRefundOfflineDescription')}
+      description={
+        isOnline ? t('pos.voidRefundOnlineDescription') : t('pos.voidRefundOfflineDescription')
+      }
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button variant="danger" onClick={handleSubmit} loading={submitting}>{t('pos.voidSubmit')}</Button>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button variant="danger" onClick={handleSubmit} loading={submitting}>
+            {t('pos.voidSubmit')}
+          </Button>
         </>
       }
     >
@@ -136,8 +178,19 @@ export function VoidRefundModal({
             { value: 'refund', label: t('pos.voidTypeRefund') },
           ]}
         />
-        <Textarea label={t('common.reason')} value={reason} onChange={(e) => setReason(e.target.value)} required rows={2} />
-        <MoneyInput label={t('pos.voidAmount')} value={amount} onChange={setAmount} hint={t('common.optional')} />
+        <Textarea
+          label={t('common.reason')}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          required
+          rows={2}
+        />
+        <MoneyInput
+          label={t('pos.voidAmount')}
+          value={amount}
+          onChange={setAmount}
+          hint={t('common.optional')}
+        />
 
         {!isOnline && (
           <Select
@@ -148,7 +201,14 @@ export function VoidRefundModal({
             options={approvers.map((a) => ({ value: a.credentialId, label: t(`role.${a.role}`) }))}
           />
         )}
-        <Input label={t('pos.supervisorPin')} type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} required />
+        <Input
+          label={t('pos.supervisorPin')}
+          type="password"
+          inputMode="numeric"
+          value={pin}
+          onChange={(e) => setPin(e.target.value)}
+          required
+        />
         {!isOnline && (
           <PhotoCapture
             label={t('pos.voidSelfie')}

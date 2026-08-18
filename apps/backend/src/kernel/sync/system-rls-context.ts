@@ -94,7 +94,10 @@ export async function assertSystemContext(client: PoolClient): Promise<void> {
 }
 
 /** Runs `fn` inside a fresh transaction with the system context asserted, committing on success. For ad-hoc single-shot reads/writes that aren't already inside an ingest transaction. */
-export async function withSystemContext<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withSystemContext<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

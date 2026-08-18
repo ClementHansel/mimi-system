@@ -41,7 +41,12 @@ export function DropFailModal({ open, onClose, drop, onDone }: DropFailModalProp
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={t('driver.fail.title', { location: drop.locationName })} size="sm">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('driver.fail.title', { location: drop.locationName })}
+      size="sm"
+    >
       <div className="flex flex-col gap-4">
         <Textarea
           label={t('driver.fail.reasonLabel')}
@@ -51,7 +56,15 @@ export function DropFailModal({ open, onClose, drop, onDone }: DropFailModalProp
           required
           disabled={submitting}
         />
-        <Button type="button" variant="danger" size="touch-lg" fullWidth loading={submitting} disabled={!canSubmit} onClick={handleSubmit}>
+        <Button
+          type="button"
+          variant="danger"
+          size="touch-lg"
+          fullWidth
+          loading={submitting}
+          disabled={!canSubmit}
+          onClick={handleSubmit}
+        >
           {t('driver.fail.submit')}
         </Button>
       </div>

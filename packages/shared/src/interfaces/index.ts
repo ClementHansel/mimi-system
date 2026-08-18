@@ -526,7 +526,13 @@ export interface PettyCash {
   status: PettyCashStatus;
   verifiedBy: string | null;
   photoUrls: string[];
-  lines: { description: string; itemId: UUID | null; qty: Qty | null; amount: Money; expenseCategory: string }[];
+  lines: {
+    description: string;
+    itemId: UUID | null;
+    qty: Qty | null;
+    amount: Money;
+    expenseCategory: string;
+  }[];
 }
 
 // ── M12 waste-return ───────────────────────────────────────────────────────────
@@ -543,7 +549,14 @@ export interface Return {
   approvedBy: string | null;
   shippedAt: ISODateTime | null;
   receivedAt: ISODateTime | null;
-  lines: { itemId: UUID; itemName: string; qty: Qty; condition: string; reason: string; qtyReceived: Qty | null }[];
+  lines: {
+    itemId: UUID;
+    itemName: string;
+    qty: Qty;
+    condition: string;
+    reason: string;
+    qtyReceived: Qty | null;
+  }[];
 }
 
 // ── M13 pos (FR-POS-01..07) ────────────────────────────────────────────────────
@@ -579,8 +592,20 @@ export interface Sale {
   changeAmount: Money;
   offlineCreated: boolean;
   occurredAt: ISODateTime;
-  lines: { productId: UUID; productName: string; qty: Qty; unitPrice: Money; discount: Money; lineTotal: Money }[];
-  payments: { method: string; amount: Money; reference: string | null; paymentStatus: PaymentStatus }[];
+  lines: {
+    productId: UUID;
+    productName: string;
+    qty: Qty;
+    unitPrice: Money;
+    discount: Money;
+    lineTotal: Money;
+  }[];
+  payments: {
+    method: string;
+    amount: Money;
+    reference: string | null;
+    paymentStatus: PaymentStatus;
+  }[];
 }
 
 export interface OnlineOrder {
@@ -760,7 +785,14 @@ export interface JournalEntry {
   locationName: string | null;
   description: string;
   status: 'posted' | 'reversed';
-  lines: { lineNo: number; accountCode: string; accountName: string; debit: Money; credit: Money; memo: string | null }[];
+  lines: {
+    lineNo: number;
+    accountCode: string;
+    accountName: string;
+    debit: Money;
+    credit: Money;
+    memo: string | null;
+  }[];
 }
 
 export interface PaymentVerification {

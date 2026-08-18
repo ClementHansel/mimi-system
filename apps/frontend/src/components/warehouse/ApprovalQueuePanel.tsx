@@ -7,7 +7,13 @@ import { Modal, DataTable, StatusBadge, toast, Button, PermissionGate } from '@/
 import type { DataTableColumn } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
 import { ApiError } from '@/lib/api';
-import { listWarehouseQueue, getReplenishment, approveReplenishment, rejectReplenishment, processReplenishment } from './lib/warehouse-api';
+import {
+  listWarehouseQueue,
+  getReplenishment,
+  approveReplenishment,
+  rejectReplenishment,
+  processReplenishment,
+} from './lib/warehouse-api';
 import { ReplenishmentApproveForm, type AmendmentInput } from './ReplenishmentApproveForm';
 import type { Replenishment } from './lib/types';
 
@@ -45,7 +51,9 @@ export function ApprovalQueuePanel() {
     setApprovedError(undefined);
     listWarehouseQueue('approved')
       .then((res) => setApprovedRows(res.rows))
-      .catch((err: unknown) => setApprovedError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch((err: unknown) =>
+        setApprovedError(err instanceof ApiError ? err.message : t('table.error')),
+      )
       .finally(() => setApprovedLoading(false));
   }
 
@@ -74,7 +82,10 @@ export function ApprovalQueuePanel() {
     if (!detail) return;
     setSubmitting(true);
     try {
-      await approveReplenishment(detail.id, { note, amendments: amendments.length ? amendments : undefined });
+      await approveReplenishment(detail.id, {
+        note,
+        amendments: amendments.length ? amendments : undefined,
+      });
       toast({ title: t('warehouse.approvalQueue.approved'), variant: 'success' });
       setDetail(null);
       reload();
@@ -106,13 +117,23 @@ export function ApprovalQueuePanel() {
     { key: 'locationName', header: t('warehouse.approvalQueue.outlet') },
     { key: 'requestedBy', header: t('warehouse.approvalQueue.requestedBy') },
     { key: 'submittedAt', header: t('common.date'), render: (r) => fmtDate(r.submittedAt) },
-    { key: 'neededBy', header: t('outlet.replenishment.neededBy'), render: (r) => fmtDate(r.neededBy) },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="replenishment" status={r.status} /> },
+    {
+      key: 'neededBy',
+      header: t('outlet.replenishment.neededBy'),
+      render: (r) => fmtDate(r.neededBy),
+    },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="replenishment" status={r.status} />,
+    },
     {
       key: 'supervisorStep',
       header: t('warehouse.approvalQueue.supervisorDecision'),
       render: (r) => {
-        const step = r.approval?.steps.find((s) => s.approverRole.toLowerCase().includes('supervisor') || s.stepNo === 1);
+        const step = r.approval?.steps.find(
+          (s) => s.approverRole.toLowerCase().includes('supervisor') || s.stepNo === 1,
+        );
         if (!step) return '—';
         return step.state === 'approved' ? (
           <StatusBadge domain="approvalStep" status="approved" size="sm" />
@@ -130,8 +151,16 @@ export function ApprovalQueuePanel() {
     { key: 'requestNumber', header: t('warehouse.approvalQueue.number') },
     { key: 'locationName', header: t('warehouse.approvalQueue.outlet') },
     { key: 'submittedAt', header: t('common.date'), render: (r) => fmtDate(r.submittedAt) },
-    { key: 'neededBy', header: t('outlet.replenishment.neededBy'), render: (r) => fmtDate(r.neededBy) },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="replenishment" status={r.status} /> },
+    {
+      key: 'neededBy',
+      header: t('outlet.replenishment.neededBy'),
+      render: (r) => fmtDate(r.neededBy),
+    },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="replenishment" status={r.status} />,
+    },
     {
       key: 'action',
       header: '',
@@ -142,7 +171,10 @@ export function ApprovalQueuePanel() {
             variant="outline"
             leftIcon={<PlayCircle className="size-4" />}
             loading={processingId === r.id}
-            onClick={(e) => { e.stopPropagation(); handleProcess(r); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleProcess(r);
+            }}
           >
             {t('warehouse.approvalQueue.process')}
           </Button>
@@ -154,7 +186,9 @@ export function ApprovalQueuePanel() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-text-primary">{t('warehouse.approvalQueue.pendingTitle')}</h2>
+        <h2 className="text-sm font-semibold text-text-primary">
+          {t('warehouse.approvalQueue.pendingTitle')}
+        </h2>
         <DataTable
           columns={columns}
           data={{ rows, total: rows.length, page: 1, pageSize: Math.max(rows.length, 1) }}
@@ -166,17 +200,26 @@ export function ApprovalQueuePanel() {
         />
         {error && (
           <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={reload}>{t('common.retry')}</Button>
+            <Button variant="outline" size="sm" onClick={reload}>
+              {t('common.retry')}
+            </Button>
           </div>
         )}
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-text-primary">{t('warehouse.approvalQueue.approvedTitle')}</h2>
+        <h2 className="text-sm font-semibold text-text-primary">
+          {t('warehouse.approvalQueue.approvedTitle')}
+        </h2>
         <p className="text-sm text-text-muted">{t('warehouse.approvalQueue.approvedHint')}</p>
         <DataTable
           columns={approvedColumns}
-          data={{ rows: approvedRows, total: approvedRows.length, page: 1, pageSize: Math.max(approvedRows.length, 1) }}
+          data={{
+            rows: approvedRows,
+            total: approvedRows.length,
+            page: 1,
+            pageSize: Math.max(approvedRows.length, 1),
+          }}
           keyField={(r) => r.id}
           loading={approvedLoading}
           error={approvedError}
@@ -184,12 +227,19 @@ export function ApprovalQueuePanel() {
         />
         {approvedError && (
           <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={reloadApproved}>{t('common.retry')}</Button>
+            <Button variant="outline" size="sm" onClick={reloadApproved}>
+              {t('common.retry')}
+            </Button>
           </div>
         )}
       </div>
 
-      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.requestNumber ?? ''} size="lg">
+      <Modal
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title={detail?.requestNumber ?? ''}
+        size="lg"
+      >
         {detail && (
           <ReplenishmentApproveForm
             replenishment={detail}

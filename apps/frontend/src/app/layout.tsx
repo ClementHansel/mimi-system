@@ -5,11 +5,17 @@ import { I18nProvider } from '@/lib/i18n';
 import { AppShell } from '@/components/layout/AppShell';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
-const manrope = Manrope({ subsets: ['latin'], variable: '--font-manrope', weight: ['600', '700', '800'], display: 'swap' });
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-manrope',
+  weight: ['600', '700', '800'],
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Mimi Chicken OS',
-  description: 'Sistem operasional Mimi Chicken — POS, logistik, SDM, dan akuntansi untuk gudang pusat dan jaringan outlet.',
+  description:
+    'Sistem operasional Mimi Chicken — POS, logistik, SDM, dan akuntansi untuk gudang pusat dan jaringan outlet.',
   // Renders <link rel="manifest" href="/manifest.json"> — Next's App Router
   // metadata API is how the root layout injects a <head> tag (there's no
   // JSX <head> element to hand-write one into). Required for installability

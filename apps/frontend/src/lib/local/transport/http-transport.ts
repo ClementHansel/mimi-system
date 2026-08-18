@@ -7,7 +7,13 @@
  * enters this layer (a device with an expired user session must still be
  * able to drain its outbox).
  */
-import type { SyncHelloAck, SyncHelloRequest, SyncPullResult, SyncPushAck, SyncPushBatch } from '@mimi/sync-protocol';
+import type {
+  SyncHelloAck,
+  SyncHelloRequest,
+  SyncPullResult,
+  SyncPushAck,
+  SyncPushBatch,
+} from '@mimi/sync-protocol';
 import type { HeartbeatAck, HeartbeatPayload, SyncHealth, SyncTransport } from './types';
 import { HEALTH_PROBE_TIMEOUT_MS } from '../constants';
 
@@ -19,7 +25,8 @@ function joinUrl(base: string, path: string): string {
 
 async function fetchJson<T>(url: string, init: RequestInit, timeoutMs?: number): Promise<T> {
   const controller = timeoutMs ? new AbortController() : undefined;
-  const timer = timeoutMs && controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  const timer =
+    timeoutMs && controller ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
   try {
     const res = await fetch(url, { ...init, signal: controller?.signal });
     if (!res.ok) {
@@ -43,7 +50,11 @@ export function createHttpTransport(deviceToken: () => string | null): SyncTrans
 
   return {
     async health(baseUrl) {
-      return fetchJson<SyncHealth>(joinUrl(baseUrl, '/sync/v1/health'), { method: 'GET' }, HEALTH_PROBE_TIMEOUT_MS);
+      return fetchJson<SyncHealth>(
+        joinUrl(baseUrl, '/sync/v1/health'),
+        { method: 'GET' },
+        HEALTH_PROBE_TIMEOUT_MS,
+      );
     },
 
     async hello(baseUrl, req: SyncHelloRequest) {

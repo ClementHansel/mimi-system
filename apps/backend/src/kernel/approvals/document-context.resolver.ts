@@ -54,12 +54,13 @@ function anyOfLeaveApprovers(): readonly RoleKey[] {
   return [RoleKey.SUPERVISOR, RoleKey.HR_ADMIN];
 }
 
-const ROLE_OVERRIDES: Partial<Record<ApprovalDocumentType, Partial<Record<number, RoleOverride>>>> = {
-  [ApprovalDocumentType.STOCK_OPNAME]: { 1: byLocationTypeVariant },
-  [ApprovalDocumentType.WASTE]: { 1: byLocationTypeVariant },
-  [ApprovalDocumentType.RETURN]: { 1: byReturnDirection },
-  [ApprovalDocumentType.LEAVE_REQUEST]: { 1: anyOfLeaveApprovers },
-};
+const ROLE_OVERRIDES: Partial<Record<ApprovalDocumentType, Partial<Record<number, RoleOverride>>>> =
+  {
+    [ApprovalDocumentType.STOCK_OPNAME]: { 1: byLocationTypeVariant },
+    [ApprovalDocumentType.WASTE]: { 1: byLocationTypeVariant },
+    [ApprovalDocumentType.RETURN]: { 1: byReturnDirection },
+    [ApprovalDocumentType.LEAVE_REQUEST]: { 1: anyOfLeaveApprovers },
+  };
 
 /** Every distinct role ever named by an override — used by property tests to assert nothing else changed. */
 export const IRREGULAR_CHAIN_DOCUMENT_TYPES: readonly ApprovalDocumentType[] = Object.keys(
@@ -121,7 +122,8 @@ export async function resolveDocumentContext(
       const direction = res.rows[0]?.direction;
       return {
         variant:
-          direction === ReturnDirection.OUTLET_TO_WAREHOUSE || direction === ReturnDirection.WAREHOUSE_TO_SUPPLIER
+          direction === ReturnDirection.OUTLET_TO_WAREHOUSE ||
+          direction === ReturnDirection.WAREHOUSE_TO_SUPPLIER
             ? direction
             : undefined,
       };
@@ -131,7 +133,9 @@ export async function resolveDocumentContext(
   }
 }
 
-function locationTypeToVariant(locationType: string | undefined): 'outlet' | 'warehouse' | undefined {
+function locationTypeToVariant(
+  locationType: string | undefined,
+): 'outlet' | 'warehouse' | undefined {
   if (locationType === LocationType.WAREHOUSE) return 'warehouse';
   if (locationType === LocationType.OUTLET) return 'outlet';
   return undefined;
@@ -160,7 +164,8 @@ export async function resolveDocumentContextsBatch(
           WHERE so.id = ANY($1::uuid[])`,
         [documentIds],
       );
-      for (const row of res.rows) result.set(row.id, { variant: locationTypeToVariant(row.location_type) });
+      for (const row of res.rows)
+        result.set(row.id, { variant: locationTypeToVariant(row.location_type) });
       return result;
     }
     case ApprovalDocumentType.WASTE: {
@@ -171,7 +176,8 @@ export async function resolveDocumentContextsBatch(
           WHERE w.id = ANY($1::uuid[])`,
         [documentIds],
       );
-      for (const row of res.rows) result.set(row.id, { variant: locationTypeToVariant(row.location_type) });
+      for (const row of res.rows)
+        result.set(row.id, { variant: locationTypeToVariant(row.location_type) });
       return result;
     }
     case ApprovalDocumentType.RETURN: {
@@ -183,7 +189,8 @@ export async function resolveDocumentContextsBatch(
         const direction = row.direction;
         result.set(row.id, {
           variant:
-            direction === ReturnDirection.OUTLET_TO_WAREHOUSE || direction === ReturnDirection.WAREHOUSE_TO_SUPPLIER
+            direction === ReturnDirection.OUTLET_TO_WAREHOUSE ||
+            direction === ReturnDirection.WAREHOUSE_TO_SUPPLIER
               ? direction
               : undefined,
         });

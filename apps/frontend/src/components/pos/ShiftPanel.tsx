@@ -75,7 +75,13 @@ export function ShiftPanel({
         {t('pos.closeShift')}
       </Button>
 
-      <ShiftCloseModal open={closeOpen} onClose={() => setCloseOpen(false)} runtime={runtime} actor={actor} shift={shift} />
+      <ShiftCloseModal
+        open={closeOpen}
+        onClose={() => setCloseOpen(false)}
+        runtime={runtime}
+        actor={actor}
+        shift={shift}
+      />
     </div>
   );
 }

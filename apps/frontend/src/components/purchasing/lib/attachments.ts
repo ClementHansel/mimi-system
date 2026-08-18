@@ -32,15 +32,26 @@ export interface UploadAttachmentArgs {
 
 /** Returns the confirmed attachment's UUID, ready to embed in a PO receipt body. */
 export async function uploadAttachment(args: UploadAttachmentArgs): Promise<string> {
-  const presign = await api.post<{ attachmentId: string; uploadUrl: string; objectKey: string; expiresAt: string }>(
-    '/attachments/presign',
-    { fileName: args.fileName, mimeType: args.mimeType, sizeBytes: args.file.size, kind: args.kind },
-  );
+  const presign = await api.post<{
+    attachmentId: string;
+    uploadUrl: string;
+    objectKey: string;
+    expiresAt: string;
+  }>('/attachments/presign', {
+    fileName: args.fileName,
+    mimeType: args.mimeType,
+    sizeBytes: args.file.size,
+    kind: args.kind,
+  });
 
   const target = /^https?:\/\//i.test(presign.uploadUrl)
     ? presign.uploadUrl
     : `${API_BASE_URL}${presign.uploadUrl.startsWith('/') ? '' : '/'}${presign.uploadUrl}`;
-  const putRes = await fetch(target, { method: 'PUT', body: args.file, headers: { 'Content-Type': args.mimeType } });
+  const putRes = await fetch(target, {
+    method: 'PUT',
+    body: args.file,
+    headers: { 'Content-Type': args.mimeType },
+  });
   if (!putRes.ok) throw new Error(`Upload gagal (${putRes.status})`);
 
   const sha256 = await sha256Hex(args.file);

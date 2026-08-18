@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { SyncEntity, SyncOriginType } from '@mimi/shared';
-import { AUTHORITY, canOriginate, isKnownSyncEntity, resolveDirection, resolvePullScope, wireEligibleEntities } from './authority-matrix';
+import {
+  AUTHORITY,
+  canOriginate,
+  isKnownSyncEntity,
+  resolveDirection,
+  resolvePullScope,
+  wireEligibleEntities,
+} from './authority-matrix';
 
 describe('AUTHORITY coverage', () => {
   it('has an entry for every SyncEntity value', () => {
@@ -62,7 +69,10 @@ describe('canOriginate — known non-wire entities (class D/X/T) always reject a
     for (const table of amendmentTables) {
       for (const tier of [SyncOriginType.DEVICE, SyncOriginType.NODE, SyncOriginType.CLOUD]) {
         for (const op of plausibleOps) {
-          expect(canOriginate(tier, table, op), `${tier} should never originate ${table}.${op}`).toBe(false);
+          expect(
+            canOriginate(tier, table, op),
+            `${tier} should never originate ${table}.${op}`,
+          ).toBe(false);
         }
       }
     }
@@ -78,7 +88,7 @@ describe('canOriginate — class F (fact) entities are push-only from device/nod
     expect(canOriginate(SyncOriginType.DEVICE, SyncEntity.SALES, 'completed')).toBe(true);
   });
 
-  it('a device may not push an op outside the entity\'s vocabulary', () => {
+  it("a device may not push an op outside the entity's vocabulary", () => {
     expect(canOriginate(SyncOriginType.DEVICE, SyncEntity.SALES, 'refunded')).toBe(false);
   });
 
@@ -89,11 +99,19 @@ describe('canOriginate — class F (fact) entities are push-only from device/nod
 
 describe('canOriginate — class B (bidirectional) entities: push side is device-eligible, decision side is not', () => {
   it('a device may push a replenishment submission', () => {
-    expect(canOriginate(SyncOriginType.DEVICE, SyncEntity.REPLENISHMENT_REQUESTS, 'submitted')).toBe(true);
+    expect(
+      canOriginate(SyncOriginType.DEVICE, SyncEntity.REPLENISHMENT_REQUESTS, 'submitted'),
+    ).toBe(true);
   });
 
   it('a device may push the outlet-supervisor offline-provisional approval op', () => {
-    expect(canOriginate(SyncOriginType.DEVICE, SyncEntity.REPLENISHMENT_REQUESTS, 'supervisor_approved_offline')).toBe(true);
+    expect(
+      canOriginate(
+        SyncOriginType.DEVICE,
+        SyncEntity.REPLENISHMENT_REQUESTS,
+        'supervisor_approved_offline',
+      ),
+    ).toBe(true);
   });
 
   it('stock_opname adjudication (approved/rejected) is cloud-only, never device-originated', () => {
@@ -102,8 +120,12 @@ describe('canOriginate — class B (bidirectional) entities: push side is device
   });
 
   it('payment_verifications is pull-only: no device push op exists at all', () => {
-    expect(canOriginate(SyncOriginType.DEVICE, SyncEntity.PAYMENT_VERIFICATIONS, 'verified')).toBe(false);
-    expect(canOriginate(SyncOriginType.CLOUD, SyncEntity.PAYMENT_VERIFICATIONS, 'verified')).toBe(true);
+    expect(canOriginate(SyncOriginType.DEVICE, SyncEntity.PAYMENT_VERIFICATIONS, 'verified')).toBe(
+      false,
+    );
+    expect(canOriginate(SyncOriginType.CLOUD, SyncEntity.PAYMENT_VERIFICATIONS, 'verified')).toBe(
+      true,
+    );
   });
 });
 

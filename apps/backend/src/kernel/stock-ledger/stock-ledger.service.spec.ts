@@ -3,7 +3,11 @@ import { MovementType, ReconciliationTier } from '@mimi/shared';
 import { EventBus } from '../events/event-bus.service';
 import { StockLedgerService } from './stock-ledger.service';
 import { StockMovedEventEmitter } from './stock-ledger-events';
-import { StockInsufficientError, StockMovementValidationError, type PostMovementInput } from './stock-ledger.types';
+import {
+  StockInsufficientError,
+  StockMovementValidationError,
+  type PostMovementInput,
+} from './stock-ledger.types';
 
 /**
  * Faithful-enough in-memory double of the exact query shapes
@@ -27,7 +31,13 @@ class FakePoolClient {
     ref_id: string | null;
     sync_event_id: string | null;
   }[] = [];
-  reconciliations: { id: string; location_id: string; storage_area_id: string; item_id: string; tier: string }[] = [];
+  reconciliations: {
+    id: string;
+    location_id: string;
+    storage_area_id: string;
+    item_id: string;
+    tier: string;
+  }[] = [];
   private seq = 0;
 
   private key(locationId: string, storageAreaId: string, itemId: string): string {
@@ -73,10 +83,25 @@ class FakePoolClient {
     }
 
     if (s.startsWith('INSERT INTO stock_movements')) {
-      const [locationId, storageAreaId, itemId, movementType, qty, unitCost, refType, refId, , , , , syncEventId] =
-        params as (string | null)[];
+      const [
+        locationId,
+        storageAreaId,
+        itemId,
+        movementType,
+        qty,
+        unitCost,
+        refType,
+        refId,
+        ,
+        ,
+        ,
+        ,
+        syncEventId,
+      ] = params as (string | null)[];
       if (syncEventId && this.movements.some((m) => m.sync_event_id === syncEventId)) {
-        throw new Error('duplicate key value violates unique constraint "stock_movements_sync_event_id_key"');
+        throw new Error(
+          'duplicate key value violates unique constraint "stock_movements_sync_event_id_key"',
+        );
       }
       const id = `mov-${++this.seq}`;
       this.movements.push({
@@ -97,7 +122,13 @@ class FakePoolClient {
     if (s.startsWith('INSERT INTO stock_reconciliations')) {
       const [locationId, storageAreaId, itemId, tier] = params as string[];
       const id = `rec-${++this.seq}`;
-      this.reconciliations.push({ id, location_id: locationId, storage_area_id: storageAreaId, item_id: itemId, tier });
+      this.reconciliations.push({
+        id,
+        location_id: locationId,
+        storage_area_id: storageAreaId,
+        item_id: itemId,
+        tier,
+      });
       return { rows: [{ id }] as T[] };
     }
 
@@ -135,24 +166,24 @@ describe('StockLedgerService', () => {
   describe('validation', () => {
     it('rejects a zero qty before touching the database', async () => {
       const service = makeService();
-      await expect(service.post(client as never, [movement({ qty: '0.000' })], 'strict')).rejects.toThrow(
-        StockMovementValidationError,
-      );
+      await expect(
+        service.post(client as never, [movement({ qty: '0.000' })], 'strict'),
+      ).rejects.toThrow(StockMovementValidationError);
       expect(client.movements).toHaveLength(0);
     });
 
     it('rejects a negative qty', async () => {
       const service = makeService();
-      await expect(service.post(client as never, [movement({ qty: '-1.000' })], 'strict')).rejects.toThrow(
-        StockMovementValidationError,
-      );
+      await expect(
+        service.post(client as never, [movement({ qty: '-1.000' })], 'strict'),
+      ).rejects.toThrow(StockMovementValidationError);
     });
 
     it('rejects a malformed qty decimal string', async () => {
       const service = makeService();
-      await expect(service.post(client as never, [movement({ qty: 'not-a-number' })], 'strict')).rejects.toThrow(
-        StockMovementValidationError,
-      );
+      await expect(
+        service.post(client as never, [movement({ qty: 'not-a-number' })], 'strict'),
+      ).rejects.toThrow(StockMovementValidationError);
     });
   });
 
@@ -161,14 +192,22 @@ describe('StockLedgerService', () => {
       const service = makeService();
       const result = await service.post(client as never, [movement()], 'strict');
       expect(result.movements).toHaveLength(1);
-      expect(result.movements[0]).toMatchObject({ balanceAfter: '10.000', wentNegative: false, skippedAsDuplicate: false });
+      expect(result.movements[0]).toMatchObject({
+        balanceAfter: '10.000',
+        wentNegative: false,
+        skippedAsDuplicate: false,
+      });
       expect(client.balances.get('loc-1::area-1::item-1')).toBe('10.000');
     });
 
     it('accumulates balance across sequential movements at the same key', async () => {
       const service = makeService();
       await service.post(client as never, [movement({ refId: 'r1' })], 'strict');
-      const result = await service.post(client as never, [movement({ refId: 'r2', qty: '5.000' })], 'strict');
+      const result = await service.post(
+        client as never,
+        [movement({ refId: 'r2', qty: '5.000' })],
+        'strict',
+      );
       expect(result.movements[0].balanceAfter).toBe('15.000');
     });
 
@@ -188,7 +227,11 @@ describe('StockLedgerService', () => {
     it('strict mode rejects a movement that would drive the balance negative, writing nothing', async () => {
       const service = makeService();
       await expect(
-        service.post(client as never, [movement({ movementType: MovementType.USAGE_OUT, qty: '5.000' })], 'strict'),
+        service.post(
+          client as never,
+          [movement({ movementType: MovementType.USAGE_OUT, qty: '5.000' })],
+          'strict',
+        ),
       ).rejects.toThrow(StockInsufficientError);
       expect(client.movements).toHaveLength(0);
       expect(client.balances.size).toBe(0);
@@ -197,7 +240,11 @@ describe('StockLedgerService', () => {
     it('strict mode error carries ERR_STOCK_INSUFFICIENT and the offending key', async () => {
       const service = makeService();
       try {
-        await service.post(client as never, [movement({ movementType: MovementType.USAGE_OUT, qty: '5.000' })], 'strict');
+        await service.post(
+          client as never,
+          [movement({ movementType: MovementType.USAGE_OUT, qty: '5.000' })],
+          'strict',
+        );
         expect.fail('expected StockInsufficientError');
       } catch (err) {
         expect(err).toBeInstanceOf(StockInsufficientError);
@@ -263,7 +310,11 @@ describe('StockLedgerService', () => {
     it('replaying the exact same fact (ref_type/ref_id/item/area/type) is a no-op', async () => {
       const service = makeService();
       const first = await service.post(client as never, [movement({ refId: 'same-fact' })], 'fact');
-      const second = await service.post(client as never, [movement({ refId: 'same-fact' })], 'fact');
+      const second = await service.post(
+        client as never,
+        [movement({ refId: 'same-fact' })],
+        'fact',
+      );
 
       expect(first.movements[0].skippedAsDuplicate).toBe(false);
       expect(second.movements[0].skippedAsDuplicate).toBe(true);
@@ -298,7 +349,12 @@ describe('StockLedgerService', () => {
         client as never,
         [
           movement({ refId: 'multi-1', itemId: 'item-1', syncEventId: 'sync-evt-1' }),
-          movement({ refId: 'multi-1', itemId: 'item-2', storageAreaId: 'area-1', syncEventId: 'sync-evt-1' }),
+          movement({
+            refId: 'multi-1',
+            itemId: 'item-2',
+            storageAreaId: 'area-1',
+            syncEventId: 'sync-evt-1',
+          }),
         ],
         'strict',
       );
@@ -307,7 +363,11 @@ describe('StockLedgerService', () => {
 
     it('sets sync_event_id when it appears exactly once in the batch', async () => {
       const service = makeService();
-      await service.post(client as never, [movement({ refId: 'single-1', syncEventId: 'sync-evt-solo' })], 'strict');
+      await service.post(
+        client as never,
+        [movement({ refId: 'single-1', syncEventId: 'sync-evt-solo' })],
+        'strict',
+      );
       expect(client.movements[0].sync_event_id).toBe('sync-evt-solo');
     });
   });
@@ -355,7 +415,7 @@ describe('StockLedgerService', () => {
       expect(inbound.counterpartyLocationId).toBe('loc-warehouse');
     });
 
-    it('postTransfer posts both sides atomically and each side\'s balance reflects its own sign', async () => {
+    it("postTransfer posts both sides atomically and each side's balance reflects its own sign", async () => {
       const service = makeService();
       const result = await service.postTransfer(
         client as never,
@@ -410,7 +470,10 @@ describe('StockLedgerService', () => {
       );
 
       expect(handler).toHaveBeenCalledTimes(2);
-      expect(handler.mock.calls[1][0].payload).toMatchObject({ movementType: MovementType.USAGE_OUT, qtyDelta: '-4.000' });
+      expect(handler.mock.calls[1][0].payload).toMatchObject({
+        movementType: MovementType.USAGE_OUT,
+        qtyDelta: '-4.000',
+      });
     });
 
     it("a subscriber throwing does not prevent post() from resolving (EventBus's own fan-out-notifier contract)", async () => {
@@ -419,7 +482,9 @@ describe('StockLedgerService', () => {
         throw new Error('boom');
       });
       const service = makeService(bus);
-      await expect(service.post(client as never, [movement({ refId: 'evt-3' })], 'strict')).resolves.toBeDefined();
+      await expect(
+        service.post(client as never, [movement({ refId: 'evt-3' })], 'strict'),
+      ).resolves.toBeDefined();
     });
   });
 
@@ -434,7 +499,12 @@ describe('StockLedgerService', () => {
           if (sql.includes('FROM stock_movements')) {
             return {
               rows: client.movements
-                .filter((m) => m.location_id === 'loc-1' && m.storage_area_id === 'area-1' && m.item_id === 'item-1')
+                .filter(
+                  (m) =>
+                    m.location_id === 'loc-1' &&
+                    m.storage_area_id === 'area-1' &&
+                    m.item_id === 'item-1',
+                )
                 .map((m) => ({
                   id: m.id,
                   movement_type: m.movement_type,
@@ -464,7 +534,12 @@ describe('StockLedgerService', () => {
           if (sql.includes('SELECT id, movement_type')) {
             return {
               rows: client.movements
-                .filter((m) => m.location_id === 'loc-1' && m.storage_area_id === 'area-1' && m.item_id === 'item-1')
+                .filter(
+                  (m) =>
+                    m.location_id === 'loc-1' &&
+                    m.storage_area_id === 'area-1' &&
+                    m.item_id === 'item-1',
+                )
                 .map((m) => ({
                   id: m.id,
                   movement_type: m.movement_type,

@@ -86,7 +86,9 @@ describe('the five previously prose-only wire messages now have one frozen shape
       storage: { usedMb: 500, quotaMb: 100_000 },
       clockOffsetMs: 10,
       appVersion: '1.4.2',
-      deviceSummaries: [{ deviceId: 'device-1', lastSeenAt: '2026-08-17T09:30:50.000Z', queueDepth: 2 }],
+      deviceSummaries: [
+        { deviceId: 'device-1', lastSeenAt: '2026-08-17T09:30:50.000Z', queueDepth: 2 },
+      ],
     };
     expect(deviceHeartbeat.storage.usedMb).toBeLessThan(deviceHeartbeat.storage.quotaMb);
     expect(nodeHeartbeat.deviceSummaries).toHaveLength(1);
@@ -94,7 +96,10 @@ describe('the five previously prose-only wire messages now have one frozen shape
   });
 
   it('SyncHeartbeatAck (§4.6) — piggybacked, not a per-event ack', () => {
-    const ack: SyncHeartbeatAck = { confirmedThrough: { 'device-1': 5521 }, serverTime: '2026-08-17T09:31:02.500Z' };
+    const ack: SyncHeartbeatAck = {
+      confirmedThrough: { 'device-1': 5521 },
+      serverTime: '2026-08-17T09:31:02.500Z',
+    };
     expect(ack.confirmedThrough['device-1']).toBe(5521);
   });
 
@@ -113,8 +118,18 @@ describe('the five previously prose-only wire messages now have one frozen shape
   });
 
   it('SyncHealthResponse (§4.1/§4.8) — the upstream-probe shape', () => {
-    const cloudHealth: SyncHealthResponse = { ok: true, protocolV: 1, serverTime: '2026-08-17T09:31:02.500Z', tier: 'cloud' };
-    const nodeHealth: SyncHealthResponse = { ok: true, protocolV: 1, serverTime: '2026-08-17T09:31:02.500Z', tier: 'node' };
+    const cloudHealth: SyncHealthResponse = {
+      ok: true,
+      protocolV: 1,
+      serverTime: '2026-08-17T09:31:02.500Z',
+      tier: 'cloud',
+    };
+    const nodeHealth: SyncHealthResponse = {
+      ok: true,
+      protocolV: 1,
+      serverTime: '2026-08-17T09:31:02.500Z',
+      tier: 'node',
+    };
     expect(cloudHealth.tier).not.toBe(nodeHealth.tier);
   });
 
@@ -138,7 +153,7 @@ describe('the five previously prose-only wire messages now have one frozen shape
   });
 });
 
-describe('SyncHelloAck.cursorExpired — the flag §4.5\'s bootstrap-trigger prose already relied on', () => {
+describe("SyncHelloAck.cursorExpired — the flag §4.5's bootstrap-trigger prose already relied on", () => {
   it('an ordinary hello:ack omits the flag entirely', () => {
     const ack: SyncHelloAck = {
       ok: true,
@@ -146,7 +161,12 @@ describe('SyncHelloAck.cursorExpired — the flag §4.5\'s bootstrap-trigger pro
       serverTime: '2026-08-17T09:31:02.500Z',
       resumeCursor: 184223,
       confirmedThrough: { 'device-1': 5521 },
-      scope: { globalMaster: true, locationIds: ['loc-1'], projectionRole: 'pos_device', excludeOrigin: 'device-1' },
+      scope: {
+        globalMaster: true,
+        locationIds: ['loc-1'],
+        projectionRole: 'pos_device',
+        excludeOrigin: 'device-1',
+      },
     };
     expect(ack.cursorExpired).toBeUndefined();
   });
@@ -158,7 +178,12 @@ describe('SyncHelloAck.cursorExpired — the flag §4.5\'s bootstrap-trigger pro
       serverTime: '2026-08-17T09:31:02.500Z',
       resumeCursor: 184223,
       confirmedThrough: { 'device-1': 5521 },
-      scope: { globalMaster: true, locationIds: ['loc-1'], projectionRole: 'pos_device', excludeOrigin: 'device-1' },
+      scope: {
+        globalMaster: true,
+        locationIds: ['loc-1'],
+        projectionRole: 'pos_device',
+        excludeOrigin: 'device-1',
+      },
       cursorExpired: true,
     };
     expect(ack.cursorExpired).toBe(true);

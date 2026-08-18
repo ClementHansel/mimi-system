@@ -48,14 +48,19 @@ export interface RlsSessionContext {
 }
 
 /** Same session-setup contract `RlsContextGuard` asserts per real request — see the approvals harness's doc comment for the full rationale. */
-export async function withRollbackAs<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollbackAs<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -83,7 +88,11 @@ export async function loadDashboardFixtures(): Promise<DashboardFixtures> {
 
   // A Supervisor whose assigned outlet actually has at least one completed sale, so the
   // "sees only their own figures" assertion is checking a non-trivial (non-zero) number.
-  const supervisor = await pool.query<{ user_id: string; location_id: string; location_name: string }>(
+  const supervisor = await pool.query<{
+    user_id: string;
+    location_id: string;
+    location_name: string;
+  }>(
     `SELECT ul.user_id, ul.location_id, l.name AS location_name
        FROM user_locations ul
        JOIN users u ON u.id = ul.user_id
@@ -103,7 +112,9 @@ export async function loadDashboardFixtures(): Promise<DashboardFixtures> {
   );
 
   if (!owner.rows[0] || !supervisor.rows[0] || !other.rows[0]) {
-    throw new Error('Seed data is missing a required fixture (owner user / supervisor with sales at their outlet / a second outlet with sales) — fixtures require the full seed to have run.');
+    throw new Error(
+      'Seed data is missing a required fixture (owner user / supervisor with sales at their outlet / a second outlet with sales) — fixtures require the full seed to have run.',
+    );
   }
 
   return {
@@ -141,11 +152,18 @@ export async function rawRevenueCompanyWide(): Promise<string> {
  * `mv_sales_daily`'s own SELECT body cannot hide from this assertion.
  * `locationId` narrows to one outlet; omit for the company-wide total.
  */
-export async function rawRevenueForRange(from: string, to: string, locationId?: string): Promise<string> {
+export async function rawRevenueForRange(
+  from: string,
+  to: string,
+  locationId?: string,
+): Promise<string> {
   const pool = getOwnerPool();
   const posArgs: unknown[] = [from, to];
   let posWhere = '';
-  if (locationId) { posArgs.push(locationId); posWhere = ` AND location_id = $3`; }
+  if (locationId) {
+    posArgs.push(locationId);
+    posWhere = ` AND location_id = $3`;
+  }
   const pos = await pool.query<{ total: string }>(
     `SELECT COALESCE(SUM(total), 0)::text AS total FROM sales
       WHERE status = 'completed' AND (occurred_at AT TIME ZONE 'Asia/Makassar')::date BETWEEN $1 AND $2 ${posWhere}`,
@@ -154,7 +172,10 @@ export async function rawRevenueForRange(from: string, to: string, locationId?: 
 
   const onlineArgs: unknown[] = [from, to];
   let onlineWhere = '';
-  if (locationId) { onlineArgs.push(locationId); onlineWhere = ` AND location_id = $3`; }
+  if (locationId) {
+    onlineArgs.push(locationId);
+    onlineWhere = ` AND location_id = $3`;
+  }
   const online = await pool.query<{ total: string }>(
     `SELECT COALESCE(SUM(net_received), 0)::text AS total FROM online_orders
       WHERE status = 'completed' AND order_date BETWEEN $1 AND $2 ${onlineWhere}`,
@@ -167,7 +188,12 @@ export async function rawRevenueForRange(from: string, to: string, locationId?: 
 /** Runs the 4 dashboard matviews' `REFRESH MATERIALIZED VIEW CONCURRENTLY` over the OWNER (superuser) pool — sidesteps the "does `mimi_app` have REFRESH privilege" open question (flagged in the ticket report) so this test suite's assertions do not depend on that being resolved yet. */
 export async function refreshMatviewsAsOwner(): Promise<void> {
   const pool = getOwnerPool();
-  for (const view of ['mv_sales_daily', 'mv_item_usage_daily', 'mv_employee_kpi_daily', 'mv_delivery_recap_daily']) {
+  for (const view of [
+    'mv_sales_daily',
+    'mv_item_usage_daily',
+    'mv_employee_kpi_daily',
+    'mv_delivery_recap_daily',
+  ]) {
     await pool.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY ${view}`);
   }
 }

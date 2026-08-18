@@ -123,7 +123,15 @@ export class AssetsService {
 
   async list(
     client: PoolClient,
-    query: { locationId?: string; category?: string; status?: string; condition?: string; q?: string; page?: number; pageSize?: number },
+    query: {
+      locationId?: string;
+      category?: string;
+      status?: string;
+      condition?: string;
+      q?: string;
+      page?: number;
+      pageSize?: number;
+    },
     user: JwtAccessPayload,
     locationScope: string[] | null,
   ): Promise<Paginated<AssetDto>> {
@@ -154,7 +162,10 @@ export class AssetsService {
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM assets a ${whereSql}`, params);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM assets a ${whereSql}`,
+      params,
+    );
     const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
 
     params.push(pageSize, (page - 1) * pageSize);
@@ -163,7 +174,9 @@ export class AssetsService {
       params,
     );
 
-    const rows = await Promise.all(rowsRes.rows.map((r) => this.map(client, r, user, locationScope)));
+    const rows = await Promise.all(
+      rowsRes.rows.map((r) => this.map(client, r, user, locationScope)),
+    );
     return { rows, total, page, pageSize };
   }
 
@@ -349,8 +362,12 @@ export class AssetsService {
 
       if (sets.length > 0) {
         params.push(id);
-        const res = await client.query(`UPDATE assets SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
-        if (res.rowCount === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Asset not found' });
+        const res = await client.query(
+          `UPDATE assets SET ${sets.join(', ')} WHERE id = $${params.length}`,
+          params,
+        );
+        if (res.rowCount === 0)
+          throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Asset not found' });
       }
 
       const updatedRow = await this.getRawById(client, id);

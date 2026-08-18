@@ -43,7 +43,9 @@ function mintAttachmentId(): UUID {
 
 export class AttachmentCapExceededError extends Error {
   constructor() {
-    super('ERR_STORAGE_FULL: attachment cap reached (200MB / 500 blobs) with no uploaded evidence to evict — evidence-requiring action blocked (§4.7/§9 T-09)');
+    super(
+      'ERR_STORAGE_FULL: attachment cap reached (200MB / 500 blobs) with no uploaded evidence to evict — evidence-requiring action blocked (§4.7/§9 T-09)',
+    );
     this.name = 'AttachmentCapExceededError';
   }
 }
@@ -80,12 +82,24 @@ export interface AttachmentRef {
  * screen) must surface this as a blocking storage error, never silently
  * drop the requirement (T-09).
  */
-export async function captureAttachment(db: LocalDatabase, blob: Blob, mime: string, kind: string): Promise<AttachmentRef> {
+export async function captureAttachment(
+  db: LocalDatabase,
+  blob: Blob,
+  mime: string,
+  kind: string,
+): Promise<AttachmentRef> {
   const sha256 = await sha256Hex(blob);
   const store = db.store<AttachmentRecord>('attachments');
 
   const existing = await store.get(sha256);
-  if (existing) return { sha256, attachmentId: existing.attachmentId, size: existing.size, mime: existing.mime, kind: existing.kind };
+  if (existing)
+    return {
+      sha256,
+      attachmentId: existing.attachmentId,
+      size: existing.size,
+      mime: existing.mime,
+      kind: existing.kind,
+    };
 
   const all = await store.getAll();
   const totalBytes = all.reduce((sum, a) => sum + a.size, 0);
@@ -119,7 +133,10 @@ export async function captureAttachment(db: LocalDatabase, blob: Blob, mime: str
  * (consistent with every other store in this package at Tier-1 volumes,
  * `ATTACHMENT_CAP_COUNT` = 500 rows max): a linear scan over `getAll()`.
  */
-export async function getAttachmentByAttachmentId(db: LocalDatabase, attachmentId: UUID): Promise<AttachmentRecord | undefined> {
+export async function getAttachmentByAttachmentId(
+  db: LocalDatabase,
+  attachmentId: UUID,
+): Promise<AttachmentRecord | undefined> {
   const all = await db.store<AttachmentRecord>('attachments').getAll();
   return all.find((a) => a.attachmentId === attachmentId);
 }
@@ -130,7 +147,9 @@ async function evictUploaded(
   neededBytes: number,
   neededSlots: number,
 ): Promise<boolean> {
-  const uploaded = all.filter((a) => a.uploadStatus === 'uploaded').sort((a, b) => (a.uploadedAt ?? '').localeCompare(b.uploadedAt ?? ''));
+  const uploaded = all
+    .filter((a) => a.uploadStatus === 'uploaded')
+    .sort((a, b) => (a.uploadedAt ?? '').localeCompare(b.uploadedAt ?? ''));
   let freedBytes = 0;
   let freedSlots = 0;
   for (const a of uploaded) {
@@ -168,7 +187,10 @@ export interface AttachmentUploader {
  * header as the row's id, or the architect should amend the endpoint
  * response contract to require echoing the SAME id back, never a fresh one.
  */
-export function createHttpAttachmentUploader(cloudBaseUrl: string, deviceToken: () => string | null): AttachmentUploader {
+export function createHttpAttachmentUploader(
+  cloudBaseUrl: string,
+  deviceToken: () => string | null,
+): AttachmentUploader {
   return {
     async upload(sha256, attachmentId, blob) {
       const token = deviceToken();
@@ -188,7 +210,10 @@ export function createHttpAttachmentUploader(cloudBaseUrl: string, deviceToken: 
 }
 
 /** Drains every `pending` attachment cloud-direct. Best-effort — a failure just leaves it `pending` for the next drain. */
-export async function drainAttachmentUploads(db: LocalDatabase, uploader: AttachmentUploader): Promise<{ uploaded: number; failed: number }> {
+export async function drainAttachmentUploads(
+  db: LocalDatabase,
+  uploader: AttachmentUploader,
+): Promise<{ uploaded: number; failed: number }> {
   const store = db.store<AttachmentRecord>('attachments');
   const pending = (await store.getAll()).filter((a) => a.uploadStatus === 'pending');
   let uploaded = 0;

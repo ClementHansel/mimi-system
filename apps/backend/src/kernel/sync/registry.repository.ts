@@ -58,7 +58,9 @@ export class RegistryRepository {
    * with the exact same `hashDeviceToken` this file's sibling
    * `device-auth.guard.ts` exports, so one hash function serves both tables.
    */
-  async findNodeByTokenHash(tokenHash: string): Promise<{ id: UUID; locationId: UUID; status: string } | undefined> {
+  async findNodeByTokenHash(
+    tokenHash: string,
+  ): Promise<{ id: UUID; locationId: UUID; status: string } | undefined> {
     return withSystemContext(this.pool, async (client) => {
       const res = await client.query<{ id: UUID; location_id: UUID; status: string }>(
         `SELECT id, location_id, status FROM branch_nodes WHERE node_token_hash = $1`,
@@ -92,12 +94,16 @@ export class RegistryRepository {
   }
 
   async findDeviceById(client: DbClient, id: UUID): Promise<DeviceIdentity | undefined> {
-    const res = await client.query<{ id: UUID; location_id: UUID; node_id: UUID | null; status: DeviceRow['status'] }>(
-      `SELECT id, location_id, node_id, status FROM devices WHERE id = $1`,
-      [id],
-    );
+    const res = await client.query<{
+      id: UUID;
+      location_id: UUID;
+      node_id: UUID | null;
+      status: DeviceRow['status'];
+    }>(`SELECT id, location_id, node_id, status FROM devices WHERE id = $1`, [id]);
     const row = res.rows[0];
-    return row && { id: row.id, locationId: row.location_id, nodeId: row.node_id, status: row.status };
+    return (
+      row && { id: row.id, locationId: row.location_id, nodeId: row.node_id, status: row.status }
+    );
   }
 
   async touchDeviceSync(client: DbClient, deviceId: UUID, outboxDepth: number): Promise<void> {
@@ -114,7 +120,10 @@ export class RegistryRepository {
 
   /** `settings.value` for one key, or `fallback` if the row is missing (fresh install). */
   async getSetting<T>(client: DbClient, key: string, fallback: T): Promise<T> {
-    const res = await client.query<{ value: unknown }>(`SELECT value FROM settings WHERE key = $1`, [key]);
+    const res = await client.query<{ value: unknown }>(
+      `SELECT value FROM settings WHERE key = $1`,
+      [key],
+    );
     return res.rows[0] ? (res.rows[0].value as T) : fallback;
   }
 

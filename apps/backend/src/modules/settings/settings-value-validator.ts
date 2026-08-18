@@ -19,7 +19,10 @@ type Schema =
   | { kind: 'boolean' };
 
 const SCHEMAS: Partial<Record<SettingsKey, Schema>> = {
-  'company.profile': { kind: 'object', fields: { name: 'string', address: 'string', city: 'string', logoAttachmentId: 'string|null' } },
+  'company.profile': {
+    kind: 'object',
+    fields: { name: 'string', address: 'string', city: 'string', logoAttachmentId: 'string|null' },
+  },
   'approval.threshold.void': { kind: 'object', fields: { managerAboveIdr: 'string' } },
   'approval.threshold.po': { kind: 'object', fields: { ownerAboveIdr: 'string' } },
   'approval.threshold.payment': { kind: 'object', fields: { ownerAboveIdr: 'string' } },
@@ -27,7 +30,15 @@ const SCHEMAS: Partial<Record<SettingsKey, Schema>> = {
   'hr.geofence_radius_m': { kind: 'number' },
   'hr.late_grace_minutes': { kind: 'number' },
   'hr.overtime': { kind: 'object', fields: { ratePerHour: 'string', minMinutes: 'number' } },
-  'hr.deduction_rates': { kind: 'object', fields: { perAbsentDay: 'string', perLateMinute: 'string', sickPaid: 'boolean', permissionPaid: 'boolean' } },
+  'hr.deduction_rates': {
+    kind: 'object',
+    fields: {
+      perAbsentDay: 'string',
+      perLateMinute: 'string',
+      sickPaid: 'boolean',
+      permissionPaid: 'boolean',
+    },
+  },
   'leave.quotas': { kind: 'object', fields: { annual: 'number', marriage: 'number' } },
   'payroll.so_shortfall': { kind: 'object', fields: { mode: 'string', splitRule: 'string' } },
   'pos.cash_variance_propose_above': { kind: 'string' },
@@ -51,9 +62,12 @@ export function validateSettingValue(key: SettingsKey, value: unknown): string[]
   const schema = SCHEMAS[key];
   if (!schema) return [];
 
-  if (schema.kind === 'string') return typeof value === 'string' ? [] : [`'${key}' must be a string`];
-  if (schema.kind === 'number') return typeof value === 'number' ? [] : [`'${key}' must be a number`];
-  if (schema.kind === 'boolean') return typeof value === 'boolean' ? [] : [`'${key}' must be a boolean`];
+  if (schema.kind === 'string')
+    return typeof value === 'string' ? [] : [`'${key}' must be a string`];
+  if (schema.kind === 'number')
+    return typeof value === 'number' ? [] : [`'${key}' must be a number`];
+  if (schema.kind === 'boolean')
+    return typeof value === 'boolean' ? [] : [`'${key}' must be a boolean`];
 
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return [`'${key}' must be an object with fields: ${Object.keys(schema.fields).join(', ')}`];

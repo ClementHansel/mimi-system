@@ -24,7 +24,13 @@ function unreachableTransport(): SyncTransport {
   const fail = () => {
     throw new Error('network disabled — this transport must never be called by a local commit');
   };
-  return { health: fail, hello: fail, push: fail, pull: fail, heartbeat: fail } as unknown as SyncTransport;
+  return {
+    health: fail,
+    hello: fail,
+    push: fail,
+    pull: fail,
+    heartbeat: fail,
+  } as unknown as SyncTransport;
 }
 
 const noopConnectivity: ConnectivityReporter = {
@@ -91,18 +97,38 @@ describe('Absen check-in/out — offline queuing via commitAttendanceCheckIn/Out
     await runtime.init();
 
     const attendanceId = crypto.randomUUID();
-    const selfieRef = await runtime.captureEvidence(new Blob(['a'], { type: 'image/jpeg' }), 'image/jpeg', 'selfie');
+    const selfieRef = await runtime.captureEvidence(
+      new Blob(['a'], { type: 'image/jpeg' }),
+      'image/jpeg',
+      'selfie',
+    );
 
     await runtime.commitAttendanceCheckIn(
       attendanceId,
-      { clientId: crypto.randomUUID(), locationId: LOCATION_ID, lat: '-1.2', lng: '116.1', accuracyM: 10, selfieAttachmentId: selfieRef.attachmentId, at: new Date().toISOString() },
+      {
+        clientId: crypto.randomUUID(),
+        locationId: LOCATION_ID,
+        lat: '-1.2',
+        lng: '116.1',
+        accuracyM: 10,
+        selfieAttachmentId: selfieRef.attachmentId,
+        at: new Date().toISOString(),
+      },
       ACTOR,
     );
     expect(await runtime.getOutboxDepth()).toBe(1);
 
     await runtime.commitAttendanceCheckOut(
       attendanceId,
-      { clientId: crypto.randomUUID(), locationId: LOCATION_ID, lat: '-1.2', lng: '116.1', accuracyM: 10, selfieAttachmentId: selfieRef.attachmentId, at: new Date().toISOString() },
+      {
+        clientId: crypto.randomUUID(),
+        locationId: LOCATION_ID,
+        lat: '-1.2',
+        lng: '116.1',
+        accuracyM: 10,
+        selfieAttachmentId: selfieRef.attachmentId,
+        at: new Date().toISOString(),
+      },
       ACTOR,
     );
 
@@ -121,8 +147,20 @@ describe('Absen check-in/out — offline queuing via commitAttendanceCheckIn/Out
     await runtime.init();
 
     const attendanceId = crypto.randomUUID();
-    const selfieRef = await runtime.captureEvidence(new Blob(['a'], { type: 'image/jpeg' }), 'image/jpeg', 'selfie');
-    const payload = { clientId: crypto.randomUUID(), locationId: LOCATION_ID, lat: '-1.2', lng: '116.1', accuracyM: 10, selfieAttachmentId: selfieRef.attachmentId, at: new Date().toISOString() };
+    const selfieRef = await runtime.captureEvidence(
+      new Blob(['a'], { type: 'image/jpeg' }),
+      'image/jpeg',
+      'selfie',
+    );
+    const payload = {
+      clientId: crypto.randomUUID(),
+      locationId: LOCATION_ID,
+      lat: '-1.2',
+      lng: '116.1',
+      accuracyM: 10,
+      selfieAttachmentId: selfieRef.attachmentId,
+      at: new Date().toISOString(),
+    };
 
     await runtime.commitAttendanceCheckIn(attendanceId, payload, ACTOR);
     await runtime.commitAttendanceCheckIn(attendanceId, payload, ACTOR); // double-tap submit

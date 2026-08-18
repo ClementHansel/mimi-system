@@ -40,13 +40,19 @@ export class DashboardController {
 
   @Get('overview')
   @RequirePermission('dashboard.view')
-  async getOverview(@Req() req: RequestWithDbContext, @Query() query: DateRangeQueryDto): Promise<OverviewResponse> {
+  async getOverview(
+    @Req() req: RequestWithDbContext,
+    @Query() query: DateRangeQueryDto,
+  ): Promise<OverviewResponse> {
     return this.overview.getOverview(req.dbClient!, req.locationScope!, query.from, query.to);
   }
 
   @Get('outlets')
   @RequirePermission('dashboard.view')
-  async listOutlets(@Req() req: RequestWithDbContext, @Query() query: SingleDateQueryDto): Promise<OutletTile[]> {
+  async listOutlets(
+    @Req() req: RequestWithDbContext,
+    @Query() query: SingleDateQueryDto,
+  ): Promise<OutletTile[]> {
     const date = query.date ?? businessDateOf(new Date().toISOString());
     return this.outlets.listOutlets(req.dbClient!, req.locationScope!, date);
   }
@@ -64,7 +70,10 @@ export class DashboardController {
 
   @Get('top-products')
   @RequirePermission('dashboard.view')
-  async getTopProducts(@Req() req: RequestWithDbContext, @Query() query: TopProductsQueryDto): Promise<TopProductRow[]> {
+  async getTopProducts(
+    @Req() req: RequestWithDbContext,
+    @Query() query: TopProductsQueryDto,
+  ): Promise<TopProductRow[]> {
     return this.topProducts.getTopProducts(
       req.dbClient!,
       req.locationScope!,
@@ -77,13 +86,25 @@ export class DashboardController {
 
   @Get('staff-kpi')
   @RequirePermission('dashboard.view')
-  async getStaffKpi(@Req() req: RequestWithDbContext, @Query() query: DateRangeQueryDto): Promise<StaffKpiRow[]> {
-    return this.staffKpi.getStaffKpi(req.dbClient!, req.locationScope!, query.from, query.to, query.locationId);
+  async getStaffKpi(
+    @Req() req: RequestWithDbContext,
+    @Query() query: DateRangeQueryDto,
+  ): Promise<StaffKpiRow[]> {
+    return this.staffKpi.getStaffKpi(
+      req.dbClient!,
+      req.locationScope!,
+      query.from,
+      query.to,
+      query.locationId,
+    );
   }
 
   @Get('trend')
   @RequirePermission('dashboard.view')
-  async getTrend(@Req() req: RequestWithDbContext, @Query() query: TrendQueryDto): Promise<TrendPoint[]> {
+  async getTrend(
+    @Req() req: RequestWithDbContext,
+    @Query() query: TrendQueryDto,
+  ): Promise<TrendPoint[]> {
     return this.trend.getTrend(
       req.dbClient!,
       req.locationScope!,

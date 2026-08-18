@@ -3,7 +3,15 @@
 import { useEffect, useState } from 'react';
 import { Snowflake, Package, Truck, MapPin } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Card, CardContent, CardHeader, CardTitle, Input, EmptyState, Button } from '@/components/ui';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  EmptyState,
+  Button,
+} from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { ApiError } from '@/lib/api';
 import { getDailyRecap } from './lib/warehouse-api';
@@ -31,7 +39,10 @@ export function RecapPanel() {
     setError(undefined);
     getDailyRecap(date)
       .then((res) => !cancelled && setRecap(res))
-      .catch((err: unknown) => !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch(
+        (err: unknown) =>
+          !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')),
+      )
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -40,7 +51,13 @@ export function RecapPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Input type="date" label={t('common.date')} value={date} onChange={(e) => setDate(e.target.value)} wrapperClassName="max-w-xs" />
+      <Input
+        type="date"
+        label={t('common.date')}
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        wrapperClassName="max-w-xs"
+      />
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
 
@@ -48,7 +65,11 @@ export function RecapPanel() {
         <EmptyState
           title={error}
           size="lg"
-          action={<Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>{t('common.retry')}</Button>}
+          action={
+            <Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          }
         />
       )}
 
@@ -59,7 +80,9 @@ export function RecapPanel() {
               <CardContent className="flex items-center gap-3 p-4">
                 <Truck className="size-6 text-brand-600" aria-hidden />
                 <div>
-                  <p className="text-2xl font-semibold text-text-primary tabular-nums">{recap.sjCount}</p>
+                  <p className="text-2xl font-semibold text-text-primary tabular-nums">
+                    {recap.sjCount}
+                  </p>
                   <p className="text-sm text-text-muted">{t('warehouse.recap.sjCount')}</p>
                 </div>
               </CardContent>
@@ -68,7 +91,9 @@ export function RecapPanel() {
               <CardContent className="flex items-center gap-3 p-4">
                 <MapPin className="size-6 text-brand-600" aria-hidden />
                 <div>
-                  <p className="text-2xl font-semibold text-text-primary tabular-nums">{recap.dropCount}</p>
+                  <p className="text-2xl font-semibold text-text-primary tabular-nums">
+                    {recap.dropCount}
+                  </p>
                   <p className="text-sm text-text-muted">{t('warehouse.recap.dropCount')}</p>
                 </div>
               </CardContent>
@@ -77,7 +102,9 @@ export function RecapPanel() {
               <CardContent className="flex items-center gap-3 p-4">
                 <Snowflake className="size-6 text-cold-600" aria-hidden />
                 <div>
-                  <p className="text-2xl font-semibold text-text-primary tabular-nums">{recap.frozenSjCount}</p>
+                  <p className="text-2xl font-semibold text-text-primary tabular-nums">
+                    {recap.frozenSjCount}
+                  </p>
                   <p className="text-sm text-text-muted">{t('warehouse.recap.frozenSjCount')}</p>
                 </div>
               </CardContent>
@@ -86,7 +113,9 @@ export function RecapPanel() {
               <CardContent className="flex items-center gap-3 p-4">
                 <Package className="size-6 text-text-muted" aria-hidden />
                 <div>
-                  <p className="text-2xl font-semibold text-text-primary tabular-nums">{recap.drySjCount}</p>
+                  <p className="text-2xl font-semibold text-text-primary tabular-nums">
+                    {recap.drySjCount}
+                  </p>
                   <p className="text-sm text-text-muted">{t('warehouse.recap.drySjCount')}</p>
                 </div>
               </CardContent>
@@ -99,7 +128,9 @@ export function RecapPanel() {
             <Card key={city.city}>
               <CardHeader className="flex-row items-center justify-between">
                 <CardTitle className="text-base">{city.city}</CardTitle>
-                <span className="text-sm text-text-muted">{t('warehouse.recap.outletsCount', { count: city.outlets })}</span>
+                <span className="text-sm text-text-muted">
+                  {t('warehouse.recap.outletsCount', { count: city.outlets })}
+                </span>
               </CardHeader>
               <CardContent className="overflow-x-auto p-0">
                 <table className="w-full border-collapse text-sm">

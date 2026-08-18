@@ -82,7 +82,11 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
 
     function makeContext(request: RequestWithDbContext): ExecutionContext {
       return {
-        switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}), getNext: () => ({}) }),
+        switchToHttp: () => ({
+          getRequest: () => request,
+          getResponse: () => ({}),
+          getNext: () => ({}),
+        }),
         getHandler: () => ({}),
         getClass: () => ({}),
       } as unknown as ExecutionContext;
@@ -98,7 +102,9 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
      * place at the time.
      */
     it('a bare mimi_app connection with no SET ROLE fails LOUDLY (permission denied), not silently (0 rows) — locks in migration 205 NOINHERIT', async () => {
-      await expect(appPool.query('SELECT count(*) FROM sales')).rejects.toThrow(/permission denied/i);
+      await expect(appPool.query('SELECT count(*) FROM sales')).rejects.toThrow(
+        /permission denied/i,
+      );
     });
 
     it('Kasir sees only their own outlet\'s sales through the real guard — proves the bypass is closed, not just that the guard "runs"', async () => {
@@ -132,7 +138,9 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
       const client = request.dbClient!;
 
       try {
-        const kasirSalesRes = await client.query<{ n: string }>(`SELECT count(*)::int AS n FROM sales`);
+        const kasirSalesRes = await client.query<{ n: string }>(
+          `SELECT count(*)::int AS n FROM sales`,
+        );
         const kasirSales = Number(kasirSalesRes.rows[0]!.n);
 
         console.log(
@@ -165,7 +173,9 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
       // vars before the connection can be reused — the composition the
       // coordinator asked to verify explicitly. Lookup on the OWNER pool
       // (scaffolding, not the thing under test).
-      const managerRes = await ownerPool.query<{ id: string }>(`SELECT id FROM users WHERE username = 'manager1'`);
+      const managerRes = await ownerPool.query<{ id: string }>(
+        `SELECT id FROM users WHERE username = 'manager1'`,
+      );
       const managerId = managerRes.rows[0]!.id;
 
       const requestKasir: RequestWithDbContext = {
@@ -173,7 +183,9 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
       };
       await guard.canActivate(makeContext(requestKasir));
       const kasirClient = requestKasir.dbClient!;
-      const kasirScoped = await kasirClient.query<{ n: string }>(`SELECT count(*)::int AS n FROM sales`);
+      const kasirScoped = await kasirClient.query<{ n: string }>(
+        `SELECT count(*)::int AS n FROM sales`,
+      );
       await kasirClient.query('ROLLBACK');
       kasirClient.release();
 
@@ -182,7 +194,9 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
       };
       await guard.canActivate(makeContext(requestManager));
       const managerClient = requestManager.dbClient!;
-      const managerScoped = await managerClient.query<{ n: string }>(`SELECT count(*)::int AS n FROM sales`);
+      const managerScoped = await managerClient.query<{ n: string }>(
+        `SELECT count(*)::int AS n FROM sales`,
+      );
       await managerClient.query('ROLLBACK');
       managerClient.release();
 

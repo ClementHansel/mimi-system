@@ -21,7 +21,11 @@ export class ReturnController {
   @Get()
   @RequirePermission('return.read')
   list(@Req() req: RequestWithDbContext, @Query() query: ListReturnQueryDto) {
-    return this.service.list(req.dbClient!, { ...query, page: query.page ?? 1, pageSize: query.pageSize ?? 50 });
+    return this.service.list(req.dbClient!, {
+      ...query,
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? 50,
+    });
   }
 
   @Get(':id')
@@ -47,7 +51,11 @@ export class ReturnController {
   @Post(':id/approve')
   @RequirePermission('return.approve')
   @Audited({ entityType: 'return', action: 'return.approve' })
-  approve(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ApproveReturnDto) {
+  approve(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ApproveReturnDto,
+  ) {
     return this.service.approve(req.dbClient!, this.actor(req), id, dto.note);
   }
 
@@ -68,19 +76,31 @@ export class ReturnController {
   @Post(':id/receive')
   @RequirePermission('return.receive')
   @Audited({ entityType: 'return', action: 'return.receive' })
-  receive(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ReceiveReturnDto) {
+  receive(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ReceiveReturnDto,
+  ) {
     return this.service.receive(req.dbClient!, this.actor(req), id, dto);
   }
 
   @Post(':id/complete')
   @RequirePermission('return.approve')
   @Audited({ entityType: 'return', action: 'return.approve' })
-  complete(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: CompleteReturnDto) {
+  complete(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: CompleteReturnDto,
+  ) {
     return this.service.complete(req.dbClient!, id, dto);
   }
 
   private actor(req: RequestWithDbContext): ActorContext {
     const user = req.user!;
-    return { userId: user.sub, roleKey: user.roleKey as RoleKey, locationScope: req.locationScope ?? null };
+    return {
+      userId: user.sub,
+      roleKey: user.roleKey as RoleKey,
+      locationScope: req.locationScope ?? null,
+    };
   }
 }

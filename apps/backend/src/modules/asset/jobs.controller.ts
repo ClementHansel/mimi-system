@@ -34,7 +34,13 @@ export class JobsController {
   ): Promise<Paginated<JobDto>> {
     return this.service.list(
       req.dbClient!,
-      { locationId, status, assetId, page: page ? parseInt(page, 10) : undefined, pageSize: pageSize ? parseInt(pageSize, 10) : undefined },
+      {
+        locationId,
+        status,
+        assetId,
+        page: page ? parseInt(page, 10) : undefined,
+        pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      },
       req.user!,
       req.locationScope ?? null,
     );
@@ -43,9 +49,21 @@ export class JobsController {
   @Post(':id/jobs')
   @RequirePermission('asset.job.execute')
   @Audited({ module: 'asset', entityType: 'maintenance_jobs', action: 'asset.job.execute' })
-  async create(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: CreateJobDto): Promise<JobDto> {
+  async create(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: CreateJobDto,
+  ): Promise<JobDto> {
     const assetLocationId = await this.assets.getAssetLocationId(req.dbClient!, id);
-    return this.service.create(req.dbClient!, req.user!.sub, id, assetLocationId, dto, req.user!, req.locationScope ?? null);
+    return this.service.create(
+      req.dbClient!,
+      req.user!.sub,
+      id,
+      assetLocationId,
+      dto,
+      req.user!,
+      req.locationScope ?? null,
+    );
   }
 
   @Post('jobs/:jobId/start')
@@ -58,15 +76,37 @@ export class JobsController {
   @Post('jobs/:jobId/complete')
   @RequirePermission('asset.job.execute')
   @Audited({ module: 'asset', entityType: 'maintenance_jobs', action: 'asset.job.execute' })
-  async complete(@Req() req: RequestWithDbContext, @Param('jobId') jobId: string, @Body() dto: CompleteJobDto): Promise<JobDto> {
-    return this.service.complete(req.dbClient!, req.user!.sub, jobId, dto, req.user!, req.locationScope ?? null);
+  async complete(
+    @Req() req: RequestWithDbContext,
+    @Param('jobId') jobId: string,
+    @Body() dto: CompleteJobDto,
+  ): Promise<JobDto> {
+    return this.service.complete(
+      req.dbClient!,
+      req.user!.sub,
+      jobId,
+      dto,
+      req.user!,
+      req.locationScope ?? null,
+    );
   }
 
   @Post('jobs/:jobId/verify')
   @RequirePermission('asset.job.verify')
   @Audited({ module: 'asset', entityType: 'maintenance_jobs', action: 'asset.job.verify' })
-  async verify(@Req() req: RequestWithDbContext, @Param('jobId') jobId: string, @Body() dto: VerifyJobDto): Promise<JobDto> {
-    return this.service.verify(req.dbClient!, req.user!.sub, jobId, dto, req.user!, req.locationScope ?? null);
+  async verify(
+    @Req() req: RequestWithDbContext,
+    @Param('jobId') jobId: string,
+    @Body() dto: VerifyJobDto,
+  ): Promise<JobDto> {
+    return this.service.verify(
+      req.dbClient!,
+      req.user!.sub,
+      jobId,
+      dto,
+      req.user!,
+      req.locationScope ?? null,
+    );
   }
 
   @Get(':id/history')

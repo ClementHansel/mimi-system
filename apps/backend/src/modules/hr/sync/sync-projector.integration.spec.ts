@@ -21,7 +21,12 @@ import { ApprovalsRepository } from '../../../kernel/approvals/approvals.reposit
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import { AttendanceSyncProjector } from './attendance-sync-projector.service';
 import { LeaveSyncProjector } from './leave-sync-projector.service';
-import { deleteAttendanceForDate, loadHrFixtures, restoreAttendanceRow, type HrFixtures } from '../test-support/live-db';
+import {
+  deleteAttendanceForDate,
+  loadHrFixtures,
+  restoreAttendanceRow,
+  type HrFixtures,
+} from '../test-support/live-db';
 
 /**
  * Real-ingest proof of the coordinator's requirement: an offline-originated
@@ -76,7 +81,8 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
   beforeAll(async () => {
     try {
       fixtures = await loadHrFixtures();
-      const employee = fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET];
+      const employee =
+        fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET];
       if (!employee) {
         dbAvailable = false;
         return;
@@ -97,20 +103,40 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
       const eventsRepo = new SyncEventsRepository(appPool);
       const conflictsRepo = new SyncConflictsRepository();
       const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-      const offlineAuth = new OfflineAuthService(new OfflineCredentialsRepository(), conflictsRepo, fakeConfig);
-      const reconciliation = new ReconciliationService(appPool, eventsRepo, conflictsRepo, new RegistryRepository(appPool));
+      const offlineAuth = new OfflineAuthService(
+        new OfflineCredentialsRepository(),
+        conflictsRepo,
+        fakeConfig,
+      );
+      const reconciliation = new ReconciliationService(
+        appPool,
+        eventsRepo,
+        conflictsRepo,
+        new RegistryRepository(appPool),
+      );
       const projectors = new SyncProjectorRegistry();
 
-      const attendanceService = new AttendanceService(new StorageService(fakeStorageConfig(), ownerPool));
+      const attendanceService = new AttendanceService(
+        new StorageService(fakeStorageConfig(), ownerPool),
+      );
       const attendanceProjector = new AttendanceSyncProjector(attendanceService);
       projectors.register(attendanceProjector);
 
       const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
-      const leavesService = new LeavesService(new ApprovalService(new ApprovalsRepository()), syncEmit);
+      const leavesService = new LeavesService(
+        new ApprovalService(new ApprovalsRepository()),
+        syncEmit,
+      );
       const leaveProjector = new LeaveSyncProjector(leavesService);
       projectors.register(leaveProjector);
 
-      ingest = new SyncIngestService(eventsRepo, conflictDetector, offlineAuth, reconciliation, projectors);
+      ingest = new SyncIngestService(
+        eventsRepo,
+        conflictDetector,
+        offlineAuth,
+        reconciliation,
+        projectors,
+      );
     } catch {
       dbAvailable = false;
     }
@@ -119,7 +145,10 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
   afterEach(async () => {
     if (!dbAvailable) return;
     for (const originId of createdOrigins) {
-      await ownerPool.query(`DELETE FROM sync_conflicts WHERE loser_event_id IN (SELECT event_id FROM sync_events WHERE origin_device_id = $1) OR winner_event_id IN (SELECT event_id FROM sync_events WHERE origin_device_id = $1)`, [originId]);
+      await ownerPool.query(
+        `DELETE FROM sync_conflicts WHERE loser_event_id IN (SELECT event_id FROM sync_events WHERE origin_device_id = $1) OR winner_event_id IN (SELECT event_id FROM sync_events WHERE origin_device_id = $1)`,
+        [originId],
+      );
       await ownerPool.query(`DELETE FROM sync_events WHERE origin_device_id = $1`, [originId]);
       await ownerPool.query(`DELETE FROM sync_batches WHERE origin_device_id = $1`, [originId]);
       await ownerPool.query(`DELETE FROM sync_cursors WHERE subscriber_id = $1`, [originId]);
@@ -131,7 +160,12 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
     await ownerPool?.end().catch(() => {});
   });
 
-  function checkedInEvent(originDeviceId: string, actorUserId: string, occurredAt: string, clientId = randomUUID()): SyncEventEnvelope {
+  function checkedInEvent(
+    originDeviceId: string,
+    actorUserId: string,
+    occurredAt: string,
+    clientId = randomUUID(),
+  ): SyncEventEnvelope {
     return {
       eventId: formatUuidV7(Date.now(), randomBytes(16)),
       originTier: SyncOriginType.DEVICE,
@@ -161,7 +195,10 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
   }
 
   async function cleanAttendance(employeeId: string, clientId: string): Promise<void> {
-    await ownerPool.query('DELETE FROM attendance WHERE employee_id = $1 AND (client_id = $2 OR check_out_client_id = $2)', [employeeId, clientId]);
+    await ownerPool.query(
+      'DELETE FROM attendance WHERE employee_id = $1 AND (client_id = $2 OR check_out_client_id = $2)',
+      [employeeId, clientId],
+    );
   }
 
   function todayWita(): string {
@@ -202,7 +239,8 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
 
   it('a real offline check-in event, through real ingest, projects into a real attendance row with geofence + lateness derived', async () => {
     if (!dbAvailable) return;
-    const employee = fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]!;
+    const employee =
+      fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]!;
     const clientId = randomUUID();
 
     await withCleanSlate(employee.employeeId, async () => {
@@ -233,7 +271,8 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
 
   it('a skewed-clock offline check-in (occurredAt far in the past) projects with time_suspect/time_disputed tagging, per SYNC-PROTOCOL §6.3/§6.4 — the same rule the online endpoint applies', async () => {
     if (!dbAvailable) return;
-    const employee = fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]!;
+    const employee =
+      fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]!;
     const clientId = randomUUID();
 
     await withCleanSlate(employee.employeeId, async () => {
@@ -265,7 +304,8 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
 
   it('replaying the identical batch does not double-project — exactly one attendance row', async () => {
     if (!dbAvailable) return;
-    const employee = fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]!;
+    const employee =
+      fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]!;
     const clientId = randomUUID();
 
     await withCleanSlate(employee.employeeId, async () => {
@@ -280,7 +320,10 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
         // `applyCheckIn`'s `client_id` dedup is a second, independent line of defense.
         await ingest.ingestBatch(batchOf([event]), resolveLocation);
 
-        const rows = await ownerPool.query('SELECT id FROM attendance WHERE employee_id = $1 AND client_id = $2', [employee.employeeId, clientId]);
+        const rows = await ownerPool.query(
+          'SELECT id FROM attendance WHERE employee_id = $1 AND client_id = $2',
+          [employee.employeeId, clientId],
+        );
         expect(rows.rows).toHaveLength(1);
       } finally {
         await cleanAttendance(employee.employeeId, clientId);
@@ -290,7 +333,8 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
 
   it('an offline leave_requests.submitted fact, through real ingest, creates a real leave_requests row keyed by the DEVICE-minted entityId', async () => {
     if (!dbAvailable) return;
-    const employee = fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]!;
+    const employee =
+      fixtures.usersByRole[RoleKey.KASIR] ?? fixtures.usersByRole[RoleKey.LEADER_OUTLET]!;
     const origin = freshOrigin();
     const entityId = randomUUID();
     const clientId = randomUUID();
@@ -305,7 +349,13 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
       op: 'submitted',
       payload: {
         v: 1,
-        data: { clientId, type: LeaveType.PERMISSION, startDate: '2029-01-10', endDate: '2029-01-10', reason: 'Test offline' },
+        data: {
+          clientId,
+          type: LeaveType.PERMISSION,
+          startDate: '2029-01-10',
+          endDate: '2029-01-10',
+          reason: 'Test offline',
+        },
         meta: { actorUserId: employee.userId, actorRole: 'kasir', appVersion: '1.0.0' },
       },
       clientSeq: 1n,
@@ -318,7 +368,10 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
       const ack = await ingest.ingestBatch(batchOf([event]), resolveLocation);
       expect(ack.rejected).toEqual([]);
 
-      const row = await ownerPool.query('SELECT id, status, client_id FROM leave_requests WHERE id = $1', [entityId]);
+      const row = await ownerPool.query(
+        'SELECT id, status, client_id FROM leave_requests WHERE id = $1',
+        [entityId],
+      );
       expect(row.rows).toHaveLength(1);
       expect(row.rows[0].status).toBe('pending');
       expect(row.rows[0].client_id).toBe(clientId);

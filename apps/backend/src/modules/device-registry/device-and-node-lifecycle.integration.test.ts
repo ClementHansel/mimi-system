@@ -47,7 +47,11 @@ describe('Device + node pairing/register/heartbeat lifecycle — live database',
   let isolatedLocationId: string | undefined;
 
   afterEach(async () => {
-    await cleanupNodesAndDevices({ nodeIds: createdNodeIds, deviceIds: createdDeviceIds, locationIds: isolatedLocationId ? [isolatedLocationId] : undefined });
+    await cleanupNodesAndDevices({
+      nodeIds: createdNodeIds,
+      deviceIds: createdDeviceIds,
+      locationIds: isolatedLocationId ? [isolatedLocationId] : undefined,
+    });
     createdDeviceIds.length = 0;
     createdNodeIds.length = 0;
     if (isolatedLocationId) {
@@ -65,17 +69,25 @@ describe('Device + node pairing/register/heartbeat lifecycle — live database',
     const ownerId = await fetchOneUserId('owner');
 
     const minted = await withSystemContext(pool, (client) =>
-      pairingTokens.mint(client, { targetType: PairingTargetType.DEVICE, locationId, createdBy: ownerId }),
+      pairingTokens.mint(client, {
+        targetType: PairingTargetType.DEVICE,
+        locationId,
+        createdBy: ownerId,
+      }),
     );
     expect(minted.token).toHaveLength(48); // randomBytes(24).toString('hex')
     expect(minted.qrPayload).toContain('device');
 
-    const redeemed = await withSystemContext(pool, (client) => pairingTokens.redeem(client, minted.token, PairingTargetType.DEVICE));
+    const redeemed = await withSystemContext(pool, (client) =>
+      pairingTokens.redeem(client, minted.token, PairingTargetType.DEVICE),
+    );
     expect(redeemed?.locationId).toBe(locationId);
     expect(redeemed?.createdBy).toBe(ownerId);
 
     // Single-use: a second redemption attempt of the SAME token must fail.
-    const secondAttempt = await withSystemContext(pool, (client) => pairingTokens.redeem(client, minted.token, PairingTargetType.DEVICE));
+    const secondAttempt = await withSystemContext(pool, (client) =>
+      pairingTokens.redeem(client, minted.token, PairingTargetType.DEVICE),
+    );
     expect(secondAttempt).toBeUndefined();
 
     const deviceTokenHash = hashDeviceToken(randomBytes(32).toString('hex'));
@@ -131,15 +143,18 @@ describe('Device + node pairing/register/heartbeat lifecycle — live database',
       }),
     );
 
-    const row = await assertPool.query<{ app_version: string; queue_depth: number; last_seen_at: string | null }>(
-      `SELECT app_version, queue_depth, last_seen_at FROM devices WHERE id = $1`,
-      [created.id],
-    );
+    const row = await assertPool.query<{
+      app_version: string;
+      queue_depth: number;
+      last_seen_at: string | null;
+    }>(`SELECT app_version, queue_depth, last_seen_at FROM devices WHERE id = $1`, [created.id]);
     expect(row.rows[0]!.app_version).toBe('1.1.0');
     expect(row.rows[0]!.queue_depth).toBe(3);
     expect(row.rows[0]!.last_seen_at).not.toBeNull();
 
-    const beats = await assertPool.query(`SELECT * FROM device_heartbeats WHERE device_id = $1`, [created.id]);
+    const beats = await assertPool.query(`SELECT * FROM device_heartbeats WHERE device_id = $1`, [
+      created.id,
+    ]);
     expect(beats.rows).toHaveLength(1);
     expect(beats.rows[0].battery_pct).toBe(88);
   });

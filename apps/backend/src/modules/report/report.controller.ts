@@ -57,13 +57,21 @@ export class ReportController {
 
   private callerOf(req: RequestWithDbContext): ReportCallerContext {
     const user = req.user!;
-    return { userId: user.sub, roleKey: user.roleKey as RoleKey, locationScope: req.locationScope ?? null };
+    return {
+      userId: user.sub,
+      roleKey: user.roleKey as RoleKey,
+      locationScope: req.locationScope ?? null,
+    };
   }
 
   // ── GET /sales ────────────────────────────────────────────────────────────
   @Get('sales')
   @RequirePermission('report.sales.read')
-  async sales(@Req() req: RequestWithDbContext, @Query() query: SalesReportQueryDto, @Res() res: Response): Promise<void> {
+  async sales(
+    @Req() req: RequestWithDbContext,
+    @Query() query: SalesReportQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
     const caller = this.callerOf(req);
     assertExportPermission(caller.roleKey, query.format ?? 'json');
     const result = await this.salesReport.getSalesReport(req.dbClient!, caller, {
@@ -74,7 +82,15 @@ export class ReportController {
     });
     sendReportRows(res, query.format, 'sales-report', result.rows, {
       header: ['groupKey', 'groupLabel', 'txCount', 'gross', 'discount', 'platformFees', 'net'],
-      toRow: (r) => [r.groupKey, r.groupLabel, r.txCount, r.gross, r.discount, r.platformFees, r.net],
+      toRow: (r) => [
+        r.groupKey,
+        r.groupLabel,
+        r.txCount,
+        r.gross,
+        r.discount,
+        r.platformFees,
+        r.net,
+      ],
     });
   }
 
@@ -101,7 +117,11 @@ export class ReportController {
   // ── GET /delivery-daily ──────────────────────────────────────────────────
   @Get('delivery-daily')
   @RequirePermission('report.logistics.read')
-  async deliveryDaily(@Req() req: RequestWithDbContext, @Query() query: DeliveryDailyQueryDto, @Res() res: Response): Promise<void> {
+  async deliveryDaily(
+    @Req() req: RequestWithDbContext,
+    @Query() query: DeliveryDailyQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
     const caller = this.callerOf(req);
     assertExportPermission(caller.roleKey, query.format ?? 'json');
     const result = await this.deliveryReport.getDailyRecap(req.dbClient!, caller, query.date);
@@ -117,7 +137,11 @@ export class ReportController {
   // ── GET /stock-usage ─────────────────────────────────────────────────────
   @Get('stock-usage')
   @RequirePermission('report.logistics.read')
-  async stockUsage(@Req() req: RequestWithDbContext, @Query() query: StockUsageQueryDto, @Res() res: Response): Promise<void> {
+  async stockUsage(
+    @Req() req: RequestWithDbContext,
+    @Query() query: StockUsageQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
     const caller = this.callerOf(req);
     assertExportPermission(caller.roleKey, query.format ?? 'json');
     const rows = await this.stockReport.getStockUsage(req.dbClient!, caller, {
@@ -127,20 +151,38 @@ export class ReportController {
     });
     sendReportRows(res, query.format, 'stock-usage', rows, {
       header: ['itemId', 'itemName', 'opening', 'in', 'usage', 'waste', 'adjustment', 'closing'],
-      toRow: (r) => [r.itemId, r.itemName, r.opening, r.in, r.usage, r.waste, r.adjustment, r.closing],
+      toRow: (r) => [
+        r.itemId,
+        r.itemName,
+        r.opening,
+        r.in,
+        r.usage,
+        r.waste,
+        r.adjustment,
+        r.closing,
+      ],
     });
   }
 
   // ── GET /stock-movements ─────────────────────────────────────────────────
   @Get('stock-movements')
   @RequirePermission('report.logistics.read')
-  async stockMovements(@Req() req: RequestWithDbContext, @Query() query: StockMovementsQueryDto, @Res() res: Response): Promise<void> {
+  async stockMovements(
+    @Req() req: RequestWithDbContext,
+    @Query() query: StockMovementsQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
     const caller = this.callerOf(req);
     assertExportPermission(caller.roleKey, query.format ?? 'json');
     const result = await this.stockReport.getStockMovements(
       req.dbClient!,
       caller,
-      { locationId: query.locationId, from: query.from, to: query.to, movementType: query.movementType },
+      {
+        locationId: query.locationId,
+        from: query.from,
+        to: query.to,
+        movementType: query.movementType,
+      },
       1,
       // Exports (csv/xlsx) get the full window in one file, not one paginated page — a printable
       // export the reader can open in Excel is expected to be complete, matching the ticket's
@@ -148,18 +190,44 @@ export class ReportController {
       query.format && query.format !== 'json' ? 100000 : 100,
     );
     sendReportRows(res, query.format, 'stock-movements', result.rows, {
-      header: ['occurredAt', 'locationName', 'storageAreaName', 'itemName', 'movementType', 'qty', 'unitCost', 'refType'],
-      toRow: (r) => [r.occurredAt, r.locationName, r.storageAreaName, r.itemName, r.movementType, r.qty, r.unitCost, r.refType],
+      header: [
+        'occurredAt',
+        'locationName',
+        'storageAreaName',
+        'itemName',
+        'movementType',
+        'qty',
+        'unitCost',
+        'refType',
+      ],
+      toRow: (r) => [
+        r.occurredAt,
+        r.locationName,
+        r.storageAreaName,
+        r.itemName,
+        r.movementType,
+        r.qty,
+        r.unitCost,
+        r.refType,
+      ],
     });
   }
 
   // ── GET /waste ───────────────────────────────────────────────────────────
   @Get('waste')
   @RequirePermission('report.sales.read')
-  async waste(@Req() req: RequestWithDbContext, @Query() query: WasteReportQueryDto, @Res() res: Response): Promise<void> {
+  async waste(
+    @Req() req: RequestWithDbContext,
+    @Query() query: WasteReportQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
     const caller = this.callerOf(req);
     assertExportPermission(caller.roleKey, query.format ?? 'json');
-    const rows = await this.wasteReport.getWasteReport(req.dbClient!, caller, { from: query.from, to: query.to, locationId: query.locationId });
+    const rows = await this.wasteReport.getWasteReport(req.dbClient!, caller, {
+      from: query.from,
+      to: query.to,
+      locationId: query.locationId,
+    });
     sendReportRows(res, query.format, 'waste-report', rows, {
       header: ['locationName', 'reason', 'count', 'qty', 'value'],
       toRow: (r) => [r.locationName, r.reason, r.count, r.qty, r.value],
@@ -169,15 +237,29 @@ export class ReportController {
   // ── GET /attendance ──────────────────────────────────────────────────────
   @Get('attendance')
   @RequirePermission('report.hr.read')
-  async attendance(@Req() req: RequestWithDbContext, @Query() query: AttendanceReportQueryDto, @Res() res: Response): Promise<void> {
+  async attendance(
+    @Req() req: RequestWithDbContext,
+    @Query() query: AttendanceReportQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
     const caller = this.callerOf(req);
     assertExportPermission(caller.roleKey, query.format ?? 'json');
-    const rows = await this.hrReport.getAttendanceMatrix(req.dbClient!, caller, { periodCode: query.periodCode, locationId: query.locationId });
+    const rows = await this.hrReport.getAttendanceMatrix(req.dbClient!, caller, {
+      periodCode: query.periodCode,
+      locationId: query.locationId,
+    });
     // Flattened one-row-per-(employee,day) for csv/xlsx — a matrix's natural flat-file rendering.
     const flatRows = rows.flatMap((emp) => emp.days.map((day) => ({ emp, day })));
     sendReportObject(res, query.format, `attendance-${query.periodCode}`, rows, flatRows, {
       header: ['employeeName', 'locationName', 'date', 'status', 'lateMinutes', 'overtimeMinutes'],
-      toRow: (r) => [r.emp.employeeName, r.emp.locationName, r.day.date, r.day.status, r.day.lateMinutes, r.day.overtimeMinutes],
+      toRow: (r) => [
+        r.emp.employeeName,
+        r.emp.locationName,
+        r.day.date,
+        r.day.status,
+        r.day.lateMinutes,
+        r.day.overtimeMinutes,
+      ],
     });
   }
 
@@ -214,15 +296,33 @@ export class ReportController {
     assertExportPermission(caller.roleKey, query.format ?? 'json');
     const result = await this.stockReport.getOpnameVariance(req.dbClient!, caller, opnameId);
     sendReportObject(res, query.format, `opname-variance-${opnameId}`, result, result.lines, {
-      header: ['itemName', 'storageAreaName', 'systemQty', 'countedQty', 'diffQty', 'varianceReason'],
-      toRow: (r) => [r.itemName, r.storageAreaName, r.systemQty, r.countedQty, r.diffQty, r.varianceReason],
+      header: [
+        'itemName',
+        'storageAreaName',
+        'systemQty',
+        'countedQty',
+        'diffQty',
+        'varianceReason',
+      ],
+      toRow: (r) => [
+        r.itemName,
+        r.storageAreaName,
+        r.systemQty,
+        r.countedQty,
+        r.diffQty,
+        r.varianceReason,
+      ],
     });
   }
 
   // ── GET /online-orders ───────────────────────────────────────────────────
   @Get('online-orders')
   @RequirePermission('report.sales.read')
-  async onlineOrders(@Req() req: RequestWithDbContext, @Query() query: OnlineOrdersReportQueryDto, @Res() res: Response): Promise<void> {
+  async onlineOrders(
+    @Req() req: RequestWithDbContext,
+    @Query() query: OnlineOrdersReportQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
     const caller = this.callerOf(req);
     assertExportPermission(caller.roleKey, query.format ?? 'json');
     const rows = await this.salesReport.getOnlineOrdersReport(req.dbClient!, caller, {

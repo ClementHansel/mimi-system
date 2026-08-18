@@ -45,14 +45,20 @@ describe('explodeSaleToMovements (FR-POS-06 recipe explosion)', () => {
   it('aggregates ingredient usage across sale lines sharing an ingredient', () => {
     const recipes = new Map([
       ['product-ayam-goreng', [{ itemId: 'item-ayam', qtyPerUnit: '0.300', unitCost: '20000.00' }]],
-      ['product-paket', [
-        { itemId: 'item-ayam', qtyPerUnit: '0.300', unitCost: '20000.00' },
-        { itemId: 'item-nasi', qtyPerUnit: '0.200', unitCost: '5000.00' },
-      ]],
+      [
+        'product-paket',
+        [
+          { itemId: 'item-ayam', qtyPerUnit: '0.300', unitCost: '20000.00' },
+          { itemId: 'item-nasi', qtyPerUnit: '0.200', unitCost: '5000.00' },
+        ],
+      ],
     ]);
     const movements = explodeSaleToMovements(
       'sale-1',
-      [{ productId: 'product-ayam-goreng', qty: '2.000' }, { productId: 'product-paket', qty: '1.000' }],
+      [
+        { productId: 'product-ayam-goreng', qty: '2.000' },
+        { productId: 'product-paket', qty: '1.000' },
+      ],
       recipes,
       { locationId: LOC, storageAreaId: AREA },
       '2026-08-17T05:00:00.000Z',
@@ -77,15 +83,32 @@ describe('explodeSaleToMovements (FR-POS-06 recipe explosion)', () => {
   });
 
   it('produces stable, per-item factIds derived from the sale event id', () => {
-    const recipes = new Map([['p', [{ itemId: 'item-x', qtyPerUnit: '1.000', unitCost: '100.00' }]]]);
-    const movements = explodeSaleToMovements('sale-3', [{ productId: 'p', qty: '1.000' }], recipes, { locationId: LOC, storageAreaId: AREA }, '2026-08-17T00:00:00.000Z');
+    const recipes = new Map([
+      ['p', [{ itemId: 'item-x', qtyPerUnit: '1.000', unitCost: '100.00' }]],
+    ]);
+    const movements = explodeSaleToMovements(
+      'sale-3',
+      [{ productId: 'p', qty: '1.000' }],
+      recipes,
+      { locationId: LOC, storageAreaId: AREA },
+      '2026-08-17T00:00:00.000Z',
+    );
     expect(movements[0]!.factId).toBe('sale-3:usage:item-x');
   });
 });
 
 describe('explodeAreaTransferToMovements', () => {
   it('produces a paired transfer_out/transfer_in at the same location', () => {
-    const movements = explodeAreaTransferToMovements('xfer-1', LOC, ITEM, 'area-freezer', 'area-kitchen', '5.000', '20000.00', '2026-08-17T00:00:00.000Z');
+    const movements = explodeAreaTransferToMovements(
+      'xfer-1',
+      LOC,
+      ITEM,
+      'area-freezer',
+      'area-kitchen',
+      '5.000',
+      '20000.00',
+      '2026-08-17T00:00:00.000Z',
+    );
     expect(movements).toHaveLength(2);
     expect(movements[0]!.movementType).toBe(MovementType.TRANSFER_OUT);
     expect(movements[0]!.storageAreaId).toBe('area-freezer');
@@ -102,7 +125,9 @@ describe('foldMovementsToBalances', () => {
       movement({ factId: 'f3', movementType: MovementType.WASTE_OUT, qty: '1.500' }),
     ];
     const balances = foldMovementsToBalances(movements);
-    const balance = balances.get(stockKeyOf({ locationId: LOC, storageAreaId: AREA, itemId: ITEM }));
+    const balance = balances.get(
+      stockKeyOf({ locationId: LOC, storageAreaId: AREA, itemId: ITEM }),
+    );
     expect(balance?.qtyOnHand).toBe('5.500'); // 10 - 3 - 1.5
   });
 
@@ -124,18 +149,28 @@ describe('foldMovementsToBalances', () => {
 
 describe('projectBalanceAt', () => {
   it('returns zero for a key with no movements', () => {
-    expect(projectBalanceAt([], { locationId: LOC, storageAreaId: AREA, itemId: 'nothing-here' })).toBe('0.000');
+    expect(
+      projectBalanceAt([], { locationId: LOC, storageAreaId: AREA, itemId: 'nothing-here' }),
+    ).toBe('0.000');
   });
 });
 
 describe('applyMovement — D-17a dual mode', () => {
   it('strict mode rejects a movement that would drive the balance negative', () => {
-    const result = applyMovement('5.000', movement({ movementType: MovementType.USAGE_OUT, qty: '10.000' }), 'strict');
+    const result = applyMovement(
+      '5.000',
+      movement({ movementType: MovementType.USAGE_OUT, qty: '10.000' }),
+      'strict',
+    );
     expect(result).toMatchObject({ ok: false, code: 'ERR_STOCK_INSUFFICIENT' });
   });
 
   it('fact mode applies the same movement and flags the negative result instead of rejecting', () => {
-    const result = applyMovement('5.000', movement({ movementType: MovementType.USAGE_OUT, qty: '10.000' }), 'fact');
+    const result = applyMovement(
+      '5.000',
+      movement({ movementType: MovementType.USAGE_OUT, qty: '10.000' }),
+      'fact',
+    );
     expect(result).toMatchObject({ ok: true, nextBalance: '-5.000', wentNegative: true });
   });
 
@@ -148,14 +183,22 @@ describe('applyMovement — D-17a dual mode', () => {
 describe('reconcileBalance', () => {
   it('reports no divergence when the stored balance matches the fold', () => {
     const fact = movement({ qty: '10.000' });
-    const result = reconcileBalance({ locationId: LOC, storageAreaId: AREA, itemId: ITEM }, '10.000', [fact]);
+    const result = reconcileBalance(
+      { locationId: LOC, storageAreaId: AREA, itemId: ITEM },
+      '10.000',
+      [fact],
+    );
     expect(result.matches).toBe(true);
     expect(result.divergence).toBe('0.000');
   });
 
   it('reports the exact divergence when they differ (R1/R2)', () => {
     const fact = movement({ qty: '10.000' });
-    const result = reconcileBalance({ locationId: LOC, storageAreaId: AREA, itemId: ITEM }, '12.000', [fact]);
+    const result = reconcileBalance(
+      { locationId: LOC, storageAreaId: AREA, itemId: ITEM },
+      '12.000',
+      [fact],
+    );
     expect(result.matches).toBe(false);
     expect(result.divergence).toBe('-2.000'); // expected(10) - stored(12)
   });

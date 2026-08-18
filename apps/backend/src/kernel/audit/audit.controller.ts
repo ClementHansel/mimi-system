@@ -12,11 +12,17 @@ export class AuditController {
 
   @Get()
   @RequirePermission('audit.read')
-  async list(@Req() request: RequestWithDbContext, @Query() query: AuditQueryDto): Promise<Paginated<AuditRow>> {
+  async list(
+    @Req() request: RequestWithDbContext,
+    @Query() query: AuditQueryDto,
+  ): Promise<Paginated<AuditRow>> {
     if (!request.dbClient) {
       // Defensive only — RlsContextGuard always attaches this for a
       // non-public, successfully-authorized request.
-      throw new InternalServerErrorException({ code: 'ERR_INTERNAL', message: 'No database context on request' });
+      throw new InternalServerErrorException({
+        code: 'ERR_INTERNAL',
+        message: 'No database context on request',
+      });
     }
     return this.auditService.query(request.dbClient, query);
   }

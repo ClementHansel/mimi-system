@@ -31,13 +31,19 @@ export class ReplenishmentController {
 
   @Get('queue/warehouse')
   @RequirePermission('replenishment.approve.warehouse')
-  warehouseQueue(@Req() req: RequestWithDbContext, @Query() query: WarehouseQueueQueryDto): Promise<Paginated<Replenishment>> {
+  warehouseQueue(
+    @Req() req: RequestWithDbContext,
+    @Query() query: WarehouseQueueQueryDto,
+  ): Promise<Paginated<Replenishment>> {
     return this.service.warehouseQueue(req.dbClient!, query);
   }
 
   @Get()
   @RequirePermission('replenishment.read')
-  list(@Req() req: RequestWithDbContext, @Query() query: ListReplenishmentQueryDto): Promise<Paginated<Replenishment>> {
+  list(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ListReplenishmentQueryDto,
+  ): Promise<Paginated<Replenishment>> {
     return this.service.list(req.dbClient!, query);
   }
 
@@ -49,28 +55,41 @@ export class ReplenishmentController {
 
   @Get(':id/history')
   @RequirePermission('replenishment.read')
-  history(@Req() req: RequestWithDbContext, @Param('id') id: string): Promise<ReplenishmentHistoryRow[]> {
+  history(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+  ): Promise<ReplenishmentHistoryRow[]> {
     return this.service.getHistory(req.dbClient!, id);
   }
 
   @Post()
   @RequirePermission('replenishment.create')
   @Audited({ entityType: 'replenishment_request', action: 'replenishment.create' })
-  create(@Req() req: RequestWithDbContext, @Body() dto: CreateReplenishmentDto): Promise<Replenishment> {
+  create(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: CreateReplenishmentDto,
+  ): Promise<Replenishment> {
     return this.service.create(req.dbClient!, this.caller(req), dto);
   }
 
   @Patch(':id')
   @RequirePermission('replenishment.create')
   @Audited({ entityType: 'replenishment_request', action: 'replenishment.create' })
-  update(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: UpdateReplenishmentDto): Promise<Replenishment> {
+  update(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateReplenishmentDto,
+  ): Promise<Replenishment> {
     return this.service.update(req.dbClient!, this.caller(req), id, dto);
   }
 
   @Delete(':id')
   @RequirePermission('replenishment.create')
   @Audited({ entityType: 'replenishment_request', action: 'replenishment.create' })
-  remove(@Req() req: RequestWithDbContext, @Param('id') id: string): Promise<{ id: string; deleted: true }> {
+  remove(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+  ): Promise<{ id: string; deleted: true }> {
     return this.service.remove(req.dbClient!, this.caller(req), id);
   }
 
@@ -84,14 +103,22 @@ export class ReplenishmentController {
   @Post(':id/approve')
   @RequirePermission('replenishment.approve.supervisor', 'replenishment.approve.warehouse')
   @Audited({ entityType: 'replenishment_request', action: 'replenishment.approve' })
-  approve(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ApproveReplenishmentDto): Promise<Replenishment> {
+  approve(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ApproveReplenishmentDto,
+  ): Promise<Replenishment> {
     return this.service.approve(req.dbClient!, this.caller(req), id, dto);
   }
 
   @Post(':id/reject')
   @RequirePermission('replenishment.approve.supervisor', 'replenishment.approve.warehouse')
   @Audited({ entityType: 'replenishment_request', action: 'replenishment.reject' })
-  reject(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: RejectReplenishmentDto): Promise<Replenishment> {
+  reject(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: RejectReplenishmentDto,
+  ): Promise<Replenishment> {
     return this.service.reject(req.dbClient!, this.caller(req), id, dto);
   }
 
@@ -104,6 +131,10 @@ export class ReplenishmentController {
 
   private caller(req: RequestWithDbContext): CallerScope {
     const user = req.user!;
-    return { userId: user.sub, roleKey: user.roleKey as RoleKey, locationIds: req.locationScope ?? null };
+    return {
+      userId: user.sub,
+      roleKey: user.roleKey as RoleKey,
+      locationIds: req.locationScope ?? null,
+    };
   }
 }

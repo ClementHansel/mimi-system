@@ -23,8 +23,7 @@ export const supervisorOutletManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Buka tab **Minta Barang** lalu ketuk **Buat Permintaan**. Isi **Dibutuhkan Sebelum** (opsional), lalu untuk setiap barang pilih **Barang** dan isi **Jumlah** — pakai **Tambah Baris** untuk menambah barang lain.',
+          text: 'Buka tab **Minta Barang** lalu ketuk **Buat Permintaan**. Isi **Dibutuhkan Sebelum** (opsional), lalu untuk setiap barang pilih **Barang** dan isi **Jumlah** — pakai **Tambah Baris** untuk menambah barang lain.',
         },
         {
           type: 'callout',
@@ -48,8 +47,7 @@ export const supervisorOutletManual: DocManual = {
         },
         {
           type: 'p',
-          text:
-            'Permintaan Anda melewati dua langkah persetujuan: Supervisor lalu Kepala Gudang. Kepala Gudang bisa mengubah jumlah per baris sebelum menyetujui — bila itu terjadi, baris permintaan menampilkan **"Jumlah diubah — lihat alasan"** beserta alasannya di layar detail.',
+          text: 'Permintaan Anda melewati dua langkah persetujuan: Supervisor lalu Kepala Gudang. Kepala Gudang bisa mengubah jumlah per baris sebelum menyetujui — bila itu terjadi, baris permintaan menampilkan **"Jumlah diubah — lihat alasan"** beserta alasannya di layar detail.',
         },
       ],
     },
@@ -59,24 +57,20 @@ export const supervisorOutletManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Tab **Terima Barang** menampilkan kiriman yang masih berstatus Menunggu, Dalam Perjalanan, atau Tiba di Lokasi untuk outlet Anda. Ketuk barisnya untuk membuka formulir **Terima Barang**.',
+          text: 'Tab **Terima Barang** menampilkan kiriman yang masih berstatus Menunggu, Dalam Perjalanan, atau Tiba di Lokasi untuk outlet Anda. Ketuk barisnya untuk membuka formulir **Terima Barang**.',
         },
         {
           type: 'p',
-          text:
-            'Untuk setiap barang: kolom **Dikirim** tidak bisa diubah (jumlah dari gudang), isi **Diterima** (default sama dengan Dikirim) dan pilih **Area Penyimpanan**. Bila jumlah diterima berbeda dari yang dikirim, kolom **Alasan Selisih** muncul dan wajib diisi.',
+          text: 'Untuk setiap barang: kolom **Dikirim** tidak bisa diubah (jumlah dari gudang), isi **Diterima** (default sama dengan Dikirim) dan pilih **Area Penyimpanan**. Bila jumlah diterima berbeda dari yang dikirim, kolom **Alasan Selisih** muncul dan wajib diisi.',
         },
         {
           type: 'callout',
           kind: 'rule',
-          text:
-            'Wajib foto dan wajib tanda tangan. **Foto Barang Diterima** dan **Penerima** (tanda tangan) keduanya wajib — tombol **Konfirmasi Terima** tetap nonaktif sampai foto ada, tanda tangan ada, setiap baris punya jumlah + area penyimpanan, dan setiap selisih punya alasan. Ini bukan sekadar validasi — ini pengaman anti-kecurangan penerimaan barang.',
+          text: 'Wajib foto dan wajib tanda tangan. **Foto Barang Diterima** dan **Penerima** (tanda tangan) keduanya wajib — tombol **Konfirmasi Terima** tetap nonaktif sampai foto ada, tanda tangan ada, setiap baris punya jumlah + area penyimpanan, dan setiap selisih punya alasan. Ini bukan sekadar validasi — ini pengaman anti-kecurangan penerimaan barang.',
         },
         {
           type: 'p',
-          text:
-            'Setelah dikirim, notifikasi **"Penerimaan tersimpan — akan tersinkron otomatis saat koneksi tersedia"** muncul; data tetap tersimpan meski sedang offline dan tersinkron begitu perangkat online kembali.',
+          text: 'Setelah dikirim, notifikasi **"Penerimaan tersimpan — akan tersinkron otomatis saat koneksi tersedia"** muncul; data tetap tersimpan meski sedang offline dan tersinkron begitu perangkat online kembali.',
         },
       ],
     },
@@ -110,13 +104,11 @@ export const supervisorOutletManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Tab **Waste / Retur** punya dua sub-tab: **Waste** dan **Retur ke Gudang**. Untuk mencatat waste, ketuk **Catat Waste**.',
+          text: 'Tab **Waste / Retur** punya dua sub-tab: **Waste** dan **Retur ke Gudang**. Untuk mencatat waste, ketuk **Catat Waste**.',
         },
         {
           type: 'p',
-          text:
-            'Isi Area Penyimpanan, Barang, Hasil Hitung (jumlah), dan **Alasan** — pilih salah satu kategori tetap: **Kedaluwarsa, Rusak, Busuk, Salah Olah,** atau **Lainnya**. Tambahkan **Catatan** bila perlu, dan gunakan **Tambah Baris** untuk barang lain.',
+          text: 'Isi Area Penyimpanan, Barang, Hasil Hitung (jumlah), dan **Alasan** — pilih salah satu kategori tetap: **Kedaluwarsa, Rusak, Busuk, Salah Olah,** atau **Lainnya**. Tambahkan **Catatan** bila perlu, dan gunakan **Tambah Baris** untuk barang lain.',
         },
         {
           type: 'callout',
@@ -125,13 +117,11 @@ export const supervisorOutletManual: DocManual = {
         },
         {
           type: 'p',
-          text:
-            'Waste langsung berstatus Menunggu setelah diajukan (tidak melalui status draft) — hanya ada tiga status: Menunggu, Disetujui, Ditolak.',
+          text: 'Waste langsung berstatus Menunggu setelah diajukan (tidak melalui status draft) — hanya ada tiga status: Menunggu, Disetujui, Ditolak.',
         },
         {
           type: 'p',
-          text:
-            'Untuk **Retur ke Gudang**: ketuk **Buat Retur**, isi Barang, Area Penyimpanan, jumlah, **Alasan** (teks bebas, wajib), dan **Foto Bukti** (wajib). Retur langsung diajukan setelah dibuat, sama seperti permintaan barang.',
+          text: 'Untuk **Retur ke Gudang**: ketuk **Buat Retur**, isi Barang, Area Penyimpanan, jumlah, **Alasan** (teks bebas, wajib), dan **Foto Bukti** (wajib). Retur langsung diajukan setelah dibuat, sama seperti permintaan barang.',
         },
       ],
     },
@@ -141,24 +131,20 @@ export const supervisorOutletManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Buka **Persetujuan Menunggu** (`/approvals`) untuk melihat dokumen yang menunggu keputusan Anda — daftar ini sudah disaring oleh sistem, jadi Anda hanya melihat dokumen yang memang wewenang Anda.',
+          text: 'Buka **Persetujuan Menunggu** (`/approvals`) untuk melihat dokumen yang menunggu keputusan Anda — daftar ini sudah disaring oleh sistem, jadi Anda hanya melihat dokumen yang memang wewenang Anda.',
         },
         {
           type: 'p',
-          text:
-            'Untuk **Permintaan Barang**, layar detail memakai formulir khusus: centang **Ubah jumlah** pada baris yang ingin diubah, isi jumlah baru dan alasan perubahan (wajib bila diubah). Ketuk **Setujui** atau **Tolak** (Tolak meminta **Alasan Penolakan** wajib diisi, lalu **Konfirmasi Tolak**).',
+          text: 'Untuk **Permintaan Barang**, layar detail memakai formulir khusus: centang **Ubah jumlah** pada baris yang ingin diubah, isi jumlah baru dan alasan perubahan (wajib bila diubah). Ketuk **Setujui** atau **Tolak** (Tolak meminta **Alasan Penolakan** wajib diisi, lalu **Konfirmasi Tolak**).',
         },
         {
           type: 'p',
-          text:
-            'Untuk jenis dokumen lain (Stock Opname, Retur, Waste, dll.), gunakan panel persetujuan umum: isi **Catatan** (opsional, kecuali untuk Selisih Kas — di sana catatan wajib diisi bahkan untuk menyetujui), lalu **Setujui**, atau ketuk **Tolak** dan isi **Alasan Penolakan**.',
+          text: 'Untuk jenis dokumen lain (Stock Opname, Retur, Waste, dll.), gunakan panel persetujuan umum: isi **Catatan** (opsional, kecuali untuk Selisih Kas — di sana catatan wajib diisi bahkan untuk menyetujui), lalu **Setujui**, atau ketuk **Tolak** dan isi **Alasan Penolakan**.',
         },
         {
           type: 'callout',
           kind: 'note',
-          text:
-            'Void/Refund dan Verifikasi Pembayaran tidak bisa disetujui dari layar ini — keduanya punya jalur persetujuan sendiri (Void/Refund lewat PIN Supervisor di modul Kasir; Verifikasi Pembayaran lewat aksi "Bayar" di modul Keuangan). Dari layar Persetujuan, Anda hanya bisa menolak keduanya.',
+          text: 'Void/Refund dan Verifikasi Pembayaran tidak bisa disetujui dari layar ini — keduanya punya jalur persetujuan sendiri (Void/Refund lewat PIN Supervisor di modul Kasir; Verifikasi Pembayaran lewat aksi "Bayar" di modul Keuangan). Dari layar Persetujuan, Anda hanya bisa menolak keduanya.',
         },
       ],
     },

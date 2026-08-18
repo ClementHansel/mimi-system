@@ -31,7 +31,9 @@ import type { ISODateTime, Money, SyncEntity, SyncOriginType, UUID } from '@mimi
  */
 export function parseClientSeq(wireValue: string): bigint {
   if (!/^\d+$/.test(wireValue)) {
-    throw new RangeError(`client_seq must be a non-negative integer string, got ${JSON.stringify(wireValue)}`);
+    throw new RangeError(
+      `client_seq must be a non-negative integer string, got ${JSON.stringify(wireValue)}`,
+    );
   }
   return BigInt(wireValue);
 }

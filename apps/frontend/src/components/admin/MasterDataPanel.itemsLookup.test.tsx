@@ -28,7 +28,9 @@ describe('MasterDataPanel — items lookup for the recipe editor', () => {
     render(<MasterDataPanel />);
 
     await waitFor(() => {
-      const itemsLookupCall = vi.mocked(api.get).mock.calls.find(([path]) => (path as string).startsWith('/items?'));
+      const itemsLookupCall = vi
+        .mocked(api.get)
+        .mock.calls.find(([path]) => (path as string).startsWith('/items?'));
       expect(itemsLookupCall).toBeDefined();
       const qs = new URLSearchParams((itemsLookupCall![0] as string).split('?')[1]);
       if (qs.has('pageSize')) expect(Number(qs.get('pageSize'))).toBeLessThanOrEqual(200);

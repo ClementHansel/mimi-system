@@ -23,18 +23,38 @@ vi.mock('@/lib/api', async () => {
 function setPermissions(permissions: string[]) {
   useSessionStore.setState({
     user: {
-      id: 'u1', username: 'finance1', name: 'Finance Satu', roleKey: 'finance',
-      permissions, locations: [], employeeId: null, mustSetPin: false,
+      id: 'u1',
+      username: 'finance1',
+      name: 'Finance Satu',
+      roleKey: 'finance',
+      permissions,
+      locations: [],
+      employeeId: null,
+      mustSetPin: false,
     },
   });
 }
 
 function pv(overrides: Partial<PaymentVerification> = {}): PaymentVerification {
   return {
-    id: 'pv-1', pvNumber: 'PV-202608-00001', refType: 'sale_payment', refId: null, refNumber: null,
-    payeeType: 'other', payeeName: 'Toko ABC', amount: '1250000.00', status: 'pending',
-    proofUrl: null, referenceNumber: null, submittedBy: 'u2', verifiedBy: null, verifiedAt: null,
-    paidBy: null, paidAt: null, paidVia: null, locationName: 'Outlet Sanur',
+    id: 'pv-1',
+    pvNumber: 'PV-202608-00001',
+    refType: 'sale_payment',
+    refId: null,
+    refNumber: null,
+    payeeType: 'other',
+    payeeName: 'Toko ABC',
+    amount: '1250000.00',
+    status: 'pending',
+    proofUrl: null,
+    referenceNumber: null,
+    submittedBy: 'u2',
+    verifiedBy: null,
+    verifiedAt: null,
+    paidBy: null,
+    paidAt: null,
+    paidVia: null,
+    locationName: 'Outlet Sanur',
     ...overrides,
   };
 }
@@ -70,14 +90,22 @@ describe('PaymentsPanel — payment verification queue', () => {
 
     const verifyButton = await screen.findByRole('button', { name: 'Verifikasi' });
     expect(verifyButton).toBeDisabled();
-    expect(screen.getByText('Bukti pembayaran harus diunggah sebelum dapat diverifikasi.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Bukti pembayaran harus diunggah sebelum dapat diverifikasi.'),
+    ).toBeInTheDocument();
   });
 
   it('enables Verifikasi once proof is attached, and calls the verify endpoint', async () => {
     setPermissions(['payment.read', 'payment.verify']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/accounting/payments/')) return Promise.resolve(pv({ proofUrl: 'https://storage/proof.jpg' }));
-      return Promise.resolve({ rows: [pv({ proofUrl: 'https://storage/proof.jpg' })], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/accounting/payments/'))
+        return Promise.resolve(pv({ proofUrl: 'https://storage/proof.jpg' }));
+      return Promise.resolve({
+        rows: [pv({ proofUrl: 'https://storage/proof.jpg' })],
+        total: 1,
+        page: 1,
+        pageSize: 25,
+      });
     });
     vi.mocked(api.post).mockResolvedValue(pv({ status: 'verified' }));
 
@@ -88,14 +116,24 @@ describe('PaymentsPanel — payment verification queue', () => {
     expect(verifyButton).not.toBeDisabled();
     fireEvent.click(verifyButton);
 
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/accounting/payments/pv-1/verify', { note: undefined }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/accounting/payments/pv-1/verify', {
+        note: undefined,
+      }),
+    );
   });
 
   it('shows the Bayar action (not Verifikasi) once a PV is verified, gated by payment.pay', async () => {
     setPermissions(['payment.read', 'payment.pay']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/accounting/payments/')) return Promise.resolve(pv({ status: 'verified', proofUrl: 'https://storage/proof.jpg' }));
-      return Promise.resolve({ rows: [pv({ status: 'verified' })], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/accounting/payments/'))
+        return Promise.resolve(pv({ status: 'verified', proofUrl: 'https://storage/proof.jpg' }));
+      return Promise.resolve({
+        rows: [pv({ status: 'verified' })],
+        total: 1,
+        page: 1,
+        pageSize: 25,
+      });
     });
 
     render(<PaymentsPanel />);
@@ -108,7 +146,8 @@ describe('PaymentsPanel — payment verification queue', () => {
   it('never renders Verifikasi/Bayar/Tolak actions without the matching permission', async () => {
     setPermissions(['payment.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/accounting/payments/')) return Promise.resolve(pv({ proofUrl: 'https://storage/proof.jpg' }));
+      if (path.startsWith('/accounting/payments/'))
+        return Promise.resolve(pv({ proofUrl: 'https://storage/proof.jpg' }));
       return Promise.resolve({ rows: [pv()], total: 1, page: 1, pageSize: 25 });
     });
 

@@ -51,7 +51,9 @@ export interface EntityAuthority {
   note?: string;
 }
 
-function entity(e: Partial<EntityAuthority> & Pick<EntityAuthority, 'class' | 'direction' | 'pullScope' | 'ops'>): EntityAuthority {
+function entity(
+  e: Partial<EntityAuthority> & Pick<EntityAuthority, 'class' | 'direction' | 'pullScope' | 'ops'>,
+): EntityAuthority {
   return e;
 }
 
@@ -267,7 +269,8 @@ export function canOriginate(tier: SyncOriginType, entityName: string, op: strin
 
   if (tier === SyncOriginType.CLOUD) return true;
 
-  if (meta.class === 'M' || meta.class === 'X' || meta.class === 'D' || meta.class === 'T') return false;
+  if (meta.class === 'M' || meta.class === 'X' || meta.class === 'D' || meta.class === 'T')
+    return false;
   if (meta.direction === 'none') return false;
   if (meta.direction === 'pull') return meta.pushExceptionOps?.includes(op) ?? false;
   if (meta.direction === 'push') return true; // every op of a push-only entity is push-eligible by definition

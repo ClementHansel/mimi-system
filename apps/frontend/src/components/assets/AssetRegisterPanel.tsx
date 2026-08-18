@@ -5,19 +5,44 @@ import { Plus, Save } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { useSessionStore } from '@/stores/session-store';
 import {
-  Button, Modal, DataTable, StatusBadge, Select, Input, MoneyInput, Textarea, PhotoCapture, toast, PermissionGate, Card, CardContent,
+  Button,
+  Modal,
+  DataTable,
+  StatusBadge,
+  Select,
+  Input,
+  MoneyInput,
+  Textarea,
+  PhotoCapture,
+  toast,
+  PermissionGate,
+  Card,
+  CardContent,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
 import { formatMoney } from '@/lib/formatters';
 import {
-  getAssets, createAsset, updateAsset, getSchedules, createSchedule, getAssetHistory, createJob,
+  getAssets,
+  createAsset,
+  updateAsset,
+  getSchedules,
+  createSchedule,
+  getAssetHistory,
+  createJob,
 } from './lib/assets-api';
 import { uploadAttachment } from './lib/attachments';
 import type { Asset, Schedule, ServiceHistoryRow } from './lib/types';
 import type { Money } from '@/lib/shared-types';
 
-const CATEGORIES = ['machine', 'vehicle', 'equipment', 'electronics', 'furniture', 'other'] as const;
+const CATEGORIES = [
+  'machine',
+  'vehicle',
+  'equipment',
+  'electronics',
+  'furniture',
+  'other',
+] as const;
 const CONDITIONS = ['good', 'fair', 'poor'] as const;
 const STATUSES = ['active', 'in_maintenance', 'retired', 'lost'] as const;
 
@@ -42,40 +67,92 @@ export function AssetRegisterPanel() {
 
   function reload() {
     setLoading(true);
-    getAssets({ locationId: locationId || undefined, category: category || undefined, status: status || undefined, q: q || undefined })
+    getAssets({
+      locationId: locationId || undefined,
+      category: category || undefined,
+      status: status || undefined,
+      q: q || undefined,
+    })
       .then((r) => setRows(r.rows))
       .catch(() => toast({ title: t('table.error'), variant: 'danger' }))
       .finally(() => setLoading(false));
   }
   useEffect(reload, [locationId, category, status]);
 
-  const locationOptions = useMemo(() => locations.map((l) => ({ value: l.id, label: l.name })), [locations]);
+  const locationOptions = useMemo(
+    () => locations.map((l) => ({ value: l.id, label: l.name })),
+    [locations],
+  );
 
   const columns: DataTableColumn<Asset>[] = [
     { key: 'assetNumber', header: t('assets.register.columnNumber') },
     { key: 'name', header: t('assets.register.columnName') },
-    { key: 'category', header: t('assets.register.columnCategory'), render: (r) => t(`assets.category.${r.category}`) },
+    {
+      key: 'category',
+      header: t('assets.register.columnCategory'),
+      render: (r) => t(`assets.category.${r.category}`),
+    },
     { key: 'locationName', header: t('common.location') },
-    { key: 'condition', header: t('assets.register.columnCondition'), render: (r) => t(`assets.condition.${r.condition}`) },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="asset" status={r.status} /> },
-    { key: 'assignedToName', header: t('assets.register.columnAssignedTo'), render: (r) => r.assignedToName ?? '—' },
+    {
+      key: 'condition',
+      header: t('assets.register.columnCondition'),
+      render: (r) => t(`assets.condition.${r.condition}`),
+    },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="asset" status={r.status} />,
+    },
+    {
+      key: 'assignedToName',
+      header: t('assets.register.columnAssignedTo'),
+      render: (r) => r.assignedToName ?? '—',
+    },
   ];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
-        <Input label={t('common.filter')} value={q} onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && reload()} placeholder={t('assets.register.searchPlaceholder')} wrapperClassName="w-56" />
-        <Select label={t('common.location')} value={locationId} onValueChange={setLocationId}
-          options={locationOptions} placeholder={t('common.all')} wrapperClassName="w-44" />
-        <Select label={t('assets.register.columnCategory')} value={category} onValueChange={setCategory}
-          options={CATEGORIES.map((c) => ({ value: c, label: t(`assets.category.${c}`) }))} placeholder={t('common.all')} wrapperClassName="w-40" />
-        <Select label={t('common.status')} value={status} onValueChange={setStatus}
-          options={STATUSES.map((s) => ({ value: s, label: t(`status.asset.${s}`) }))} placeholder={t('common.all')} wrapperClassName="w-44" />
-        <Button variant="outline" onClick={reload}>{t('common.filter')}</Button>
+        <Input
+          label={t('common.filter')}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && reload()}
+          placeholder={t('assets.register.searchPlaceholder')}
+          wrapperClassName="w-56"
+        />
+        <Select
+          label={t('common.location')}
+          value={locationId}
+          onValueChange={setLocationId}
+          options={locationOptions}
+          placeholder={t('common.all')}
+          wrapperClassName="w-44"
+        />
+        <Select
+          label={t('assets.register.columnCategory')}
+          value={category}
+          onValueChange={setCategory}
+          options={CATEGORIES.map((c) => ({ value: c, label: t(`assets.category.${c}`) }))}
+          placeholder={t('common.all')}
+          wrapperClassName="w-40"
+        />
+        <Select
+          label={t('common.status')}
+          value={status}
+          onValueChange={setStatus}
+          options={STATUSES.map((s) => ({ value: s, label: t(`status.asset.${s}`) }))}
+          placeholder={t('common.all')}
+          wrapperClassName="w-44"
+        />
+        <Button variant="outline" onClick={reload}>
+          {t('common.filter')}
+        </Button>
         <div className="flex-1" />
         <PermissionGate permission="asset.manage">
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>{t('assets.register.createButton')}</Button>
+          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
+            {t('assets.register.createButton')}
+          </Button>
         </PermissionGate>
       </div>
 
@@ -87,13 +164,32 @@ export function AssetRegisterPanel() {
         onRowClick={setDetailAsset}
       />
 
-      {createOpen && <CreateAssetModal locationOptions={locationOptions} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); reload(); }} />}
-      {detailAsset && <AssetDetailModal asset={detailAsset} onClose={() => setDetailAsset(null)} onChanged={reload} />}
+      {createOpen && (
+        <CreateAssetModal
+          locationOptions={locationOptions}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            setCreateOpen(false);
+            reload();
+          }}
+        />
+      )}
+      {detailAsset && (
+        <AssetDetailModal
+          asset={detailAsset}
+          onClose={() => setDetailAsset(null)}
+          onChanged={reload}
+        />
+      )}
     </div>
   );
 }
 
-function CreateAssetModal({ locationOptions, onClose, onCreated }: {
+function CreateAssetModal({
+  locationOptions,
+  onClose,
+  onCreated,
+}: {
   locationOptions: { value: string; label: string }[];
   onClose: () => void;
   onCreated: () => void;
@@ -116,11 +212,22 @@ function CreateAssetModal({ locationOptions, onClose, onCreated }: {
     setSaving(true);
     try {
       let photoAttachmentId: string | undefined;
-      if (photo) photoAttachmentId = await uploadAttachment({ file: photo, fileName: photo.name, mimeType: photo.type || 'image/jpeg', kind: 'asset_photo' });
+      if (photo)
+        photoAttachmentId = await uploadAttachment({
+          file: photo,
+          fileName: photo.name,
+          mimeType: photo.type || 'image/jpeg',
+          kind: 'asset_photo',
+        });
       await createAsset({
-        name: name.trim(), category, locationId,
-        serialNumber: serialNumber || undefined, brand: brand || undefined, model: model || undefined,
-        purchasePrice: purchasePrice ?? undefined, photoAttachmentId,
+        name: name.trim(),
+        category,
+        locationId,
+        serialNumber: serialNumber || undefined,
+        brand: brand || undefined,
+        model: model || undefined,
+        purchasePrice: purchasePrice ?? undefined,
+        photoAttachmentId,
       });
       toast({ title: t('assets.register.createSuccess'), variant: 'success' });
       onCreated();
@@ -134,27 +241,74 @@ function CreateAssetModal({ locationOptions, onClose, onCreated }: {
   return (
     <Modal open onClose={onClose} title={t('assets.register.createTitle')} size="lg">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Input label={t('assets.register.columnName')} value={name} onChange={(e) => setName(e.target.value)} required />
-        <Select label={t('assets.register.columnCategory')} value={category} onValueChange={setCategory}
-          options={CATEGORIES.map((c) => ({ value: c, label: t(`assets.category.${c}`) }))} />
-        <Select label={t('common.location')} value={locationId} onValueChange={setLocationId}
-          options={locationOptions} placeholder={t('common.selectPlaceholder')} required />
-        <Input label={t('assets.register.serialNumber')} value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} />
-        <Input label={t('assets.register.brand')} value={brand} onChange={(e) => setBrand(e.target.value)} />
-        <Input label={t('assets.register.model')} value={model} onChange={(e) => setModel(e.target.value)} />
-        <MoneyInput label={t('assets.register.purchasePrice')} value={purchasePrice} onChange={setPurchasePrice} />
-        <PhotoCapture label={t('assets.register.photoLabel')} value={photo ? URL.createObjectURL(photo) : null}
-          onCapture={setPhoto} onRemove={() => setPhoto(null)} />
+        <Input
+          label={t('assets.register.columnName')}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <Select
+          label={t('assets.register.columnCategory')}
+          value={category}
+          onValueChange={setCategory}
+          options={CATEGORIES.map((c) => ({ value: c, label: t(`assets.category.${c}`) }))}
+        />
+        <Select
+          label={t('common.location')}
+          value={locationId}
+          onValueChange={setLocationId}
+          options={locationOptions}
+          placeholder={t('common.selectPlaceholder')}
+          required
+        />
+        <Input
+          label={t('assets.register.serialNumber')}
+          value={serialNumber}
+          onChange={(e) => setSerialNumber(e.target.value)}
+        />
+        <Input
+          label={t('assets.register.brand')}
+          value={brand}
+          onChange={(e) => setBrand(e.target.value)}
+        />
+        <Input
+          label={t('assets.register.model')}
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+        />
+        <MoneyInput
+          label={t('assets.register.purchasePrice')}
+          value={purchasePrice}
+          onChange={setPurchasePrice}
+        />
+        <PhotoCapture
+          label={t('assets.register.photoLabel')}
+          value={photo ? URL.createObjectURL(photo) : null}
+          onCapture={setPhoto}
+          onRemove={() => setPhoto(null)}
+        />
       </div>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-        <Button loading={saving} disabled={!canSubmit} onClick={submit}>{t('common.save')}</Button>
+        <Button variant="outline" onClick={onClose}>
+          {t('common.cancel')}
+        </Button>
+        <Button loading={saving} disabled={!canSubmit} onClick={submit}>
+          {t('common.save')}
+        </Button>
       </div>
     </Modal>
   );
 }
 
-function AssetDetailModal({ asset, onClose, onChanged }: { asset: Asset; onClose: () => void; onChanged: () => void }) {
+function AssetDetailModal({
+  asset,
+  onClose,
+  onChanged,
+}: {
+  asset: Asset;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
   const { t } = useI18n();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [history, setHistory] = useState<ServiceHistoryRow[]>([]);
@@ -165,8 +319,12 @@ function AssetDetailModal({ asset, onClose, onChanged }: { asset: Asset; onClose
   const [jobOpen, setJobOpen] = useState(false);
 
   useEffect(() => {
-    getSchedules(asset.id).then(setSchedules).catch(() => setSchedules([]));
-    getAssetHistory(asset.id).then((r) => setHistory(r.rows)).catch(() => setHistory([]));
+    getSchedules(asset.id)
+      .then(setSchedules)
+      .catch(() => setSchedules([]));
+    getAssetHistory(asset.id)
+      .then((r) => setHistory(r.rows))
+      .catch(() => setHistory([]));
   }, [asset.id]);
 
   async function saveConditionStatus() {
@@ -188,20 +346,43 @@ function AssetDetailModal({ asset, onClose, onChanged }: { asset: Asset; onClose
         <PermissionGate permission="asset.manage">
           <Card>
             <CardContent className="flex flex-wrap items-end gap-3">
-              <Select label={t('assets.register.columnCondition')} value={condition} onValueChange={(v) => setCondition(v as Asset['condition'])}
-                options={CONDITIONS.map((c) => ({ value: c, label: t(`assets.condition.${c}`) }))} wrapperClassName="w-40" />
-              <Select label={t('common.status')} value={status} onValueChange={(v) => setStatus(v as Asset['status'])}
-                options={STATUSES.map((s) => ({ value: s, label: t(`status.asset.${s}`) }))} wrapperClassName="w-44" />
-              <Button leftIcon={<Save className="size-4" />} loading={savingStatus} onClick={saveConditionStatus}>{t('common.save')}</Button>
+              <Select
+                label={t('assets.register.columnCondition')}
+                value={condition}
+                onValueChange={(v) => setCondition(v as Asset['condition'])}
+                options={CONDITIONS.map((c) => ({ value: c, label: t(`assets.condition.${c}`) }))}
+                wrapperClassName="w-40"
+              />
+              <Select
+                label={t('common.status')}
+                value={status}
+                onValueChange={(v) => setStatus(v as Asset['status'])}
+                options={STATUSES.map((s) => ({ value: s, label: t(`status.asset.${s}`) }))}
+                wrapperClassName="w-44"
+              />
+              <Button
+                leftIcon={<Save className="size-4" />}
+                loading={savingStatus}
+                onClick={saveConditionStatus}
+              >
+                {t('common.save')}
+              </Button>
             </CardContent>
           </Card>
         </PermissionGate>
 
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-display text-base font-semibold text-text-primary">{t('assets.schedules.title')}</h3>
+            <h3 className="font-display text-base font-semibold text-text-primary">
+              {t('assets.schedules.title')}
+            </h3>
             <PermissionGate permission="asset.schedule.manage">
-              <Button size="sm" variant="outline" leftIcon={<Plus className="size-4" />} onClick={() => setScheduleOpen(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<Plus className="size-4" />}
+                onClick={() => setScheduleOpen(true)}
+              >
                 {t('assets.schedules.addButton')}
               </Button>
             </PermissionGate>
@@ -211,9 +392,14 @@ function AssetDetailModal({ asset, onClose, onChanged }: { asset: Asset; onClose
           ) : (
             <ul className="flex flex-col gap-1.5 text-sm">
               {schedules.map((s) => (
-                <li key={s.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between rounded-md border border-border px-3 py-2"
+                >
                   <span>{s.name}</span>
-                  <span className="text-text-muted">{t('assets.schedules.nextDue')}: {fmtDate(s.nextDueAt)}</span>
+                  <span className="text-text-muted">
+                    {t('assets.schedules.nextDue')}: {fmtDate(s.nextDueAt)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -222,9 +408,16 @@ function AssetDetailModal({ asset, onClose, onChanged }: { asset: Asset; onClose
 
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-display text-base font-semibold text-text-primary">{t('assets.jobs.newCorrective')}</h3>
+            <h3 className="font-display text-base font-semibold text-text-primary">
+              {t('assets.jobs.newCorrective')}
+            </h3>
             <PermissionGate permission="asset.job.execute">
-              <Button size="sm" variant="outline" leftIcon={<Plus className="size-4" />} onClick={() => setJobOpen(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                leftIcon={<Plus className="size-4" />}
+                onClick={() => setJobOpen(true)}
+              >
                 {t('assets.jobs.newCorrective')}
               </Button>
             </PermissionGate>
@@ -232,13 +425,18 @@ function AssetDetailModal({ asset, onClose, onChanged }: { asset: Asset; onClose
         </div>
 
         <div>
-          <h3 className="mb-2 font-display text-base font-semibold text-text-primary">{t('assets.history.title')}</h3>
+          <h3 className="mb-2 font-display text-base font-semibold text-text-primary">
+            {t('assets.history.title')}
+          </h3>
           {history.length === 0 ? (
             <p className="text-sm text-text-muted">{t('assets.history.empty')}</p>
           ) : (
             <ul className="flex flex-col gap-1.5 text-sm">
               {history.map((h, i) => (
-                <li key={i} className="flex flex-col gap-0.5 rounded-md border border-border px-3 py-2">
+                <li
+                  key={i}
+                  className="flex flex-col gap-0.5 rounded-md border border-border px-3 py-2"
+                >
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-text-primary">{fmtDate(h.serviceDate)}</span>
                     <span className="tabular-nums text-text-muted">{formatMoney(h.cost)}</span>
@@ -252,18 +450,38 @@ function AssetDetailModal({ asset, onClose, onChanged }: { asset: Asset; onClose
       </div>
 
       {scheduleOpen && (
-        <CreateScheduleModal assetId={asset.id} onClose={() => setScheduleOpen(false)}
-          onCreated={() => { setScheduleOpen(false); getSchedules(asset.id).then(setSchedules); }} />
+        <CreateScheduleModal
+          assetId={asset.id}
+          onClose={() => setScheduleOpen(false)}
+          onCreated={() => {
+            setScheduleOpen(false);
+            getSchedules(asset.id).then(setSchedules);
+          }}
+        />
       )}
       {jobOpen && (
-        <CreateJobModal assetId={asset.id} onClose={() => setJobOpen(false)}
-          onCreated={() => { setJobOpen(false); onChanged(); }} />
+        <CreateJobModal
+          assetId={asset.id}
+          onClose={() => setJobOpen(false)}
+          onCreated={() => {
+            setJobOpen(false);
+            onChanged();
+          }}
+        />
       )}
     </Modal>
   );
 }
 
-function CreateScheduleModal({ assetId, onClose, onCreated }: { assetId: string; onClose: () => void; onCreated: () => void }) {
+function CreateScheduleModal({
+  assetId,
+  onClose,
+  onCreated,
+}: {
+  assetId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const { t } = useI18n();
   const [name, setName] = useState('');
   const [intervalType, setIntervalType] = useState<'days' | 'months'>('months');
@@ -278,7 +496,10 @@ function CreateScheduleModal({ assetId, onClose, onCreated }: { assetId: string;
     setSaving(true);
     try {
       await createSchedule(assetId, {
-        name: name.trim(), intervalType, intervalValue: Number(intervalValue), nextDueAt,
+        name: name.trim(),
+        intervalType,
+        intervalValue: Number(intervalValue),
+        nextDueAt,
         reminderDaysBefore: Number(reminderDaysBefore) || undefined,
       });
       toast({ title: t('assets.schedules.createSuccess'), variant: 'success' });
@@ -293,22 +514,65 @@ function CreateScheduleModal({ assetId, onClose, onCreated }: { assetId: string;
   return (
     <Modal open onClose={onClose} title={t('assets.schedules.addButton')} size="md">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Input wrapperClassName="sm:col-span-2" label={t('assets.schedules.name')} value={name} onChange={(e) => setName(e.target.value)} required />
-        <Select label={t('assets.schedules.intervalType')} value={intervalType} onValueChange={(v) => setIntervalType(v as 'days' | 'months')}
-          options={[{ value: 'days', label: t('assets.schedules.days') }, { value: 'months', label: t('assets.schedules.months') }]} />
-        <Input label={t('assets.schedules.intervalValue')} type="number" min={1} value={intervalValue} onChange={(e) => setIntervalValue(e.target.value)} />
-        <Input label={t('assets.schedules.nextDueAt')} type="date" value={nextDueAt} onChange={(e) => setNextDueAt(e.target.value)} required />
-        <Input label={t('assets.schedules.reminderDaysBefore')} type="number" min={0} value={reminderDaysBefore} onChange={(e) => setReminderDaysBefore(e.target.value)} />
+        <Input
+          wrapperClassName="sm:col-span-2"
+          label={t('assets.schedules.name')}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <Select
+          label={t('assets.schedules.intervalType')}
+          value={intervalType}
+          onValueChange={(v) => setIntervalType(v as 'days' | 'months')}
+          options={[
+            { value: 'days', label: t('assets.schedules.days') },
+            { value: 'months', label: t('assets.schedules.months') },
+          ]}
+        />
+        <Input
+          label={t('assets.schedules.intervalValue')}
+          type="number"
+          min={1}
+          value={intervalValue}
+          onChange={(e) => setIntervalValue(e.target.value)}
+        />
+        <Input
+          label={t('assets.schedules.nextDueAt')}
+          type="date"
+          value={nextDueAt}
+          onChange={(e) => setNextDueAt(e.target.value)}
+          required
+        />
+        <Input
+          label={t('assets.schedules.reminderDaysBefore')}
+          type="number"
+          min={0}
+          value={reminderDaysBefore}
+          onChange={(e) => setReminderDaysBefore(e.target.value)}
+        />
       </div>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-        <Button loading={saving} disabled={!canSubmit} onClick={submit}>{t('common.save')}</Button>
+        <Button variant="outline" onClick={onClose}>
+          {t('common.cancel')}
+        </Button>
+        <Button loading={saving} disabled={!canSubmit} onClick={submit}>
+          {t('common.save')}
+        </Button>
       </div>
     </Modal>
   );
 }
 
-function CreateJobModal({ assetId, onClose, onCreated }: { assetId: string; onClose: () => void; onCreated: () => void }) {
+function CreateJobModal({
+  assetId,
+  onClose,
+  onCreated,
+}: {
+  assetId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const { t } = useI18n();
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
@@ -331,8 +595,15 @@ function CreateJobModal({ assetId, onClose, onCreated }: { assetId: string; onCl
   return (
     <Modal open onClose={onClose} title={t('assets.jobs.newCorrective')} size="sm">
       <div className="flex flex-col gap-4">
-        <Textarea label={t('assets.jobs.descriptionLabel')} value={description} onChange={(e) => setDescription(e.target.value)} required />
-        <Button loading={saving} disabled={!canSubmit} onClick={submit}>{t('common.submit')}</Button>
+        <Textarea
+          label={t('assets.jobs.descriptionLabel')}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          required
+        />
+        <Button loading={saving} disabled={!canSubmit} onClick={submit}>
+          {t('common.submit')}
+        </Button>
       </div>
     </Modal>
   );

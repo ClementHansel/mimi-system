@@ -8,19 +8,25 @@ const cents = fc.bigInt({ min: 1n, max: 10n ** 10n });
 
 /** Builds a random balanced entry: one debit line for the total, N credit lines splitting it evenly. */
 function balancedEntryArb() {
-  return fc.tuple(cents, fc.integer({ min: 1, max: 8 })).map(([amountCents, splits]): JournalEntryInput => {
-    const total = formatMoney(amountCents);
-    // A split can produce a zero-value share (e.g. "0.01" split 2 ways -> ["0.01", "0.00"]); a zero
-    // line has neither side set and is not a valid journal line (validateJournalEntry rejects it), so
-    // it is filtered out here rather than fed to the validator as one of the entry's lines.
-    const nonZeroShares = splitMoneyEvenly(total, splits).filter((share) => share !== '0.00');
-    return {
-      lines: [
-        { accountCode: '1100', debit: total, credit: '0.00' },
-        ...nonZeroShares.map((share, i) => ({ accountCode: `20${i}0`, debit: '0.00', credit: share })),
-      ],
-    };
-  });
+  return fc
+    .tuple(cents, fc.integer({ min: 1, max: 8 }))
+    .map(([amountCents, splits]): JournalEntryInput => {
+      const total = formatMoney(amountCents);
+      // A split can produce a zero-value share (e.g. "0.01" split 2 ways -> ["0.01", "0.00"]); a zero
+      // line has neither side set and is not a valid journal line (validateJournalEntry rejects it), so
+      // it is filtered out here rather than fed to the validator as one of the entry's lines.
+      const nonZeroShares = splitMoneyEvenly(total, splits).filter((share) => share !== '0.00');
+      return {
+        lines: [
+          { accountCode: '1100', debit: total, credit: '0.00' },
+          ...nonZeroShares.map((share, i) => ({
+            accountCode: `20${i}0`,
+            debit: '0.00',
+            credit: share,
+          })),
+        ],
+      };
+    });
 }
 
 describe('property: every generated (constructed-balanced) journal entry validates as balanced', () => {

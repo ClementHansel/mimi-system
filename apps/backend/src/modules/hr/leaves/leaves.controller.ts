@@ -35,7 +35,10 @@ export class LeavesController {
 
   @Get('me')
   @RequirePermission('hr.leave.request')
-  async me(@Req() req: RequestWithDbContext, @Query('year') year?: string): Promise<{ rows: LeaveRow[]; quota: LeaveQuota }> {
+  async me(
+    @Req() req: RequestWithDbContext,
+    @Query('year') year?: string,
+  ): Promise<{ rows: LeaveRow[]; quota: LeaveQuota }> {
     return this.service.listMe(req.dbClient!, req.user!.sub, year);
   }
 
@@ -49,14 +52,28 @@ export class LeavesController {
   @Post(':id/approve')
   @RequirePermission('hr.leave.approve')
   @Audited({ module: 'hr', entityType: 'leave_requests', action: 'hr.leave.approve' })
-  async approve(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ApproveLeaveDto): Promise<LeaveRow> {
-    return this.service.approve(req.dbClient!, req.user!.sub, req.user!.roleKey as RoleKey, id, dto);
+  async approve(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ApproveLeaveDto,
+  ): Promise<LeaveRow> {
+    return this.service.approve(
+      req.dbClient!,
+      req.user!.sub,
+      req.user!.roleKey as RoleKey,
+      id,
+      dto,
+    );
   }
 
   @Post(':id/reject')
   @RequirePermission('hr.leave.approve')
   @Audited({ module: 'hr', entityType: 'leave_requests', action: 'hr.leave.approve' })
-  async reject(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: RejectLeaveDto): Promise<LeaveRow> {
+  async reject(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: RejectLeaveDto,
+  ): Promise<LeaveRow> {
     return this.service.reject(req.dbClient!, req.user!.sub, req.user!.roleKey as RoleKey, id, dto);
   }
 

@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { addQty, businessDayBoundaries, subQty, type ISODate, type Qty, type UUID } from '@mimi/shared';
+import {
+  addQty,
+  businessDayBoundaries,
+  subQty,
+  type ISODate,
+  type Qty,
+  type UUID,
+} from '@mimi/shared';
 
 export interface DailyStockRow {
   itemId: UUID;

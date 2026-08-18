@@ -16,7 +16,12 @@ function makeTransport(healthyUrls: Set<string>): SyncTransport {
   return {
     async health(baseUrl) {
       if (healthyUrls.has(baseUrl)) {
-        return { ok: true, protocolV: 1, serverTime: new Date().toISOString(), tier: baseUrl.includes('node') ? 'node' : 'cloud' };
+        return {
+          ok: true,
+          protocolV: 1,
+          serverTime: new Date().toISOString(),
+          tier: baseUrl.includes('node') ? 'node' : 'cloud',
+        };
       }
       throw new Error('unhealthy');
     },
@@ -35,7 +40,11 @@ function makeTransport(healthyUrls: Set<string>): SyncTransport {
   };
 }
 
-function recordingConnectivity(): { reporter: ConnectivityReporter; tierCalls: string[]; cloudReachableCalls: boolean[] } {
+function recordingConnectivity(): {
+  reporter: ConnectivityReporter;
+  tierCalls: string[];
+  cloudReachableCalls: boolean[];
+} {
   const tierCalls: string[] = [];
   const cloudReachableCalls: boolean[] = [];
   const reporter: ConnectivityReporter = {
@@ -57,7 +66,12 @@ describe('SyncEngine connectivity reporting (the tier/cloudReachable combination
     const transport = makeTransport(new Set([NODE.baseUrl])); // only the node answers; cloud is down
     const { reporter, tierCalls, cloudReachableCalls } = recordingConnectivity();
 
-    const engine = new SyncEngine({ db, transport, candidates: [NODE, CLOUD], connectivity: reporter });
+    const engine = new SyncEngine({
+      db,
+      transport,
+      candidates: [NODE, CLOUD],
+      connectivity: reporter,
+    });
     try {
       await engine.start();
 
@@ -91,7 +105,12 @@ describe('SyncEngine connectivity reporting (the tier/cloudReachable combination
     const transport = makeTransport(new Set()); // nothing answers
     const { reporter, tierCalls, cloudReachableCalls } = recordingConnectivity();
 
-    const engine = new SyncEngine({ db, transport, candidates: [NODE, CLOUD], connectivity: reporter });
+    const engine = new SyncEngine({
+      db,
+      transport,
+      candidates: [NODE, CLOUD],
+      connectivity: reporter,
+    });
     try {
       await engine.start();
 
@@ -109,7 +128,12 @@ describe('SyncEngine.recheckConnectivity()', () => {
     const db = createTestDatabase();
     const transport = makeTransport(new Set());
     const { reporter } = recordingConnectivity();
-    const engine = new SyncEngine({ db, transport, candidates: [NODE, CLOUD], connectivity: reporter });
+    const engine = new SyncEngine({
+      db,
+      transport,
+      candidates: [NODE, CLOUD],
+      connectivity: reporter,
+    });
 
     try {
       const result = await engine.recheckConnectivity();
@@ -124,7 +148,12 @@ describe('SyncEngine.recheckConnectivity()', () => {
     const healthyUrls = new Set<string>();
     const transport = makeTransport(healthyUrls);
     const { reporter } = recordingConnectivity();
-    const engine = new SyncEngine({ db, transport, candidates: [NODE, CLOUD], connectivity: reporter });
+    const engine = new SyncEngine({
+      db,
+      transport,
+      candidates: [NODE, CLOUD],
+      connectivity: reporter,
+    });
 
     try {
       const before = await engine.recheckConnectivity();

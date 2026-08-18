@@ -23,7 +23,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PoolClient } from 'pg';
-import { asRequest, closeTestPool, fetchOneUserId, getAppPool, getOwnerPool, withRollback } from '../auth/test-support/live-db';
+import {
+  asRequest,
+  closeTestPool,
+  fetchOneUserId,
+  getAppPool,
+  getOwnerPool,
+  withRollback,
+} from '../auth/test-support/live-db';
 import { SettingsRepository } from './settings.repository';
 import { StatutoryRepository } from './statutory.repository';
 import { StatutoryService } from './statutory.service';
@@ -35,7 +42,10 @@ import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 function buildService(): StatutoryService {
   const pool = getAppPool();
   const events = new SyncEventsRepository(pool);
-  const syncEmit = new SyncEmitService(events, new ConflictDetectorService(events, new SyncConflictsRepository()));
+  const syncEmit = new SyncEmitService(
+    events,
+    new ConflictDetectorService(events, new SyncConflictsRepository()),
+  );
   return new StatutoryService(new StatutoryRepository(), new SettingsRepository(), syncEmit);
 }
 
@@ -60,17 +70,30 @@ async function cleanupStatutoryRows(effectiveFrom: string): Promise<void> {
   await owner.query(`DELETE FROM bpjs_configs WHERE effective_from = $1`, [effectiveFrom]);
   await owner.query(`DELETE FROM pph21_ter_rates WHERE effective_from = $1`, [effectiveFrom]);
   await owner.query(`DELETE FROM pph21_ptkp WHERE effective_from = $1`, [effectiveFrom]);
-  await owner.query(`DELETE FROM pph21_article17_brackets WHERE effective_from = $1`, [effectiveFrom]);
+  await owner.query(`DELETE FROM pph21_article17_brackets WHERE effective_from = $1`, [
+    effectiveFrom,
+  ]);
   // `closeXxx` only ever moves a PRE-EXISTING open window's `effective_to` forward to this
   // marker — reverting it to NULL restores whatever window this suite's write closed.
-  await owner.query(`UPDATE bpjs_configs SET effective_to = NULL WHERE effective_to = $1`, [effectiveFrom]);
-  await owner.query(`UPDATE pph21_ter_rates SET effective_to = NULL WHERE effective_to = $1`, [effectiveFrom]);
-  await owner.query(`UPDATE pph21_ptkp SET effective_to = NULL WHERE effective_to = $1`, [effectiveFrom]);
-  await owner.query(`UPDATE pph21_article17_brackets SET effective_to = NULL WHERE effective_to = $1`, [effectiveFrom]);
+  await owner.query(`UPDATE bpjs_configs SET effective_to = NULL WHERE effective_to = $1`, [
+    effectiveFrom,
+  ]);
+  await owner.query(`UPDATE pph21_ter_rates SET effective_to = NULL WHERE effective_to = $1`, [
+    effectiveFrom,
+  ]);
+  await owner.query(`UPDATE pph21_ptkp SET effective_to = NULL WHERE effective_to = $1`, [
+    effectiveFrom,
+  ]);
+  await owner.query(
+    `UPDATE pph21_article17_brackets SET effective_to = NULL WHERE effective_to = $1`,
+    [effectiveFrom],
+  );
 }
 
 async function resetTaxProfile(): Promise<void> {
-  await getOwnerPool().query(`DELETE FROM employee_tax_profiles WHERE employee_id = $1`, [employeeId]);
+  await getOwnerPool().query(`DELETE FROM employee_tax_profiles WHERE employee_id = $1`, [
+    employeeId,
+  ]);
 }
 
 async function resetStatutoryGate(): Promise<void> {
@@ -104,7 +127,12 @@ describe('StatutoryService.status — the wizard readiness check', () => {
       const status = await buildService().status(client);
       expect(status.enabled).toBe(false);
       expect(status.ready).toBe(false);
-      expect(status.missing.sort()).toEqual(['bpjs_configs', 'employee_tax_profiles', 'pph21_ptkp', 'pph21_ter_rates']);
+      expect(status.missing.sort()).toEqual([
+        'bpjs_configs',
+        'employee_tax_profiles',
+        'pph21_ptkp',
+        'pph21_ter_rates',
+      ]);
     });
   });
 
@@ -131,18 +159,48 @@ describe('StatutoryService.status — the wizard readiness check', () => {
             effectiveFrom,
             rows: [
               { category: 'A', bracketMin: '0.00', bracketMax: '5400000.00', ratePct: '0.000' },
-              { category: 'A', bracketMin: '5400000.00', bracketMax: null as unknown as string, ratePct: '5.000' },
-              { category: 'B', bracketMin: '0.00', bracketMax: null as unknown as string, ratePct: '5.000' },
-              { category: 'C', bracketMin: '0.00', bracketMax: null as unknown as string, ratePct: '5.000' },
+              {
+                category: 'A',
+                bracketMin: '5400000.00',
+                bracketMax: null as unknown as string,
+                ratePct: '5.000',
+              },
+              {
+                category: 'B',
+                bracketMin: '0.00',
+                bracketMax: null as unknown as string,
+                ratePct: '5.000',
+              },
+              {
+                category: 'C',
+                bracketMin: '0.00',
+                bracketMax: null as unknown as string,
+                ratePct: '5.000',
+              },
             ],
           },
           client,
         ),
       );
 
-      await asRequest((client) => buildService().putPtkp({ effectiveFrom, rows: [{ ptkpCode: 'TK/0', annualAmount: '54000000.00', terCategory: 'A' }] }, client));
+      await asRequest((client) =>
+        buildService().putPtkp(
+          {
+            effectiveFrom,
+            rows: [{ ptkpCode: 'TK/0', annualAmount: '54000000.00', terCategory: 'A' }],
+          },
+          client,
+        ),
+      );
 
-      await asRequest((client) => buildService().putTaxProfile(employeeId, { ptkpCode: 'TK/0', dependantsCount: 0, npwp: null }, CALLER, client));
+      await asRequest((client) =>
+        buildService().putTaxProfile(
+          employeeId,
+          { ptkpCode: 'TK/0', dependantsCount: 0, npwp: null },
+          CALLER,
+          client,
+        ),
+      );
 
       const status = await withRollback((client) => buildService().status(client));
       expect(status.missing).toEqual([]);
@@ -160,8 +218,36 @@ describe('StatutoryService — BPJS effective-dated overlap (ERR_EFFECTIVE_OVERL
     const first = '2092-01-01';
     const second = '2093-01-01';
     try {
-      await asRequest((client) => buildService().putBpjs({ rows: [{ program: 'kesehatan', employerPct: '4.000', employeePct: '1.000', effectiveFrom: first }] }, client));
-      await asRequest((client) => buildService().putBpjs({ rows: [{ program: 'kesehatan', employerPct: '4.500', employeePct: '1.000', effectiveFrom: second }] }, client));
+      await asRequest((client) =>
+        buildService().putBpjs(
+          {
+            rows: [
+              {
+                program: 'kesehatan',
+                employerPct: '4.000',
+                employeePct: '1.000',
+                effectiveFrom: first,
+              },
+            ],
+          },
+          client,
+        ),
+      );
+      await asRequest((client) =>
+        buildService().putBpjs(
+          {
+            rows: [
+              {
+                program: 'kesehatan',
+                employerPct: '4.500',
+                employeePct: '1.000',
+                effectiveFrom: second,
+              },
+            ],
+          },
+          client,
+        ),
+      );
 
       const rows = await withRollback((client) => buildService().listBpjs(client, 'kesehatan'));
       const closed = rows.find((r) => r.effectiveFrom === first);
@@ -177,10 +263,27 @@ describe('StatutoryService — BPJS effective-dated overlap (ERR_EFFECTIVE_OVERL
   it('rejects a new window starting at-or-before the currently open window (ERR_EFFECTIVE_OVERLAP)', async () => {
     const effectiveFrom = '2094-06-01';
     try {
-      await asRequest((client) => buildService().putBpjs({ rows: [{ program: 'jht', employerPct: '3.700', employeePct: '2.000', effectiveFrom }] }, client));
+      await asRequest((client) =>
+        buildService().putBpjs(
+          { rows: [{ program: 'jht', employerPct: '3.700', employeePct: '2.000', effectiveFrom }] },
+          client,
+        ),
+      );
       await withRollback(async (client) => {
         await expect(
-          buildService().putBpjs({ rows: [{ program: 'jht', employerPct: '3.700', employeePct: '2.000', effectiveFrom: '2094-01-01' }] }, client),
+          buildService().putBpjs(
+            {
+              rows: [
+                {
+                  program: 'jht',
+                  employerPct: '3.700',
+                  employeePct: '2.000',
+                  effectiveFrom: '2094-01-01',
+                },
+              ],
+            },
+            client,
+          ),
         ).rejects.toMatchObject({ response: { code: 'ERR_EFFECTIVE_OVERLAP' } });
       });
     } finally {
@@ -199,7 +302,12 @@ describe('StatutoryService — PPh21 TER bracket contiguity (ERR_BRACKET_GAP)', 
             rows: [
               { category: 'A', bracketMin: '0.00', bracketMax: '5000000.00', ratePct: '0.000' },
               // gap: next bracket should start at 5000000.00, starts at 6000000.00 instead
-              { category: 'A', bracketMin: '6000000.00', bracketMax: null as unknown as string, ratePct: '5.000' },
+              {
+                category: 'A',
+                bracketMin: '6000000.00',
+                bracketMax: null as unknown as string,
+                ratePct: '5.000',
+              },
             ],
           },
           client,
@@ -212,7 +320,17 @@ describe('StatutoryService — PPh21 TER bracket contiguity (ERR_BRACKET_GAP)', 
     await withRollback(async (client) => {
       await expect(
         buildService().putTer(
-          { effectiveFrom: '2095-01-01', rows: [{ category: 'B', bracketMin: '100.00', bracketMax: null as unknown as string, ratePct: '5.000' }] },
+          {
+            effectiveFrom: '2095-01-01',
+            rows: [
+              {
+                category: 'B',
+                bracketMin: '100.00',
+                bracketMax: null as unknown as string,
+                ratePct: '5.000',
+              },
+            ],
+          },
           client,
         ),
       ).rejects.toMatchObject({ response: { code: 'ERR_BRACKET_GAP' } });
@@ -228,8 +346,18 @@ describe('StatutoryService — PPh21 TER bracket contiguity (ERR_BRACKET_GAP)', 
             effectiveFrom,
             rows: [
               { category: 'A', bracketMin: '0.00', bracketMax: '5400000.00', ratePct: '0.000' },
-              { category: 'A', bracketMin: '5400000.00', bracketMax: '10000000.00', ratePct: '5.000' },
-              { category: 'A', bracketMin: '10000000.00', bracketMax: null as unknown as string, ratePct: '15.000' },
+              {
+                category: 'A',
+                bracketMin: '5400000.00',
+                bracketMax: '10000000.00',
+                ratePct: '5.000',
+              },
+              {
+                category: 'A',
+                bracketMin: '10000000.00',
+                bracketMax: null as unknown as string,
+                ratePct: '15.000',
+              },
             ],
           },
           client,
@@ -250,7 +378,10 @@ describe('StatutoryService — PPh21 Article 17 (ERR_BRACKET_GAP, top bracket mu
     await withRollback(async (client) => {
       await expect(
         buildService().putArticle17(
-          { effectiveFrom: '2097-01-01', rows: [{ bracketMin: '0.00', bracketMax: '60000000.00', ratePct: '5.000' }] },
+          {
+            effectiveFrom: '2097-01-01',
+            rows: [{ bracketMin: '0.00', bracketMax: '60000000.00', ratePct: '5.000' }],
+          },
           client,
         ),
       ).rejects.toMatchObject({ response: { code: 'ERR_BRACKET_GAP' } });
@@ -269,7 +400,11 @@ describe('StatutoryService — PPh21 Article 17 (ERR_BRACKET_GAP, top bracket mu
               { bracketMin: '60000000.00', bracketMax: '250000000.00', ratePct: '15.000' },
               { bracketMin: '250000000.00', bracketMax: '500000000.00', ratePct: '25.000' },
               { bracketMin: '500000000.00', bracketMax: '5000000000.00', ratePct: '30.000' },
-              { bracketMin: '5000000000.00', bracketMax: null as unknown as string, ratePct: '35.000' },
+              {
+                bracketMin: '5000000000.00',
+                bracketMax: null as unknown as string,
+                ratePct: '35.000',
+              },
             ],
           },
           client,
@@ -293,7 +428,9 @@ describe('StatutoryService.enable — gated by readiness (ERR_STATUTORY_NOT_READ
   it('rejects enabling when setup is incomplete', async () => {
     await withRollback(async (client) => {
       await emptyStatutoryTablesInTx(client);
-      await expect(buildService().enable({ confirm: true }, CALLER, client)).rejects.toMatchObject({ response: { code: 'ERR_STATUTORY_NOT_READY' } });
+      await expect(buildService().enable({ confirm: true }, CALLER, client)).rejects.toMatchObject({
+        response: { code: 'ERR_STATUTORY_NOT_READY' },
+      });
     });
   });
 
@@ -318,26 +455,60 @@ describe('StatutoryService.enable — gated by readiness (ERR_STATUTORY_NOT_READ
           {
             effectiveFrom,
             rows: [
-              { category: 'A', bracketMin: '0.00', bracketMax: null as unknown as string, ratePct: '5.000' },
-              { category: 'B', bracketMin: '0.00', bracketMax: null as unknown as string, ratePct: '5.000' },
-              { category: 'C', bracketMin: '0.00', bracketMax: null as unknown as string, ratePct: '5.000' },
+              {
+                category: 'A',
+                bracketMin: '0.00',
+                bracketMax: null as unknown as string,
+                ratePct: '5.000',
+              },
+              {
+                category: 'B',
+                bracketMin: '0.00',
+                bracketMax: null as unknown as string,
+                ratePct: '5.000',
+              },
+              {
+                category: 'C',
+                bracketMin: '0.00',
+                bracketMax: null as unknown as string,
+                ratePct: '5.000',
+              },
             ],
           },
           client,
         ),
       );
-      await asRequest((client) => buildService().putPtkp({ effectiveFrom, rows: [{ ptkpCode: 'TK/0', annualAmount: '54000000.00', terCategory: 'A' }] }, client));
-      await asRequest((client) => buildService().putTaxProfile(employeeId, { ptkpCode: 'TK/0', dependantsCount: 0, npwp: null }, CALLER, client));
+      await asRequest((client) =>
+        buildService().putPtkp(
+          {
+            effectiveFrom,
+            rows: [{ ptkpCode: 'TK/0', annualAmount: '54000000.00', terCategory: 'A' }],
+          },
+          client,
+        ),
+      );
+      await asRequest((client) =>
+        buildService().putTaxProfile(
+          employeeId,
+          { ptkpCode: 'TK/0', dependantsCount: 0, npwp: null },
+          CALLER,
+          client,
+        ),
+      );
 
       // BE-TXN-ROLLBACK regression: `enable`/`disable` now really commit — the whole point of
       // this test. Each is its own connection; the assertion reads the return value of that
       // SAME call (not a later read on the same connection), which is safe.
-      const enabled = await asRequest((client) => buildService().enable({ confirm: true }, CALLER, client));
+      const enabled = await asRequest((client) =>
+        buildService().enable({ confirm: true }, CALLER, client),
+      );
       expect(enabled.enabled).toBe(true);
       expect(enabled.enabledAt).toBeTruthy();
       expect(enabled.enabledBy).toBeTruthy();
 
-      const disabled = await asRequest((client) => buildService().disable({ reason: 'test teardown' }, CALLER, client));
+      const disabled = await asRequest((client) =>
+        buildService().disable({ reason: 'test teardown' }, CALLER, client),
+      );
       expect(disabled.enabled).toBe(false);
     } finally {
       await cleanupStatutoryRows(effectiveFrom);
@@ -359,7 +530,12 @@ describe('StatutoryService — employee tax profile', () => {
   it('rejects a ptkpCode that is not currently effective', async () => {
     await withRollback(async (client) => {
       await expect(
-        buildService().putTaxProfile(employeeId, { ptkpCode: 'NOT/A/CODE', dependantsCount: 0, npwp: null }, CALLER, client),
+        buildService().putTaxProfile(
+          employeeId,
+          { ptkpCode: 'NOT/A/CODE', dependantsCount: 0, npwp: null },
+          CALLER,
+          client,
+        ),
       ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
     });
   });
@@ -367,16 +543,31 @@ describe('StatutoryService — employee tax profile', () => {
   it('upserts a valid profile and reads it back — verified via a SEPARATE connection', async () => {
     const effectiveFrom = '2100-01-01';
     try {
-      await asRequest((client) => buildService().putPtkp({ effectiveFrom, rows: [{ ptkpCode: 'TK/0', annualAmount: '54000000.00', terCategory: 'A' }] }, client));
+      await asRequest((client) =>
+        buildService().putPtkp(
+          {
+            effectiveFrom,
+            rows: [{ ptkpCode: 'TK/0', annualAmount: '54000000.00', terCategory: 'A' }],
+          },
+          client,
+        ),
+      );
       const profile = await asRequest((client) =>
-        buildService().putTaxProfile(employeeId, { ptkpCode: 'TK/0', dependantsCount: 2, npwp: '12.345.678.9-012.345' }, CALLER, client),
+        buildService().putTaxProfile(
+          employeeId,
+          { ptkpCode: 'TK/0', dependantsCount: 2, npwp: '12.345.678.9-012.345' },
+          CALLER,
+          client,
+        ),
       );
       expect(profile.dependantsCount).toBe(2);
       expect(profile.npwp).toBe('12.345.678.9-012.345');
 
       // A GENUINELY separate connection/transaction — never sees the write's connection's
       // uncommitted state, only what it actually COMMITted.
-      const reread = await withRollback((client) => buildService().getTaxProfile(employeeId, client));
+      const reread = await withRollback((client) =>
+        buildService().getTaxProfile(employeeId, client),
+      );
       expect(reread.dependantsCount).toBe(2);
       expect(reread.npwp).toBe('12.345.678.9-012.345');
     } finally {

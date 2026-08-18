@@ -30,9 +30,18 @@ export function createSeededRandom(seedStart = 1): RandomSource {
   };
 }
 
-export async function setupIdentity(db: LocalDatabase, overrides: Partial<DeviceIdentity> = {}, random?: RandomSource): Promise<DeviceIdentity> {
+export async function setupIdentity(
+  db: LocalDatabase,
+  overrides: Partial<DeviceIdentity> = {},
+  random?: RandomSource,
+): Promise<DeviceIdentity> {
   const identity = await ensureDeviceIdentity(db, random);
-  const merged: DeviceIdentity = { ...identity, locationId: 'loc-1', cloudUrl: 'https://cloud.mimi.test', ...overrides };
+  const merged: DeviceIdentity = {
+    ...identity,
+    locationId: 'loc-1',
+    cloudUrl: 'https://cloud.mimi.test',
+    ...overrides,
+  };
   await db.store<DeviceIdentity>('device_identity').put(merged);
   return merged;
 }

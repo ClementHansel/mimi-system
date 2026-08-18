@@ -25,28 +25,23 @@ export const kepalaGudangManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Tab **Antrean Persetujuan** di **/warehouse** menampilkan permintaan barang yang sudah lolos persetujuan Supervisor dan menunggu keputusan gudang — tabel **"Menunggu Persetujuan Gudang"** menyertakan kolom **Keputusan Supervisor** sehingga Anda melihat riwayatnya sebelum memutuskan.',
+          text: 'Tab **Antrean Persetujuan** di **/warehouse** menampilkan permintaan barang yang sudah lolos persetujuan Supervisor dan menunggu keputusan gudang — tabel **"Menunggu Persetujuan Gudang"** menyertakan kolom **Keputusan Supervisor** sehingga Anda melihat riwayatnya sebelum memutuskan.',
         },
         {
           type: 'p',
-          text:
-            'Buka detail untuk meninjau tiap baris: Barang, Diminta, dan centang **Ubah baris ini** bila jumlah perlu dikurangi/diubah. Mengubah sebuah baris mewajibkan diisi **Alasan Perubahan** — banner peringatan muncul ("{{jumlah}} baris jumlahnya diubah — alasan wajib diisi sebelum disetujui") dan tombol **Setujui** tetap nonaktif sampai semua baris yang diubah punya alasan.',
+          text: 'Buka detail untuk meninjau tiap baris: Barang, Diminta, dan centang **Ubah baris ini** bila jumlah perlu dikurangi/diubah. Mengubah sebuah baris mewajibkan diisi **Alasan Perubahan** — banner peringatan muncul ("{{jumlah}} baris jumlahnya diubah — alasan wajib diisi sebelum disetujui") dan tombol **Setujui** tetap nonaktif sampai semua baris yang diubah punya alasan.',
         },
         {
           type: 'p',
-          text:
-            'Ketuk **Tolak** untuk menolak — wajib isi **Alasan Penolakan** lalu **Konfirmasi Tolak**. Ketuk **Setujui** untuk menyetujui (dengan atau tanpa perubahan jumlah, plus Catatan opsional).',
+          text: 'Ketuk **Tolak** untuk menolak — wajib isi **Alasan Penolakan** lalu **Konfirmasi Tolak**. Ketuk **Setujui** untuk menyetujui (dengan atau tanpa perubahan jumlah, plus Catatan opsional).',
         },
         {
           type: 'p',
-          text:
-            'Permintaan yang disetujui pindah ke tabel **"Disetujui — Siap Diproses"**. Ketuk **Mulai Pemrosesan** untuk menandai pengambilan barang sudah dimulai — lakukan ini sebelum membuat Surat Jalan untuk permintaan tersebut.',
+          text: 'Permintaan yang disetujui pindah ke tabel **"Disetujui — Siap Diproses"**. Ketuk **Mulai Pemrosesan** untuk menandai pengambilan barang sudah dimulai — lakukan ini sebelum membuat Surat Jalan untuk permintaan tersebut.',
         },
         {
           type: 'p',
-          text:
-            'Selain Permintaan Barang, layar **Persetujuan Menunggu** (`/approvals`) juga menampilkan dokumen **Stock Opname**, **Waste**, dan **Retur** yang menunggu keputusan Anda — Kepala Gudang memang diberi wewenang menyetujui ketiganya, bukan hanya Permintaan Barang. Ketiganya memakai panel persetujuan umum yang sama: isi **Catatan** (opsional) lalu **Setujui**, atau ketuk **Tolak** dan isi **Alasan Penolakan** (wajib) sebelum **Konfirmasi Tolak**.',
+          text: 'Selain Permintaan Barang, layar **Persetujuan Menunggu** (`/approvals`) juga menampilkan dokumen **Stock Opname**, **Waste**, dan **Retur** yang menunggu keputusan Anda — Kepala Gudang memang diberi wewenang menyetujui ketiganya, bukan hanya Permintaan Barang. Ketiganya memakai panel persetujuan umum yang sama: isi **Catatan** (opsional) lalu **Setujui**, atau ketuk **Tolak** dan isi **Alasan Penolakan** (wajib) sebelum **Konfirmasi Tolak**.',
         },
       ],
     },
@@ -56,24 +51,20 @@ export const kepalaGudangManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Tab **Penerimaan PO** menampilkan Purchase Order berstatus Diterbitkan atau Diterima Sebagian. Buka salah satu untuk mencatat penerimaan barang dari supplier.',
+          text: 'Tab **Penerimaan PO** menampilkan Purchase Order berstatus Diterbitkan atau Diterima Sebagian. Buka salah satu untuk mencatat penerimaan barang dari supplier.',
         },
         {
           type: 'p',
-          text:
-            'Untuk setiap baris: **Dipesan** dan **Sudah Diterima** hanya untuk ditinjau (tidak bisa diubah); isi **Diterima Sekarang**, pilih **Area Penyimpanan**, dan tambahkan **Catatan Kondisi** bila barang tidak dalam kondisi sempurna.',
+          text: 'Untuk setiap baris: **Dipesan** dan **Sudah Diterima** hanya untuk ditinjau (tidak bisa diubah); isi **Diterima Sekarang**, pilih **Area Penyimpanan**, dan tambahkan **Catatan Kondisi** bila barang tidak dalam kondisi sempurna.',
         },
         {
           type: 'callout',
           kind: 'rule',
-          text:
-            'Wajib foto. **Foto Barang Diterima** wajib untuk seluruh penerimaan (satu foto mewakili seluruh PO, bukan per baris) — tombol **Kirim** nonaktif tanpa foto, tanpa minimal satu baris terisi, atau bila ada baris yang belum punya area penyimpanan.',
+          text: 'Wajib foto. **Foto Barang Diterima** wajib untuk seluruh penerimaan (satu foto mewakili seluruh PO, bukan per baris) — tombol **Kirim** nonaktif tanpa foto, tanpa minimal satu baris terisi, atau bila ada baris yang belum punya area penyimpanan.',
         },
         {
           type: 'p',
-          text:
-            'Setelah dikirim, muncul notifikasi **"Penerimaan PO berhasil dicatat"**. PO yang seluruh barisnya sudah lengkap diterima berubah status menjadi **Diterima**; bila masih ada sisa, tetap **Diterima Sebagian**.',
+          text: 'Setelah dikirim, muncul notifikasi **"Penerimaan PO berhasil dicatat"**. PO yang seluruh barisnya sudah lengkap diterima berubah status menjadi **Diterima**; bila masih ada sisa, tetap **Diterima Sebagian**.',
         },
       ],
     },
@@ -88,8 +79,7 @@ export const kepalaGudangManual: DocManual = {
         {
           type: 'callout',
           kind: 'rule',
-          text:
-            'Barang beku/dingin dan kering tidak boleh digabung dalam satu Surat Jalan. Pilih **Tipe Pengiriman** lebih dulu — **Beku/Dingin** (truk chiller, membawa barang chiller maupun freezer sekaligus) atau **Kering (Sembako)** (truk biasa). Pilihan ini menyaring barang mana saja yang bisa disertakan; permintaan yang tidak punya barang cocok ditampilkan abu-abu dengan keterangan "Tidak ada barang yang cocok dengan tipe pengiriman ini".',
+          text: 'Barang beku/dingin dan kering tidak boleh digabung dalam satu Surat Jalan. Pilih **Tipe Pengiriman** lebih dulu — **Beku/Dingin** (truk chiller, membawa barang chiller maupun freezer sekaligus) atau **Kering (Sembako)** (truk biasa). Pilihan ini menyaring barang mana saja yang bisa disertakan; permintaan yang tidak punya barang cocok ditampilkan abu-abu dengan keterangan "Tidak ada barang yang cocok dengan tipe pengiriman ini".',
         },
         {
           type: 'steps',
@@ -109,7 +99,11 @@ export const kepalaGudangManual: DocManual = {
           headers: ['Langkah', 'Tombol', 'Syarat'],
           rows: [
             ['Draft → Siap Kirim', 'Tandai Siap Kirim', '—'],
-            ['Siap Kirim → Memuat Barang', 'Muat Barang', 'Minimal satu Nomor Segel wajib diisi; Suhu Muat wajib untuk Beku/Dingin (tidak wajib untuk Kering)'],
+            [
+              'Siap Kirim → Memuat Barang',
+              'Muat Barang',
+              'Minimal satu Nomor Segel wajib diisi; Suhu Muat wajib untuk Beku/Dingin (tidak wajib untuk Kering)',
+            ],
             ['Memuat Barang → Dalam Perjalanan', 'Berangkatkan', '—'],
             ['Kapan saja sebelum Dalam Perjalanan', 'Batalkan', 'Alasan Pembatalan wajib diisi'],
           ],
@@ -117,13 +111,11 @@ export const kepalaGudangManual: DocManual = {
         {
           type: 'callout',
           kind: 'note',
-          text:
-            'Berangkat/tiba/serah-terima per drop bukan aksi Kepala Gudang — layar ini hanya menampilkan status dan suhu tiap drop secara read-only; driver dan outlet yang mengeksekusinya (lihat Panduan Driver dan Panduan Supervisor Outlet).',
+          text: 'Berangkat/tiba/serah-terima per drop bukan aksi Kepala Gudang — layar ini hanya menampilkan status dan suhu tiap drop secara read-only; driver dan outlet yang mengeksekusinya (lihat Panduan Driver dan Panduan Supervisor Outlet).',
         },
         {
           type: 'p',
-          text:
-            'Pelanggaran suhu ditandai badge merah "Suhu di luar batas" pada drop terkait; drop yang selesai dengan selisih jumlah ditandai "Ada selisih pada drop ini".',
+          text: 'Pelanggaran suhu ditandai badge merah "Suhu di luar batas" pada drop terkait; drop yang selesai dengan selisih jumlah ditandai "Ada selisih pada drop ini".',
         },
       ],
     },

@@ -22,27 +22,40 @@ export class StockOpnameController {
 
   @Get()
   @RequirePermission('opname.read')
-  list(@Req() req: RequestWithDbContext, @Query() query: ListOpnameQueryDto): Promise<Paginated<Opname>> {
+  list(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ListOpnameQueryDto,
+  ): Promise<Paginated<Opname>> {
     return this.service.list(req.dbClient!, query);
   }
 
   @Get(':id')
   @RequirePermission('opname.read')
-  detail(@Req() req: RequestWithDbContext, @Param('id') id: string): Promise<Opname & { lines: OpnameLine[] }> {
+  detail(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     return this.service.getDetail(req.dbClient!, id);
   }
 
   @Post()
   @RequirePermission('opname.create')
   @Audited({ entityType: 'stock_opname', action: 'opname.create' })
-  create(@Req() req: RequestWithDbContext, @Body() dto: CreateOpnameDto): Promise<Opname & { lines: OpnameLine[] }> {
+  create(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: CreateOpnameDto,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     return this.service.create(req.dbClient!, this.actor(req), dto);
   }
 
   @Put(':id/lines')
   @RequirePermission('opname.create')
   @Audited({ entityType: 'stock_opname_lines', action: 'opname.lines.upsert' })
-  upsertLines(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: UpsertOpnameLinesDto): Promise<OpnameLine[]> {
+  upsertLines(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: UpsertOpnameLinesDto,
+  ): Promise<OpnameLine[]> {
     return this.service.upsertLines(req.dbClient!, this.actor(req), id, dto);
   }
 
@@ -61,33 +74,51 @@ export class StockOpnameController {
   @Post(':id/submit')
   @RequirePermission('opname.submit')
   @Audited({ entityType: 'stock_opname', action: 'opname.submit' })
-  submit(@Req() req: RequestWithDbContext, @Param('id') id: string): Promise<Opname & { lines: OpnameLine[] }> {
+  submit(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     return this.service.submit(req.dbClient!, this.actor(req), id);
   }
 
   @Post(':id/approve')
   @RequirePermission('opname.approve')
   @Audited({ entityType: 'stock_opname', action: 'opname.approve' })
-  approve(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ApproveOpnameDto): Promise<Opname & { lines: OpnameLine[] }> {
+  approve(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ApproveOpnameDto,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     return this.service.approve(req.dbClient!, this.actor(req), id, dto);
   }
 
   @Post(':id/reject')
   @RequirePermission('opname.approve')
   @Audited({ entityType: 'stock_opname', action: 'opname.reject' })
-  reject(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: RejectOpnameDto): Promise<Opname & { lines: OpnameLine[] }> {
+  reject(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: RejectOpnameDto,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     return this.service.reject(req.dbClient!, this.actor(req), id, dto);
   }
 
   @Delete(':id')
   @RequirePermission('opname.create')
   @Audited({ entityType: 'stock_opname', action: 'opname.cancel' })
-  cancel(@Req() req: RequestWithDbContext, @Param('id') id: string): Promise<{ id: string; status: string }> {
+  cancel(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+  ): Promise<{ id: string; status: string }> {
     return this.service.cancel(req.dbClient!, this.actor(req), id);
   }
 
   private actor(req: RequestWithDbContext): ActorContext {
     const user = req.user!;
-    return { userId: user.sub, roleKey: user.roleKey as RoleKey, locationScope: req.locationScope ?? null };
+    return {
+      userId: user.sub,
+      roleKey: user.roleKey as RoleKey,
+      locationScope: req.locationScope ?? null,
+    };
   }
 }

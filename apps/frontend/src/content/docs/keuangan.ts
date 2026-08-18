@@ -31,18 +31,15 @@ export const keuanganManual: DocManual = {
         {
           type: 'callout',
           kind: 'note',
-          text:
-            'Peran Keuangan tidak memiliki akses ke menu **Dasbor** — bila Anda melihat tandanya di beranda, itu untuk peran lain. Angka penjualan, laba rugi, neraca, dan nilai stok Anda ada di modul ini sendiri, di tab **Laporan** (lihat §4 di bawah).',
+          text: 'Peran Keuangan tidak memiliki akses ke menu **Dasbor** — bila Anda melihat tandanya di beranda, itu untuk peran lain. Angka penjualan, laba rugi, neraca, dan nilai stok Anda ada di modul ini sendiri, di tab **Laporan** (lihat §4 di bawah).',
         },
         {
           type: 'p',
-          text:
-            'Tab **Verifikasi Pembayaran** menampilkan antrean pembayaran dengan status **Belum Terverifikasi**, **Terverifikasi**, **Dibayar**, atau **Ditolak** — bisa disaring per status dan jenis referensi (Pembayaran Penjualan, Purchase Order, Penggajian, Kas Kecil, dll).',
+          text: 'Tab **Verifikasi Pembayaran** menampilkan antrean pembayaran dengan status **Belum Terverifikasi**, **Terverifikasi**, **Dibayar**, atau **Ditolak** — bisa disaring per status dan jenis referensi (Pembayaran Penjualan, Purchase Order, Penggajian, Kas Kecil, dll).',
         },
         {
           type: 'p',
-          text:
-            'Untuk pembayaran manual/lain-lain (THR, insentif, biaya lain yang tidak berasal dari dokumen lain), gunakan **Catat Pembayaran Baru**.',
+          text: 'Untuk pembayaran manual/lain-lain (THR, insentif, biaya lain yang tidak berasal dari dokumen lain), gunakan **Catat Pembayaran Baru**.',
         },
         {
           type: 'p',
@@ -59,8 +56,7 @@ export const keuanganManual: DocManual = {
         {
           type: 'callout',
           kind: 'rule',
-          text:
-            'Bukti pembayaran wajib diunggah sebelum verifikasi bisa dilakukan. Menolak pembayaran (tombol **Tolak**, tersedia selama status Belum Terverifikasi atau Terverifikasi) selalu wajib disertai **Alasan Penolakan** sebelum **Konfirmasi Tolak** aktif.',
+          text: 'Bukti pembayaran wajib diunggah sebelum verifikasi bisa dilakukan. Menolak pembayaran (tombol **Tolak**, tersedia selama status Belum Terverifikasi atau Terverifikasi) selalu wajib disertai **Alasan Penolakan** sebelum **Konfirmasi Tolak** aktif.',
         },
       ],
     },
@@ -70,8 +66,7 @@ export const keuanganManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Tab **Jurnal** menampilkan entri dari dua sumber: **Sistem** (dibuat otomatis oleh mesin posting saat dokumen lain diproses) dan **Manual** (dibuat sendiri di sini). Saring dengan rentang tanggal, Sumber, atau Kode Akun.',
+          text: 'Tab **Jurnal** menampilkan entri dari dua sumber: **Sistem** (dibuat otomatis oleh mesin posting saat dokumen lain diproses) dan **Manual** (dibuat sendiri di sini). Saring dengan rentang tanggal, Sumber, atau Kode Akun.',
         },
         {
           type: 'p',
@@ -80,13 +75,11 @@ export const keuanganManual: DocManual = {
         {
           type: 'callout',
           kind: 'rule',
-          text:
-            'Debit harus sama dengan kredit. Indikator "Seimbang (debit = kredit)" harus hijau sebelum entri bisa disimpan — bila belum, muncul "Belum seimbang — debit dan kredit harus sama" dan tombol Simpan tetap nonaktif.',
+          text: 'Debit harus sama dengan kredit. Indikator "Seimbang (debit = kredit)" harus hijau sebelum entri bisa disimpan — bila belum, muncul "Belum seimbang — debit dan kredit harus sama" dan tombol Simpan tetap nonaktif.',
         },
         {
           type: 'p',
-          text:
-            'Entri yang sudah terposting tidak pernah diedit langsung. Untuk membetulkan kesalahan, buka detail entri dan ketuk **Balik Entri (Reverse)** — wajib isi **Alasan Pembalikan**. Ini membuat entri pembalik baru, bukan menghapus/mengubah entri asli.',
+          text: 'Entri yang sudah terposting tidak pernah diedit langsung. Untuk membetulkan kesalahan, buka detail entri dan ketuk **Balik Entri (Reverse)** — wajib isi **Alasan Pembalikan**. Ini membuat entri pembalik baru, bukan menghapus/mengubah entri asli.',
         },
       ],
     },
@@ -96,24 +89,20 @@ export const keuanganManual: DocManual = {
       blocks: [
         {
           type: 'p',
-          text:
-            'Tab **Periode Fiskal** menampilkan status tiap periode: **Terbuka**, **Ditutup**, atau **Terkunci**. Selama status masih Terbuka, tombol **Tutup Periode** tersedia; isi Catatan (opsional) lalu konfirmasi.',
+          text: 'Tab **Periode Fiskal** menampilkan status tiap periode: **Terbuka**, **Ditutup**, atau **Terkunci**. Selama status masih Terbuka, tombol **Tutup Periode** tersedia; isi Catatan (opsional) lalu konfirmasi.',
         },
         {
           type: 'callout',
           kind: 'warning',
-          text:
-            'Periksa sendiri sebelum menutup periode — sistem tidak melakukannya untuk Anda. Menutup periode saat ini hanya memeriksa bahwa periode itu masih berstatus Terbuka; sistem TIDAK secara otomatis memblokir penutupan meski masih ada pembayaran yang belum terverifikasi atau entri jurnal yang belum terposting untuk periode itu — walau itulah aturan yang seharusnya berlaku. Pastikan secara manual seluruh pembayaran dan entri periode tersebut sudah beres sebelum menutupnya.',
+          text: 'Periksa sendiri sebelum menutup periode — sistem tidak melakukannya untuk Anda. Menutup periode saat ini hanya memeriksa bahwa periode itu masih berstatus Terbuka; sistem TIDAK secara otomatis memblokir penutupan meski masih ada pembayaran yang belum terverifikasi atau entri jurnal yang belum terposting untuk periode itu — walau itulah aturan yang seharusnya berlaku. Pastikan secara manual seluruh pembayaran dan entri periode tersebut sudah beres sebelum menutupnya.',
         },
         {
           type: 'p',
-          text:
-            'Periode yang sudah Ditutup bisa dibuka kembali lewat tombol **Buka Kembali** — wajib isi **Alasan Membuka Kembali**. Periode yang sudah berstatus **Terkunci** tidak pernah bisa dibuka kembali (tidak ada tombolnya).',
+          text: 'Periode yang sudah Ditutup bisa dibuka kembali lewat tombol **Buka Kembali** — wajib isi **Alasan Membuka Kembali**. Periode yang sudah berstatus **Terkunci** tidak pernah bisa dibuka kembali (tidak ada tombolnya).',
         },
         {
           type: 'p',
-          text:
-            'Setelah sebuah periode ditutup, sistem menolak entri jurnal baru yang tanggalnya jatuh di periode tersebut sampai periode itu dibuka kembali.',
+          text: 'Setelah sebuah periode ditutup, sistem menolak entri jurnal baru yang tanggalnya jatuh di periode tersebut sampai periode itu dibuka kembali.',
         },
       ],
     },
@@ -129,7 +118,10 @@ export const keuanganManual: DocManual = {
           type: 'table',
           headers: ['Sub-tab', 'Isi'],
           rows: [
-            ['Neraca Saldo', 'Akun, Tipe, Debit, Kredit per periode, dengan indikator Seimbang/Tidak Seimbang'],
+            [
+              'Neraca Saldo',
+              'Akun, Tipe, Debit, Kredit per periode, dengan indikator Seimbang/Tidak Seimbang',
+            ],
             ['Laba Rugi', 'Pendapatan dan Beban untuk rentang tanggal, plus Laba Bersih'],
             ['Neraca', 'Aset, Liabilitas, Ekuitas per tanggal tertentu'],
             ['Nilai Stok', 'Nilai persediaan per lokasi dan kategori, dengan Total Keseluruhan'],

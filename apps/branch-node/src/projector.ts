@@ -97,39 +97,81 @@ function normalizeLine(
 function extractLines(data: unknown, locationId: UUID): ReturnType<typeof normalizeLine>[] {
   const rawLines = (data as { lines?: unknown[] } | undefined)?.lines;
   if (!Array.isArray(rawLines)) return [];
-  return rawLines.map((l) => normalizeLine(locationId, l as StockLineInput)).filter((l) => l !== undefined);
+  return rawLines
+    .map((l) => normalizeLine(locationId, l as StockLineInput))
+    .filter((l) => l !== undefined);
 }
 
 /** Derives `MovementFact[]` for the whitelisted stock-affecting ops (best-effort; `[]` on any shape mismatch — never throws). */
-export function deriveMovements(event: Pick<SyncEventEnvelope, 'entity' | 'entityId' | 'op' | 'payload' | 'locationId' | 'occurredAt'>): MovementFact[] {
+export function deriveMovements(
+  event: Pick<
+    SyncEventEnvelope,
+    'entity' | 'entityId' | 'op' | 'payload' | 'locationId' | 'occurredAt'
+  >,
+): MovementFact[] {
   if (!event.locationId) return [];
   const locationId = event.locationId;
   const occurredAt = event.occurredAt as ISODateTime;
   const data = event.payload?.data;
 
   if (event.entity === 'sj_drops' && event.op === 'received') {
-    const lines = extractLines(data, locationId).filter((l): l is NonNullable<typeof l> => l !== undefined);
-    return explodeReceiptToMovements(event.entityId, lines, MovementType.TRANSFER_IN, 'sj_drop', occurredAt);
+    const lines = extractLines(data, locationId).filter(
+      (l): l is NonNullable<typeof l> => l !== undefined,
+    );
+    return explodeReceiptToMovements(
+      event.entityId,
+      lines,
+      MovementType.TRANSFER_IN,
+      'sj_drop',
+      occurredAt,
+    );
   }
   if (event.entity === 'goods_receipts' && event.op === 'recorded') {
-    const lines = extractLines(data, locationId).filter((l): l is NonNullable<typeof l> => l !== undefined);
-    return explodeReceiptToMovements(event.entityId, lines, MovementType.PURCHASE_IN, 'goods_receipt', occurredAt);
+    const lines = extractLines(data, locationId).filter(
+      (l): l is NonNullable<typeof l> => l !== undefined,
+    );
+    return explodeReceiptToMovements(
+      event.entityId,
+      lines,
+      MovementType.PURCHASE_IN,
+      'goods_receipt',
+      occurredAt,
+    );
   }
   if (event.entity === 'waste_records' && event.op === 'approved') {
-    const lines = extractLines(data, locationId).filter((l): l is NonNullable<typeof l> => l !== undefined);
+    const lines = extractLines(data, locationId).filter(
+      (l): l is NonNullable<typeof l> => l !== undefined,
+    );
     return explodeWasteToMovements(event.entityId, lines, occurredAt);
   }
   if (event.entity === 'returns' && event.op === 'shipped_back') {
     const direction = (data as { direction?: string } | undefined)?.direction;
     if (direction && direction !== 'outlet_to_warehouse') return []; // supplier leg is cloud-only (class X); nothing for the node to project
-    const lines = extractLines(data, locationId).filter((l): l is NonNullable<typeof l> => l !== undefined);
+    const lines = extractLines(data, locationId).filter(
+      (l): l is NonNullable<typeof l> => l !== undefined,
+    );
     return explodeReturnOutToMovements(event.entityId, lines, occurredAt);
   }
   if (event.entity === 'stock_adjustments' && event.op === 'posted') {
-    const d = data as { storageAreaId?: string; storage_area_id?: string; itemId?: string; item_id?: string; qty?: string | number; unitCost?: string | number; unit_cost?: string | number; direction?: 'shortage' | 'overage' } | undefined;
+    const d = data as
+      | {
+          storageAreaId?: string;
+          storage_area_id?: string;
+          itemId?: string;
+          item_id?: string;
+          qty?: string | number;
+          unitCost?: string | number;
+          unit_cost?: string | number;
+          direction?: 'shortage' | 'overage';
+        }
+      | undefined;
     const line = d && normalizeLine(locationId, d as StockLineInput);
     if (!line || (d?.direction !== 'shortage' && d?.direction !== 'overage')) return [];
-    return explodeAdjustmentToMovements(event.entityId, { ...line, direction: d.direction }, occurredAt);
+    return explodeAdjustmentToMovements(
+      event.entityId,
+      { ...line, direction: d.direction },
+      occurredAt,
+    );
   }
   return [];
 }
@@ -152,7 +194,12 @@ export async function applyWhitelistedEvent(store: Store, event: SyncEventEnvelo
 
   if (!WHITELISTED_FAN_OUT_ENTITIES.has(event.entity as string)) return; // opaque store-and-forward only, per §1.4
 
-  await store.upsertProjection(event.entity as string, event.entityId, event.locationId, event.payload?.data);
+  await store.upsertProjection(
+    event.entity as string,
+    event.entityId,
+    event.locationId,
+    event.payload?.data,
+  );
 
   const movements = deriveMovements(event);
   if (movements.length > 0) await store.appendMovements(movements);

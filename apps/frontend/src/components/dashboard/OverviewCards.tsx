@@ -42,7 +42,17 @@ function VsPill({ pct }: { pct: string }) {
   );
 }
 
-function Tile({ label, value, sub, loading }: { label: string; value: string; sub?: ReactNode; loading?: boolean }) {
+function Tile({
+  label,
+  value,
+  sub,
+  loading,
+}: {
+  label: string;
+  value: string;
+  sub?: ReactNode;
+  loading?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-1 overflow-hidden rounded-lg border border-border bg-surface-raised p-4">
       <span className="text-sm text-text-secondary">{label}</span>
@@ -57,7 +67,9 @@ function Tile({ label, value, sub, loading }: { label: string; value: string; su
         // value rather than a large negative one. `overflow-x-auto` on the
         // tile (see wrapper) is the fallback for the rare figure too wide
         // even for this, rather than silently clipping a money value.
-        <span className="overflow-x-auto whitespace-nowrap font-display text-xl font-semibold text-text-primary">{value}</span>
+        <span className="overflow-x-auto whitespace-nowrap font-display text-xl font-semibold text-text-primary">
+          {value}
+        </span>
       )}
       {sub && !loading && <div>{sub}</div>}
     </div>
@@ -75,16 +87,32 @@ export function OverviewCards({ data, loading }: OverviewCardsProps) {
         sub={data && <VsPill pct={data.vs.revenuePct} />}
         loading={loading}
       />
-      <Tile label={t('dashboard.overview.revenueOnline')} value={formatMoney(data?.revenueOnline)} loading={loading} />
-      <Tile label={t('dashboard.overview.profitEstimate')} value={formatMoney(data?.profitEstimate)} loading={loading} />
+      <Tile
+        label={t('dashboard.overview.revenueOnline')}
+        value={formatMoney(data?.revenueOnline)}
+        loading={loading}
+      />
+      <Tile
+        label={t('dashboard.overview.profitEstimate')}
+        value={formatMoney(data?.profitEstimate)}
+        loading={loading}
+      />
       <Tile
         label={t('dashboard.overview.txCount')}
         value={formatNumber(data?.txCount)}
         sub={data && <VsPill pct={data.vs.txPct} />}
         loading={loading}
       />
-      <Tile label={t('dashboard.overview.avgTicket')} value={formatMoney(data?.avgTicket)} loading={loading} />
-      <Tile label={t('dashboard.overview.activeOutlets')} value={formatNumber(data?.activeOutlets)} loading={loading} />
+      <Tile
+        label={t('dashboard.overview.avgTicket')}
+        value={formatMoney(data?.avgTicket)}
+        loading={loading}
+      />
+      <Tile
+        label={t('dashboard.overview.activeOutlets')}
+        value={formatNumber(data?.activeOutlets)}
+        loading={loading}
+      />
     </div>
   );
 }

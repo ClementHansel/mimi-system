@@ -10,8 +10,20 @@ describe('drainOutboxOnce (SYNC-PROTOCOL §4.3 push)', () => {
   it('pushes queued events and prunes them from the outbox once cloud-confirmed', async () => {
     const db = createTestDatabase();
     await setupIdentity(db);
-    await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: 'sale-1', data: {}, meta: ACTOR });
-    await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: 'sale-2', data: {}, meta: ACTOR });
+    await commitFact(db, {
+      entity: SyncEntity.SALES,
+      op: 'completed',
+      entityId: 'sale-1',
+      data: {},
+      meta: ACTOR,
+    });
+    await commitFact(db, {
+      entity: SyncEntity.SALES,
+      op: 'completed',
+      entityId: 'sale-2',
+      data: {},
+      meta: ACTOR,
+    });
 
     const cloud = new FakeCloud();
     const result = await drainOutboxOnce(db, cloud, 'https://cloud.mimi');
@@ -32,7 +44,13 @@ describe('drainOutboxOnce (SYNC-PROTOCOL §4.3 push)', () => {
   it('marks transportFailed and leaves the outbox untouched when the upstream is unreachable (retry later)', async () => {
     const db = createTestDatabase();
     await setupIdentity(db);
-    await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: 'sale-1', data: {}, meta: ACTOR });
+    await commitFact(db, {
+      entity: SyncEntity.SALES,
+      op: 'completed',
+      entityId: 'sale-1',
+      data: {},
+      meta: ACTOR,
+    });
 
     const cloud = new FakeCloud({ healthy: false });
     const result = await drainOutboxOnce(db, cloud, 'https://cloud.mimi');
@@ -44,13 +62,19 @@ describe('drainOutboxOnce (SYNC-PROTOCOL §4.3 push)', () => {
   it('duplicate submit (T-10): re-pushing the SAME outbox row after a partial failure never double-applies at cloud', async () => {
     const db = createTestDatabase();
     await setupIdentity(db);
-    await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: 'sale-1', data: {}, meta: ACTOR });
+    await commitFact(db, {
+      entity: SyncEntity.SALES,
+      op: 'completed',
+      entityId: 'sale-1',
+      data: {},
+      meta: ACTOR,
+    });
 
     const cloud = new FakeCloud();
     await drainOutboxOnce(db, cloud, 'https://cloud.mimi'); // confirms + prunes
     // Re-run drain with an outbox that (in a buggy implementation) might still hold the row —
     // here we simulate a retried transmission of the SAME envelope arriving again directly at cloud.
-    const outboxSnapshotBeforePrune = (await db.store<OutboxRecord>('outbox').getAll());
+    const outboxSnapshotBeforePrune = await db.store<OutboxRecord>('outbox').getAll();
     expect(outboxSnapshotBeforePrune).toHaveLength(0);
     expect(cloud.appliedEvents()).toHaveLength(1); // exactly once, not twice
   });
@@ -71,7 +95,11 @@ describe('drainOutboxOnce (SYNC-PROTOCOL §4.3 push)', () => {
         entity: 'not_a_real_entity',
         entityId: 'x',
         op: 'nonsense',
-        payload: { v: 1, data: {}, meta: { actorUserId: 'u', actorRole: 'kasir', appVersion: '1.0' } },
+        payload: {
+          v: 1,
+          data: {},
+          meta: { actorUserId: 'u', actorRole: 'kasir', appVersion: '1.0' },
+        },
         clientSeq: 1n,
         occurredAt: new Date().toISOString(),
         relayReceivedAt: null,

@@ -66,7 +66,9 @@ describe('calculateBasePayslip', () => {
 
   it('caps a loan installment at the outstanding balance and records which loan/amount was taken', () => {
     const result = calculateBasePayslip(
-      baseInputs({ loans: [{ loanId: 'loan-1', outstanding: '150000.00', monthlyInstallment: '500000.00' }] }),
+      baseInputs({
+        loans: [{ loanId: 'loan-1', outstanding: '150000.00', monthlyInstallment: '500000.00' }],
+      }),
     );
     expect(result.loanInstallmentsTaken).toEqual([{ loanId: 'loan-1', amount: '150000.00' }]);
     expect(result.deductions).toBe('150000.00');
@@ -74,14 +76,20 @@ describe('calculateBasePayslip', () => {
 
   it('includes an approved cash-variance proposal as its own line (D-19)', () => {
     const result = calculateBasePayslip(baseInputs({ cashVarianceAmounts: ['75000.00'] }));
-    const line = result.lines.find((l) => l.componentCode === PayrollComponentCode.DEDUCTION_CASH_VARIANCE);
+    const line = result.lines.find(
+      (l) => l.componentCode === PayrollComponentCode.DEDUCTION_CASH_VARIANCE,
+    );
     expect(line?.amount).toBe('75000.00');
     expect(line?.sourceRefType).toBe('cash_variance_proposal');
   });
 
   it('never produces a negative net: deductions exceeding gross clamp to zero', () => {
     const result = calculateBasePayslip(
-      baseInputs({ baseSalary: '100000.00', attendanceAllowanceAmount: '0.00', loans: [{ loanId: 'l', outstanding: '5000000.00', monthlyInstallment: '5000000.00' }] }),
+      baseInputs({
+        baseSalary: '100000.00',
+        attendanceAllowanceAmount: '0.00',
+        loans: [{ loanId: 'l', outstanding: '5000000.00', monthlyInstallment: '5000000.00' }],
+      }),
     );
     expect(result.net).toBe('0.00');
   });

@@ -44,26 +44,49 @@ export function SupplierPriceHistoryPanel() {
   const [pageSize, setPageSize] = useState(25);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [data, setData] = useState<Paginated<PriceHistoryEntry>>({ rows: [], total: 0, page: 1, pageSize: 25 });
+  const [data, setData] = useState<Paginated<PriceHistoryEntry>>({
+    rows: [],
+    total: 0,
+    page: 1,
+    pageSize: 25,
+  });
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!can('supplier.read') || !can('supplier.price.read')) return;
-    getSuppliers().then((r) => { setSuppliers(r.rows); if (r.rows[0]) setSupplierId(r.rows[0].id); })
+    getSuppliers()
+      .then((r) => {
+        setSuppliers(r.rows);
+        if (r.rows[0]) setSupplierId(r.rows[0].id);
+      })
       .catch((err) => setLoadError(errMsg(err, t('auth.genericError'))));
-    getItems().then((r) => setItems(r.rows)).catch(() => {});
+    getItems()
+      .then((r) => setItems(r.rows))
+      .catch(() => {});
   }, [can, t]);
 
   useEffect(() => {
-    if (!supplierId) { setData({ rows: [], total: 0, page: 1, pageSize }); return; }
+    if (!supplierId) {
+      setData({ rows: [], total: 0, page: 1, pageSize });
+      return;
+    }
     let cancelled = false;
-    setLoading(true); setListError(undefined);
+    setLoading(true);
+    setListError(undefined);
     getSupplierPriceHistory(supplierId, { itemId: itemId || undefined, page, pageSize })
-      .then((res) => { if (!cancelled) setData(res); })
-      .catch((err) => { if (!cancelled) setListError(errMsg(err, t('table.error'))); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setListError(errMsg(err, t('table.error')));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [supplierId, itemId, page, pageSize, t]);
 
   if (!can('supplier.price.read')) {
@@ -76,10 +99,27 @@ export function SupplierPriceHistoryPanel() {
 
   const columns: DataTableColumn<PriceHistoryEntry>[] = [
     { key: 'itemName', header: t('purchasing.priceHistory.columnItem') },
-    { key: 'price', header: t('purchasing.priceHistory.columnPrice'), align: 'right', render: (r) => formatMoney(r.price) },
-    { key: 'effectiveDate', header: t('purchasing.priceHistory.columnEffectiveDate'), render: (r) => fmtDate(r.effectiveDate) },
-    { key: 'source', header: t('purchasing.priceHistory.columnSource'), render: (r) => t(`purchasing.priceHistory.source.${r.source}`) },
-    { key: 'recordedBy', header: t('purchasing.priceHistory.columnRecordedBy'), render: (r) => r.recordedBy ?? '—' },
+    {
+      key: 'price',
+      header: t('purchasing.priceHistory.columnPrice'),
+      align: 'right',
+      render: (r) => formatMoney(r.price),
+    },
+    {
+      key: 'effectiveDate',
+      header: t('purchasing.priceHistory.columnEffectiveDate'),
+      render: (r) => fmtDate(r.effectiveDate),
+    },
+    {
+      key: 'source',
+      header: t('purchasing.priceHistory.columnSource'),
+      render: (r) => t(`purchasing.priceHistory.source.${r.source}`),
+    },
+    {
+      key: 'recordedBy',
+      header: t('purchasing.priceHistory.columnRecordedBy'),
+      render: (r) => r.recordedBy ?? '—',
+    },
   ];
 
   return (
@@ -88,7 +128,10 @@ export function SupplierPriceHistoryPanel() {
         <Select
           label={t('purchasing.priceHistory.supplier')}
           value={supplierId}
-          onValueChange={(v) => { setSupplierId(v); setPage(1); }}
+          onValueChange={(v) => {
+            setSupplierId(v);
+            setPage(1);
+          }}
           options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
           placeholder={t('common.selectPlaceholder')}
           wrapperClassName="w-56"
@@ -96,7 +139,10 @@ export function SupplierPriceHistoryPanel() {
         <Select
           label={t('purchasing.priceHistory.item')}
           value={itemId}
-          onValueChange={(v) => { setItemId(v); setPage(1); }}
+          onValueChange={(v) => {
+            setItemId(v);
+            setPage(1);
+          }}
           options={items.map((i) => ({ value: i.id, label: i.name }))}
           placeholder={t('purchasing.priceHistory.filterItemAll')}
           wrapperClassName="w-56"
@@ -114,7 +160,10 @@ export function SupplierPriceHistoryPanel() {
           error={listError}
           emptyDescription={t('purchasing.priceHistory.empty')}
           onPageChange={setPage}
-          onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          onPageSizeChange={(n) => {
+            setPageSize(n);
+            setPage(1);
+          }}
         />
       )}
     </div>

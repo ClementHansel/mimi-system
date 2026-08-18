@@ -37,7 +37,6 @@ export interface RecordConflictParams {
 /** Every method takes its own `client: DbClient` — no pool of its own, same reasoning as `OfflineCredentialsRepository`. */
 @Injectable()
 export class SyncConflictsRepository {
-
   /**
    * Idempotent-by-content: the same detection running twice (e.g. a
    * re-processed batch overlap, or the nightly sweep re-scanning a day it
@@ -45,7 +44,10 @@ export class SyncConflictsRepository {
    * (kind, entity, entityId, loserEventId) — every property test that
    * replays a batch would otherwise fabricate duplicate queue entries.
    */
-  async recordConflictIfAbsent(client: DbClient, params: RecordConflictParams): Promise<{ id: UUID; created: boolean }> {
+  async recordConflictIfAbsent(
+    client: DbClient,
+    params: RecordConflictParams,
+  ): Promise<{ id: UUID; created: boolean }> {
     const existing = await client.query<{ id: UUID }>(
       `SELECT id FROM sync_conflicts
         WHERE kind = $1 AND entity = $2
@@ -79,7 +81,10 @@ export class SyncConflictsRepository {
     return { id: res.rows[0]!.id, created: true };
   }
 
-  async findOpen(client: DbClient, filter: { kind?: ConflictKind; entity?: string; entityId?: UUID }): Promise<SyncConflictRow[]> {
+  async findOpen(
+    client: DbClient,
+    filter: { kind?: ConflictKind; entity?: string; entityId?: UUID },
+  ): Promise<SyncConflictRow[]> {
     const res = await client.query<SyncConflictRow>(
       `SELECT * FROM sync_conflicts
         WHERE status = 'open'
@@ -94,15 +99,34 @@ export class SyncConflictsRepository {
 
   async list(
     client: DbClient,
-    filter: { kind?: string; queue?: string; status?: string; locationIds?: string[] | null; page: number; pageSize: number },
+    filter: {
+      kind?: string;
+      queue?: string;
+      status?: string;
+      locationIds?: string[] | null;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<{ rows: SyncConflictRow[]; total: number }> {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (filter.kind) { conds.push(`kind = $${i++}`); args.push(filter.kind); }
-    if (filter.queue) { conds.push(`queue = $${i++}`); args.push(filter.queue); }
-    if (filter.status) { conds.push(`status = $${i++}`); args.push(filter.status); }
-    if (filter.locationIds) { conds.push(`location_id = ANY($${i++}::uuid[])`); args.push(filter.locationIds); }
+    if (filter.kind) {
+      conds.push(`kind = $${i++}`);
+      args.push(filter.kind);
+    }
+    if (filter.queue) {
+      conds.push(`queue = $${i++}`);
+      args.push(filter.queue);
+    }
+    if (filter.status) {
+      conds.push(`status = $${i++}`);
+      args.push(filter.status);
+    }
+    if (filter.locationIds) {
+      conds.push(`location_id = ANY($${i++}::uuid[])`);
+      args.push(filter.locationIds);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (filter.page - 1) * filter.pageSize;
 
@@ -111,12 +135,20 @@ export class SyncConflictsRepository {
         `SELECT * FROM sync_conflicts ${where} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`,
         [...args, filter.pageSize, offset],
       ),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM sync_conflicts ${where}`, args),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM sync_conflicts ${where}`,
+        args,
+      ),
     ]);
     return { rows: rows.rows, total: Number(count.rows[0]?.count ?? '0') };
   }
 
-  async dismiss(client: DbClient, id: UUID, resolvedBy: UUID, reason: string): Promise<SyncConflictRow | undefined> {
+  async dismiss(
+    client: DbClient,
+    id: UUID,
+    resolvedBy: UUID,
+    reason: string,
+  ): Promise<SyncConflictRow | undefined> {
     const res = await client.query<SyncConflictRow>(
       `UPDATE sync_conflicts
           SET status = 'dismissed', resolved_by = $2, resolved_at = NOW(), resolution = $3
@@ -127,7 +159,13 @@ export class SyncConflictsRepository {
     return res.rows[0];
   }
 
-  async resolve(client: DbClient, id: UUID, resolvedBy: UUID, resolution: string, resolutionEventId?: UUID | null): Promise<SyncConflictRow | undefined> {
+  async resolve(
+    client: DbClient,
+    id: UUID,
+    resolvedBy: UUID,
+    resolution: string,
+    resolutionEventId?: UUID | null,
+  ): Promise<SyncConflictRow | undefined> {
     const res = await client.query<SyncConflictRow>(
       `UPDATE sync_conflicts
           SET status = 'resolved', resolved_by = $2, resolved_at = NOW(), resolution = $3, resolution_event_id = $4

@@ -17,7 +17,18 @@ const frozenRequest: Replenishment = {
   sjNumber: null,
   approval: null,
   lines: [
-    { id: 'line-1', itemId: 'item-frozen', itemName: 'Ayam Fillet Beku', unitCode: 'kg', storageType: 'frozen', qtyRequested: '10.000', qtyApproved: '10.000', qtyShipped: null, qtyReceived: null, amendReason: null },
+    {
+      id: 'line-1',
+      itemId: 'item-frozen',
+      itemName: 'Ayam Fillet Beku',
+      unitCode: 'kg',
+      storageType: 'frozen',
+      qtyRequested: '10.000',
+      qtyApproved: '10.000',
+      qtyShipped: null,
+      qtyReceived: null,
+      amendReason: null,
+    },
   ],
 };
 
@@ -35,19 +46,62 @@ const mixedRequest: Replenishment = {
   sjNumber: null,
   approval: null,
   lines: [
-    { id: 'line-2', itemId: 'item-frozen-2', itemName: 'Ayam Mentah Berbumbu', unitCode: 'kg', storageType: 'frozen', qtyRequested: '5.000', qtyApproved: '5.000', qtyShipped: null, qtyReceived: null, amendReason: null },
-    { id: 'line-3', itemId: 'item-dry', itemName: 'Beras', unitCode: 'kg', storageType: 'dry', qtyRequested: '20.000', qtyApproved: '20.000', qtyShipped: null, qtyReceived: null, amendReason: null },
+    {
+      id: 'line-2',
+      itemId: 'item-frozen-2',
+      itemName: 'Ayam Mentah Berbumbu',
+      unitCode: 'kg',
+      storageType: 'frozen',
+      qtyRequested: '5.000',
+      qtyApproved: '5.000',
+      qtyShipped: null,
+      qtyReceived: null,
+      amendReason: null,
+    },
+    {
+      id: 'line-3',
+      itemId: 'item-dry',
+      itemName: 'Beras',
+      unitCode: 'kg',
+      storageType: 'dry',
+      qtyRequested: '20.000',
+      qtyApproved: '20.000',
+      qtyShipped: null,
+      qtyReceived: null,
+      amendReason: null,
+    },
   ],
 };
 
-const drivers: Driver[] = [{ id: 'drv-1', name: 'Joko', phone: null, licenseNumber: null, userId: null, isActive: true }];
-const freezerVehicle: Vehicle = { id: 'veh-freezer', plateNumber: 'KT 1 ABC', type: 'box', hasFreezer: true, isActive: true };
-const plainVehicle: Vehicle = { id: 'veh-plain', plateNumber: 'KT 2 XYZ', type: 'box', hasFreezer: false, isActive: true };
+const drivers: Driver[] = [
+  { id: 'drv-1', name: 'Joko', phone: null, licenseNumber: null, userId: null, isActive: true },
+];
+const freezerVehicle: Vehicle = {
+  id: 'veh-freezer',
+  plateNumber: 'KT 1 ABC',
+  type: 'box',
+  hasFreezer: true,
+  isActive: true,
+};
+const plainVehicle: Vehicle = {
+  id: 'veh-plain',
+  plateNumber: 'KT 2 XYZ',
+  type: 'box',
+  hasFreezer: false,
+  isActive: true,
+};
 const vehicles: Vehicle[] = [freezerVehicle, plainVehicle];
 
 describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
   it('only counts frozen-compatible lines toward a request when shipmentType is frozen (the default)', () => {
-    render(<SjCreateForm requests={[mixedRequest]} drivers={drivers} vehicles={vehicles} onSubmit={vi.fn()} />);
+    render(
+      <SjCreateForm
+        requests={[mixedRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={vi.fn()}
+      />,
+    );
     // The mixed request's card should show only 1 compatible item (the frozen one), not 2.
     expect(screen.getByText('1 item')).toBeInTheDocument();
     expect(screen.getByText(/1 baris tidak disertakan/i)).toBeInTheDocument();
@@ -55,7 +109,14 @@ describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
 
   it('never builds a drop containing both a frozen and a dry item for the same shipment', () => {
     const onSubmit = vi.fn();
-    render(<SjCreateForm requests={[mixedRequest]} drivers={drivers} vehicles={vehicles} onSubmit={onSubmit} />);
+    render(
+      <SjCreateForm
+        requests={[mixedRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={onSubmit}
+      />,
+    );
 
     fireEvent.click(screen.getByLabelText(/REQ-002/));
     // Route preview should list only the frozen item, never "Beras" (dry).
@@ -70,7 +131,14 @@ describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
       requestNumber: 'REQ-003',
       lines: [mixedRequest.lines[1]!],
     };
-    render(<SjCreateForm requests={[dryOnlyRequest]} drivers={drivers} vehicles={vehicles} onSubmit={vi.fn()} />);
+    render(
+      <SjCreateForm
+        requests={[dryOnlyRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={vi.fn()}
+      />,
+    );
     // Default shipmentType is 'frozen'; a dry-only request has no compatible lines.
     const checkbox = screen.getByLabelText(/REQ-003/) as HTMLInputElement;
     expect(checkbox).toBeDisabled();
@@ -78,7 +146,14 @@ describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
   });
 
   it('switches which requests are selectable when the shipment type toggles to dry', () => {
-    render(<SjCreateForm requests={[frozenRequest, mixedRequest]} drivers={drivers} vehicles={vehicles} onSubmit={vi.fn()} />);
+    render(
+      <SjCreateForm
+        requests={[frozenRequest, mixedRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={vi.fn()}
+      />,
+    );
     fireEvent.click(screen.getByRole('button', { name: /Kering/i }));
 
     // The pure-frozen request now has zero compatible lines -> disabled.
@@ -92,7 +167,14 @@ describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
   });
 
   it('blocks submission when the selected vehicle has no freezer for a frozen shipment', () => {
-    render(<SjCreateForm requests={[frozenRequest]} drivers={drivers} vehicles={vehicles} onSubmit={vi.fn()} />);
+    render(
+      <SjCreateForm
+        requests={[frozenRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={vi.fn()}
+      />,
+    );
     fireEvent.click(screen.getByLabelText(/REQ-001/));
 
     const selects = screen.getAllByRole('combobox');
@@ -108,7 +190,14 @@ describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
 
   it('enables submission once request, driver, freezer-capable vehicle and date are all set', () => {
     const onSubmit = vi.fn();
-    render(<SjCreateForm requests={[frozenRequest]} drivers={drivers} vehicles={vehicles} onSubmit={onSubmit} />);
+    render(
+      <SjCreateForm
+        requests={[frozenRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={onSubmit}
+      />,
+    );
     fireEvent.click(screen.getByLabelText(/REQ-001/));
 
     const selects = screen.getAllByRole('combobox');

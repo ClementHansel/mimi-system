@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { SyncEntity } from '@mimi/shared';
 import { createTestDatabase, setupIdentity, ACTOR } from '../test-support/fixtures';
 import { commitFact } from '../idempotent-commit';
-import { captureAttachment, getAttachmentByAttachmentId, drainAttachmentUploads, sha256Hex, type AttachmentUploader } from './attachment-store';
+import {
+  captureAttachment,
+  getAttachmentByAttachmentId,
+  drainAttachmentUploads,
+  sha256Hex,
+  type AttachmentUploader,
+} from './attachment-store';
 import type { AttachmentRecord } from '../types';
 
 function blobOf(content: string, mime = 'image/jpeg'): Blob {
@@ -22,14 +28,26 @@ describe('attachment <-> event correlation (FR-LOG-15 wajib foto, found wiring o
   it('captureAttachment mints an attachmentId distinct from the sha256 dedupe key', async () => {
     const db = createTestDatabase();
     const ref = await captureAttachment(db, blobOf('drop-photo-1'), 'image/jpeg', 'sj_drop_photo');
-    expect(ref.attachmentId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+    expect(ref.attachmentId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
     expect(ref.attachmentId).not.toBe(ref.sha256);
   });
 
   it('capturing the SAME content twice returns the SAME attachmentId (one blob, one canonical id)', async () => {
     const db = createTestDatabase();
-    const first = await captureAttachment(db, blobOf('same-evidence'), 'image/jpeg', 'sj_drop_photo');
-    const second = await captureAttachment(db, blobOf('same-evidence'), 'image/jpeg', 'sj_drop_photo');
+    const first = await captureAttachment(
+      db,
+      blobOf('same-evidence'),
+      'image/jpeg',
+      'sj_drop_photo',
+    );
+    const second = await captureAttachment(
+      db,
+      blobOf('same-evidence'),
+      'image/jpeg',
+      'sj_drop_photo',
+    );
     expect(second.attachmentId).toBe(first.attachmentId);
   });
 
@@ -55,7 +73,8 @@ describe('attachment <-> event correlation (FR-LOG-15 wajib foto, found wiring o
       meta: ACTOR,
     });
 
-    const referencedId = (envelope.payload.data as { photoAttachmentIds: string[] }).photoAttachmentIds[0]!;
+    const referencedId = (envelope.payload.data as { photoAttachmentIds: string[] })
+      .photoAttachmentIds[0]!;
     const resolved = await getAttachmentByAttachmentId(db, referencedId);
 
     expect(resolved).toBeDefined();
@@ -82,10 +101,16 @@ describe('attachment <-> event correlation (FR-LOG-15 wajib foto, found wiring o
       entity: SyncEntity.SJ_DROPS,
       op: 'received',
       entityId: 'drop-2',
-      data: { dropId: 'drop-2', lines: [], photoAttachmentIds: [evidence.attachmentId], signatureAttachmentId: evidence.attachmentId },
+      data: {
+        dropId: 'drop-2',
+        lines: [],
+        photoAttachmentIds: [evidence.attachmentId],
+        signatureAttachmentId: evidence.attachmentId,
+      },
       meta: ACTOR,
     });
-    const referencedId = (envelope.payload.data as { photoAttachmentIds: string[] }).photoAttachmentIds[0]!;
+    const referencedId = (envelope.payload.data as { photoAttachmentIds: string[] })
+      .photoAttachmentIds[0]!;
 
     const uploadCalls: { sha256: string; attachmentId: string }[] = [];
     const spyUploader: AttachmentUploader = {

@@ -23,14 +23,26 @@ describe('stock-cache (D-16/D-16a — device-local stock projection)', () => {
       await recordReceiptWithinTx(
         tx,
         'evt-1',
-        [{ locationId: LOCATION, storageAreaId: AREA, itemId: ITEM, qty: '10.000', unitCost: '25000.00' }],
+        [
+          {
+            locationId: LOCATION,
+            storageAreaId: AREA,
+            itemId: ITEM,
+            qty: '10.000',
+            unitCost: '25000.00',
+          },
+        ],
         MovementType.TRANSFER_IN,
         'sj_drop',
         new Date().toISOString(),
       );
     });
 
-    const balance = await getBalance(db, { locationId: LOCATION, storageAreaId: AREA, itemId: ITEM });
+    const balance = await getBalance(db, {
+      locationId: LOCATION,
+      storageAreaId: AREA,
+      itemId: ITEM,
+    });
     expect(balance).toBe('10.000');
   });
 
@@ -40,7 +52,15 @@ describe('stock-cache (D-16/D-16a — device-local stock projection)', () => {
       await recordReceiptWithinTx(
         tx,
         'evt-receipt',
-        [{ locationId: LOCATION, storageAreaId: AREA, itemId: ITEM, qty: '10.000', unitCost: '25000.00' }],
+        [
+          {
+            locationId: LOCATION,
+            storageAreaId: AREA,
+            itemId: ITEM,
+            qty: '10.000',
+            unitCost: '25000.00',
+          },
+        ],
         MovementType.TRANSFER_IN,
         'sj_drop',
         new Date().toISOString(),
@@ -51,25 +71,48 @@ describe('stock-cache (D-16/D-16a — device-local stock projection)', () => {
       await recordSaleWithinTx(tx, {
         saleEventId: 'sale-1',
         saleLines: [{ productId: 'product-ayam-goreng', qty: '2.000' }],
-        recipesByProduct: new Map([['product-ayam-goreng', [{ itemId: ITEM, qtyPerUnit: '1.000', unitCost: '25000.00' }]]]),
+        recipesByProduct: new Map([
+          ['product-ayam-goreng', [{ itemId: ITEM, qtyPerUnit: '1.000', unitCost: '25000.00' }]],
+        ]),
         target: { locationId: LOCATION, storageAreaId: AREA },
         occurredAt: new Date().toISOString(),
       });
     });
 
-    const balance = await getBalance(db, { locationId: LOCATION, storageAreaId: AREA, itemId: ITEM });
+    const balance = await getBalance(db, {
+      locationId: LOCATION,
+      storageAreaId: AREA,
+      itemId: ITEM,
+    });
     expect(balance).toBe('8.000'); // 10 received - 2 sold
   });
 
   it('re-recording the SAME fact (identical factId, e.g. a retried pulled page) does not double-count (T-01 at device scale)', async () => {
     const db = createTestDatabase();
-    const line = { locationId: LOCATION, storageAreaId: AREA, itemId: ITEM, qty: '5.000', unitCost: '25000.00' };
+    const line = {
+      locationId: LOCATION,
+      storageAreaId: AREA,
+      itemId: ITEM,
+      qty: '5.000',
+      unitCost: '25000.00',
+    };
     for (let i = 0; i < 3; i++) {
       await db.runTransaction(['movements'], 'readwrite', async (tx) => {
-        await recordReceiptWithinTx(tx, 'evt-repeated', [line], MovementType.TRANSFER_IN, 'sj_drop', new Date().toISOString());
+        await recordReceiptWithinTx(
+          tx,
+          'evt-repeated',
+          [line],
+          MovementType.TRANSFER_IN,
+          'sj_drop',
+          new Date().toISOString(),
+        );
       });
     }
-    const balance = await getBalance(db, { locationId: LOCATION, storageAreaId: AREA, itemId: ITEM });
+    const balance = await getBalance(db, {
+      locationId: LOCATION,
+      storageAreaId: AREA,
+      itemId: ITEM,
+    });
     expect(balance).toBe('5.000'); // NOT 15.000 — same factId overwrites, never accumulates
   });
 
@@ -120,21 +163,53 @@ describe('stock-cache (D-16/D-16a — device-local stock projection)', () => {
       await recordReceiptWithinTx(
         tx,
         'evt-r',
-        [{ locationId: LOCATION, storageAreaId: AREA, itemId: ITEM, qty: '20.000', unitCost: '25000.00' }],
+        [
+          {
+            locationId: LOCATION,
+            storageAreaId: AREA,
+            itemId: ITEM,
+            qty: '20.000',
+            unitCost: '25000.00',
+          },
+        ],
         MovementType.TRANSFER_IN,
         'sj_drop',
         new Date().toISOString(),
       );
-      await recordWasteWithinTx(tx, 'evt-w', [{ locationId: LOCATION, storageAreaId: AREA, itemId: ITEM, qty: '3.000', unitCost: '25000.00' }], new Date().toISOString());
+      await recordWasteWithinTx(
+        tx,
+        'evt-w',
+        [
+          {
+            locationId: LOCATION,
+            storageAreaId: AREA,
+            itemId: ITEM,
+            qty: '3.000',
+            unitCost: '25000.00',
+          },
+        ],
+        new Date().toISOString(),
+      );
       await recordAdjustmentWithinTx(
         tx,
         'evt-adj',
-        { locationId: LOCATION, storageAreaId: AREA, itemId: ITEM, qty: '1.000', unitCost: '25000.00', direction: 'overage' },
+        {
+          locationId: LOCATION,
+          storageAreaId: AREA,
+          itemId: ITEM,
+          qty: '1.000',
+          unitCost: '25000.00',
+          direction: 'overage',
+        },
         new Date().toISOString(),
       );
     });
 
-    const balance = await getBalance(db, { locationId: LOCATION, storageAreaId: AREA, itemId: ITEM });
+    const balance = await getBalance(db, {
+      locationId: LOCATION,
+      storageAreaId: AREA,
+      itemId: ITEM,
+    });
     expect(balance).toBe('18.000'); // 20 - 3 waste + 1 overage
   });
 
@@ -144,7 +219,15 @@ describe('stock-cache (D-16/D-16a — device-local stock projection)', () => {
       await recordReceiptWithinTx(
         tx,
         'evt-a',
-        [{ locationId: LOCATION, storageAreaId: AREA, itemId: 'item-a', qty: '5.000', unitCost: '1000.00' }],
+        [
+          {
+            locationId: LOCATION,
+            storageAreaId: AREA,
+            itemId: 'item-a',
+            qty: '5.000',
+            unitCost: '1000.00',
+          },
+        ],
         MovementType.TRANSFER_IN,
         'sj_drop',
         new Date().toISOString(),
@@ -152,7 +235,15 @@ describe('stock-cache (D-16/D-16a — device-local stock projection)', () => {
       await recordReceiptWithinTx(
         tx,
         'evt-b',
-        [{ locationId: LOCATION, storageAreaId: AREA, itemId: 'item-b', qty: '7.000', unitCost: '1000.00' }],
+        [
+          {
+            locationId: LOCATION,
+            storageAreaId: AREA,
+            itemId: 'item-b',
+            qty: '7.000',
+            unitCost: '1000.00',
+          },
+        ],
         MovementType.TRANSFER_IN,
         'sj_drop',
         new Date().toISOString(),

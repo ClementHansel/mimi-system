@@ -93,9 +93,16 @@ export function TrendPanel({ from, to, locationId }: TrendPanelProps) {
       {error ? (
         <p className="text-sm text-danger-600">{error}</p>
       ) : (
-        <div className="flex h-full items-end gap-1" role="img" aria-label={t('dashboard.trend.title')}>
+        <div
+          className="flex h-full items-end gap-1"
+          role="img"
+          aria-label={t('dashboard.trend.title')}
+        >
           {points.map((p, i) => (
-            <div key={p.t} className="group relative flex flex-1 flex-col items-center justify-end gap-1">
+            <div
+              key={p.t}
+              className="group relative flex flex-1 flex-col items-center justify-end gap-1"
+            >
               <div className="pointer-events-none absolute -top-8 hidden whitespace-nowrap rounded bg-stone-900 px-1.5 py-0.5 text-xs text-white group-hover:block">
                 {formatTrendValue(metric, p.value)}
               </div>

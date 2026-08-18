@@ -75,7 +75,10 @@ function readJsonBody(req: IncomingMessage): Promise<unknown> {
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
-  res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) });
+  res.writeHead(status, {
+    'content-type': 'application/json',
+    'content-length': Buffer.byteLength(payload),
+  });
   res.end(payload);
 }
 
@@ -83,13 +86,18 @@ export class LanServer {
   private server: http.Server | https.Server;
   private listening = false;
 
-  constructor(private handlers: LanServerHandlers, cert: LanCert | null) {
+  constructor(
+    private handlers: LanServerHandlers,
+    cert: LanCert | null,
+  ) {
     this.server = this.buildServer(cert);
   }
 
   private buildServer(cert: LanCert | null): http.Server | https.Server {
     const listener = (req: IncomingMessage, res: ServerResponse) => void this.route(req, res);
-    return cert ? https.createServer({ cert: cert.pem, key: cert.keyPem }, listener) : http.createServer(listener);
+    return cert
+      ? https.createServer({ cert: cert.pem, key: cert.keyPem }, listener)
+      : http.createServer(listener);
   }
 
   /** Swaps in a freshly-issued LAN cert (rotation, §1.3) — requires a listen()/close() cycle to take effect on a live port. */

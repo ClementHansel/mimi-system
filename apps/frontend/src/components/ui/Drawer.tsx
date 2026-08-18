@@ -28,7 +28,15 @@ const SIZE_CLASSES: Record<'right' | 'left', Record<NonNullable<DrawerProps['siz
 };
 
 /** Edge-anchored panel — a side sheet on desktop, a bottom sheet on mobile. Use `Modal` for a centered dialog. */
-export function Drawer({ open, onClose, title, children, footer, side = 'right', size = 'md' }: DrawerProps) {
+export function Drawer({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  side = 'right',
+  size = 'md',
+}: DrawerProps) {
   useEffect(() => {
     if (!open) return;
     const original = document.body.style.overflow;
@@ -70,7 +78,11 @@ export function Drawer({ open, onClose, title, children, footer, side = 'right',
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">{children}</div>
-        {footer && <div className="flex items-center justify-end gap-2 border-t border-border p-4">{footer}</div>}
+        {footer && (
+          <div className="flex items-center justify-end gap-2 border-t border-border p-4">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

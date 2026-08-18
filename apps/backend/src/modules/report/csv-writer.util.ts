@@ -30,7 +30,10 @@ export function toCsvRow(cells: readonly (string | number | boolean | null | und
  * RFC 4180 convention Excel/Sheets expect on import) and a trailing UTF-8
  * BOM so Excel opens it without mis-detecting the encoding.
  */
-export function writeCsv(header: readonly string[], rows: readonly (readonly (string | number | boolean | null | undefined)[])[]): string {
+export function writeCsv(
+  header: readonly string[],
+  rows: readonly (readonly (string | number | boolean | null | undefined)[])[],
+): string {
   const lines = [toCsvRow(header), ...rows.map((r) => toCsvRow(r))];
   return '﻿' + lines.join('\r\n') + '\r\n';
 }

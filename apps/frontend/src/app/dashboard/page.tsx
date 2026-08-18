@@ -14,7 +14,9 @@ export default function DashboardPage() {
   const { t } = useI18n();
   return (
     <div className="flex flex-col gap-4 p-4">
-      <h1 className="font-display text-2xl font-semibold text-text-primary">{t('nav.dashboard')}</h1>
+      <h1 className="font-display text-2xl font-semibold text-text-primary">
+        {t('nav.dashboard')}
+      </h1>
       <DashboardShell />
     </div>
   );

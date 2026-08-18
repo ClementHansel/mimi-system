@@ -51,7 +51,10 @@ export class PurchaseRequestRepository {
     return formatCloudDocNumber('PR', period, res.rows[0]!.last_number);
   }
 
-  async insertHeader(client: PoolClient, input: { prNumber: string; locationId: UUID; requestedBy: UUID; neededBy: string | null }): Promise<string> {
+  async insertHeader(
+    client: PoolClient,
+    input: { prNumber: string; locationId: UUID; requestedBy: UUID; neededBy: string | null },
+  ): Promise<string> {
     const res = await client.query<{ id: string }>(
       `INSERT INTO purchase_requests (pr_number, location_id, requested_by, needed_by)
        VALUES ($1,$2,$3,$4) RETURNING id`,
@@ -60,11 +63,28 @@ export class PurchaseRequestRepository {
     return res.rows[0]!.id;
   }
 
-  async insertLine(client: PoolClient, input: { prId: UUID; itemId: UUID; unitId: UUID; qty: Qty; estPrice: Money; suggestedSupplierId: UUID | null }): Promise<string> {
+  async insertLine(
+    client: PoolClient,
+    input: {
+      prId: UUID;
+      itemId: UUID;
+      unitId: UUID;
+      qty: Qty;
+      estPrice: Money;
+      suggestedSupplierId: UUID | null;
+    },
+  ): Promise<string> {
     const res = await client.query<{ id: string }>(
       `INSERT INTO purchase_request_lines (pr_id, item_id, unit_id, qty, est_price, suggested_supplier_id)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [input.prId, input.itemId, input.unitId, input.qty, input.estPrice, input.suggestedSupplierId],
+      [
+        input.prId,
+        input.itemId,
+        input.unitId,
+        input.qty,
+        input.estPrice,
+        input.suggestedSupplierId,
+      ],
     );
     return res.rows[0]!.id;
   }
@@ -95,33 +115,62 @@ export class PurchaseRequestRepository {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (query.locationId) { conds.push(`pr.location_id = $${i++}`); args.push(query.locationId); }
-    if (query.status) { conds.push(`pr.status = $${i++}`); args.push(query.status); }
+    if (query.locationId) {
+      conds.push(`pr.location_id = $${i++}`);
+      args.push(query.locationId);
+    }
+    if (query.status) {
+      conds.push(`pr.status = $${i++}`);
+      args.push(query.status);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (query.page - 1) * query.pageSize;
 
     const [rows, count] = await Promise.all([
-      client.query<PrHeaderRow>(`${HEADER_SELECT} ${where} ORDER BY pr.created_at DESC LIMIT $${i} OFFSET $${i + 1}`, [...args, query.pageSize, offset]),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM purchase_requests pr ${where}`, args),
+      client.query<PrHeaderRow>(
+        `${HEADER_SELECT} ${where} ORDER BY pr.created_at DESC LIMIT $${i} OFFSET $${i + 1}`,
+        [...args, query.pageSize, offset],
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM purchase_requests pr ${where}`,
+        args,
+      ),
     ]);
     return { rows: rows.rows, total: Number(count.rows[0]?.count ?? '0') };
   }
 
   async lineCount(client: PoolClient, prId: string): Promise<number> {
-    const res = await client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM purchase_request_lines WHERE pr_id = $1`, [prId]);
+    const res = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM purchase_request_lines WHERE pr_id = $1`,
+      [prId],
+    );
     return Number(res.rows[0]?.count ?? '0');
   }
 
   async setStatus(client: PoolClient, prId: string, status: string): Promise<void> {
-    await client.query(`UPDATE purchase_requests SET status = $2, updated_at = NOW() WHERE id = $1`, [prId, status]);
+    await client.query(
+      `UPDATE purchase_requests SET status = $2, updated_at = NOW() WHERE id = $1`,
+      [prId, status],
+    );
   }
 
   async setApprovalId(client: PoolClient, prId: string, approvalId: string): Promise<void> {
-    await client.query(`UPDATE purchase_requests SET approval_id = $2 WHERE id = $1`, [prId, approvalId]);
+    await client.query(`UPDATE purchase_requests SET approval_id = $2 WHERE id = $1`, [
+      prId,
+      approvalId,
+    ]);
   }
 
-  async setRejection(client: PoolClient, prId: string, status: string, reason: string): Promise<void> {
-    await client.query(`UPDATE purchase_requests SET status = $2, rejection_reason = $3, updated_at = NOW() WHERE id = $1`, [prId, status, reason]);
+  async setRejection(
+    client: PoolClient,
+    prId: string,
+    status: string,
+    reason: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE purchase_requests SET status = $2, rejection_reason = $3, updated_at = NOW() WHERE id = $1`,
+      [prId, status, reason],
+    );
   }
 
   async estimatedTotal(client: PoolClient, prId: string): Promise<Money> {

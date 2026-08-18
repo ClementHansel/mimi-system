@@ -25,7 +25,9 @@ describe('DatabaseModule — boot-time RLS-bypass refusal', () => {
   });
 
   it('boots normally when the connected role is a plain non-superuser, non-bypassrls role', async () => {
-    const pool = { query: vi.fn().mockResolvedValue({ rows: [{ rolsuper: false, rolbypassrls: false }] }) };
+    const pool = {
+      query: vi.fn().mockResolvedValue({ rows: [{ rolsuper: false, rolbypassrls: false }] }),
+    };
     const mod = new DatabaseModule(pool as never);
 
     await mod.onModuleInit();
@@ -34,7 +36,9 @@ describe('DatabaseModule — boot-time RLS-bypass refusal', () => {
   });
 
   it('refuses to boot (exit 1) when the connected role is a superuser', async () => {
-    const pool = { query: vi.fn().mockResolvedValue({ rows: [{ rolsuper: true, rolbypassrls: false }] }) };
+    const pool = {
+      query: vi.fn().mockResolvedValue({ rows: [{ rolsuper: true, rolbypassrls: false }] }),
+    };
     const mod = new DatabaseModule(pool as never);
 
     await mod.onModuleInit();
@@ -43,7 +47,9 @@ describe('DatabaseModule — boot-time RLS-bypass refusal', () => {
   });
 
   it('refuses to boot (exit 1) when the connected role has BYPASSRLS even without superuser', async () => {
-    const pool = { query: vi.fn().mockResolvedValue({ rows: [{ rolsuper: false, rolbypassrls: true }] }) };
+    const pool = {
+      query: vi.fn().mockResolvedValue({ rows: [{ rolsuper: false, rolbypassrls: true }] }),
+    };
     const mod = new DatabaseModule(pool as never);
 
     await mod.onModuleInit();
@@ -61,7 +67,9 @@ describe('DatabaseModule — boot-time RLS-bypass refusal', () => {
   });
 
   it('queries pg_roles for current_user specifically, not an arbitrary/hardcoded role name', async () => {
-    const pool = { query: vi.fn().mockResolvedValue({ rows: [{ rolsuper: false, rolbypassrls: false }] }) };
+    const pool = {
+      query: vi.fn().mockResolvedValue({ rows: [{ rolsuper: false, rolbypassrls: false }] }),
+    };
     const mod = new DatabaseModule(pool as never);
 
     await mod.onModuleInit();

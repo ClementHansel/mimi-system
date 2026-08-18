@@ -21,7 +21,17 @@ export interface ChartCardProps {
   className?: string;
 }
 
-export function ChartCard({ title, description, action, loading, empty, emptyMessage, height = 280, children, className }: ChartCardProps) {
+export function ChartCard({
+  title,
+  description,
+  action,
+  loading,
+  empty,
+  emptyMessage,
+  height = 280,
+  children,
+  className,
+}: ChartCardProps) {
   const { t } = useI18n();
   const style = { height: typeof height === 'number' ? `${height}px` : height };
 

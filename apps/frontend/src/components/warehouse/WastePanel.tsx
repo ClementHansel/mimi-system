@@ -4,7 +4,17 @@ import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
-  Button, Modal, DataTable, StatusBadge, Select, QtyInput, Textarea, PhotoCapture, toast, PermissionGate, EmptyState,
+  Button,
+  Modal,
+  DataTable,
+  StatusBadge,
+  Select,
+  QtyInput,
+  Textarea,
+  PhotoCapture,
+  toast,
+  PermissionGate,
+  EmptyState,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatQty, formatMoney } from '@/lib/formatters';
@@ -45,14 +55,20 @@ export function WastePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
-  const [lines, setLines] = useState<WasteLineDraft[]>([{ storageAreaId: '', itemId: '', qty: null, reason: 'expired', reasonDetail: '' }]);
+  const [lines, setLines] = useState<WasteLineDraft[]>([
+    { storageAreaId: '', itemId: '', qty: null, reason: 'expired', reasonDetail: '' },
+  ]);
   const [photo, setPhoto] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!locationId) return;
-    getStorageAreas(locationId).then(setAreas).catch(() => {});
-    getItems().then((r) => setItems(r.rows)).catch(() => {});
+    getStorageAreas(locationId)
+      .then(setAreas)
+      .catch(() => {});
+    getItems()
+      .then((r) => setItems(r.rows))
+      .catch(() => {});
   }, [locationId]);
 
   function reload() {
@@ -75,10 +91,21 @@ export function WastePanel() {
     if (valid.length === 0) return;
     setSaving(true);
     try {
-      const photoAttachmentId = await uploadAttachment({ file: photo, fileName: photo.name, mimeType: photo.type || 'image/jpeg', kind: 'waste_photo' });
+      const photoAttachmentId = await uploadAttachment({
+        file: photo,
+        fileName: photo.name,
+        mimeType: photo.type || 'image/jpeg',
+        kind: 'waste_photo',
+      });
       await createWaste({
         locationId,
-        items: valid.map((l) => ({ storageAreaId: l.storageAreaId, itemId: l.itemId, qty: l.qty as string, reason: l.reason, reasonDetail: l.reasonDetail || undefined })),
+        items: valid.map((l) => ({
+          storageAreaId: l.storageAreaId,
+          itemId: l.itemId,
+          qty: l.qty as string,
+          reason: l.reason,
+          reasonDetail: l.reasonDetail || undefined,
+        })),
         photoAttachmentIds: [photoAttachmentId],
       });
       toast({ title: t('outlet.waste.created'), variant: 'success' });
@@ -97,11 +124,29 @@ export function WastePanel() {
     { key: 'wasteNumber', header: t('outlet.waste.number') },
     { key: 'itemName', header: t('outlet.replenishment.item') },
     { key: 'storageAreaName', header: t('outlet.receiving.storageArea') },
-    { key: 'qty', header: t('outlet.opname.countedQty'), align: 'right', render: (r) => formatQty(r.qty) },
-    { key: 'unitCost', header: t('warehouse.waste.unitCost'), align: 'right', render: (r) => formatMoney(r.unitCost) },
-    { key: 'reason', header: t('common.reason'), render: (r) => t(`outlet.waste.reason.${r.reason}`) },
+    {
+      key: 'qty',
+      header: t('outlet.opname.countedQty'),
+      align: 'right',
+      render: (r) => formatQty(r.qty),
+    },
+    {
+      key: 'unitCost',
+      header: t('warehouse.waste.unitCost'),
+      align: 'right',
+      render: (r) => formatMoney(r.unitCost),
+    },
+    {
+      key: 'reason',
+      header: t('common.reason'),
+      render: (r) => t(`outlet.waste.reason.${r.reason}`),
+    },
     { key: 'occurredAt', header: t('common.date'), render: (r) => fmtDate(r.occurredAt) },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="waste" status={r.status} /> },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="waste" status={r.status} />,
+    },
   ];
 
   const itemOptions = items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }));
@@ -118,7 +163,11 @@ export function WastePanel() {
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
         <PermissionGate permission="waste.create">
-          <Button leftIcon={<Plus className="size-4" />} size="touch" onClick={() => setCreateOpen(true)}>
+          <Button
+            leftIcon={<Plus className="size-4" />}
+            size="touch"
+            onClick={() => setCreateOpen(true)}
+          >
             {t('outlet.waste.new')}
           </Button>
         </PermissionGate>
@@ -134,39 +183,98 @@ export function WastePanel() {
       />
       {error && (
         <div className="flex justify-end">
-          <Button variant="outline" size="sm" onClick={reload}>{t('common.retry')}</Button>
+          <Button variant="outline" size="sm" onClick={reload}>
+            {t('common.retry')}
+          </Button>
         </div>
       )}
 
-      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={t('outlet.waste.new')} size="lg">
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title={t('outlet.waste.new')}
+        size="lg"
+      >
         <div className="flex flex-col gap-4">
           {lines.map((line, idx) => (
             <div key={idx} className="grid gap-3 sm:grid-cols-2">
-              <Select label={t('outlet.receiving.storageArea')} value={line.storageAreaId} options={areaOptions}
-                onValueChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, storageAreaId: v } : l)))}
-                placeholder={t('common.selectPlaceholder')} />
-              <Select label={t('outlet.replenishment.item')} value={line.itemId} options={itemOptions}
-                onValueChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))}
-                placeholder={t('common.selectPlaceholder')} />
-              <QtyInput label={t('outlet.opname.countedQty')} value={line.qty}
-                onChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qty: v } : l)))} />
-              <Select label={t('common.reason')} value={line.reason}
-                options={WASTE_REASONS.map((r) => ({ value: r, label: t(`outlet.waste.reason.${r}`) }))}
-                onValueChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, reason: v } : l)))} />
-              <Textarea wrapperClassName="sm:col-span-2" label={t('common.notes')} value={line.reasonDetail}
-                onChange={(e) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, reasonDetail: e.target.value } : l)))} />
+              <Select
+                label={t('outlet.receiving.storageArea')}
+                value={line.storageAreaId}
+                options={areaOptions}
+                onValueChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, storageAreaId: v } : l)))
+                }
+                placeholder={t('common.selectPlaceholder')}
+              />
+              <Select
+                label={t('outlet.replenishment.item')}
+                value={line.itemId}
+                options={itemOptions}
+                onValueChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))
+                }
+                placeholder={t('common.selectPlaceholder')}
+              />
+              <QtyInput
+                label={t('outlet.opname.countedQty')}
+                value={line.qty}
+                onChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qty: v } : l)))
+                }
+              />
+              <Select
+                label={t('common.reason')}
+                value={line.reason}
+                options={WASTE_REASONS.map((r) => ({
+                  value: r,
+                  label: t(`outlet.waste.reason.${r}`),
+                }))}
+                onValueChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, reason: v } : l)))
+                }
+              />
+              <Textarea
+                wrapperClassName="sm:col-span-2"
+                label={t('common.notes')}
+                value={line.reasonDetail}
+                onChange={(e) =>
+                  setLines((ls) =>
+                    ls.map((l, i) => (i === idx ? { ...l, reasonDetail: e.target.value } : l)),
+                  )
+                }
+              />
             </div>
           ))}
-          <Button type="button" variant="outline" size="sm" leftIcon={<Plus className="size-4" />}
-            onClick={() => setLines((ls) => [...ls, { storageAreaId: '', itemId: '', qty: null, reason: 'expired', reasonDetail: '' }])}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            leftIcon={<Plus className="size-4" />}
+            onClick={() =>
+              setLines((ls) => [
+                ...ls,
+                { storageAreaId: '', itemId: '', qty: null, reason: 'expired', reasonDetail: '' },
+              ])
+            }
+          >
             {t('outlet.replenishment.addLine')}
           </Button>
-          <PhotoCapture label={t('outlet.waste.photoLabel')} value={photo ? URL.createObjectURL(photo) : null}
-            onCapture={setPhoto} onRemove={() => setPhoto(null)} required />
+          <PhotoCapture
+            label={t('outlet.waste.photoLabel')}
+            value={photo ? URL.createObjectURL(photo) : null}
+            onCapture={setPhoto}
+            onRemove={() => setPhoto(null)}
+            required
+          />
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
-          <Button loading={saving} disabled={!photo} onClick={submit}>{t('common.submit')}</Button>
+          <Button variant="outline" onClick={() => setCreateOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button loading={saving} disabled={!photo} onClick={submit}>
+            {t('common.submit')}
+          </Button>
         </div>
       </Modal>
     </div>

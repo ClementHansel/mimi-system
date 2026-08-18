@@ -69,14 +69,19 @@ export interface RlsSessionContext {
  * Reproduces the identical `SET LOCAL ROLE app_user` + `set_config(...)`
  * sequence `RlsContextGuard` issues for every real request.
  */
-export async function withRollbackAs<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollbackAs<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -125,12 +130,16 @@ export async function loadReportFixtures(): Promise<ReportFixtures> {
 
   const usersByRole = {} as Partial<Record<RoleKey, RoleFixture>>;
   for (const roleKey of Object.values(RoleKey)) {
-    const userRes = await pool.query<{ id: string }>(`SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`, [
-      roleKey,
-    ]);
+    const userRes = await pool.query<{ id: string }>(
+      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
+      [roleKey],
+    );
     if (!userRes.rows[0]) continue;
     const userId = userRes.rows[0].id;
-    const locRes = await pool.query<{ location_id: string }>(`SELECT location_id FROM user_locations WHERE user_id = $1`, [userId]);
+    const locRes = await pool.query<{ location_id: string }>(
+      `SELECT location_id FROM user_locations WHERE user_id = $1`,
+      [userId],
+    );
     usersByRole[roleKey] = { userId, locationIds: locRes.rows.map((r) => r.location_id) };
   }
 
@@ -140,7 +149,9 @@ export async function loadReportFixtures(): Promise<ReportFixtures> {
   let outletOutOfScope: string | null = null;
   let outletCity: string | null = null;
   if (outletInScope) {
-    const cityRes = await pool.query<{ city: string }>(`SELECT city FROM locations WHERE id = $1`, [outletInScope]);
+    const cityRes = await pool.query<{ city: string }>(`SELECT city FROM locations WHERE id = $1`, [
+      outletInScope,
+    ]);
     outletCity = cityRes.rows[0]?.city ?? null;
 
     const otherRes = await pool.query<{ id: string }>(
@@ -152,31 +163,41 @@ export async function loadReportFixtures(): Promise<ReportFixtures> {
 
   let shiftIdInScope: string | null = null;
   if (outletInScope) {
-    const shiftRes = await pool.query<{ id: string }>(`SELECT id FROM pos_shifts WHERE location_id = $1 ORDER BY opened_at DESC LIMIT 1`, [
-      outletInScope,
-    ]);
+    const shiftRes = await pool.query<{ id: string }>(
+      `SELECT id FROM pos_shifts WHERE location_id = $1 ORDER BY opened_at DESC LIMIT 1`,
+      [outletInScope],
+    );
     shiftIdInScope = shiftRes.rows[0]?.id ?? null;
   }
   let shiftIdOutOfScope: string | null = null;
   if (outletOutOfScope) {
-    const shiftRes = await pool.query<{ id: string }>(`SELECT id FROM pos_shifts WHERE location_id = $1 ORDER BY opened_at DESC LIMIT 1`, [
-      outletOutOfScope,
-    ]);
+    const shiftRes = await pool.query<{ id: string }>(
+      `SELECT id FROM pos_shifts WHERE location_id = $1 ORDER BY opened_at DESC LIMIT 1`,
+      [outletOutOfScope],
+    );
     shiftIdOutOfScope = shiftRes.rows[0]?.id ?? null;
   }
 
   let employeeIdInScope: string | null = null;
   if (outletInScope) {
-    const empRes = await pool.query<{ id: string }>(`SELECT id FROM employees WHERE location_id = $1 LIMIT 1`, [outletInScope]);
+    const empRes = await pool.query<{ id: string }>(
+      `SELECT id FROM employees WHERE location_id = $1 LIMIT 1`,
+      [outletInScope],
+    );
     employeeIdInScope = empRes.rows[0]?.id ?? null;
   }
 
-  const payrollRes = await pool.query<{ id: string }>(`SELECT id FROM payroll_runs ORDER BY created_at DESC LIMIT 1`);
+  const payrollRes = await pool.query<{ id: string }>(
+    `SELECT id FROM payroll_runs ORDER BY created_at DESC LIMIT 1`,
+  );
   const payrollRunId = payrollRes.rows[0]?.id ?? null;
 
   let opnameIdInScope: string | null = null;
   if (outletInScope) {
-    const opnameRes = await pool.query<{ id: string }>(`SELECT id FROM stock_opname WHERE location_id = $1 LIMIT 1`, [outletInScope]);
+    const opnameRes = await pool.query<{ id: string }>(
+      `SELECT id FROM stock_opname WHERE location_id = $1 LIMIT 1`,
+      [outletInScope],
+    );
     opnameIdInScope = opnameRes.rows[0]?.id ?? null;
   }
 
@@ -185,7 +206,9 @@ export async function loadReportFixtures(): Promise<ReportFixtures> {
   );
   const deliveryPlannedDate = deliveryRes.rows[0]?.planned_date ?? null;
 
-  const attRes = await pool.query<{ period: string }>(`SELECT to_char(date, 'YYYY-MM') AS period FROM attendance ORDER BY date DESC LIMIT 1`);
+  const attRes = await pool.query<{ period: string }>(
+    `SELECT to_char(date, 'YYYY-MM') AS period FROM attendance ORDER BY date DESC LIMIT 1`,
+  );
   const attendancePeriodCode = attRes.rows[0]?.period ?? new Date().toISOString().slice(0, 7);
 
   return {

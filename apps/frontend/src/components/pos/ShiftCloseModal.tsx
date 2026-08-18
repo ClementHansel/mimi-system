@@ -39,8 +39,12 @@ export function ShiftCloseModal({
   const [submitting, setSubmitting] = useState(false);
   const closeShift = usePosShiftStore((s) => s.close);
 
-  const localExpected = shift.cashCollected ? (parseFloat(shift.openingCash) + parseFloat(shift.cashCollected)).toFixed(2) : shift.openingCash;
-  const localVariance: Money | null = closingCash ? subMoney(closingCash, localExpected as Money) : null;
+  const localExpected = shift.cashCollected
+    ? (parseFloat(shift.openingCash) + parseFloat(shift.cashCollected)).toFixed(2)
+    : shift.openingCash;
+  const localVariance: Money | null = closingCash
+    ? subMoney(closingCash, localExpected as Money)
+    : null;
 
   async function handleSubmit() {
     if (!closingCash) return;
@@ -48,14 +52,26 @@ export function ShiftCloseModal({
     try {
       await runtime.commitShiftClosed(
         shift.shiftId,
-        { closingCashCounted: closingCash, notes: notes || undefined, closedAt: new Date().toISOString() },
+        {
+          closingCashCounted: closingCash,
+          notes: notes || undefined,
+          closedAt: new Date().toISOString(),
+        },
         actor,
       );
       closeShift();
-      toast({ title: t('pos.shiftClosedTitle'), description: t('pos.shiftClosedDescription'), variant: 'success' });
+      toast({
+        title: t('pos.shiftClosedTitle'),
+        description: t('pos.shiftClosedDescription'),
+        variant: 'success',
+      });
       onClose();
     } catch (err) {
-      toast({ title: t('pos.shiftCloseFailed'), description: err instanceof Error ? err.message : undefined, variant: 'danger' });
+      toast({
+        title: t('pos.shiftCloseFailed'),
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'danger',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -69,8 +85,12 @@ export function ShiftCloseModal({
       description={t('pos.closeShiftDescription')}
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button onClick={handleSubmit} loading={submitting} disabled={!closingCash}>{t('pos.closeShiftSubmit')}</Button>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={handleSubmit} loading={submitting} disabled={!closingCash}>
+            {t('pos.closeShiftSubmit')}
+          </Button>
         </>
       }
     >
@@ -83,13 +103,24 @@ export function ShiftCloseModal({
           <span className="text-text-muted">{t('pos.salesCount')}</span>
           <span className="text-right tabular-nums">{shift.salesCount}</span>
         </div>
-        <MoneyInput label={t('pos.closingCashCounted')} value={closingCash} onChange={setClosingCash} required size="touch" />
+        <MoneyInput
+          label={t('pos.closingCashCounted')}
+          value={closingCash}
+          onChange={setClosingCash}
+          required
+          size="touch"
+        />
         {localVariance && localVariance !== '0.00' && (
           <p className="text-sm text-warning-700">
             {t('pos.localVarianceNote', { amount: formatMoney(localVariance) })}
           </p>
         )}
-        <Textarea label={t('common.notes')} value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+        <Textarea
+          label={t('common.notes')}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+        />
         <p className="text-xs text-text-muted">{t('pos.closeShiftFinalNote')}</p>
       </div>
     </Modal>

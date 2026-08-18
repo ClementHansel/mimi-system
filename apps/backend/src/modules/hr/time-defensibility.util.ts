@@ -44,7 +44,8 @@ export function resolveDefensibility(
 
   // §6.3: a claim in the future beyond the grace window, or more than 24h of
   // raw skew in either direction, is untrustworthy on its face.
-  const timeSuspect = aheadOfServerMs > FUTURE_GRACE_MS || Math.abs(aheadOfServerMs) > 24 * 60 * 60_000;
+  const timeSuspect =
+    aheadOfServerMs > FUTURE_GRACE_MS || Math.abs(aheadOfServerMs) > 24 * 60 * 60_000;
 
   // §6.4: even a claim that isn't flagged `time_suspect` is only "defensible" if it falls inside
   // the offline window bounded by this server sighting — a claim from 3 days ago with an honest

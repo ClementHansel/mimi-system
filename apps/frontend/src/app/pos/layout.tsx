@@ -25,7 +25,8 @@ import { PosStatusBar } from '@/components/pos/PosStatusBar';
 function PosChrome({ children }: { children: React.ReactNode }) {
   const { posLocation } = usePosShell();
   const locationName = posLocation.status === 'ready' ? posLocation.location.name : null;
-  const onChangeLocation = posLocation.status === 'ready' && posLocation.canChange ? posLocation.change : undefined;
+  const onChangeLocation =
+    posLocation.status === 'ready' && posLocation.canChange ? posLocation.change : undefined;
 
   return (
     <Tabs defaultValue="kasir">

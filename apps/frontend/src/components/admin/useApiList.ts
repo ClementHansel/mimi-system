@@ -13,7 +13,10 @@ import { ApiError } from '@/lib/api';
  * and re-fetches when any of it changes. `params` values of `''`/`undefined`
  * are dropped so an empty filter never sends `?role=` to the API.
  */
-export function useApiList<T>(path: string, params: Record<string, string | number | boolean | undefined>) {
+export function useApiList<T>(
+  path: string,
+  params: Record<string, string | number | boolean | undefined>,
+) {
   const [data, setData] = useState<Paginated<T>>({ rows: [], total: 0, page: 1, pageSize: 25 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);

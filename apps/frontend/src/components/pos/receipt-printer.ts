@@ -70,14 +70,22 @@ export function buildReceiptText(data: ReceiptData): string {
   rows.push(rule);
   for (const line of data.lines) {
     rows.push(`${line.productName}`);
-    rows.push(padRow(`  ${formatQty(line.qty)} x ${formatMoney(line.unitPrice)}`, formatMoney(line.lineTotal), width));
+    rows.push(
+      padRow(
+        `  ${formatQty(line.qty)} x ${formatMoney(line.unitPrice)}`,
+        formatMoney(line.lineTotal),
+        width,
+      ),
+    );
   }
   rows.push(rule);
   rows.push(padRow('Subtotal', formatMoney(data.subtotal), width));
-  if (data.discount !== '0.00') rows.push(padRow('Diskon', `-${formatMoney(data.discount, { withSymbol: false })}`, width));
+  if (data.discount !== '0.00')
+    rows.push(padRow('Diskon', `-${formatMoney(data.discount, { withSymbol: false })}`, width));
   rows.push(padRow('TOTAL', formatMoney(data.total), width));
   rows.push(padRow(data.paymentMethodLabel, formatMoney(data.paidAmount), width));
-  if (data.changeAmount !== '0.00') rows.push(padRow('Kembali', formatMoney(data.changeAmount), width));
+  if (data.changeAmount !== '0.00')
+    rows.push(padRow('Kembali', formatMoney(data.changeAmount), width));
   rows.push(rule);
   rows.push(wrapCenter('Terima kasih', width));
   return rows.join('\n');
@@ -133,7 +141,10 @@ interface MinimalBluetoothDevice {
   gatt?: { connect(): Promise<MinimalBluetoothServer> };
 }
 interface MinimalBluetooth {
-  requestDevice(options: { filters: { services: string[] }[]; optionalServices: string[] }): Promise<MinimalBluetoothDevice>;
+  requestDevice(options: {
+    filters: { services: string[] }[];
+    optionalServices: string[];
+  }): Promise<MinimalBluetoothDevice>;
 }
 
 /**

@@ -10,8 +10,17 @@
 import { api } from '@/lib/api';
 import type { Paginated } from '@/lib/shared-types';
 import type {
-  Item, StorageArea, LocationOption, Supplier, SupplierDirectoryEntry, SupplierItem, PriceHistoryEntry,
-  PurchaseRequestListRow, PurchaseRequestDetail, PurchaseOrderListRow, PurchaseOrderDetail,
+  Item,
+  StorageArea,
+  LocationOption,
+  Supplier,
+  SupplierDirectoryEntry,
+  SupplierItem,
+  PriceHistoryEntry,
+  PurchaseRequestListRow,
+  PurchaseRequestDetail,
+  PurchaseOrderListRow,
+  PurchaseOrderDetail,
 } from './types';
 
 // ── lookups ──────────────────────────────────────────────────────────────────
@@ -55,15 +64,25 @@ export function getSupplierPriceHistory(
   supplierId: string,
   params: { itemId?: string; page?: number; pageSize?: number } = {},
 ) {
-  const qs = new URLSearchParams({ page: String(params.page ?? 1), pageSize: String(params.pageSize ?? 25) });
+  const qs = new URLSearchParams({
+    page: String(params.page ?? 1),
+    pageSize: String(params.pageSize ?? 25),
+  });
   if (params.itemId) qs.set('itemId', params.itemId);
-  return api.get<Paginated<PriceHistoryEntry>>(`/suppliers/${supplierId}/price-history?${qs.toString()}`);
+  return api.get<Paginated<PriceHistoryEntry>>(
+    `/suppliers/${supplierId}/price-history?${qs.toString()}`,
+  );
 }
 
 // ── §4.11 purchase requests (F-PUR-01) ──────────────────────────────────────
 
-export function listPurchaseRequests(params: { locationId?: string; status?: string; page?: number; pageSize?: number } = {}) {
-  const qs = new URLSearchParams({ page: String(params.page ?? 1), pageSize: String(params.pageSize ?? 25) });
+export function listPurchaseRequests(
+  params: { locationId?: string; status?: string; page?: number; pageSize?: number } = {},
+) {
+  const qs = new URLSearchParams({
+    page: String(params.page ?? 1),
+    pageSize: String(params.pageSize ?? 25),
+  });
   if (params.locationId) qs.set('locationId', params.locationId);
   if (params.status) qs.set('status', params.status);
   return api.get<Paginated<PurchaseRequestListRow>>(`/purchasing/requests?${qs.toString()}`);
@@ -76,7 +95,13 @@ export function getPurchaseRequest(id: string) {
 export function createPurchaseRequest(body: {
   locationId: string;
   neededBy?: string;
-  lines: { itemId: string; qty: string; unitId: string; estPrice?: string; suggestedSupplierId?: string }[];
+  lines: {
+    itemId: string;
+    qty: string;
+    unitId: string;
+    estPrice?: string;
+    suggestedSupplierId?: string;
+  }[];
 }) {
   return api.post<PurchaseRequestDetail>('/purchasing/requests', body);
 }
@@ -95,8 +120,20 @@ export function rejectPurchaseRequest(id: string, body: { reason: string }) {
 
 // ── §4.11 purchase orders + receiving (FR-PO-01..04) ────────────────────────
 
-export function listPurchaseOrders(params: { supplierId?: string; status?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}) {
-  const qs = new URLSearchParams({ page: String(params.page ?? 1), pageSize: String(params.pageSize ?? 25) });
+export function listPurchaseOrders(
+  params: {
+    supplierId?: string;
+    status?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+) {
+  const qs = new URLSearchParams({
+    page: String(params.page ?? 1),
+    pageSize: String(params.pageSize ?? 25),
+  });
   if (params.supplierId) qs.set('supplierId', params.supplierId);
   if (params.status) qs.set('status', params.status);
   if (params.from) qs.set('from', params.from);
@@ -138,7 +175,16 @@ export function issuePurchaseOrder(id: string) {
 
 export function receivePurchaseOrder(
   id: string,
-  body: { lines: { poLineId: string; qtyReceived: string; storageAreaId: string; conditionNotes?: string }[]; photoAttachmentIds: string[]; notes?: string },
+  body: {
+    lines: {
+      poLineId: string;
+      qtyReceived: string;
+      storageAreaId: string;
+      conditionNotes?: string;
+    }[];
+    photoAttachmentIds: string[];
+    notes?: string;
+  },
 ) {
   return api.post<PurchaseOrderDetail>(`/purchasing/orders/${id}/receipts`, body);
 }

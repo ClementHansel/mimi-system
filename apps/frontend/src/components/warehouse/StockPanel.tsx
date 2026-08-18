@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Boxes, History } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Card, CardContent, CardHeader, CardTitle, Badge, Input, EmptyState, Modal, Button } from '@/components/ui';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Badge,
+  Input,
+  EmptyState,
+  Modal,
+  Button,
+} from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/dates';
 import { ApiError } from '@/lib/api';
@@ -37,7 +47,10 @@ export function StockPanel() {
     setError(undefined);
     getBalances({ locationId })
       .then((res) => !cancelled && setBalances(res.rows))
-      .catch((err: unknown) => !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch(
+        (err: unknown) =>
+          !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')),
+      )
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -46,10 +59,15 @@ export function StockPanel() {
 
   const byArea = useMemo(() => {
     const filtered = q.trim()
-      ? balances.filter((b) => b.itemName.toLowerCase().includes(q.trim().toLowerCase()) || b.sku.toLowerCase().includes(q.trim().toLowerCase()))
+      ? balances.filter(
+          (b) =>
+            b.itemName.toLowerCase().includes(q.trim().toLowerCase()) ||
+            b.sku.toLowerCase().includes(q.trim().toLowerCase()),
+        )
       : balances;
     const groups = new Map<string, Balance[]>();
-    for (const b of filtered) groups.set(b.storageAreaName, [...(groups.get(b.storageAreaName) ?? []), b]);
+    for (const b of filtered)
+      groups.set(b.storageAreaName, [...(groups.get(b.storageAreaName) ?? []), b]);
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [balances, q]);
 
@@ -60,7 +78,9 @@ export function StockPanel() {
     setHistoryError(undefined);
     getMovements({ locationId, itemId: b.itemId, storageAreaId: b.storageAreaId })
       .then((res) => setMovements(res.rows))
-      .catch((err: unknown) => setHistoryError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch((err: unknown) =>
+        setHistoryError(err instanceof ApiError ? err.message : t('table.error')),
+      )
       .finally(() => setHistoryLoading(false));
   }
 
@@ -72,17 +92,28 @@ export function StockPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Input placeholder={t('common.filter')} value={q} onChange={(e) => setQ(e.target.value)} wrapperClassName="max-w-sm" />
+      <Input
+        placeholder={t('common.filter')}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        wrapperClassName="max-w-sm"
+      />
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
       {!loading && error && (
         <EmptyState
           title={error}
           size="lg"
-          action={<Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>{t('common.retry')}</Button>}
+          action={
+            <Button variant="outline" size="sm" onClick={() => setReloadToken((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          }
         />
       )}
-      {!loading && !error && byArea.length === 0 && <EmptyState title={t('table.empty')} size="lg" />}
+      {!loading && !error && byArea.length === 0 && (
+        <EmptyState title={t('table.empty')} size="lg" />
+      )}
 
       {!loading &&
         !error &&
@@ -105,7 +136,9 @@ export function StockPanel() {
                       onClick={() => openHistory(b)}
                     >
                       <td className="px-4 py-2.5 text-text-primary">{b.itemName}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{formatQty(b.qtyOnHand, b.unitCode)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        {formatQty(b.qtyOnHand, b.unitCode)}
+                      </td>
                       <td className="px-4 py-2.5 text-right">
                         {b.belowMin && (
                           <Badge variant="warning" size="sm">
@@ -125,16 +158,31 @@ export function StockPanel() {
           </Card>
         ))}
 
-      <Modal open={!!historyFor} onClose={() => setHistoryFor(null)} title={historyFor?.itemName ?? ''} size="lg">
+      <Modal
+        open={!!historyFor}
+        onClose={() => setHistoryFor(null)}
+        title={historyFor?.itemName ?? ''}
+        size="lg"
+      >
         {historyLoading && <EmptyState title={t('table.loading')} size="sm" />}
         {!historyLoading && historyError && (
           <EmptyState
             title={historyError}
             size="sm"
-            action={<Button variant="outline" size="sm" onClick={() => historyFor && openHistory(historyFor)}>{t('common.retry')}</Button>}
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => historyFor && openHistory(historyFor)}
+              >
+                {t('common.retry')}
+              </Button>
+            }
           />
         )}
-        {!historyLoading && !historyError && movements.length === 0 && <EmptyState title={t('table.empty')} size="sm" />}
+        {!historyLoading && !historyError && movements.length === 0 && (
+          <EmptyState title={t('table.empty')} size="sm" />
+        )}
         {!historyLoading && !historyError && movements.length > 0 && (
           <table className="w-full border-collapse text-sm">
             <thead>
@@ -150,7 +198,12 @@ export function StockPanel() {
               {movements.map((m) => (
                 <tr key={m.id} className="border-b border-border last:border-0">
                   <td className="px-3 py-2.5 whitespace-nowrap">{fmtDateTime(m.occurredAt)}</td>
-                  <td className="px-3 py-2.5">{t(`warehouse.stock.movementTypes.${m.movementType}`) === `warehouse.stock.movementTypes.${m.movementType}` ? m.movementType : t(`warehouse.stock.movementTypes.${m.movementType}`)}</td>
+                  <td className="px-3 py-2.5">
+                    {t(`warehouse.stock.movementTypes.${m.movementType}`) ===
+                    `warehouse.stock.movementTypes.${m.movementType}`
+                      ? m.movementType
+                      : t(`warehouse.stock.movementTypes.${m.movementType}`)}
+                  </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(m.qty)}</td>
                   <td className="px-3 py-2.5">{m.counterpartyLocationName ?? '—'}</td>
                   <td className="px-3 py-2.5">{m.reason ?? '—'}</td>
@@ -160,7 +213,9 @@ export function StockPanel() {
           </table>
         )}
         <div className="mt-4 flex justify-end">
-          <Button variant="outline" onClick={() => setHistoryFor(null)}>{t('common.close')}</Button>
+          <Button variant="outline" onClick={() => setHistoryFor(null)}>
+            {t('common.close')}
+          </Button>
         </div>
       </Modal>
     </div>

@@ -14,7 +14,14 @@ import { ListMovementsQueryDto } from './dto/list-movements.query';
 import { LocationScopeQueryDto } from './dto/location-scope.query';
 import { UpsertMinStockDto } from './dto/upsert-min-stock.dto';
 import { InventoryService, type CallerContext } from './inventory.service';
-import type { AreaTransferResult, HistoryDayRow, InventorySummary, LowStockRow, MinStockRuleRow, SuggestionRow } from './types';
+import type {
+  AreaTransferResult,
+  HistoryDayRow,
+  InventorySummary,
+  LowStockRow,
+  MinStockRuleRow,
+  SuggestionRow,
+} from './types';
 
 /** `M07 inventory` — CONTRACTS.md §4.7. Every mutation runs on `req.dbClient` (the transaction `RlsContextGuard` already opened) and commits explicitly inside the service; every read leaves the transaction for `RlsCleanupInterceptor`'s cleanup ROLLBACK. */
 @Controller('inventory')
@@ -23,7 +30,11 @@ export class InventoryController {
 
   private callerOf(req: RequestWithDbContext & Request): CallerContext {
     const user = req.user!;
-    return { userId: user.sub, roleKey: user.roleKey as RoleKey, locationScope: req.locationScope ?? null };
+    return {
+      userId: user.sub,
+      roleKey: user.roleKey as RoleKey,
+      locationScope: req.locationScope ?? null,
+    };
   }
 
   @Get('balances')
@@ -35,7 +46,13 @@ export class InventoryController {
     return this.service.getBalances(
       req.dbClient!,
       this.callerOf(req),
-      { locationId: query.locationId, storageAreaId: query.storageAreaId, itemId: query.itemId, belowMin: query.belowMin, q: query.q },
+      {
+        locationId: query.locationId,
+        storageAreaId: query.storageAreaId,
+        itemId: query.itemId,
+        belowMin: query.belowMin,
+        q: query.q,
+      },
       query.page,
       query.pageSize,
     );
@@ -43,7 +60,10 @@ export class InventoryController {
 
   @Get('summary')
   @RequirePermission('inventory.balance.read')
-  async summary(@Req() req: RequestWithDbContext & Request, @Query() query: LocationScopeQueryDto): Promise<InventorySummary> {
+  async summary(
+    @Req() req: RequestWithDbContext & Request,
+    @Query() query: LocationScopeQueryDto,
+  ): Promise<InventorySummary> {
     return this.service.getSummary(req.dbClient!, this.callerOf(req), query.locationId);
   }
 
@@ -71,7 +91,10 @@ export class InventoryController {
 
   @Get('low-stock')
   @RequirePermission('inventory.balance.read')
-  async lowStock(@Req() req: RequestWithDbContext & Request, @Query() query: LocationScopeQueryDto): Promise<LowStockRow[]> {
+  async lowStock(
+    @Req() req: RequestWithDbContext & Request,
+    @Query() query: LocationScopeQueryDto,
+  ): Promise<LowStockRow[]> {
     return this.service.getLowStock(req.dbClient!, this.callerOf(req), query.locationId);
   }
 
@@ -81,7 +104,13 @@ export class InventoryController {
     @Req() req: RequestWithDbContext & Request,
     @Query() query: ListMinStockQueryDto,
   ): Promise<Paginated<MinStockRuleRow>> {
-    return this.service.getMinStock(req.dbClient!, this.callerOf(req), query.locationId, query.page, query.pageSize);
+    return this.service.getMinStock(
+      req.dbClient!,
+      this.callerOf(req),
+      query.locationId,
+      query.page,
+      query.pageSize,
+    );
   }
 
   @Put('min-stock')
@@ -91,12 +120,20 @@ export class InventoryController {
     @Req() req: RequestWithDbContext & Request,
     @Body() body: UpsertMinStockDto,
   ): Promise<MinStockRuleRow[]> {
-    return this.service.upsertMinStock(req.dbClient!, this.callerOf(req), body.locationId, body.rules);
+    return this.service.upsertMinStock(
+      req.dbClient!,
+      this.callerOf(req),
+      body.locationId,
+      body.rules,
+    );
   }
 
   @Get('suggestions')
   @RequirePermission('inventory.suggestion.read')
-  async suggestions(@Req() req: RequestWithDbContext & Request, @Query() query: LocationScopeQueryDto): Promise<SuggestionRow[]> {
+  async suggestions(
+    @Req() req: RequestWithDbContext & Request,
+    @Query() query: LocationScopeQueryDto,
+  ): Promise<SuggestionRow[]> {
     return this.service.getSuggestions(req.dbClient!, this.callerOf(req), query.locationId);
   }
 
@@ -117,6 +154,12 @@ export class InventoryController {
     @Param('itemId') itemId: string,
     @Query() query: HistoryQueryDto,
   ): Promise<HistoryDayRow[]> {
-    return this.service.getHistory(req.dbClient!, this.callerOf(req), query.locationId, itemId, query.days);
+    return this.service.getHistory(
+      req.dbClient!,
+      this.callerOf(req),
+      query.locationId,
+      itemId,
+      query.days,
+    );
   }
 }

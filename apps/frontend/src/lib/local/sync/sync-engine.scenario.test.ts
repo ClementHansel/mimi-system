@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { SyncEntity } from '@mimi/shared';
-import { createTestDatabase, createSeededRandom, setupIdentity, ACTOR } from '../test-support/fixtures';
+import {
+  createTestDatabase,
+  createSeededRandom,
+  setupIdentity,
+  ACTOR,
+} from '../test-support/fixtures';
 import { commitFact, getOutboxDepth } from '../idempotent-commit';
 import { drainOutboxOnce } from './outbox-drain';
 import { pullUntilCaughtUp } from './pull-loop';
@@ -57,7 +62,13 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
     const db = createTestDatabase();
     await setupIdentity(db);
     for (let i = 0; i < 5; i++) {
-      await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: `sale-${i}`, data: {}, meta: ACTOR });
+      await commitFact(db, {
+        entity: SyncEntity.SALES,
+        op: 'completed',
+        entityId: `sale-${i}`,
+        data: {},
+        meta: ACTOR,
+      });
     }
 
     const cloud = new FakeCloud();
@@ -82,7 +93,18 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
       const db = createTestDatabase();
       await setupIdentity(db, {}, createSeededRandom(seed));
       for (let i = 0; i < 10; i++) {
-        await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: `${label}-sale-${i}`, data: {}, meta: ACTOR }, [], createSeededRandom(seed + i));
+        await commitFact(
+          db,
+          {
+            entity: SyncEntity.SALES,
+            op: 'completed',
+            entityId: `${label}-sale-${i}`,
+            data: {},
+            meta: ACTOR,
+          },
+          [],
+          createSeededRandom(seed + i),
+        );
       }
       return db;
     }
@@ -115,7 +137,13 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
   it('T-04: total node loss between accept and relay loses nothing — device still holds it and re-pushes cloud-direct after failover', async () => {
     const db = createTestDatabase();
     await setupIdentity(db);
-    await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: 'sale-via-node', data: {}, meta: ACTOR });
+    await commitFact(db, {
+      entity: SyncEntity.SALES,
+      op: 'completed',
+      entityId: 'sale-via-node',
+      data: {},
+      meta: ACTOR,
+    });
 
     const cloud = new FakeCloud();
     const node = new FakeRelayNode(cloud);
@@ -140,7 +168,13 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
   it('T-04 counterpart: if the node DOES relay before dying, the device correctly learns "confirmed" and prunes without ever touching the cloud directly', async () => {
     const db = createTestDatabase();
     await setupIdentity(db);
-    await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: 'sale-relayed', data: {}, meta: ACTOR });
+    await commitFact(db, {
+      entity: SyncEntity.SALES,
+      op: 'completed',
+      entityId: 'sale-relayed',
+      data: {},
+      meta: ACTOR,
+    });
 
     const cloud = new FakeCloud();
     const node = new FakeRelayNode(cloud);
@@ -160,7 +194,13 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
   it('T-14: a malformed event mid-batch is quarantined without blocking later valid events in the same batch from applying', async () => {
     const db = createTestDatabase();
     const identity = await setupIdentity(db);
-    await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: 'sale-1', data: {}, meta: ACTOR });
+    await commitFact(db, {
+      entity: SyncEntity.SALES,
+      op: 'completed',
+      entityId: 'sale-1',
+      data: {},
+      meta: ACTOR,
+    });
 
     // Inject a malformed event with the NEXT client_seq directly into the outbox (simulating a payload
     // an older/newer app version produced that this build doesn't recognize).
@@ -174,7 +214,11 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
         entity: 'sales',
         entityId: 'sale-poison',
         op: 'not_a_real_op',
-        payload: { v: 1, data: {}, meta: { actorUserId: 'u', actorRole: 'kasir', appVersion: '1.0' } },
+        payload: {
+          v: 1,
+          data: {},
+          meta: { actorUserId: 'u', actorRole: 'kasir', appVersion: '1.0' },
+        },
         clientSeq: 2n,
         occurredAt: new Date().toISOString(),
         relayReceivedAt: null,
@@ -191,13 +235,24 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
     // The manual insert above bypassed `commitFact`'s atomic counter increment — bump it here so the
     // NEXT commit correctly continues the gapless sequence at 3 instead of colliding on 2.
     await db.store('client_seq_counter').put({ id: 'self', value: '2' });
-    await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: 'sale-3', data: {}, meta: ACTOR }); // client_seq 3
+    await commitFact(db, {
+      entity: SyncEntity.SALES,
+      op: 'completed',
+      entityId: 'sale-3',
+      data: {},
+      meta: ACTOR,
+    }); // client_seq 3
 
     const cloud = new FakeCloud();
     const result = await drainOutboxOnce(db, cloud, 'https://cloud.mimi');
 
     expect(result.eventsQuarantined).toBe(1);
-    expect(cloud.appliedEvents().map((e) => e.entityId).sort()).toEqual(['sale-1', 'sale-3']);
+    expect(
+      cloud
+        .appliedEvents()
+        .map((e) => e.entityId)
+        .sort(),
+    ).toEqual(['sale-1', 'sale-3']);
     expect(await getOutboxDepth(db)).toBe(0); // the poison event moved to quarantine, not stuck retrying forever
   });
 
@@ -216,7 +271,11 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
           entity: 'settings',
           entityId: 'settings-1',
           op: 'updated',
-          payload: { v: 1, data: { key: 'value' }, meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0' } },
+          payload: {
+            v: 1,
+            data: { key: 'value' },
+            meta: { actorUserId: 'sys', actorRole: 'system', appVersion: '1.0' },
+          },
           clientSeq: 1n,
           occurredAt: new Date().toISOString(),
           relayReceivedAt: null,
@@ -246,7 +305,18 @@ describe('device-side sync scenarios (SYNC-PROTOCOL §9)', () => {
         await setupIdentity(db);
         const random = createSeededRandom(7);
         for (let i = 0; i < 8; i++) {
-          await commitFact(db, { entity: SyncEntity.SALES, op: 'completed', entityId: `fuzz-sale-${i}`, data: {}, meta: ACTOR }, [], random);
+          await commitFact(
+            db,
+            {
+              entity: SyncEntity.SALES,
+              op: 'completed',
+              entityId: `fuzz-sale-${i}`,
+              data: {},
+              meta: ACTOR,
+            },
+            [],
+            random,
+          );
         }
 
         const cloud = new FakeCloud();

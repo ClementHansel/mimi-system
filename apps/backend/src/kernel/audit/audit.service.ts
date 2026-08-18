@@ -47,7 +47,8 @@ export interface AuditRow {
 export class AuditService {
   async query(client: PoolClient, filters: AuditQuery): Promise<Paginated<AuditRow>> {
     const page = filters.page && filters.page > 0 ? filters.page : 1;
-    const pageSize = filters.pageSize && filters.pageSize > 0 ? Math.min(filters.pageSize, 200) : 50;
+    const pageSize =
+      filters.pageSize && filters.pageSize > 0 ? Math.min(filters.pageSize, 200) : 50;
 
     const conditions: string[] = [];
     const params: unknown[] = [];

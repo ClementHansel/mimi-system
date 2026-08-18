@@ -34,7 +34,9 @@ async function main(): Promise<void> {
 
   try {
     await engine.start();
-    console.log(`[branch-node] listening on :${engine.getLanServerPort() ?? config.healthPort} (health + /sync/v1/*)`);
+    console.log(
+      `[branch-node] listening on :${engine.getLanServerPort() ?? config.healthPort} (health + /sync/v1/*)`,
+    );
   } catch (err) {
     console.error('[branch-node] fatal: failed to start:', err);
     process.exit(1);

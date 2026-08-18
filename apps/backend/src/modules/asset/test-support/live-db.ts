@@ -64,14 +64,19 @@ export interface RlsSessionContext {
 }
 
 /** Runs `fn` against a fresh `mimi_app` connection under a CALLER-CHOSEN RLS session, always rolled back. */
-export async function withRollbackAs<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollbackAs<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -89,8 +94,12 @@ export interface Fixtures {
 /** Reads real seeded rows over the OWNER pool — never inserts master data (W1-C's territory). */
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
-  const warehouse = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`);
-  const outlets = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'outlet' ORDER BY id LIMIT 2`);
+  const warehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`,
+  );
+  const outlets = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'outlet' ORDER BY id LIMIT 2`,
+  );
   if (!outlets.rows[0] || !outlets.rows[1]) {
     throw new Error('Seed data needs at least two outlets for the cross-location RLS proof.');
   }

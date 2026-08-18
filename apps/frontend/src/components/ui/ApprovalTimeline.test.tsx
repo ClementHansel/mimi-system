@@ -43,7 +43,9 @@ describe('ApprovalTimeline', () => {
     ];
     render(<ApprovalTimeline steps={steps} />);
     expect(screen.getByText('Diotorisasi offline')).toBeInTheDocument();
-    expect(screen.getByText('Tidak dapat diverifikasi — menunggu tinjauan keuangan')).toBeInTheDocument();
+    expect(
+      screen.getByText('Tidak dapat diverifikasi — menunggu tinjauan keuangan'),
+    ).toBeInTheDocument();
     expect(screen.getByText('“Disetujui saat outlet offline”')).toBeInTheDocument();
   });
 });

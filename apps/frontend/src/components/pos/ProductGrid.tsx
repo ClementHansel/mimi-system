@@ -31,17 +31,33 @@ export function ProductGrid({
   );
 
   if (products.length === 0) {
-    return <EmptyState icon={Package} title={t('pos.catalogEmptyTitle')} description={t('pos.catalogEmptyDescription')} size="lg" />;
+    return (
+      <EmptyState
+        icon={Package}
+        title={t('pos.catalogEmptyTitle')}
+        description={t('pos.catalogEmptyDescription')}
+        size="lg"
+      />
+    );
   }
 
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap gap-2" role="tablist" aria-label={t('pos.categoryFilter')}>
-        <Button size="sm" variant={category === 'all' ? 'primary' : 'outline'} onClick={() => setCategory('all')}>
+        <Button
+          size="sm"
+          variant={category === 'all' ? 'primary' : 'outline'}
+          onClick={() => setCategory('all')}
+        >
           {t('common.all')}
         </Button>
         {categories.map((c) => (
-          <Button key={c} size="sm" variant={category === c ? 'primary' : 'outline'} onClick={() => setCategory(c)}>
+          <Button
+            key={c}
+            size="sm"
+            variant={category === c ? 'primary' : 'outline'}
+            onClick={() => setCategory(c)}
+          >
             {c}
           </Button>
         ))}
@@ -55,7 +71,9 @@ export function ProductGrid({
             className="flex min-h-touch-lg flex-col items-start gap-1 rounded-lg border border-border-strong bg-surface-raised p-3 text-left shadow-xs transition-colors hover:border-brand-500 hover:bg-brand-50 active:bg-brand-100"
           >
             <span className="line-clamp-2 font-medium text-text-primary">{p.name}</span>
-            <span className="mt-auto text-sm font-semibold tabular-nums text-brand-700">{formatMoney(p.price)}</span>
+            <span className="mt-auto text-sm font-semibold tabular-nums text-brand-700">
+              {formatMoney(p.price)}
+            </span>
           </button>
         ))}
       </div>

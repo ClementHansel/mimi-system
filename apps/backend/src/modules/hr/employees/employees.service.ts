@@ -1,6 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { EmploymentStatus, type Employee, type Money, type Paginated, type UUID } from '@mimi/shared';
+import {
+  EmploymentStatus,
+  type Employee,
+  type Money,
+  type Paginated,
+  type UUID,
+} from '@mimi/shared';
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import type { CreateEmployeeDto, UpdateEmployeeDto } from '../dto/employee.dto';
 import { pgDateToIso } from '../pg-date.util';
@@ -82,7 +88,8 @@ export class EmployeesService {
       `SELECT e.*, l.name AS location_name FROM employees e JOIN locations l ON l.id = e.location_id WHERE e.id = $1`,
       [id],
     );
-    if (res.rows.length === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Employee not found' });
+    if (res.rows.length === 0)
+      throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Employee not found' });
 
     const employmentsRes = await client.query<Record<string, any>>(
       `SELECT em.*, l.name AS location_name
@@ -106,8 +113,13 @@ export class EmployeesService {
   }
 
   async create(client: PoolClient, actorUserId: UUID, dto: CreateEmployeeDto): Promise<Employee> {
-    if (!dto.employeeNumber?.trim()) throw new BadRequestException({ code: 'ERR_VALIDATION', message: 'employeeNumber is required' });
-    if (!dto.name?.trim()) throw new BadRequestException({ code: 'ERR_VALIDATION', message: 'name is required' });
+    if (!dto.employeeNumber?.trim())
+      throw new BadRequestException({
+        code: 'ERR_VALIDATION',
+        message: 'employeeNumber is required',
+      });
+    if (!dto.name?.trim())
+      throw new BadRequestException({ code: 'ERR_VALIDATION', message: 'name is required' });
 
     return withWrite(client, async () => {
       const res = await client.query<Record<string, any>>(
@@ -139,8 +151,14 @@ export class EmployeesService {
         [employeeId, dto.position, dto.locationId, dto.baseSalary, dto.joinDate],
       );
 
-      const locRes = await client.query<{ name: string }>('SELECT name FROM locations WHERE id = $1', [dto.locationId]);
-      const employee = this.mapEmployee({ ...res.rows[0], location_name: locRes.rows[0]?.name ?? '' });
+      const locRes = await client.query<{ name: string }>(
+        'SELECT name FROM locations WHERE id = $1',
+        [dto.locationId],
+      );
+      const employee = this.mapEmployee({
+        ...res.rows[0],
+        location_name: locRes.rows[0]?.name ?? '',
+      });
 
       await this.syncEmit.emit(client, {
         entity: 'employees',
@@ -148,14 +166,25 @@ export class EmployeesService {
         entityId: employee.id,
         locationId: dto.locationId,
         actorUserId,
-        data: { id: employee.id, name: employee.name, position: employee.position, locationId: dto.locationId, isActive: true },
+        data: {
+          id: employee.id,
+          name: employee.name,
+          position: employee.position,
+          locationId: dto.locationId,
+          isActive: true,
+        },
       });
 
       return employee;
     });
   }
 
-  async update(client: PoolClient, actorUserId: UUID, id: UUID, dto: UpdateEmployeeDto): Promise<Employee> {
+  async update(
+    client: PoolClient,
+    actorUserId: UUID,
+    id: UUID,
+    dto: UpdateEmployeeDto,
+  ): Promise<Employee> {
     const sets: string[] = [];
     const params: unknown[] = [];
     const set = (col: string, val: unknown) => {
@@ -182,8 +211,12 @@ export class EmployeesService {
     return withWrite(client, async () => {
       if (sets.length > 0) {
         params.push(id);
-        const res = await client.query(`UPDATE employees SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id`, params);
-        if (res.rows.length === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Employee not found' });
+        const res = await client.query(
+          `UPDATE employees SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id`,
+          params,
+        );
+        if (res.rows.length === 0)
+          throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Employee not found' });
       }
 
       if (dto.employmentChange) {
@@ -196,7 +229,13 @@ export class EmployeesService {
         await client.query(
           `INSERT INTO employments (employee_id, position, location_id, base_salary, start_date)
            VALUES ($1,$2,$3,$4,$5)`,
-          [id, dto.employmentChange.position, dto.employmentChange.locationId, dto.employmentChange.baseSalary, dto.employmentChange.startDate],
+          [
+            id,
+            dto.employmentChange.position,
+            dto.employmentChange.locationId,
+            dto.employmentChange.baseSalary,
+            dto.employmentChange.startDate,
+          ],
         );
       }
 
@@ -208,7 +247,13 @@ export class EmployeesService {
         entityId: id,
         locationId: updated.locationId,
         actorUserId,
-        data: { id, name: updated.name, position: updated.position, locationId: updated.locationId, isActive: updated.employmentStatus === EmploymentStatus.ACTIVE },
+        data: {
+          id,
+          name: updated.name,
+          position: updated.position,
+          locationId: updated.locationId,
+          isActive: updated.employmentStatus === EmploymentStatus.ACTIVE,
+        },
       });
 
       return updated;

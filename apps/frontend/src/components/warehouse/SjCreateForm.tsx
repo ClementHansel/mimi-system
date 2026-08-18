@@ -3,7 +3,16 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Snowflake, Package } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Button, Card, CardContent, Select, Input, Checkbox, Badge, Textarea } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  Select,
+  Input,
+  Checkbox,
+  Badge,
+  Textarea,
+} from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import type { Replenishment, Driver, Vehicle } from './lib/types';
 
@@ -13,7 +22,12 @@ export interface CreateSjPayload {
   vehicleId: string;
   plannedDate: string;
   notes?: string;
-  drops: { locationId: string; locationName: string; replenishmentRequestId?: string; lines: { itemId: string; itemName: string; unitCode: string; qty: string; unitId: string }[] }[];
+  drops: {
+    locationId: string;
+    locationName: string;
+    replenishmentRequestId?: string;
+    lines: { itemId: string; itemName: string; unitCode: string; qty: string; unitId: string }[];
+  }[];
 }
 
 export interface SjCreateFormProps {
@@ -42,7 +56,13 @@ export interface SjCreateFormProps {
  * under `dry` — the safer reading of FR-LOG-02, but a genuine three-way vs
  * two-way enum mismatch the contract doesn't resolve explicitly.
  */
-export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit }: SjCreateFormProps) {
+export function SjCreateForm({
+  requests,
+  drivers,
+  vehicles,
+  submitting,
+  onSubmit,
+}: SjCreateFormProps) {
   const { t } = useI18n();
   const [shipmentType, setShipmentType] = useState<'frozen' | 'dry'>('frozen');
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -53,7 +73,9 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
 
   function isCompatible(storageType: string | undefined): boolean {
     if (!storageType) return true;
-    return shipmentType === 'frozen' ? storageType === 'frozen' || storageType === 'chilled' : storageType === 'dry';
+    return shipmentType === 'frozen'
+      ? storageType === 'frozen' || storageType === 'chilled'
+      : storageType === 'dry';
   }
 
   const requestRows = useMemo(
@@ -61,7 +83,12 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
       requests.map((r) => {
         const compatibleLines = r.lines.filter((l) => isCompatible(l.storageType));
         const excludedCount = r.lines.length - compatibleLines.length;
-        return { request: r, compatibleLines, excludedCount, selectable: compatibleLines.length > 0 };
+        return {
+          request: r,
+          compatibleLines,
+          excludedCount,
+          selectable: compatibleLines.length > 0,
+        };
       }),
     [requests, shipmentType],
   );
@@ -79,7 +106,13 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
         lines: [],
       };
       for (const l of row.compatibleLines) {
-        existing.lines.push({ itemId: l.itemId, itemName: l.itemName, unitCode: l.unitCode, qty: (l.qtyApproved ?? l.qtyRequested) as string, unitId: l.itemId });
+        existing.lines.push({
+          itemId: l.itemId,
+          itemName: l.itemName,
+          unitCode: l.unitCode,
+          qty: (l.qtyApproved ?? l.qtyRequested) as string,
+          unitId: l.itemId,
+        });
       }
       byLocation.set(key, existing);
     }
@@ -94,13 +127,22 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
 
   function submit() {
     if (!canSubmit) return;
-    onSubmit({ shipmentType, driverId, vehicleId, plannedDate, notes: notes.trim() || undefined, drops });
+    onSubmit({
+      shipmentType,
+      driverId,
+      vehicleId,
+      plannedDate,
+      notes: notes.trim() || undefined,
+      drops,
+    });
   }
 
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <label className="mb-1.5 block text-sm font-medium text-text-primary">{t('warehouse.sj.shipmentType')}</label>
+        <label className="mb-1.5 block text-sm font-medium text-text-primary">
+          {t('warehouse.sj.shipmentType')}
+        </label>
         <div className="flex gap-2">
           <Button
             type="button"
@@ -131,8 +173,12 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
       </Card>
 
       <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-text-primary">{t('warehouse.sj.pickRequests')}</span>
-        {requestRows.length === 0 && <p className="text-sm text-text-muted">{t('warehouse.sj.noApprovedRequests')}</p>}
+        <span className="text-sm font-medium text-text-primary">
+          {t('warehouse.sj.pickRequests')}
+        </span>
+        {requestRows.length === 0 && (
+          <p className="text-sm text-text-muted">{t('warehouse.sj.noApprovedRequests')}</p>
+        )}
         {requestRows.map(({ request, compatibleLines, excludedCount, selectable }) => (
           <Card key={request.id} className={!selectable ? 'opacity-50' : undefined}>
             <CardContent className="flex flex-col gap-2 p-3">
@@ -141,16 +187,24 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
                   label={`${request.requestNumber} — ${request.locationName}`}
                   checked={!!selected[request.id]}
                   disabled={!selectable || submitting}
-                  onCheckedChange={(checked) => setSelected((prev) => ({ ...prev, [request.id]: checked }))}
+                  onCheckedChange={(checked) =>
+                    setSelected((prev) => ({ ...prev, [request.id]: checked }))
+                  }
                 />
                 <Badge variant={selectable ? 'info' : 'default'} size="sm">
                   {compatibleLines.length} item
                 </Badge>
               </div>
               {excludedCount > 0 && (
-                <p className="pl-6 text-xs text-warning-700">{t('warehouse.sj.excludedLines', { count: excludedCount })}</p>
+                <p className="pl-6 text-xs text-warning-700">
+                  {t('warehouse.sj.excludedLines', { count: excludedCount })}
+                </p>
               )}
-              {!selectable && <p className="pl-6 text-xs text-text-muted">{t('warehouse.sj.noCompatibleLines')}</p>}
+              {!selectable && (
+                <p className="pl-6 text-xs text-text-muted">
+                  {t('warehouse.sj.noCompatibleLines')}
+                </p>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -158,7 +212,9 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
 
       {drops.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-text-primary">{t('warehouse.sj.routePreview')}</span>
+          <span className="text-sm font-medium text-text-primary">
+            {t('warehouse.sj.routePreview')}
+          </span>
           {drops.map((d, idx) => (
             <Card key={d.locationId}>
               <CardContent className="p-3 text-sm">
@@ -167,7 +223,9 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
                 </p>
                 <ul className="mt-1 list-disc pl-5 text-text-secondary">
                   {d.lines.map((l) => (
-                    <li key={l.itemId}>{l.itemName}: {formatQty(l.qty, l.unitCode)}</li>
+                    <li key={l.itemId}>
+                      {l.itemName}: {formatQty(l.qty, l.unitCode)}
+                    </li>
                   ))}
                 </ul>
               </CardContent>
@@ -189,15 +247,29 @@ export function SjCreateForm({ requests, drivers, vehicles, submitting, onSubmit
           label={t('warehouse.sj.vehicle')}
           value={vehicleId}
           onValueChange={setVehicleId}
-          options={vehicles.map((v) => ({ value: v.id, label: `${v.plateNumber}${v.hasFreezer ? ' ❄' : ''}` }))}
+          options={vehicles.map((v) => ({
+            value: v.id,
+            label: `${v.plateNumber}${v.hasFreezer ? ' ❄' : ''}`,
+          }))}
           placeholder={t('common.selectPlaceholder')}
           error={vehicleId && !vehicleOk ? t('warehouse.sj.vehicleNeedsFreezer') : undefined}
           disabled={submitting}
         />
-        <Input type="date" label={t('warehouse.sj.plannedDate')} value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} disabled={submitting} />
+        <Input
+          type="date"
+          label={t('warehouse.sj.plannedDate')}
+          value={plannedDate}
+          onChange={(e) => setPlannedDate(e.target.value)}
+          disabled={submitting}
+        />
       </div>
 
-      <Textarea label={t('common.notes')} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={submitting} />
+      <Textarea
+        label={t('common.notes')}
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        disabled={submitting}
+      />
 
       <div className="flex justify-end">
         <Button type="button" loading={submitting} disabled={!canSubmit} onClick={submit}>

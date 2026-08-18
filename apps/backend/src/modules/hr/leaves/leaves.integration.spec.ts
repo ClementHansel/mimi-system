@@ -8,7 +8,13 @@ import { ConflictDetectorService } from '../../../kernel/sync/conflict-detector.
 import { SyncConflictsRepository } from '../../../kernel/sync/sync-conflicts.repository';
 import { LeavesService } from './leaves.service';
 import type { SubmitLeaveDto } from '../dto/leave.dto';
-import { asRequest, closePool, loadHrFixtures, nextClientId, type HrFixtures } from '../test-support/live-db';
+import {
+  asRequest,
+  closePool,
+  loadHrFixtures,
+  nextClientId,
+  type HrFixtures,
+} from '../test-support/live-db';
 import { LeaveType, RoleKey } from '@mimi/shared';
 
 /**
@@ -69,7 +75,10 @@ describe('LeavesService (integration, live Postgres)', () => {
       });
       await pool.query('SELECT 1');
       const eventsRepo = new SyncEventsRepository(pool);
-      const conflictDetector = new ConflictDetectorService(eventsRepo, new SyncConflictsRepository(pool));
+      const conflictDetector = new ConflictDetectorService(
+        eventsRepo,
+        new SyncConflictsRepository(pool),
+      );
       const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
       approvals = new ApprovalService(new ApprovalsRepository());
       service = new LeavesService(approvals, syncEmit);
@@ -106,7 +115,11 @@ describe('LeavesService (integration, live Postgres)', () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN];
-    const kasirRls = { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
+    const kasirRls = {
+      userId: kasir.userId,
+      roleKey: RoleKey.KASIR,
+      locationIds: [kasir.locationId],
+    };
 
     const dto: SubmitLeaveDto = {
       clientId: nextClientId(),
@@ -133,9 +146,17 @@ describe('LeavesService (integration, live Postgres)', () => {
     //
     // A GENUINELY SEPARATE connection (real HR Admin session) — `submit`'s `withWrite` already
     // committed the leave + its approval row for real, so this new connection sees it.
-    const hrAdminRls = { userId: hrAdmin?.userId ?? kasir.userId, roleKey: RoleKey.HR_ADMIN, locationIds: [] };
+    const hrAdminRls = {
+      userId: hrAdmin?.userId ?? kasir.userId,
+      roleKey: RoleKey.HR_ADMIN,
+      locationIds: [],
+    };
     const pending = await asRequest(hrAdminRls, (client) =>
-      approvals.getPending(client, { userId: hrAdminRls.userId, roleKey: RoleKey.HR_ADMIN, locationIds: null }, { page: 1, pageSize: 50 }),
+      approvals.getPending(
+        client,
+        { userId: hrAdminRls.userId, roleKey: RoleKey.HR_ADMIN, locationIds: null },
+        { page: 1, pageSize: 50 },
+      ),
     );
     const found = pending.rows.find((r) => r.documentId === leave.id);
     expect(found).toBeDefined();
@@ -146,8 +167,16 @@ describe('LeavesService (integration, live Postgres)', () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
     const spv = fixtures.usersByRole[RoleKey.SUPERVISOR]!;
-    const kasirRls = { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
-    const spvRls = { userId: spv.userId, roleKey: RoleKey.SUPERVISOR, locationIds: [kasir.locationId] };
+    const kasirRls = {
+      userId: kasir.userId,
+      roleKey: RoleKey.KASIR,
+      locationIds: [kasir.locationId],
+    };
+    const spvRls = {
+      userId: spv.userId,
+      roleKey: RoleKey.SUPERVISOR,
+      locationIds: [kasir.locationId],
+    };
 
     const dto: SubmitLeaveDto = {
       clientId: nextClientId(),
@@ -156,14 +185,18 @@ describe('LeavesService (integration, live Postgres)', () => {
       endDate: '2026-09-06',
       reason: 'Demam',
     };
-    const submitted = await asRequest(kasirRls, (client) => service.submit(client, kasir.userId, dto));
+    const submitted = await asRequest(kasirRls, (client) =>
+      service.submit(client, kasir.userId, dto),
+    );
     createdLeaveIds.push(submitted.id);
 
     try {
       // A real approval is a SEPARATE request under the supervisor's OWN session/connection — proves
       // `submit`'s commit genuinely persisted (a still-open, uncommitted transaction from `submit`
       // would be invisible here) and matches how two real HTTP requests actually behave.
-      const approved = await asRequest(spvRls, (client) => service.approve(client, spv.userId, RoleKey.SUPERVISOR, submitted.id, {}));
+      const approved = await asRequest(spvRls, (client) =>
+        service.approve(client, spv.userId, RoleKey.SUPERVISOR, submitted.id, {}),
+      );
       expect(approved.status).toBe('approved');
       expect(approved.decidedBy).not.toBeNull();
 
@@ -193,8 +226,16 @@ describe('LeavesService (integration, live Postgres)', () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
     const spv = fixtures.usersByRole[RoleKey.SUPERVISOR]!;
-    const kasirRls = { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
-    const spvRls = { userId: spv.userId, roleKey: RoleKey.SUPERVISOR, locationIds: [kasir.locationId] };
+    const kasirRls = {
+      userId: kasir.userId,
+      roleKey: RoleKey.KASIR,
+      locationIds: [kasir.locationId],
+    };
+    const spvRls = {
+      userId: spv.userId,
+      roleKey: RoleKey.SUPERVISOR,
+      locationIds: [kasir.locationId],
+    };
 
     const submitted = await asRequest(kasirRls, (client) =>
       service.submit(client, kasir.userId, {
@@ -211,10 +252,14 @@ describe('LeavesService (integration, live Postgres)', () => {
     // boundary crosses, so the connection is still perfectly usable for the real (valid-reason)
     // rejection right after. See this file's header for why that's the one case this is safe.
     const rejected = await asRequest(spvRls, async (client) => {
-      await expect(service.reject(client, spv.userId, RoleKey.SUPERVISOR, submitted.id, { reason: '' })).rejects.toMatchObject({
+      await expect(
+        service.reject(client, spv.userId, RoleKey.SUPERVISOR, submitted.id, { reason: '' }),
+      ).rejects.toMatchObject({
         response: { code: 'ERR_VALIDATION' },
       });
-      return service.reject(client, spv.userId, RoleKey.SUPERVISOR, submitted.id, { reason: 'Jadwal padat' });
+      return service.reject(client, spv.userId, RoleKey.SUPERVISOR, submitted.id, {
+        reason: 'Jadwal padat',
+      });
     });
     expect(rejected.status).toBe('rejected');
   });
@@ -223,7 +268,11 @@ describe('LeavesService (integration, live Postgres)', () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
     const otherKasir = fixtures.usersByRole[RoleKey.LEADER_OUTLET]; // a different employee at the same outlet, standing in for "not the requester"
-    const kasirRls = { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
+    const kasirRls = {
+      userId: kasir.userId,
+      roleKey: RoleKey.KASIR,
+      locationIds: [kasir.locationId],
+    };
 
     const submitted = await asRequest(kasirRls, (client) =>
       service.submit(client, kasir.userId, {
@@ -247,13 +296,17 @@ describe('LeavesService (integration, live Postgres)', () => {
       // read first to know the leave even exists), so this rejected attempt still ends its own
       // transaction on its own connection, same as any other `withWrite` call.
       await asRequest(kasirRls, (client) =>
-        expect(service.cancel(client, otherKasir.userId, RoleKey.LEADER_OUTLET, submitted.id)).rejects.toMatchObject({
+        expect(
+          service.cancel(client, otherKasir.userId, RoleKey.LEADER_OUTLET, submitted.id),
+        ).rejects.toMatchObject({
           response: { code: 'ERR_VALIDATION' },
         }),
       );
     }
 
-    const cancelled = await asRequest(kasirRls, (client) => service.cancel(client, kasir.userId, RoleKey.KASIR, submitted.id));
+    const cancelled = await asRequest(kasirRls, (client) =>
+      service.cancel(client, kasir.userId, RoleKey.KASIR, submitted.id),
+    );
     expect(cancelled.status).toBe('cancelled');
 
     // Cancelling an ALREADY-cancelled leave is now a deliberate idempotent no-op (not an error) —
@@ -263,7 +316,9 @@ describe('LeavesService (integration, live Postgres)', () => {
     // as a spurious projection failure). The online path shares that same core, so a user double-
     // tapping "cancel" also just gets the same cancelled row back, not an error. A SEPARATE
     // connection: the first `cancel` above already committed for real.
-    const cancelledAgain = await asRequest(kasirRls, (client) => service.cancel(client, kasir.userId, RoleKey.KASIR, submitted.id));
+    const cancelledAgain = await asRequest(kasirRls, (client) =>
+      service.cancel(client, kasir.userId, RoleKey.KASIR, submitted.id),
+    );
     expect(cancelledAgain.status).toBe('cancelled');
     expect(cancelledAgain.id).toBe(cancelled.id);
   });
@@ -271,7 +326,11 @@ describe('LeavesService (integration, live Postgres)', () => {
   it('annual leave quota (12 days/year) is enforced — a request that would exceed the remaining balance is rejected', async () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
-    const kasirRls = { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
+    const kasirRls = {
+      userId: kasir.userId,
+      roleKey: RoleKey.KASIR,
+      locationIds: [kasir.locationId],
+    };
 
     // Each `submit()` call — success OR the quota rejection — runs its own `withWrite` and so ends
     // its own connection's transaction for real; three separate connections, not one shared one.
@@ -314,7 +373,11 @@ describe('LeavesService (integration, live Postgres)', () => {
   it('marriage leave quota is 3 days/year (POUT-04) — a 4-day request is rejected', async () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
-    const kasirRls = { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
+    const kasirRls = {
+      userId: kasir.userId,
+      roleKey: RoleKey.KASIR,
+      locationIds: [kasir.locationId],
+    };
 
     await asRequest(kasirRls, (client) =>
       expect(
@@ -325,7 +388,10 @@ describe('LeavesService (integration, live Postgres)', () => {
           endDate: '2028-06-04', // 4 days > 3-day quota
         }),
       ).rejects.toMatchObject({
-        response: { code: 'ERR_VALIDATION', details: expect.objectContaining({ quota: { total: 3, used: 0 } }) },
+        response: {
+          code: 'ERR_VALIDATION',
+          details: expect.objectContaining({ quota: { total: 3, used: 0 } }),
+        },
       }),
     );
 
@@ -346,7 +412,11 @@ describe('LeavesService (integration, live Postgres)', () => {
     it('submit persists past its own request — a later listMe (new connection) finds it', async () => {
       if (!dbAvailable) return;
       const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
-      const kasirRls = { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
+      const kasirRls = {
+        userId: kasir.userId,
+        roleKey: RoleKey.KASIR,
+        locationIds: [kasir.locationId],
+      };
 
       const submitted = await asRequest(kasirRls, (client) =>
         service.submit(client, kasir.userId, {
@@ -362,7 +432,9 @@ describe('LeavesService (integration, live Postgres)', () => {
       // A GENUINELY separate connection — never sees `submit`'s connection's uncommitted state,
       // only what it actually COMMITted. If `submit` had never called `withWrite` (the original
       // bug), this read would come back empty.
-      const { rows } = await asRequest(kasirRls, (client) => service.listMe(client, kasir.userId, '2026'));
+      const { rows } = await asRequest(kasirRls, (client) =>
+        service.listMe(client, kasir.userId, '2026'),
+      );
       expect(rows.some((r) => r.id === submitted.id)).toBe(true);
     });
   });

@@ -4,16 +4,40 @@ import { useEffect, useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
-  Button, Card, CardContent, CardHeader, CardTitle, Modal, DataTable, StatusBadge, Select, QtyInput,
-  Textarea, EmptyState, toast, PermissionGate,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Modal,
+  DataTable,
+  StatusBadge,
+  Select,
+  QtyInput,
+  Textarea,
+  EmptyState,
+  toast,
+  PermissionGate,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { ApiError } from '@/lib/api';
 import type { Opname, OpnameLine } from '@/lib/shared-types';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
-import { getStorageAreas, listOpname, getOpname, createOpname, putOpnameLines, submitOpname } from './lib/warehouse-api';
-import { computeDiffQty, hasVariance, canSubmitOpname, type OpnameLineDraft } from './lib/opname-variance';
+import {
+  getStorageAreas,
+  listOpname,
+  getOpname,
+  createOpname,
+  putOpnameLines,
+  submitOpname,
+} from './lib/warehouse-api';
+import {
+  computeDiffQty,
+  hasVariance,
+  canSubmitOpname,
+  type OpnameLineDraft,
+} from './lib/opname-variance';
 import type { StorageArea } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
 
@@ -34,7 +58,9 @@ export function StockOpnamePanel() {
   const [error, setError] = useState<string | undefined>(undefined);
   const [areas, setAreas] = useState<StorageArea[]>([]);
   const [active, setActive] = useState<(Opname & { lines: OpnameLine[] }) | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, { countedQty: Qty | null; varianceReason: string }>>({});
+  const [drafts, setDrafts] = useState<
+    Record<string, { countedQty: Qty | null; varianceReason: string }>
+  >({});
   const [savingLines, setSavingLines] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [newAreaId, setNewAreaId] = useState('');
@@ -52,14 +78,24 @@ export function StockOpnamePanel() {
 
   useEffect(reload, [locationId]);
   useEffect(() => {
-    if (locationId) getStorageAreas(locationId).then(setAreas).catch(() => {});
+    if (locationId)
+      getStorageAreas(locationId)
+        .then(setAreas)
+        .catch(() => {});
   }, [locationId]);
 
   async function openSheet(row: Opname) {
     try {
       const full = await getOpname(row.id);
       setActive(full);
-      setDrafts(Object.fromEntries(full.lines.map((l) => [l.id, { countedQty: l.countedQty ?? null, varianceReason: l.varianceReason ?? '' }])));
+      setDrafts(
+        Object.fromEntries(
+          full.lines.map((l) => [
+            l.id,
+            { countedQty: l.countedQty ?? null, varianceReason: l.varianceReason ?? '' },
+          ]),
+        ),
+      );
     } catch {
       toast({ title: t('table.error'), variant: 'danger' });
     }
@@ -84,7 +120,9 @@ export function StockOpnamePanel() {
     countedQty: drafts[l.id]?.countedQty ?? null,
     varianceReason: drafts[l.id]?.varianceReason ?? '',
   }));
-  const canSubmit = active ? canSubmitOpname(lineDrafts) && lineDrafts.some((l) => l.countedQty !== null) : false;
+  const canSubmit = active
+    ? canSubmitOpname(lineDrafts) && lineDrafts.some((l) => l.countedQty !== null)
+    : false;
 
   async function saveLines() {
     if (!active) return;
@@ -125,7 +163,11 @@ export function StockOpnamePanel() {
 
   const columns: DataTableColumn<Opname>[] = [
     { key: 'opnameNumber', header: t('outlet.opname.number') },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="opname" status={r.status} /> },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="opname" status={r.status} />,
+    },
     { key: 'lineCount', header: t('outlet.opname.lineCount'), align: 'right' },
   ];
 
@@ -138,7 +180,11 @@ export function StockOpnamePanel() {
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
         <PermissionGate permission="opname.create">
-          <Button leftIcon={<Plus className="size-4" />} size="touch" onClick={() => setStartOpen(true)}>
+          <Button
+            leftIcon={<Plus className="size-4" />}
+            size="touch"
+            onClick={() => setStartOpen(true)}
+          >
             {t('outlet.opname.new')}
           </Button>
         </PermissionGate>
@@ -155,7 +201,9 @@ export function StockOpnamePanel() {
       />
       {error && (
         <div className="flex justify-end">
-          <Button variant="outline" size="sm" onClick={reload}>{t('common.retry')}</Button>
+          <Button variant="outline" size="sm" onClick={reload}>
+            {t('common.retry')}
+          </Button>
         </div>
       )}
 
@@ -168,12 +216,21 @@ export function StockOpnamePanel() {
           placeholder={t('common.selectPlaceholder')}
         />
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setStartOpen(false)}>{t('common.cancel')}</Button>
-          <Button disabled={!newAreaId} onClick={startNew}>{t('common.next')}</Button>
+          <Button variant="outline" onClick={() => setStartOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button disabled={!newAreaId} onClick={startNew}>
+            {t('common.next')}
+          </Button>
         </div>
       </Modal>
 
-      <Modal open={!!active} onClose={() => setActive(null)} title={active?.opnameNumber ?? ''} size="xl">
+      <Modal
+        open={!!active}
+        onClose={() => setActive(null)}
+        title={active?.opnameNumber ?? ''}
+        size="xl"
+      >
         {active && (
           <div className="flex flex-col gap-4">
             <StatusBadge domain="opname" status={active.status} />
@@ -197,22 +254,32 @@ export function StockOpnamePanel() {
                     <tbody>
                       {active.lines.map((l) => {
                         const d = drafts[l.id] ?? { countedQty: null, varianceReason: '' };
-                        const diff = d.countedQty !== null ? computeDiffQty(l.systemQty, d.countedQty) : null;
+                        const diff =
+                          d.countedQty !== null ? computeDiffQty(l.systemQty, d.countedQty) : null;
                         const variesNow = diff !== null && hasVariance(diff);
                         return (
                           <tr key={l.id} className="border-b border-border last:border-0">
                             <td className="px-3 py-2.5">{l.itemName}</td>
-                            <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(l.systemQty, l.unitCode)}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums">
+                              {formatQty(l.systemQty, l.unitCode)}
+                            </td>
                             <td className="px-3 py-2.5">
                               <QtyInput
                                 value={d.countedQty}
-                                onChange={(v) => setDrafts((prev) => ({ ...prev, [l.id]: { ...prev[l.id]!, countedQty: v } }))}
+                                onChange={(v) =>
+                                  setDrafts((prev) => ({
+                                    ...prev,
+                                    [l.id]: { ...prev[l.id]!, countedQty: v },
+                                  }))
+                                }
                                 unitCode={l.unitCode}
                                 size="touch"
                                 wrapperClassName="ml-auto w-32"
                               />
                             </td>
-                            <td className={`px-3 py-2.5 text-right tabular-nums ${variesNow ? 'font-medium text-warning-700' : ''}`}>
+                            <td
+                              className={`px-3 py-2.5 text-right tabular-nums ${variesNow ? 'font-medium text-warning-700' : ''}`}
+                            >
                               {diff !== null ? formatQty(diff, l.unitCode) : '—'}
                             </td>
                             <td className="px-3 py-2.5">
@@ -220,9 +287,18 @@ export function StockOpnamePanel() {
                                 <Textarea
                                   rows={1}
                                   value={d.varianceReason}
-                                  onChange={(e) => setDrafts((prev) => ({ ...prev, [l.id]: { ...prev[l.id]!, varianceReason: e.target.value } }))}
+                                  onChange={(e) =>
+                                    setDrafts((prev) => ({
+                                      ...prev,
+                                      [l.id]: { ...prev[l.id]!, varianceReason: e.target.value },
+                                    }))
+                                  }
                                   placeholder={t('common.reasonPlaceholder')}
-                                  error={d.varianceReason.trim() === '' ? t('validation.reasonRequired') : undefined}
+                                  error={
+                                    d.varianceReason.trim() === ''
+                                      ? t('validation.reasonRequired')
+                                      : undefined
+                                  }
                                   wrapperClassName="w-56"
                                 />
                               ) : (
@@ -246,8 +322,12 @@ export function StockOpnamePanel() {
             )}
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" loading={savingLines} onClick={saveLines}>{t('common.save')}</Button>
-              <Button loading={submitting} disabled={!canSubmit} onClick={submitSheet}>{t('common.submit')}</Button>
+              <Button variant="outline" loading={savingLines} onClick={saveLines}>
+                {t('common.save')}
+              </Button>
+              <Button loading={submitting} disabled={!canSubmit} onClick={submitSheet}>
+                {t('common.submit')}
+              </Button>
             </div>
           </div>
         )}

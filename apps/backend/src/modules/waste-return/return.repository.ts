@@ -62,22 +62,56 @@ export class ReturnRepository {
     return formatCloudDocNumber('RET', period, res.rows[0]!.last_number);
   }
 
-  async insertHeader(client: PoolClient, input: {
-    returnNumber: string; direction: string; fromLocationId: UUID; toLocationId: UUID | null; supplierId: UUID | null; requestedBy: UUID;
-  }): Promise<string> {
+  async insertHeader(
+    client: PoolClient,
+    input: {
+      returnNumber: string;
+      direction: string;
+      fromLocationId: UUID;
+      toLocationId: UUID | null;
+      supplierId: UUID | null;
+      requestedBy: UUID;
+    },
+  ): Promise<string> {
     const res = await client.query<{ id: string }>(
       `INSERT INTO returns (return_number, direction, from_location_id, to_location_id, supplier_id, requested_by)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [input.returnNumber, input.direction, input.fromLocationId, input.toLocationId, input.supplierId, input.requestedBy],
+      [
+        input.returnNumber,
+        input.direction,
+        input.fromLocationId,
+        input.toLocationId,
+        input.supplierId,
+        input.requestedBy,
+      ],
     );
     return res.rows[0]!.id;
   }
 
-  async insertLine(client: PoolClient, input: { returnId: UUID; itemId: UUID; storageAreaId: UUID; qty: Qty; condition: string; reason: string; unitCost: Money }): Promise<string> {
+  async insertLine(
+    client: PoolClient,
+    input: {
+      returnId: UUID;
+      itemId: UUID;
+      storageAreaId: UUID;
+      qty: Qty;
+      condition: string;
+      reason: string;
+      unitCost: Money;
+    },
+  ): Promise<string> {
     const res = await client.query<{ id: string }>(
       `INSERT INTO return_lines (return_id, item_id, storage_area_id, qty, condition, reason, unit_cost)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [input.returnId, input.itemId, input.storageAreaId, input.qty, input.condition, input.reason, input.unitCost],
+      [
+        input.returnId,
+        input.itemId,
+        input.storageAreaId,
+        input.qty,
+        input.condition,
+        input.reason,
+        input.unitCost,
+      ],
     );
     return res.rows[0]!.id;
   }
@@ -96,7 +130,11 @@ export class ReturnRepository {
     return res.rows;
   }
 
-  async findLineById(client: PoolClient, returnId: string, lineId: string): Promise<ReturnLineRow | undefined> {
+  async findLineById(
+    client: PoolClient,
+    returnId: string,
+    lineId: string,
+  ): Promise<ReturnLineRow | undefined> {
     const res = await client.query<ReturnLineRow>(
       `SELECT rl.id, rl.return_id, rl.item_id, i.name AS item_name, rl.storage_area_id, rl.qty, rl.condition, rl.reason, rl.qty_received, rl.unit_cost
          FROM return_lines rl JOIN items i ON i.id = rl.item_id WHERE rl.return_id = $1 AND rl.id = $2`,
@@ -107,20 +145,42 @@ export class ReturnRepository {
 
   async listHeaders(
     client: PoolClient,
-    query: { direction?: string; locationId?: string; status?: string; page: number; pageSize: number },
+    query: {
+      direction?: string;
+      locationId?: string;
+      status?: string;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<{ rows: ReturnHeaderRow[]; total: number }> {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (query.direction) { conds.push(`r.direction = $${i++}`); args.push(query.direction); }
-    if (query.locationId) { conds.push(`(r.from_location_id = $${i} OR r.to_location_id = $${i})`); args.push(query.locationId); i++; }
-    if (query.status) { conds.push(`r.status = $${i++}`); args.push(query.status); }
+    if (query.direction) {
+      conds.push(`r.direction = $${i++}`);
+      args.push(query.direction);
+    }
+    if (query.locationId) {
+      conds.push(`(r.from_location_id = $${i} OR r.to_location_id = $${i})`);
+      args.push(query.locationId);
+      i++;
+    }
+    if (query.status) {
+      conds.push(`r.status = $${i++}`);
+      args.push(query.status);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (query.page - 1) * query.pageSize;
 
     const [rows, count] = await Promise.all([
-      client.query<ReturnHeaderRow>(`${HEADER_SELECT} ${where} ORDER BY r.id DESC LIMIT $${i} OFFSET $${i + 1}`, [...args, query.pageSize, offset]),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM returns r ${where}`, args),
+      client.query<ReturnHeaderRow>(
+        `${HEADER_SELECT} ${where} ORDER BY r.id DESC LIMIT $${i} OFFSET $${i + 1}`,
+        [...args, query.pageSize, offset],
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM returns r ${where}`,
+        args,
+      ),
     ]);
     return { rows: rows.rows, total: Number(count.rows[0]?.count ?? '0') };
   }
@@ -130,34 +190,68 @@ export class ReturnRepository {
   }
 
   async setStatus(client: PoolClient, id: string, status: string): Promise<void> {
-    await client.query(`UPDATE returns SET status = $2, updated_at = NOW() WHERE id = $1`, [id, status]);
+    await client.query(`UPDATE returns SET status = $2, updated_at = NOW() WHERE id = $1`, [
+      id,
+      status,
+    ]);
   }
 
-  async setApproved(client: PoolClient, id: string, approvedBy: UUID, approvedAt: string): Promise<void> {
-    await client.query(`UPDATE returns SET status = 'approved', approved_by = $2, approved_at = $3, updated_at = NOW() WHERE id = $1`, [id, approvedBy, approvedAt]);
+  async setApproved(
+    client: PoolClient,
+    id: string,
+    approvedBy: UUID,
+    approvedAt: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE returns SET status = 'approved', approved_by = $2, approved_at = $3, updated_at = NOW() WHERE id = $1`,
+      [id, approvedBy, approvedAt],
+    );
   }
 
   async setRejected(client: PoolClient, id: string, reason: string): Promise<void> {
-    await client.query(`UPDATE returns SET status = 'rejected', rejection_reason = $2, updated_at = NOW() WHERE id = $1`, [id, reason]);
+    await client.query(
+      `UPDATE returns SET status = 'rejected', rejection_reason = $2, updated_at = NOW() WHERE id = $1`,
+      [id, reason],
+    );
   }
 
   async setShipped(client: PoolClient, id: string, shippedAt: string): Promise<void> {
-    await client.query(`UPDATE returns SET status = 'in_transit', shipped_at = $2, updated_at = NOW() WHERE id = $1`, [id, shippedAt]);
+    await client.query(
+      `UPDATE returns SET status = 'in_transit', shipped_at = $2, updated_at = NOW() WHERE id = $1`,
+      [id, shippedAt],
+    );
   }
 
-  async setReceived(client: PoolClient, id: string, receivedBy: UUID, receivedAt: string): Promise<void> {
-    await client.query(`UPDATE returns SET status = 'received', received_by = $2, received_at = $3, updated_at = NOW() WHERE id = $1`, [id, receivedBy, receivedAt]);
+  async setReceived(
+    client: PoolClient,
+    id: string,
+    receivedBy: UUID,
+    receivedAt: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE returns SET status = 'received', received_by = $2, received_at = $3, updated_at = NOW() WHERE id = $1`,
+      [id, receivedBy, receivedAt],
+    );
   }
 
   async setCompleted(client: PoolClient, id: string): Promise<void> {
-    await client.query(`UPDATE returns SET status = 'completed', updated_at = NOW() WHERE id = $1`, [id]);
+    await client.query(
+      `UPDATE returns SET status = 'completed', updated_at = NOW() WHERE id = $1`,
+      [id],
+    );
   }
 
   async setLineReceived(client: PoolClient, lineId: string, qtyReceived: Qty): Promise<void> {
-    await client.query(`UPDATE return_lines SET qty_received = $2 WHERE id = $1`, [lineId, qtyReceived]);
+    await client.query(`UPDATE return_lines SET qty_received = $2 WHERE id = $1`, [
+      lineId,
+      qtyReceived,
+    ]);
   }
 
-  async proofUrls(client: PoolClient, returnId: string): Promise<{ shipped: string[]; received: string[] }> {
+  async proofUrls(
+    client: PoolClient,
+    returnId: string,
+  ): Promise<{ shipped: string[]; received: string[] }> {
     const res = await client.query<{ id: string; kind: string }>(
       `SELECT id, kind FROM attachments WHERE entity_type = 'return' AND entity_id = $1 ORDER BY created_at`,
       [returnId],

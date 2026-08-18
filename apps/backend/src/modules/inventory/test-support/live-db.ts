@@ -183,7 +183,9 @@ const TEST_REF_TYPES = ['test', 'low_stock_test', 'property_test', 'area_transfe
  */
 export async function purgeTestResidue(): Promise<void> {
   const pool = getOwnerPool();
-  await pool.query(`DELETE FROM stock_movements WHERE ref_type = ANY($1::varchar[])`, [TEST_REF_TYPES]);
+  await pool.query(`DELETE FROM stock_movements WHERE ref_type = ANY($1::varchar[])`, [
+    TEST_REF_TYPES,
+  ]);
   await pool.query(
     `DELETE FROM stock_balances b
       WHERE NOT EXISTS (
@@ -210,8 +212,12 @@ export interface Fixtures {
 /** Reads real seeded rows over the OWNER pool — never inserts master data (W1-C's territory); reads are harmless regardless of connection identity. */
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
-  const warehouse = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`);
-  const outlets = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'outlet' ORDER BY code LIMIT 2`);
+  const warehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`,
+  );
+  const outlets = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'outlet' ORDER BY code LIMIT 2`,
+  );
   const items = await pool.query<{ id: string }>(`SELECT id FROM items ORDER BY sku LIMIT 2`);
   const storageOutlet = await pool.query<{ id: string; location_id: string }>(
     `SELECT id, location_id FROM storage_areas WHERE location_id = $1 ORDER BY sort_order LIMIT 2`,
@@ -228,7 +234,10 @@ export async function loadFixtures(): Promise<Fixtures> {
       `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
       [roleKey],
     );
-    if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`);
+    if (!res.rows[0])
+      throw new Error(
+        `Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`,
+      );
     usersByRole[roleKey] = res.rows[0].id;
   }
 
@@ -254,7 +263,8 @@ export async function loadFixtures(): Promise<Fixtures> {
           LIMIT 1`,
         [roleKey, outletId],
       );
-      if (!res.rows[0]) throw new Error(`No user with role '${roleKey}' assigned to outlet ${outletId}`);
+      if (!res.rows[0])
+        throw new Error(`No user with role '${roleKey}' assigned to outlet ${outletId}`);
       return res.rows[0].id;
     },
   };
@@ -267,7 +277,10 @@ export interface StockFixtureKey {
 }
 
 /** A `(location, area, item)` triplet with NO existing `stock_balances` row — lets a test post movements starting from a known-zero balance without touching the seed's 630 existing keys. Same helper shape as `kernel/stock-ledger`'s own copy. */
-export async function pickUnusedStockKey(client: PoolClient, opts: { locationId?: string } = {}): Promise<StockFixtureKey> {
+export async function pickUnusedStockKey(
+  client: PoolClient,
+  opts: { locationId?: string } = {},
+): Promise<StockFixtureKey> {
   const res = await client.query<{ location_id: string; storage_area_id: string; item_id: string }>(
     `SELECT sa.location_id, sa.id AS storage_area_id, i.id AS item_id
        FROM storage_areas sa
@@ -282,7 +295,10 @@ export async function pickUnusedStockKey(client: PoolClient, opts: { locationId?
     opts.locationId ? [opts.locationId] : [],
   );
   const row = res.rows[0];
-  if (!row) throw new Error('pickUnusedStockKey: no unused (location, area, item) triplet found — seed data exhausted?');
+  if (!row)
+    throw new Error(
+      'pickUnusedStockKey: no unused (location, area, item) triplet found — seed data exhausted?',
+    );
   return { locationId: row.location_id, storageAreaId: row.storage_area_id, itemId: row.item_id };
 }
 
@@ -301,7 +317,10 @@ export async function pickUnusedStockKey(client: PoolClient, opts: { locationId?
  * that pre-existing stock and never actually crossed the test's intended
  * threshold.
  */
-export async function pickUnusedItemInLocation(client: PoolClient, locationId: string): Promise<StockFixtureKey> {
+export async function pickUnusedItemInLocation(
+  client: PoolClient,
+  locationId: string,
+): Promise<StockFixtureKey> {
   const res = await client.query<{ storage_area_id: string; item_id: string }>(
     `SELECT sa.id AS storage_area_id, i.id AS item_id
        FROM storage_areas sa
@@ -316,7 +335,10 @@ export async function pickUnusedItemInLocation(client: PoolClient, locationId: s
     [locationId],
   );
   const row = res.rows[0];
-  if (!row) throw new Error(`pickUnusedItemInLocation: no item with zero balance anywhere in location ${locationId} found`);
+  if (!row)
+    throw new Error(
+      `pickUnusedItemInLocation: no item with zero balance anywhere in location ${locationId} found`,
+    );
   return { locationId, storageAreaId: row.storage_area_id, itemId: row.item_id };
 }
 
@@ -330,7 +352,10 @@ export async function pickUnusedItemInLocation(client: PoolClient, locationId: s
  * rejected-write test using either of those could see a PRE-EXISTING
  * seeded rule and mistake it for evidence its own write went through.
  */
-export async function pickItemWithNoMinStockRule(client: PoolClient, locationId: string): Promise<{ locationId: string; itemId: string }> {
+export async function pickItemWithNoMinStockRule(
+  client: PoolClient,
+  locationId: string,
+): Promise<{ locationId: string; itemId: string }> {
   const res = await client.query<{ item_id: string }>(
     `SELECT i.id AS item_id
        FROM items i
@@ -342,7 +367,10 @@ export async function pickItemWithNoMinStockRule(client: PoolClient, locationId:
     [locationId],
   );
   const row = res.rows[0];
-  if (!row) throw new Error(`pickItemWithNoMinStockRule: no item without a min_stock_rules row found for location ${locationId}`);
+  if (!row)
+    throw new Error(
+      `pickItemWithNoMinStockRule: no item without a min_stock_rules row found for location ${locationId}`,
+    );
   return { locationId, itemId: row.item_id };
 }
 
@@ -361,7 +389,10 @@ export interface TransferPairFixture {
  * pairing `pickUnusedStockKey`'s random area with some OTHER fixed area that
  * might coincidentally be the same one.
  */
-export async function pickUnusedTransferPairInLocation(client: PoolClient, locationId: string): Promise<TransferPairFixture> {
+export async function pickUnusedTransferPairInLocation(
+  client: PoolClient,
+  locationId: string,
+): Promise<TransferPairFixture> {
   const res = await client.query<{ from_area: string; to_area: string; item_id: string }>(
     `WITH areas AS (
        SELECT id FROM storage_areas WHERE location_id = $1
@@ -378,12 +409,20 @@ export async function pickUnusedTransferPairInLocation(client: PoolClient, locat
     [locationId],
   );
   const row = res.rows[0];
-  if (!row) throw new Error(`pickUnusedTransferPairInLocation: no clean two-area fixture found for location ${locationId}`);
+  if (!row)
+    throw new Error(
+      `pickUnusedTransferPairInLocation: no clean two-area fixture found for location ${locationId}`,
+    );
   return { locationId, itemId: row.item_id, fromAreaId: row.from_area, toAreaId: row.to_area };
 }
 
 /** min_stock_rules is OUR table (M07 owns CRUD on it) — write it directly via the owner pool for test setup that predates the code path under test, and always delete it afterward. */
-export async function createMinStockRule(locationId: string, itemId: string, minQty: string, reorderQty: string | null = null): Promise<string> {
+export async function createMinStockRule(
+  locationId: string,
+  itemId: string,
+  minQty: string,
+  reorderQty: string | null = null,
+): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
     `INSERT INTO min_stock_rules (location_id, item_id, min_qty, reorder_qty, is_active)
      VALUES ($1, $2, $3, $4, true)
@@ -395,5 +434,8 @@ export async function createMinStockRule(locationId: string, itemId: string, min
 }
 
 export async function deleteMinStockRule(locationId: string, itemId: string): Promise<void> {
-  await getOwnerPool().query(`DELETE FROM min_stock_rules WHERE location_id = $1 AND item_id = $2`, [locationId, itemId]);
+  await getOwnerPool().query(
+    `DELETE FROM min_stock_rules WHERE location_id = $1 AND item_id = $2`,
+    [locationId, itemId],
+  );
 }

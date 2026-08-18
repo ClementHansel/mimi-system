@@ -39,7 +39,10 @@ export async function openLocalDatabase(dbName = DB_NAME): Promise<LocalDatabase
  * loose (`any`) — `StoreOps<T>`'s signature is what every CALLER actually
  * type-checks against (see every `db.store<SomeRecord>(name)` call site).
  */
-function opsOver<T>(tx: IDBPTransaction<unknown, string[], 'readonly' | 'readwrite'>, name: string): StoreOps<T> {
+function opsOver<T>(
+  tx: IDBPTransaction<unknown, string[], 'readonly' | 'readwrite'>,
+  name: string,
+): StoreOps<T> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const store: any = tx.objectStore(name);
   return {
@@ -57,7 +60,10 @@ function wrapIdb(db: IDBPDatabase): LocalDatabase {
   return {
     store<T>(name: string): StoreOps<T> {
       const tx = db.transaction(name as StoreName, 'readwrite');
-      const ops = opsOver<T>(tx as unknown as IDBPTransaction<unknown, string[], 'readwrite'>, name);
+      const ops = opsOver<T>(
+        tx as unknown as IDBPTransaction<unknown, string[], 'readwrite'>,
+        name,
+      );
       // Fire-and-forget the tx completion; single-store convenience ops don't need to await it explicitly per-call.
       void tx.done;
       return ops;
@@ -71,7 +77,10 @@ function wrapIdb(db: IDBPDatabase): LocalDatabase {
       const tx = db.transaction(storeNames as StoreName[], mode);
       const handle: TxHandle = {
         store<T>(name: string) {
-          return opsOver<T>(tx as unknown as IDBPTransaction<unknown, string[], 'readonly' | 'readwrite'>, name);
+          return opsOver<T>(
+            tx as unknown as IDBPTransaction<unknown, string[], 'readonly' | 'readwrite'>,
+            name,
+          );
         },
       };
       const result = await fn(handle);

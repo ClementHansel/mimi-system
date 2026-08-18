@@ -1,5 +1,15 @@
 /** M01 `auth` — CONTRACTS.md §4.1. */
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import type { LoginRes, Me, OfflineCredentialRes } from '@mimi/shared';
 import { Audited, CurrentUser, Public, RequirePermission } from '../../common/decorators';
@@ -25,14 +35,20 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto, @Req() req: Request): Promise<LoginRes> {
-    return this.service.login(dto, { ipAddress: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null });
+    return this.service.login(dto, {
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    });
   }
 
   @Public()
   @UseGuards(JwtRefreshGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  refresh(@Body() dto: RefreshDto, @CurrentUser() _payload: JwtRefreshPayload): Promise<{ accessToken: string; refreshToken: string }> {
+  refresh(
+    @Body() dto: RefreshDto,
+    @CurrentUser() _payload: JwtRefreshPayload,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     // `_payload` is re-verified inside the service (it needs the session row
     // too, not just the JWT claims) — accepted here only so JwtRefreshGuard
     // runs and rejects an invalid/expired refresh token before we do any work.
@@ -42,7 +58,11 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @Audited({ entityType: 'sessions', action: 'auth.logout' })
-  logout(@Body() dto: LogoutDto, @CurrentUser() user: JwtAccessPayload, @Req() req: RequestWithDbContext): Promise<{ ok: true }> {
+  logout(
+    @Body() dto: LogoutDto,
+    @CurrentUser() user: JwtAccessPayload,
+    @Req() req: RequestWithDbContext,
+  ): Promise<{ ok: true }> {
     return this.service.logout(dto, user, req.dbClient!);
   }
 
@@ -55,13 +75,19 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @RequirePermission('auth.pin.set')
   @Audited({ entityType: 'users', action: 'auth.pin.set' })
-  setPin(@Body() dto: SetPinDto, @CurrentUser() user: JwtAccessPayload, @Req() req: RequestWithDbContext): Promise<{ ok: true }> {
+  setPin(
+    @Body() dto: SetPinDto,
+    @CurrentUser() user: JwtAccessPayload,
+    @Req() req: RequestWithDbContext,
+  ): Promise<{ ok: true }> {
     return this.service.setPin(dto, user, req.dbClient!);
   }
 
   @Post('pin/verify')
   @HttpCode(HttpStatus.OK)
-  verifyPin(@Body() dto: VerifyPinDto): Promise<{ ok: true; verifierToken: string; expiresAt: string }> {
+  verifyPin(
+    @Body() dto: VerifyPinDto,
+  ): Promise<{ ok: true; verifierToken: string; expiresAt: string }> {
     return this.service.verifyPin(dto);
   }
 

@@ -37,7 +37,9 @@ export default function DocReaderPage() {
 
   const [printedOn, setPrintedOn] = useState('');
   useEffect(() => {
-    setPrintedOn(new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }));
+    setPrintedOn(
+      new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+    );
   }, []);
 
   const visible = useMemo(() => MANUALS.filter((m) => can(m.permission)), [can]);
@@ -52,7 +54,11 @@ export default function DocReaderPage() {
         title={t('docs.notFoundTitle')}
         description={t('docs.notFoundDescription')}
         size="lg"
-        action={<Link href="/docs" className="text-sm font-semibold text-brand-600 hover:underline">{t('docs.backToAll')}</Link>}
+        action={
+          <Link href="/docs" className="text-sm font-semibold text-brand-600 hover:underline">
+            {t('docs.backToAll')}
+          </Link>
+        }
       />
     );
   }
@@ -64,7 +70,11 @@ export default function DocReaderPage() {
         title={t('docs.deniedTitle')}
         description={t('docs.deniedDescription')}
         size="lg"
-        action={<Link href="/docs" className="text-sm font-semibold text-brand-600 hover:underline">{t('docs.backToAll')}</Link>}
+        action={
+          <Link href="/docs" className="text-sm font-semibold text-brand-600 hover:underline">
+            {t('docs.backToAll')}
+          </Link>
+        }
       />
     );
   }
@@ -89,21 +99,38 @@ export default function DocReaderPage() {
         <article className="min-w-0">
           <header className="doc-header mb-6 border-b border-border pb-5">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Badge variant="brand" size="sm">{manual.audience}</Badge>
+              <Badge variant="brand" size="sm">
+                {manual.audience}
+              </Badge>
               <span className="inline-flex items-center gap-1 text-xs text-text-muted">
-                <Clock className="size-3.5" aria-hidden /> {t('docs.minutesRead', { minutes: manual.minutes })}
+                <Clock className="size-3.5" aria-hidden />{' '}
+                {t('docs.minutesRead', { minutes: manual.minutes })}
               </span>
               <span className="inline-flex items-center gap-1 text-xs text-text-muted">
-                <FileText className="size-3.5" aria-hidden /> {t('docs.sectionsCount', { count: toc.length })}
+                <FileText className="size-3.5" aria-hidden />{' '}
+                {t('docs.sectionsCount', { count: toc.length })}
               </span>
             </div>
-            <h1 className="font-display text-2xl font-bold text-text-primary sm:text-3xl">{manual.title}</h1>
+            <h1 className="font-display text-2xl font-bold text-text-primary sm:text-3xl">
+              {manual.title}
+            </h1>
             <div className="docs-print-hide mt-4 flex gap-2">
-              <Button variant="primary" size="sm" leftIcon={<Download className="size-4" aria-hidden />} onClick={() => window.print()}>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<Download className="size-4" aria-hidden />}
+                onClick={() => window.print()}
+              >
                 {t('docs.downloadPdf')}
               </Button>
               <Link href="/docs">
-                <Button variant="outline" size="sm" leftIcon={<ArrowLeft className="size-4" aria-hidden />}>{t('docs.backToAll')}</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={<ArrowLeft className="size-4" aria-hidden />}
+                >
+                  {t('docs.backToAll')}
+                </Button>
               </Link>
             </div>
           </header>
@@ -114,24 +141,40 @@ export default function DocReaderPage() {
 
           <nav className="docs-print-hide mt-10 flex justify-between gap-4 border-t border-border pt-5 text-sm">
             {prev ? (
-              <Link href={`/docs/${prev.slug}`} className="flex flex-col text-brand-600 hover:underline">
-                <span className="text-xs font-medium uppercase tracking-wide text-text-muted">{t('docs.prev')}</span>
+              <Link
+                href={`/docs/${prev.slug}`}
+                className="flex flex-col text-brand-600 hover:underline"
+              >
+                <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                  {t('docs.prev')}
+                </span>
                 ← {prev.title}
               </Link>
-            ) : <span />}
+            ) : (
+              <span />
+            )}
             {next ? (
-              <Link href={`/docs/${next.slug}`} className="flex flex-col text-right text-brand-600 hover:underline">
-                <span className="text-xs font-medium uppercase tracking-wide text-text-muted">{t('docs.next')}</span>
+              <Link
+                href={`/docs/${next.slug}`}
+                className="flex flex-col text-right text-brand-600 hover:underline"
+              >
+                <span className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                  {t('docs.next')}
+                </span>
                 {next.title} →
               </Link>
-            ) : <span />}
+            ) : (
+              <span />
+            )}
           </nav>
         </article>
 
         {toc.length > 0 && (
           <aside className="docs-print-hide hidden lg:block">
             <div className="sticky top-6 flex flex-col gap-1 text-sm">
-              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{t('docs.onThisPage')}</div>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                {t('docs.onThisPage')}
+              </div>
               {toc.map((entry) => (
                 <a
                   key={entry.id}

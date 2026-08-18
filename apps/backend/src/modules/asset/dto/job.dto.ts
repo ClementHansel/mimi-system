@@ -1,4 +1,13 @@
-import { ArrayMinSize, IsArray, IsIn, IsInt, IsNumberString, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsNumberString,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { AssetCondition } from '@mimi/shared';
 
 /** `POST /api/assets/:id/jobs` — scheduled jobs are scheduler-born, only `corrective` is client-created. */

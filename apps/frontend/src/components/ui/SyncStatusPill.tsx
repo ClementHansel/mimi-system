@@ -52,17 +52,34 @@ function ConnectivityPill({ online }: { online: boolean }) {
 
 function SyncPill({ isSyncing, queueDepth }: { isSyncing: boolean; queueDepth: number }) {
   const { t } = useI18n();
-  const state: 'syncing' | 'queued' | 'synced' = isSyncing ? 'syncing' : queueDepth > 0 ? 'queued' : 'synced';
+  const state: 'syncing' | 'queued' | 'synced' = isSyncing
+    ? 'syncing'
+    : queueDepth > 0
+      ? 'queued'
+      : 'synced';
 
   const META = {
     syncing: { icon: Loader2, classes: 'bg-info-50 text-info-700', label: t('sync.syncing') },
-    queued: { icon: Clock, classes: 'bg-warning-50 text-warning-700', label: t('sync.queued', { count: queueDepth }) },
-    synced: { icon: CheckCircle2, classes: 'bg-success-50 text-success-700', label: t('sync.synced') },
+    queued: {
+      icon: Clock,
+      classes: 'bg-warning-50 text-warning-700',
+      label: t('sync.queued', { count: queueDepth }),
+    },
+    synced: {
+      icon: CheckCircle2,
+      classes: 'bg-success-50 text-success-700',
+      label: t('sync.synced'),
+    },
   } as const;
   const { icon: Icon, classes, label } = META[state];
 
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium', classes)}>
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+        classes,
+      )}
+    >
       <Icon className={cn('size-3.5', state === 'syncing' && 'animate-spin')} aria-hidden />
       {label}
     </span>
@@ -116,7 +133,9 @@ export function SyncStatusPill({ className }: { className?: string }) {
   const isSyncing = useConnectivityStore((s) => s.isSyncing);
   const lastSyncAt = useConnectivityStore((s) => s.lastSyncAt);
 
-  const title = lastSyncAt ? t('offline.lastSync', { when: fmtRelative(lastSyncAt) }) : t('offline.neverSynced');
+  const title = lastSyncAt
+    ? t('offline.lastSync', { when: fmtRelative(lastSyncAt) })
+    : t('offline.neverSynced');
 
   return (
     <span title={title} className={cn('inline-flex flex-wrap items-center gap-1.5', className)}>

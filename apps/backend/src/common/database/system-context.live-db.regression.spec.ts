@@ -87,14 +87,16 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const client = await appPool.connect();
       try {
         await client.query('BEGIN');
-        await expect(client.query(OLD_UNGUARDED_EXPRESSION)).rejects.toThrow(/invalid input syntax for type uuid/i);
+        await expect(client.query(OLD_UNGUARDED_EXPRESSION)).rejects.toThrow(
+          /invalid input syntax for type uuid/i,
+        );
       } finally {
         await client.query('ROLLBACK').catch(() => undefined);
         client.release();
       }
     });
 
-    it('the canonical withSystemContext\'s sentinel survives the identical recycled-connection history against that same expression shape', async () => {
+    it("the canonical withSystemContext's sentinel survives the identical recycled-connection history against that same expression shape", async () => {
       await poisonConnectionWithAPriorAuthenticatedRequest();
 
       // Same physical connection again — this time asserting the real
@@ -102,10 +104,14 @@ describe.skipIf(!process.env.DATABASE_URL)(
       // missing, this would throw the exact same 22P02 the test above
       // reproduces; instead it evaluates to a normal, safe `false`
       // (the sentinel never equals COMPARISON_UUID).
-      const result = await withSystemContext(appPool, { role: SYSTEM_CENTRAL_ROLE }, async (client) => {
-        const res = await client.query<{ result: boolean }>(OLD_UNGUARDED_EXPRESSION);
-        return res.rows[0]!.result;
-      });
+      const result = await withSystemContext(
+        appPool,
+        { role: SYSTEM_CENTRAL_ROLE },
+        async (client) => {
+          const res = await client.query<{ result: boolean }>(OLD_UNGUARDED_EXPRESSION);
+          return res.rows[0]!.result;
+        },
+      );
 
       expect(result).toBe(false);
     });

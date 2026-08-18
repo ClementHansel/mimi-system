@@ -52,7 +52,11 @@ export interface ShiftReportResult {
  */
 @Injectable()
 export class ShiftReportService {
-  async getShiftReport(client: PoolClient, caller: ReportCallerContext, shiftId: UUID): Promise<ShiftReportResult> {
+  async getShiftReport(
+    client: PoolClient,
+    caller: ReportCallerContext,
+    shiftId: UUID,
+  ): Promise<ShiftReportResult> {
     const shiftRes = await client.query<{
       id: string;
       shift_number: string;
@@ -73,7 +77,8 @@ export class ShiftReportService {
       [shiftId],
     );
     const shiftRow = shiftRes.rows[0];
-    if (!shiftRow) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Shift ${shiftId} not found` });
+    if (!shiftRow)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Shift ${shiftId} not found` });
 
     assertLocationInScope(caller.locationScope, shiftRow.location_id);
 
@@ -130,10 +135,18 @@ export class ShiftReportService {
         salesCount: Number(shiftRow.sales_count),
       },
       report: {
-        byMethod: byMethodRes.rows.map((r) => ({ method: r.method, amount: r.amount, count: Number(r.count) })),
+        byMethod: byMethodRes.rows.map((r) => ({
+          method: r.method,
+          amount: r.amount,
+          count: Number(r.count),
+        })),
         voids: Number(voidsRes.rows[0]?.count ?? 0),
         voidAmount: voidsRes.rows[0]?.amount ?? ZERO_MONEY,
-        onlineOrders: onlineRes.rows.map((r) => ({ platform: r.platform, count: Number(r.count), net: r.net })),
+        onlineOrders: onlineRes.rows.map((r) => ({
+          platform: r.platform,
+          count: Number(r.count),
+          net: r.net,
+        })),
       },
       sales: salesRes.rows.map((r) => ({
         id: r.id,

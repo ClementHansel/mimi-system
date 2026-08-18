@@ -15,7 +15,15 @@ const MONEY_RE = /^-?\d+\.\d{2}$/;
 const QTY_RE = /^-?\d+\.\d{3}$/;
 
 export const IsMoneyString = (): PropertyDecorator =>
-  applyDecorators(Matches(MONEY_RE, { message: 'must be a decimal money string with exactly 2 fractional digits, e.g. "125000.00"' }));
+  applyDecorators(
+    Matches(MONEY_RE, {
+      message: 'must be a decimal money string with exactly 2 fractional digits, e.g. "125000.00"',
+    }),
+  );
 
 export const IsQtyString = (): PropertyDecorator =>
-  applyDecorators(Matches(QTY_RE, { message: 'must be a decimal quantity string with exactly 3 fractional digits, e.g. "1.000"' }));
+  applyDecorators(
+    Matches(QTY_RE, {
+      message: 'must be a decimal quantity string with exactly 3 fractional digits, e.g. "1.000"',
+    }),
+  );

@@ -13,7 +13,9 @@ import { addQty, compareQty, isZeroQty, parseQty, ZERO_QTY, type Qty } from '@mi
 import { RecipeService, type Recipe, type RecipeLine } from './recipe.service';
 
 const qtyArb = (min: number, max: number) =>
-  fc.tuple(fc.integer({ min, max }), fc.integer({ min: 0, max: 999 })).map(([w, f]): Qty => `${w}.${String(f).padStart(3, '0')}`);
+  fc
+    .tuple(fc.integer({ min, max }), fc.integer({ min: 0, max: 999 }))
+    .map(([w, f]): Qty => `${w}.${String(f).padStart(3, '0')}`);
 
 const recipeLineArb: fc.Arbitrary<RecipeLine> = fc.record({
   itemId: fc.uuid(),
@@ -55,7 +57,10 @@ describe('RecipeService.explodeForSale — property tests', () => {
     fc.assert(
       fc.property(recipeArb, qtyArb(1, 50), (recipe, qtySold) => {
         const single = RecipeService.explodeForSale(recipe, qtySold);
-        const doubled = RecipeService.explodeForSale(recipe, `${(parseQty(qtySold) * 2n) / 1000n}.${String((parseQty(qtySold) * 2n) % 1000n).padStart(3, '0')}` as Qty);
+        const doubled = RecipeService.explodeForSale(
+          recipe,
+          `${(parseQty(qtySold) * 2n) / 1000n}.${String((parseQty(qtySold) * 2n) % 1000n).padStart(3, '0')}` as Qty,
+        );
         for (let i = 0; i < single.length; i++) {
           const expectedDoubled = addQty(single[i]!.qty, single[i]!.qty);
           const diff = parseQty(doubled[i]!.qty) - parseQty(expectedDoubled);
@@ -88,9 +93,13 @@ describe('RecipeService.explodeForSale — property tests', () => {
 
   it('a recipe with no lines explodes to no usage, for any qtySold', () => {
     fc.assert(
-      fc.property(fc.record({ productId: fc.uuid(), yieldQty: qtyArb(1, 100), lines: fc.constant([]) }), qtyArb(0, 500), (recipe, qtySold) => {
-        expect(RecipeService.explodeForSale(recipe, qtySold)).toEqual([]);
-      }),
+      fc.property(
+        fc.record({ productId: fc.uuid(), yieldQty: qtyArb(1, 100), lines: fc.constant([]) }),
+        qtyArb(0, 500),
+        (recipe, qtySold) => {
+          expect(RecipeService.explodeForSale(recipe, qtySold)).toEqual([]);
+        },
+      ),
     );
   });
 });

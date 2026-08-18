@@ -22,7 +22,10 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.service';
-import { StockInsufficientError, type PostMovementInput } from '../../../kernel/stock-ledger/stock-ledger.types';
+import {
+  StockInsufficientError,
+  type PostMovementInput,
+} from '../../../kernel/stock-ledger/stock-ledger.types';
 import type { LedgerMode } from '@mimi/sync-protocol';
 import { PaymentVerificationsService } from '../../accounting/payment-verifications.service';
 import { allocateReceiptNumber } from '../doc-numbering.util';
@@ -148,18 +151,32 @@ export class PosSaleService {
       throw new BadRequestException({ code: ERR_VALIDATION, message: 'Shift is not open' });
     }
     if (shift.location_id !== input.locationId) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'locationId does not match the shift\'s location' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: "locationId does not match the shift's location",
+      });
     }
     if (input.lines.length === 0) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'A sale must have at least one line' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'A sale must have at least one line',
+      });
     }
     const paidAmount = sumMoney(input.payments.map((p) => p.amount));
     const provisionalTotal = calculateCartSummary(
-      input.lines.map((l) => ({ productId: l.productId, unitPrice: l.unitPrice, qty: l.qty, discount: l.discount ?? ZERO_MONEY })),
+      input.lines.map((l) => ({
+        productId: l.productId,
+        unitPrice: l.unitPrice,
+        qty: l.qty,
+        discount: l.discount ?? ZERO_MONEY,
+      })),
       input.discount ?? ZERO_MONEY,
     ).total;
     if (compareMoney(paidAmount, provisionalTotal) < 0) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Paid amount ${paidAmount} is less than sale total ${provisionalTotal}` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Paid amount ${paidAmount} is less than sale total ${provisionalTotal}`,
+      });
     }
 
     return this.applySaleFact(client, { ...input, kasirId, callerContext }, mode);
@@ -173,7 +190,11 @@ export class PosSaleService {
    * retry path) can never double-insert, and so the REST and sync paths
    * can never both materialize the same client action.
    */
-  async applySaleFact(client: PoolClient, input: ApplySaleFactInput, mode: LedgerMode): Promise<Sale> {
+  async applySaleFact(
+    client: PoolClient,
+    input: ApplySaleFactInput,
+    mode: LedgerMode,
+  ): Promise<Sale> {
     const existing = await client.query<{ id: UUID }>(
       `SELECT id FROM sales WHERE client_id = $1 ${input.id ? 'OR id = $2' : ''}`,
       input.id ? [input.clientId, input.id] : [input.clientId],
@@ -181,7 +202,12 @@ export class PosSaleService {
     if (existing.rows[0]) return this.mustGetById(client, existing.rows[0].id);
 
     const summary = calculateCartSummary(
-      input.lines.map((l) => ({ productId: l.productId, unitPrice: l.unitPrice, qty: l.qty, discount: l.discount ?? ZERO_MONEY })),
+      input.lines.map((l) => ({
+        productId: l.productId,
+        unitPrice: l.unitPrice,
+        qty: l.qty,
+        discount: l.discount ?? ZERO_MONEY,
+      })),
       input.discount ?? ZERO_MONEY,
     );
     const paidAmount = sumMoney(input.payments.map((p) => p.amount));
@@ -196,7 +222,21 @@ export class PosSaleService {
         `INSERT INTO sales (id, receipt_number, client_id, location_id, shift_id, kasir_id, status, subtotal, discount, total, paid_amount, change_amount, offline_created, occurred_at)
          VALUES ($1,$2,$3,$4,$5,$6,'completed',$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (id) DO NOTHING RETURNING id`,
-        [saleId, receiptNumber, input.clientId, input.locationId, input.shiftId, input.kasirId, summary.subtotal, summary.discount, summary.total, paidAmount, changeAmount, !!input.id, input.occurredAt],
+        [
+          saleId,
+          receiptNumber,
+          input.clientId,
+          input.locationId,
+          input.shiftId,
+          input.kasirId,
+          summary.subtotal,
+          summary.discount,
+          summary.total,
+          paidAmount,
+          changeAmount,
+          !!input.id,
+          input.occurredAt,
+        ],
       );
       return !!inserted.rows[0];
     };
@@ -207,7 +247,11 @@ export class PosSaleService {
     } else {
       // No device-assigned receipt number (REST path, or a sync payload that omitted it — see the
       // registry's field comment) — allocate our own, retrying on a collision.
-      const { locationCode, deviceCode } = await this.resolveNumberingCodes(client, input.locationId, input.shiftId);
+      const { locationCode, deviceCode } = await this.resolveNumberingCodes(
+        client,
+        input.locationId,
+        input.shiftId,
+      );
       inserted = false;
       await allocateReceiptNumber(client, locationCode, deviceCode, async (num) => {
         inserted = await insertOne(num);
@@ -233,7 +277,14 @@ export class PosSaleService {
         `INSERT INTO sale_payments (sale_id, method, amount, reference, payment_status, proof_attachment_id)
          VALUES ($1,$2,$3,$4,$5,$6)
          RETURNING id`,
-        [saleId, payment.method, payment.amount, payment.reference ?? null, paymentStatusForMethod(payment.method), payment.proofAttachmentId ?? null],
+        [
+          saleId,
+          payment.method,
+          payment.amount,
+          payment.reference ?? null,
+          paymentStatusForMethod(payment.method),
+          payment.proofAttachmentId ?? null,
+        ],
       );
 
       if (payment.method === PaymentMethod.BANK_TRANSFER) {
@@ -246,7 +297,11 @@ export class PosSaleService {
         // `payment.read`-gated surface is where it gets seen.
         await this.paymentVerifications.createSystemVerification(
           client,
-          { role: input.callerContext.roleKey, userId: input.kasirId, locationIds: input.callerContext.locationIds },
+          {
+            role: input.callerContext.roleKey,
+            userId: input.kasirId,
+            locationIds: input.callerContext.locationIds,
+          },
           {
             refType: PaymentVerificationRefType.SALE_PAYMENT,
             refId: paymentRow.rows[0]!.id,
@@ -260,16 +315,34 @@ export class PosSaleService {
       }
     }
 
-    await client.query(`UPDATE pos_shifts SET sales_count = sales_count + 1, gross_sales = gross_sales + $2 WHERE id = $1`, [input.shiftId, summary.total]);
+    await client.query(
+      `UPDATE pos_shifts SET sales_count = sales_count + 1, gross_sales = gross_sales + $2 WHERE id = $1`,
+      [input.shiftId, summary.total],
+    );
 
-    await this.postUsage(client, input.locationId, saleId, input.kasirId, input.occurredAt, summary.lines, mode);
+    await this.postUsage(
+      client,
+      input.locationId,
+      saleId,
+      input.kasirId,
+      input.occurredAt,
+      summary.lines,
+      mode,
+    );
 
     return this.mustGetById(client, saleId);
   }
 
   async list(
     client: PoolClient,
-    query: { locationId?: UUID; shiftId?: UUID; date?: string; status?: SaleStatus; page: number; pageSize: number },
+    query: {
+      locationId?: UUID;
+      shiftId?: UUID;
+      date?: string;
+      status?: SaleStatus;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<Paginated<Sale>> {
     const params: unknown[] = [];
     let where = '1=1';
@@ -290,7 +363,10 @@ export class PosSaleService {
       where += ` AND s.status = $${params.length}`;
     }
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM sales s WHERE ${where}`, params);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM sales s WHERE ${where}`,
+      params,
+    );
     const total = Number.parseInt(countRes.rows[0]?.count ?? '0', 10);
 
     const offset = (query.page - 1) * query.pageSize;
@@ -300,7 +376,12 @@ export class PosSaleService {
       params,
     );
 
-    return { rows: await this.hydrateRows(client, res.rows), total, page: query.page, pageSize: query.pageSize };
+    return {
+      rows: await this.hydrateRows(client, res.rows),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   }
 
   async getById(client: PoolClient, id: UUID): Promise<Sale> {
@@ -359,35 +440,59 @@ export class PosSaleService {
     }
   }
 
-  private async resolveNumberingCodes(client: PoolClient, locationId: UUID, shiftId: UUID): Promise<{ locationCode: string; deviceCode: string }> {
-    const location = await client.query<{ code: string }>(`SELECT code FROM locations WHERE id = $1`, [locationId]);
+  private async resolveNumberingCodes(
+    client: PoolClient,
+    locationId: UUID,
+    shiftId: UUID,
+  ): Promise<{ locationCode: string; deviceCode: string }> {
+    const location = await client.query<{ code: string }>(
+      `SELECT code FROM locations WHERE id = $1`,
+      [locationId],
+    );
     const locationCode = location.rows[0]?.code ?? 'LOC';
-    const shift = await client.query<{ device_id: UUID | null }>(`SELECT device_id FROM pos_shifts WHERE id = $1`, [shiftId]);
+    const shift = await client.query<{ device_id: UUID | null }>(
+      `SELECT device_id FROM pos_shifts WHERE id = $1`,
+      [shiftId],
+    );
     const deviceCode = await this.resolveDeviceCode(client, shift.rows[0]?.device_id ?? null);
     return { locationCode, deviceCode };
   }
 
   private async resolveDeviceCode(client: PoolClient, deviceId: UUID | null): Promise<string> {
     if (!deviceId) return 'WEB';
-    const device = await client.query<{ name: string }>(`SELECT name FROM devices WHERE id = $1`, [deviceId]);
+    const device = await client.query<{ name: string }>(`SELECT name FROM devices WHERE id = $1`, [
+      deviceId,
+    ]);
     const name = device.rows[0]?.name;
     if (!name) return 'WEB';
-    const sanitized = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+    const sanitized = name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 10);
     return sanitized || 'WEB';
   }
 
   private async mustGetById(client: PoolClient, id: UUID): Promise<Sale> {
     const res = await client.query<RawSaleRow>(`${SALE_SELECT} WHERE s.id = $1`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Sale not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Sale not found' });
     const names = await resolveUserNames(this.pool, [res.rows[0].kasir_id]);
-    return this.hydrate(client, res.rows[0], names.get(res.rows[0].kasir_id) ?? res.rows[0].kasir_id);
+    return this.hydrate(
+      client,
+      res.rows[0],
+      names.get(res.rows[0].kasir_id) ?? res.rows[0].kasir_id,
+    );
   }
 
   /** `notify-eligible-users.util.ts`'s `resolveUserNames` — see `SALE_SELECT`'s comment for why `kasir_name` can't be a plain `JOIN users` under the caller's own RLS. */
   private async hydrateRows(client: PoolClient, rows: readonly RawSaleRow[]): Promise<Sale[]> {
-    const names = await resolveUserNames(this.pool, rows.map((r) => r.kasir_id));
+    const names = await resolveUserNames(
+      this.pool,
+      rows.map((r) => r.kasir_id),
+    );
     const out: Sale[] = [];
-    for (const row of rows) out.push(await this.hydrate(client, row, names.get(row.kasir_id) ?? row.kasir_id));
+    for (const row of rows)
+      out.push(await this.hydrate(client, row, names.get(row.kasir_id) ?? row.kasir_id));
     return out;
   }
 

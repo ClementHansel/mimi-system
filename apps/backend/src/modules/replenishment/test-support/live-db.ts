@@ -108,7 +108,10 @@ export interface RlsContext {
  * names — never the owner pool's `BYPASSRLS`, never a fixed central role
  * hiding a scoping bug.
  */
-export async function withRollback<T>(context: RlsContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollback<T>(
+  context: RlsContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
@@ -147,7 +150,9 @@ export interface Fixtures {
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
 
-  const warehouse = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`);
+  const warehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`,
+  );
   const items = await pool.query<{ id: string }>(`SELECT id FROM items ORDER BY sku LIMIT 2`);
   const unit = await pool.query<{ id: string }>(`SELECT id FROM units LIMIT 1`);
 
@@ -181,14 +186,23 @@ export async function loadFixtures(): Promise<Fixtures> {
       `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 AND u.is_active LIMIT 1`,
       [roleKey],
     );
-    if (!res.rows[0]) throw new Error(`Seed data is missing an active user with role '${roleKey}'.`);
+    if (!res.rows[0])
+      throw new Error(`Seed data is missing an active user with role '${roleKey}'.`);
     return res.rows[0].id;
   };
 
   return {
     warehouseId: warehouse.rows[0]!.id,
-    outletA: { locationId: locA, leaderUserId: rolesA.get(RoleKey.LEADER_OUTLET)!, supervisorUserId: rolesA.get(RoleKey.SUPERVISOR)! },
-    outletB: { locationId: locB, leaderUserId: rolesB.get(RoleKey.LEADER_OUTLET)!, supervisorUserId: rolesB.get(RoleKey.SUPERVISOR)! },
+    outletA: {
+      locationId: locA,
+      leaderUserId: rolesA.get(RoleKey.LEADER_OUTLET)!,
+      supervisorUserId: rolesA.get(RoleKey.SUPERVISOR)!,
+    },
+    outletB: {
+      locationId: locB,
+      leaderUserId: rolesB.get(RoleKey.LEADER_OUTLET)!,
+      supervisorUserId: rolesB.get(RoleKey.SUPERVISOR)!,
+    },
     kepalaGudangUserId: await userByRole(RoleKey.KEPALA_GUDANG),
     ownerUserId: await userByRole(RoleKey.OWNER),
     managerUserId: await userByRole(RoleKey.MANAGER),
@@ -219,8 +233,14 @@ export async function cleanupReplenishmentRequests(ids: readonly string[]): Prom
      )`,
     [ids],
   );
-  await pool.query(`DELETE FROM approvals WHERE document_type = 'replenishment_request' AND document_id = ANY($1::uuid[])`, [ids]);
-  await pool.query(`DELETE FROM sync_events WHERE entity = 'replenishment_requests' AND entity_id = ANY($1::uuid[])`, [ids]);
+  await pool.query(
+    `DELETE FROM approvals WHERE document_type = 'replenishment_request' AND document_id = ANY($1::uuid[])`,
+    [ids],
+  );
+  await pool.query(
+    `DELETE FROM sync_events WHERE entity = 'replenishment_requests' AND entity_id = ANY($1::uuid[])`,
+    [ids],
+  );
   await pool.query(`DELETE FROM replenishment_requests WHERE id = ANY($1::uuid[])`, [ids]);
 }
 
@@ -230,19 +250,31 @@ export async function cleanupReplenishmentRequests(ids: readonly string[]): Prom
  * the FK target is a placeholder; the SJ lifecycle itself is M10's territory, not this module's. Durable
  * via the OWNER pool (bypasses RLS) — always paired with `deleteSuratJalan` in the caller's `finally`.
  */
-export async function createSuratJalanFixture(originLocationId: string, createdBy: string): Promise<string> {
+export async function createSuratJalanFixture(
+  originLocationId: string,
+  createdBy: string,
+): Promise<string> {
   const pool = getOwnerPool();
   const shipmentType = await pool.query<{ id: string }>(`SELECT id FROM shipment_types LIMIT 1`);
   const driver = await pool.query<{ id: string }>(`SELECT id FROM drivers LIMIT 1`);
   const vehicle = await pool.query<{ id: string }>(`SELECT id FROM vehicles LIMIT 1`);
   if (!shipmentType.rows[0] || !driver.rows[0] || !vehicle.rows[0]) {
-    throw new Error('createSuratJalanFixture: seed data is missing shipment_types/drivers/vehicles rows.');
+    throw new Error(
+      'createSuratJalanFixture: seed data is missing shipment_types/drivers/vehicles rows.',
+    );
   }
   const res = await pool.query<{ id: string }>(
     `INSERT INTO surat_jalan (sj_number, origin_location_id, shipment_type_id, driver_id, vehicle_id, status, planned_date, created_by)
      VALUES ($1, $2, $3, $4, $5, 'draft', CURRENT_DATE, $6)
      RETURNING id`,
-    [`SJ-TEST-${Date.now()}`, originLocationId, shipmentType.rows[0].id, driver.rows[0].id, vehicle.rows[0].id, createdBy],
+    [
+      `SJ-TEST-${Date.now()}`,
+      originLocationId,
+      shipmentType.rows[0].id,
+      driver.rows[0].id,
+      vehicle.rows[0].id,
+      createdBy,
+    ],
   );
   return res.rows[0]!.id;
 }

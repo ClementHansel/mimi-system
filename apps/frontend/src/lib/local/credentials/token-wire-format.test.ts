@@ -11,7 +11,8 @@ const CLAIMS: OfflineCredentialClaims = {
   iat: '2026-08-16T00:00:00.000Z',
   exp: '2026-08-17T00:00:00.000Z',
   k: Buffer.from('0123456789abcdef0123456789abcdef', 'utf8').toString('base64'),
-  pinVerifier: '$argon2id$v=19$m=65536,t=3,p=1$AAAAAAAAAAAAAAAAAAAAAA$deadbeefdeadbeefdeadbeefdeadbeef',
+  pinVerifier:
+    '$argon2id$v=19$m=65536,t=3,p=1$AAAAAAAAAAAAAAAAAAAAAA$deadbeefdeadbeefdeadbeefdeadbeef',
   selfieRequiredAboveIdr: '200000.00',
 };
 
@@ -32,13 +33,13 @@ describe('offline-credential token wire format (base64url, §7.2)', () => {
     expect(decoded).toEqual(CLAIMS);
   });
 
-  it('this module\'s own encoder produces a token the backend-style Buffer decoder reads back correctly', () => {
+  it("this module's own encoder produces a token the backend-style Buffer decoder reads back correctly", () => {
     const token = encodeOfflineCredentialToken(CLAIMS);
     const decoded = JSON.parse(Buffer.from(token, 'base64url').toString('utf8'));
     expect(decoded).toEqual(CLAIMS);
   });
 
-  it('round-trips through THIS module\'s own encode/decode pair', () => {
+  it("round-trips through THIS module's own encode/decode pair", () => {
     const token = encodeOfflineCredentialToken(CLAIMS);
     expect(decodeOfflineCredentialToken(token)).toEqual(CLAIMS);
   });

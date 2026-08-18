@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Headers, InternalServerErrorException, Param, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  InternalServerErrorException,
+  Param,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { RequestWithDbContext } from '../../common/guards/rls-context.guard';
 import { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
@@ -14,7 +23,10 @@ export class StorageController {
     if (!req.dbClient) {
       // Defensive only — every route here requires authentication (none are
       // @Public()), so RlsContextGuard always attaches this on success.
-      throw new InternalServerErrorException({ code: 'ERR_INTERNAL', message: 'No database context on request' });
+      throw new InternalServerErrorException({
+        code: 'ERR_INTERNAL',
+        message: 'No database context on request',
+      });
     }
     return req.dbClient;
   }
@@ -33,7 +45,12 @@ export class StorageController {
     // doc for the full ordering rationale and validation/conflict rules.
     @Headers('x-attachment-id') attachmentIdHeader?: string,
   ): Promise<PresignResult> {
-    return this.storage.presign(this.requireDbClient(req), req.user as JwtAccessPayload, dto, attachmentIdHeader);
+    return this.storage.presign(
+      this.requireDbClient(req),
+      req.user as JwtAccessPayload,
+      dto,
+      attachmentIdHeader,
+    );
   }
 
   @Post(':id/confirm')
@@ -43,7 +60,12 @@ export class StorageController {
     @Param('id') id: string,
     @Body() dto: ConfirmDto,
   ): Promise<AttachmentDto> {
-    return this.storage.confirm(this.requireDbClient(req), req.user as JwtAccessPayload, id, dto.sha256);
+    return this.storage.confirm(
+      this.requireDbClient(req),
+      req.user as JwtAccessPayload,
+      id,
+      dto.sha256,
+    );
   }
 
   @Get(':id/url')
@@ -51,6 +73,11 @@ export class StorageController {
     @Req() req: RequestWithDbContext,
     @Param('id') id: string,
   ): Promise<{ url: string; expiresAt: string }> {
-    return this.storage.getUrl(this.requireDbClient(req), req.user as JwtAccessPayload, req.locationScope ?? null, id);
+    return this.storage.getUrl(
+      this.requireDbClient(req),
+      req.user as JwtAccessPayload,
+      req.locationScope ?? null,
+      id,
+    );
   }
 }

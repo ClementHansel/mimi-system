@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { RoleKey } from '../enums';
-import { APPROVAL_TRANSITIONS, transition, isRoleAuthorized, SYSTEM_ACTOR, type Actor } from './state-machine';
+import {
+  APPROVAL_TRANSITIONS,
+  transition,
+  isRoleAuthorized,
+  SYSTEM_ACTOR,
+  type Actor,
+} from './state-machine';
 
 const ALL_ACTORS: readonly Actor[] = [...Object.values(RoleKey), SYSTEM_ACTOR];
 
 describe('property: no unreachable states (per document type + variant)', () => {
-  it('every state used as `from` is reachable as some rule\'s `to` within the same (documentType, variant) chain, or is an entry pseudo-state', () => {
+  it("every state used as `from` is reachable as some rule's `to` within the same (documentType, variant) chain, or is an entry pseudo-state", () => {
     const byChain = new Map<string, typeof APPROVAL_TRANSITIONS>();
     for (const rule of APPROVAL_TRANSITIONS) {
       const chainKey = `${rule.documentType}::${rule.variant ?? ''}`;
@@ -54,12 +60,15 @@ describe('property: no unreachable states (per document type + variant)', () => 
       const hasOutgoing = APPROVAL_TRANSITIONS.some(
         (r) => r.documentType === rule.documentType && r.from === rule.to,
       );
-      expect(hasOutgoing, `${rule.documentType}: state "${rule.to}" has no outgoing transition and is not marked terminal`).toBe(true);
+      expect(
+        hasOutgoing,
+        `${rule.documentType}: state "${rule.to}" has no outgoing transition and is not marked terminal`,
+      ).toBe(true);
     }
   });
 });
 
-describe('property: transition() never grants an action to a role outside the rule\'s authorized set', () => {
+describe("property: transition() never grants an action to a role outside the rule's authorized set", () => {
   it('ok:true only when the actor is explicitly listed OR a rank-eligible OWNER/MANAGER override applies', () => {
     fc.assert(
       fc.property(
@@ -117,7 +126,7 @@ describe('property: transition() never grants an action to a role outside the ru
   });
 });
 
-describe('property: the exported isRoleAuthorized() can never disagree with transition()\'s internal role check', () => {
+describe("property: the exported isRoleAuthorized() can never disagree with transition()'s internal role check", () => {
   it('for every rule and every actor, isRoleAuthorized(rule.roles, actor) predicts exactly whether transition() rejects with ERR_APPROVAL_STEP_ROLE', () => {
     // This is the guarantee the coordinator asked to pin down: W2-B's approval
     // engine now calls the SAME exported function transition() uses internally
@@ -127,27 +136,31 @@ describe('property: the exported isRoleAuthorized() can never disagree with tran
     // internals, so it would also catch a future refactor that accidentally
     // forked the two call sites back apart.
     fc.assert(
-      fc.property(fc.constantFrom(...APPROVAL_TRANSITIONS), fc.constantFrom(...ALL_ACTORS), (rule, actor) => {
-        const authorized = isRoleAuthorized(rule.roles, actor);
-        // reasonProvided/isAmendment are set so the ONLY possible rejection
-        // reason left, if any, is the role check itself (never ERR_REASON_REQUIRED),
-        // and offlineAttempt is left false so ERR_OFFLINE_NOT_ELIGIBLE can't fire either.
-        const result = transition({
-          documentType: rule.documentType,
-          variant: rule.variant,
-          currentState: rule.from,
-          action: rule.action,
-          actorRole: actor,
-          reasonProvided: true,
-          isAmendment: true,
-        });
+      fc.property(
+        fc.constantFrom(...APPROVAL_TRANSITIONS),
+        fc.constantFrom(...ALL_ACTORS),
+        (rule, actor) => {
+          const authorized = isRoleAuthorized(rule.roles, actor);
+          // reasonProvided/isAmendment are set so the ONLY possible rejection
+          // reason left, if any, is the role check itself (never ERR_REASON_REQUIRED),
+          // and offlineAttempt is left false so ERR_OFFLINE_NOT_ELIGIBLE can't fire either.
+          const result = transition({
+            documentType: rule.documentType,
+            variant: rule.variant,
+            currentState: rule.from,
+            action: rule.action,
+            actorRole: actor,
+            reasonProvided: true,
+            isAmendment: true,
+          });
 
-        if (!authorized) {
-          expect(result).toMatchObject({ ok: false, code: 'ERR_APPROVAL_STEP_ROLE' });
-        } else {
-          expect(result.ok).toBe(true);
-        }
-      }),
+          if (!authorized) {
+            expect(result).toMatchObject({ ok: false, code: 'ERR_APPROVAL_STEP_ROLE' });
+          } else {
+            expect(result.ok).toBe(true);
+          }
+        },
+      ),
     );
   });
 });

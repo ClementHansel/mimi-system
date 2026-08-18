@@ -1,7 +1,16 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ClipboardCheck, Route, Boxes, PackageCheck, ListChecks, Trash2, Undo2, CalendarRange } from 'lucide-react';
+import {
+  ClipboardCheck,
+  Route,
+  Boxes,
+  PackageCheck,
+  ListChecks,
+  Trash2,
+  Undo2,
+  CalendarRange,
+} from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
 import { Tabs, TabsList, TabsTrigger, TabsContent, EmptyState } from '@/components/ui';
@@ -40,14 +49,62 @@ export function WarehouseShell() {
 
   const tabs = useMemo(
     () => [
-      { value: 'approvalQueue', labelKey: 'warehouse.tabs.approvalQueue', icon: ClipboardCheck, visible: can('replenishment.approve.warehouse'), content: <ApprovalQueuePanel /> },
-      { value: 'stock', labelKey: 'warehouse.tabs.stock', icon: Boxes, visible: can('inventory.balance.read'), content: <StockPanel /> },
-      { value: 'receiving', labelKey: 'warehouse.tabs.receiving', icon: PackageCheck, visible: can(['purchasing.po.receive', 'purchasing.read']), content: <ReceivingPanel /> },
-      { value: 'opname', labelKey: 'warehouse.tabs.opname', icon: ListChecks, visible: can(['opname.read', 'opname.create']), content: <StockOpnamePanel /> },
-      { value: 'waste', labelKey: 'warehouse.tabs.waste', icon: Trash2, visible: can(['waste.read', 'waste.create']), content: <WastePanel /> },
-      { value: 'return', labelKey: 'warehouse.tabs.return', icon: Undo2, visible: can(['return.create', 'return.read']), content: <ReturnPanel /> },
-      { value: 'suratJalan', labelKey: 'warehouse.tabs.suratJalan', icon: Route, visible: can(['delivery.sj.create', 'delivery.read']), content: <OutboundPanel /> },
-      { value: 'recap', labelKey: 'warehouse.tabs.recap', icon: CalendarRange, visible: can('report.logistics.read'), content: <RecapPanel /> },
+      {
+        value: 'approvalQueue',
+        labelKey: 'warehouse.tabs.approvalQueue',
+        icon: ClipboardCheck,
+        visible: can('replenishment.approve.warehouse'),
+        content: <ApprovalQueuePanel />,
+      },
+      {
+        value: 'stock',
+        labelKey: 'warehouse.tabs.stock',
+        icon: Boxes,
+        visible: can('inventory.balance.read'),
+        content: <StockPanel />,
+      },
+      {
+        value: 'receiving',
+        labelKey: 'warehouse.tabs.receiving',
+        icon: PackageCheck,
+        visible: can(['purchasing.po.receive', 'purchasing.read']),
+        content: <ReceivingPanel />,
+      },
+      {
+        value: 'opname',
+        labelKey: 'warehouse.tabs.opname',
+        icon: ListChecks,
+        visible: can(['opname.read', 'opname.create']),
+        content: <StockOpnamePanel />,
+      },
+      {
+        value: 'waste',
+        labelKey: 'warehouse.tabs.waste',
+        icon: Trash2,
+        visible: can(['waste.read', 'waste.create']),
+        content: <WastePanel />,
+      },
+      {
+        value: 'return',
+        labelKey: 'warehouse.tabs.return',
+        icon: Undo2,
+        visible: can(['return.create', 'return.read']),
+        content: <ReturnPanel />,
+      },
+      {
+        value: 'suratJalan',
+        labelKey: 'warehouse.tabs.suratJalan',
+        icon: Route,
+        visible: can(['delivery.sj.create', 'delivery.read']),
+        content: <OutboundPanel />,
+      },
+      {
+        value: 'recap',
+        labelKey: 'warehouse.tabs.recap',
+        icon: CalendarRange,
+        visible: can('report.logistics.read'),
+        content: <RecapPanel />,
+      },
     ],
     [can],
   );

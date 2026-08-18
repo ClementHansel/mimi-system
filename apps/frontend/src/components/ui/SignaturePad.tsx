@@ -24,7 +24,15 @@ export interface SignaturePadProps {
 }
 
 export function SignaturePad({
-  label, value, onChange, required, disabled, error, width = 400, height = 160, className,
+  label,
+  value,
+  onChange,
+  required,
+  disabled,
+  error,
+  width = 400,
+  height = 160,
+  className,
 }: SignaturePadProps) {
   const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -109,7 +117,12 @@ export function SignaturePad({
           {required && <span className="ml-0.5 text-danger-600">*</span>}
         </span>
       )}
-      <div className={cn('relative w-fit rounded-lg border-2 border-dashed', error ? 'border-danger-600/40' : 'border-border-strong')}>
+      <div
+        className={cn(
+          'relative w-fit rounded-lg border-2 border-dashed',
+          error ? 'border-danger-600/40' : 'border-border-strong',
+        )}
+      >
         <canvas
           ref={canvasRef}
           width={width}
@@ -127,7 +140,13 @@ export function SignaturePad({
         )}
       </div>
       <div>
-        <Button type="button" size="sm" variant="ghost" onClick={clear} disabled={disabled || empty}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={clear}
+          disabled={disabled || empty}
+        >
           {t('signature.clear')}
         </Button>
       </div>

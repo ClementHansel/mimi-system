@@ -41,12 +41,19 @@ export class ItemCategoryService {
   }
 
   private async getRawById(client: PoolClient, id: string): Promise<ItemCategoryRow> {
-    const res = await client.query<ItemCategoryRow>(`SELECT * FROM item_categories WHERE id = $1`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item category not found' });
+    const res = await client.query<ItemCategoryRow>(`SELECT * FROM item_categories WHERE id = $1`, [
+      id,
+    ]);
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item category not found' });
     return res.rows[0];
   }
 
-  async create(client: PoolClient, dto: CreateItemCategoryDto, actorUserId: string): Promise<ItemCategory> {
+  async create(
+    client: PoolClient,
+    dto: CreateItemCategoryDto,
+    actorUserId: string,
+  ): Promise<ItemCategory> {
     return withWrite(client, async () => {
       const res = await client.query<ItemCategoryRow>(
         `INSERT INTO item_categories (name, parent_id, sort_order) VALUES ($1,$2, COALESCE($3,0)) RETURNING *`,
@@ -84,8 +91,12 @@ export class ItemCategoryService {
 
       if (sets.length > 0) {
         params.push(id);
-        const res = await client.query(`UPDATE item_categories SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
-        if (res.rowCount === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item category not found' });
+        const res = await client.query(
+          `UPDATE item_categories SET ${sets.join(', ')} WHERE id = $${params.length}`,
+          params,
+        );
+        if (res.rowCount === 0)
+          throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item category not found' });
       } else {
         await this.getRawById(client, id);
       }

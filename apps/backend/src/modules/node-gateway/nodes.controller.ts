@@ -5,11 +5,28 @@
  * `JwtAuthGuard -> RlsContextGuard -> PermissionsGuard` chain, RLS-scoped by
  * `branch_nodes_loc` (migration 116).
  */
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Inject } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
-import { PairingTargetType, ERR_NOT_FOUND, ERR_VALIDATION, ERR_AUTH_TOKEN_INVALID, ERR_CONFLICT } from '@mimi/shared';
+import {
+  PairingTargetType,
+  ERR_NOT_FOUND,
+  ERR_VALIDATION,
+  ERR_AUTH_TOKEN_INVALID,
+  ERR_CONFLICT,
+} from '@mimi/shared';
 import type { UUID } from '@mimi/shared';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
@@ -63,31 +80,53 @@ export class NodesController {
   @Audited({ entityType: 'pairing_token', action: 'node.manage' })
   @Post('pairing-tokens')
   async mintPairingToken(@Req() req: RequestWithDbContext, @Body() body: { locationId: UUID }) {
-    if (!body?.locationId) throw new BadRequestException({ code: ERR_VALIDATION, message: 'locationId is required' });
+    if (!body?.locationId)
+      throw new BadRequestException({ code: ERR_VALIDATION, message: 'locationId is required' });
     const client = (req.dbClient ?? this.pool) as PoolClient;
     const setting = await this.outletNodeSetting.find(client, body.locationId);
-    if (!setting) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Location not found' });
+    if (!setting)
+      throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Location not found' });
     if (!setting.node_enabled) {
       throw new BadRequestException({
         code: ERR_VALIDATION,
-        message: "This outlet's branch-node setting is OFF — turn it ON first (PUT /api/nodes/outlet-setting/:locationId) before pairing a node",
+        message:
+          "This outlet's branch-node setting is OFF — turn it ON first (PUT /api/nodes/outlet-setting/:locationId) before pairing a node",
       });
     }
     const existing = await this.branchNodes.findByLocationId(client, body.locationId);
-    if (existing) throw new BadRequestException({ code: ERR_CONFLICT, message: 'This location already has a paired branch node (one node per location)' });
+    if (existing)
+      throw new BadRequestException({
+        code: ERR_CONFLICT,
+        message: 'This location already has a paired branch node (one node per location)',
+      });
     // BE-TXN-ROLLBACK: this mint is a real write on `req.dbClient` — without `withWrite`,
     // `RlsCleanupInterceptor`'s unconditional post-request ROLLBACK silently discarded it.
     return withWrite(client, () =>
-      this.pairingTokens.mint(client, { targetType: PairingTargetType.NODE, locationId: body.locationId, createdBy: req.user!.sub }),
+      this.pairingTokens.mint(client, {
+        targetType: PairingTargetType.NODE,
+        locationId: body.locationId,
+        createdBy: req.user!.sub,
+      }),
     );
   }
 
   /** Public + pairing-token authenticated (CONTRACTS §4.22). `lanCert` is ALWAYS `null` here — DNS-01 issuance is asynchronous (SYNC-PROTOCOL §1.3) and must never block pairing; it arrives later as `cert_rotated` over `/bridge` once a real ACME integration exists (out of this ticket's scope — no new dependency without W1-A, collision rule 2). */
   @Public()
   @Post('register')
-  async register(@Body() body: { token: string; hostname: string; version: string; osInfo?: Record<string, unknown> }) {
+  async register(
+    @Body()
+    body: {
+      token: string;
+      hostname: string;
+      version: string;
+      osInfo?: Record<string, unknown>;
+    },
+  ) {
     if (!body?.token || !body?.hostname || !body?.version) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'token, hostname and version are required' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'token, hostname and version are required',
+      });
     }
 
     const nodeToken = randomBytes(32).toString('hex');
@@ -111,7 +150,10 @@ export class NodesController {
       });
       await this.pairingTokens.recordUsedBy(client, redeemed.id, created.id);
 
-      const locRes = await client.query<{ id: UUID; code: string; name: string }>(`SELECT id, code, name FROM locations WHERE id = $1`, [redeemed.locationId]);
+      const locRes = await client.query<{ id: UUID; code: string; name: string }>(
+        `SELECT id, code, name FROM locations WHERE id = $1`,
+        [redeemed.locationId],
+      );
       const location = locRes.rows[0]!;
 
       await this.syncEmit.emit(client, {
@@ -120,7 +162,11 @@ export class NodesController {
         entityId: created.id,
         locationId: created.location_id,
         actorUserId: redeemed.createdBy,
-        data: { locationId: created.location_id, hostname: created.hostname, version: created.version },
+        data: {
+          locationId: created.location_id,
+          hostname: created.hostname,
+          version: created.version,
+        },
       });
       await this.syncEmit.emit(client, {
         entity: 'branch_nodes',
@@ -134,8 +180,16 @@ export class NodesController {
       return { conflict: false as const, created, location };
     });
 
-    if (!result) throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Invalid or expired pairing token' });
-    if (result.conflict) throw new BadRequestException({ code: ERR_CONFLICT, message: 'This location already has a paired branch node' });
+    if (!result)
+      throw new UnauthorizedException({
+        code: ERR_AUTH_TOKEN_INVALID,
+        message: 'Invalid or expired pairing token',
+      });
+    if (result.conflict)
+      throw new BadRequestException({
+        code: ERR_CONFLICT,
+        message: 'This location already has a paired branch node',
+      });
 
     return {
       nodeId: result.created.id,
@@ -148,14 +202,21 @@ export class NodesController {
 
   @RequirePermission('node.read')
   @Get()
-  async list(@Req() req: RequestWithDbContext, @Query('locationId') locationId?: string, @Query('status') status?: string) {
+  async list(
+    @Req() req: RequestWithDbContext,
+    @Query('locationId') locationId?: string,
+    @Query('status') status?: string,
+  ) {
     const client = req.dbClient ?? this.pool;
     const rows = await this.branchNodes.list(client, {
       locationId: locationId as UUID | undefined,
       locationIds: locationId ? undefined : req.locationScope,
       status,
     });
-    const deviceCounts = await this.deviceCountsByNode(client, rows.map((r) => r.id));
+    const deviceCounts = await this.deviceCountsByNode(
+      client,
+      rows.map((r) => r.id),
+    );
     return rows.map((r) => toNodeSummary(r, 0, deviceCounts.get(r.id) ?? 0));
   }
 
@@ -181,10 +242,15 @@ export class NodesController {
   @RequirePermission('node.manage')
   @Audited({ entityType: 'branch_nodes', action: 'node.manage' })
   @Patch(':id')
-  async update(@Req() req: RequestWithDbContext, @Param('id') id: UUID, @Body() body: { name?: string }) {
+  async update(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: UUID,
+    @Body() body: { name?: string },
+  ) {
     const client = (req.dbClient ?? this.pool) as PoolClient;
     const existing = await this.branchNodes.findById(client, id);
-    if (!existing) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Node not found' });
+    if (!existing)
+      throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Node not found' });
     return withWrite(client, async () => {
       await this.branchNodes.update(client, id, body);
       return this.branchNodes.findById(client, id);
@@ -198,17 +264,29 @@ export class NodesController {
   async sendCommand(
     @Req() req: RequestWithDbContext,
     @Param('id') id: UUID,
-    @Body() body: { type: 'restart' | 'update' | 'log_pull' | 'discovery_scan'; params?: Record<string, unknown> },
+    @Body()
+    body: {
+      type: 'restart' | 'update' | 'log_pull' | 'discovery_scan';
+      params?: Record<string, unknown>;
+    },
   ) {
-    if (!body?.type) throw new BadRequestException({ code: ERR_VALIDATION, message: 'type is required' });
+    if (!body?.type)
+      throw new BadRequestException({ code: ERR_VALIDATION, message: 'type is required' });
     const client = req.dbClient ?? this.pool;
     const node = await this.branchNodes.findById(client, id);
     if (!node) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Node not found' });
 
     const commandId = randomUUID() as UUID;
-    const delivered = this.bridge.sendCommand(id, { commandId, type: body.type, params: body.params });
+    const delivered = this.bridge.sendCommand(id, {
+      commandId,
+      type: body.type,
+      params: body.params,
+    });
     if (!delivered) {
-      throw new BadRequestException({ code: ERR_CONFLICT, message: 'Node is not currently connected to /bridge' });
+      throw new BadRequestException({
+        code: ERR_CONFLICT,
+        message: 'Node is not currently connected to /bridge',
+      });
     }
     return { commandId, status: 'sent' as const };
   }
@@ -216,14 +294,24 @@ export class NodesController {
   @RequirePermission('node.manage')
   @Audited({ entityType: 'branch_nodes', action: 'node.manage' })
   @Post(':id/unpair')
-  async unpair(@Req() req: RequestWithDbContext, @Param('id') id: UUID, @Body() body: { reason?: string }) {
+  async unpair(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: UUID,
+    @Body() body: { reason?: string },
+  ) {
     const client = (req.dbClient ?? this.pool) as PoolClient;
     const existing = await this.branchNodes.findById(client, id);
-    if (!existing) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Node not found' });
+    if (!existing)
+      throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Node not found' });
 
     return withWrite(client, async () => {
       await this.branchNodes.unpair(client, id);
-      await this.deviceRegistry.insertDeviceEvent(client, { nodeId: id, locationId: existing.location_id, type: 'unpaired', detail: { reason: body?.reason } });
+      await this.deviceRegistry.insertDeviceEvent(client, {
+        nodeId: id,
+        locationId: existing.location_id,
+        type: 'unpaired',
+        detail: { reason: body?.reason },
+      });
       await this.syncEmit.emit(client, {
         entity: 'branch_nodes',
         op: 'revoked',
@@ -240,7 +328,11 @@ export class NodesController {
 
   @RequirePermission('node.read')
   @Get(':id/discovered-devices')
-  async listDiscovered(@Req() req: RequestWithDbContext, @Param('id') id: UUID, @Query('status') status?: string) {
+  async listDiscovered(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: UUID,
+    @Query('status') status?: string,
+  ) {
     const client = req.dbClient ?? this.pool;
     const rows = await this.discovered.listByNode(client, id, status);
     return rows.map((r) => ({
@@ -266,13 +358,22 @@ export class NodesController {
     @Param('id') id: UUID,
     @Body() body: { category: string; name: string },
   ) {
-    if (!body?.category || !body?.name) throw new BadRequestException({ code: ERR_VALIDATION, message: 'category and name are required' });
+    if (!body?.category || !body?.name)
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'category and name are required',
+      });
     const client = (req.dbClient ?? this.pool) as PoolClient;
     const discovered = await this.discovered.findById(client, id);
-    if (!discovered) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Discovered device not found' });
+    if (!discovered)
+      throw new BadRequestException({
+        code: ERR_NOT_FOUND,
+        message: 'Discovered device not found',
+      });
 
     const node = await this.branchNodes.findById(client, discovered.node_id);
-    if (!node) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Owning node not found' });
+    if (!node)
+      throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Owning node not found' });
 
     return withWrite(client, async () => {
       const created = await this.deviceRegistry.create(client, {
@@ -288,7 +389,11 @@ export class NodesController {
         pairedBy: req.user!.sub,
       });
       await this.discovered.markConfirmed(client, id, created.id);
-      await this.deviceRegistry.setDeviceStatus(client, created.id, node.status === 'online' ? 'online' : 'offline');
+      await this.deviceRegistry.setDeviceStatus(
+        client,
+        created.id,
+        node.status === 'online' ? 'online' : 'offline',
+      );
 
       const withLocation = await this.deviceRegistry.findById(client, created.id);
       return withLocation;
@@ -300,7 +405,11 @@ export class NodesController {
   async ignoreDiscovered(@Req() req: RequestWithDbContext, @Param('id') id: UUID) {
     const client = (req.dbClient ?? this.pool) as PoolClient;
     const discovered = await this.discovered.findById(client, id);
-    if (!discovered) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Discovered device not found' });
+    if (!discovered)
+      throw new BadRequestException({
+        code: ERR_NOT_FOUND,
+        message: 'Discovered device not found',
+      });
     return withWrite(client, async () => {
       await this.discovered.markIgnored(client, id);
       return { ok: true };

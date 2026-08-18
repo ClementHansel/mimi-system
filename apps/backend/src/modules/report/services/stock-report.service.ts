@@ -165,7 +165,16 @@ export class StockReportService {
       // Exact bigint-scaled arithmetic (`@mimi/shared/qty`), never `Number()` coercion — the same
       // convention this ticket requires for Money applies equally to Qty's own NUMERIC(14,3) strings.
       const closing = addQty(opening, addQty(subQty(subQty(inQty, usage), waste), adjustment));
-      return { itemId: r.item_id, itemName: r.item_name, opening, in: inQty, usage, waste, adjustment, closing };
+      return {
+        itemId: r.item_id,
+        itemName: r.item_name,
+        opening,
+        in: inQty,
+        usage,
+        waste,
+        adjustment,
+        closing,
+      };
     });
   }
 
@@ -254,7 +263,11 @@ export class StockReportService {
     };
   }
 
-  async getOpnameVariance(client: PoolClient, caller: ReportCallerContext, opnameId: UUID): Promise<OpnameVarianceReport> {
+  async getOpnameVariance(
+    client: PoolClient,
+    caller: ReportCallerContext,
+    opnameId: UUID,
+  ): Promise<OpnameVarianceReport> {
     const headRes = await client.query<{
       id: string;
       opname_number: string;
@@ -279,7 +292,8 @@ export class StockReportService {
       [opnameId],
     );
     const head = headRes.rows[0];
-    if (!head) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Opname ${opnameId} not found` });
+    if (!head)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Opname ${opnameId} not found` });
 
     assertLocationInScope(caller.locationScope, head.location_id);
 

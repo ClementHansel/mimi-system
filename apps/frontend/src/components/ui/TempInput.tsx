@@ -36,8 +36,17 @@ const SIZE_CLASSES: Record<NonNullable<TempInputProps['size']>, string> = {
 };
 
 export function TempInput({
-  label, error, hint, value, onChange, breach = false,
-  required, disabled, size = 'md', id, wrapperClassName,
+  label,
+  error,
+  hint,
+  value,
+  onChange,
+  breach = false,
+  required,
+  disabled,
+  size = 'md',
+  id,
+  wrapperClassName,
 }: TempInputProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
@@ -60,7 +69,13 @@ export function TempInput({
         </label>
       )}
       <div className="relative flex items-center">
-        <Snowflake className={cn('pointer-events-none absolute left-3 size-4', breach ? 'text-danger-600' : 'text-cold-600')} aria-hidden />
+        <Snowflake
+          className={cn(
+            'pointer-events-none absolute left-3 size-4',
+            breach ? 'text-danger-600' : 'text-cold-600',
+          )}
+          aria-hidden
+        />
         <input
           id={inputId}
           inputMode="decimal"

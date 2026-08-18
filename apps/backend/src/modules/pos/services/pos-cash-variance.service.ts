@@ -1,6 +1,14 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
-import { ApprovalDocumentType, ERR_NOT_FOUND, ERR_VALIDATION, RoleKey, type CashVarianceProposal, type Paginated, type UUID } from '@mimi/shared';
+import {
+  ApprovalDocumentType,
+  ERR_NOT_FOUND,
+  ERR_VALIDATION,
+  RoleKey,
+  type CashVarianceProposal,
+  type Paginated,
+  type UUID,
+} from '@mimi/shared';
 import { DATABASE_POOL } from '../../../common/database/database-pool.provider';
 import { ApprovalService } from '../../../kernel/approvals/approvals.service';
 import { resolveUserNames } from '../notify-eligible-users.util';
@@ -16,7 +24,10 @@ const SELECT = `
     FROM cash_variance_proposals cvp
 `;
 
-interface RawCashVarianceProposalRow extends Omit<CashVarianceProposalRow, 'kasir_name' | 'decided_by_name'> {
+interface RawCashVarianceProposalRow extends Omit<
+  CashVarianceProposalRow,
+  'kasir_name' | 'decided_by_name'
+> {
   kasir_user_id: UUID;
   decided_by: UUID | null;
 }
@@ -48,7 +59,14 @@ export class PosCashVarianceService {
 
   async list(
     client: PoolClient,
-    query: { locationId?: UUID; status?: string; from?: string; to?: string; page: number; pageSize: number },
+    query: {
+      locationId?: UUID;
+      status?: string;
+      from?: string;
+      to?: string;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<Paginated<CashVarianceProposal>> {
     const params: unknown[] = [];
     let where = '1=1';
@@ -69,7 +87,10 @@ export class PosCashVarianceService {
       where += ` AND cvp.created_at <= $${params.length}::date + INTERVAL '1 day'`;
     }
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM cash_variance_proposals cvp WHERE ${where}`, params);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM cash_variance_proposals cvp WHERE ${where}`,
+      params,
+    );
     const total = Number.parseInt(countRes.rows[0]?.count ?? '0', 10);
 
     const offset = (query.page - 1) * query.pageSize;
@@ -79,13 +100,27 @@ export class PosCashVarianceService {
       params,
     );
 
-    return { rows: await this.hydrateRows(res.rows), total, page: query.page, pageSize: query.pageSize };
+    return {
+      rows: await this.hydrateRows(res.rows),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   }
 
-  async approve(client: PoolClient, id: UUID, actorUserId: UUID, actorRole: RoleKey, reason: string): Promise<CashVarianceProposal> {
+  async approve(
+    client: PoolClient,
+    id: UUID,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+    reason: string,
+  ): Promise<CashVarianceProposal> {
     const row = await this.mustLoadForUpdate(client, id);
     if (row.status !== 'pending') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Cash variance proposal ${id} is already ${row.status}` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Cash variance proposal ${id} is already ${row.status}`,
+      });
     }
 
     // `transition()`'s CASH_VARIANCE_PROPOSAL 'approve' rule requires a reason on APPROVE too
@@ -109,10 +144,19 @@ export class PosCashVarianceService {
     return this.mustGetById(client, id);
   }
 
-  async reject(client: PoolClient, id: UUID, actorUserId: UUID, actorRole: RoleKey, reason: string): Promise<CashVarianceProposal> {
+  async reject(
+    client: PoolClient,
+    id: UUID,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+    reason: string,
+  ): Promise<CashVarianceProposal> {
     const row = await this.mustLoadForUpdate(client, id);
     if (row.status !== 'pending') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Cash variance proposal ${id} is already ${row.status}` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Cash variance proposal ${id} is already ${row.status}`,
+      });
     }
 
     await this.approvals.reject(client, {
@@ -132,20 +176,39 @@ export class PosCashVarianceService {
     return this.mustGetById(client, id);
   }
 
-  private async mustLoadForUpdate(client: PoolClient, id: UUID): Promise<{ id: UUID; status: string }> {
-    const res = await client.query<{ id: UUID; status: string }>(`SELECT id, status FROM cash_variance_proposals WHERE id = $1 FOR UPDATE`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Cash variance proposal not found' });
+  private async mustLoadForUpdate(
+    client: PoolClient,
+    id: UUID,
+  ): Promise<{ id: UUID; status: string }> {
+    const res = await client.query<{ id: UUID; status: string }>(
+      `SELECT id, status FROM cash_variance_proposals WHERE id = $1 FOR UPDATE`,
+      [id],
+    );
+    if (!res.rows[0])
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: 'Cash variance proposal not found',
+      });
     return res.rows[0];
   }
 
   private async mustGetById(client: PoolClient, id: UUID): Promise<CashVarianceProposal> {
     const res = await client.query<RawCashVarianceProposalRow>(`${SELECT} WHERE cvp.id = $1`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Cash variance proposal not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: 'Cash variance proposal not found',
+      });
     return (await this.hydrateRows([res.rows[0]]))[0]!;
   }
 
-  private async hydrateRows(rows: readonly RawCashVarianceProposalRow[]): Promise<CashVarianceProposal[]> {
-    const names = await resolveUserNames(this.pool, [...rows.map((r) => r.kasir_user_id), ...rows.map((r) => r.decided_by)]);
+  private async hydrateRows(
+    rows: readonly RawCashVarianceProposalRow[],
+  ): Promise<CashVarianceProposal[]> {
+    const names = await resolveUserNames(this.pool, [
+      ...rows.map((r) => r.kasir_user_id),
+      ...rows.map((r) => r.decided_by),
+    ]);
     return rows.map((r) =>
       mapCashVarianceProposal({
         ...r,

@@ -21,17 +21,31 @@ vi.mock('@/lib/api', async () => {
 function setPermissions(permissions: string[]) {
   useSessionStore.setState({
     user: {
-      id: 'u1', username: 'kgd1', name: 'Kepala Gudang', roleKey: 'kepala_gudang',
-      permissions, locations: [], employeeId: null, mustSetPin: false,
+      id: 'u1',
+      username: 'kgd1',
+      name: 'Kepala Gudang',
+      roleKey: 'kepala_gudang',
+      permissions,
+      locations: [],
+      employeeId: null,
+      mustSetPin: false,
     },
   });
 }
 
 function poRow(overrides: Partial<PurchaseOrderListRow> = {}): PurchaseOrderListRow {
   return {
-    id: 'po-1', poNumber: 'PO-202608-00001', supplierId: 's1', supplierName: 'Supplier Ayam Segar',
-    locationId: 'loc-1', status: 'issued', orderDate: '2026-08-10', expectedDate: '2026-08-15', total: '5000000.00',
-    approval: null, paymentStatus: null,
+    id: 'po-1',
+    poNumber: 'PO-202608-00001',
+    supplierId: 's1',
+    supplierName: 'Supplier Ayam Segar',
+    locationId: 'loc-1',
+    status: 'issued',
+    orderDate: '2026-08-10',
+    expectedDate: '2026-08-15',
+    total: '5000000.00',
+    approval: null,
+    paymentStatus: null,
     ...overrides,
   };
 }
@@ -39,9 +53,24 @@ function poRow(overrides: Partial<PurchaseOrderListRow> = {}): PurchaseOrderList
 function poDetail(overrides: Partial<PurchaseOrderDetail> = {}): PurchaseOrderDetail {
   return {
     ...poRow(),
-    paymentTermsDays: 14, subtotal: '5000000.00', tax: '0.00', prId: null, cancelReason: null, notes: null,
+    paymentTermsDays: 14,
+    subtotal: '5000000.00',
+    tax: '0.00',
+    prId: null,
+    cancelReason: null,
+    notes: null,
     lines: [
-      { id: 'l1', itemId: 'i1', itemName: 'Ayam Potong', unitCode: 'kg', qtyOrdered: '100.000', unitPrice: '50000.00', lineTotal: '5000000.00', qtyReceived: '0.000', qtyDifference: '100.000' },
+      {
+        id: 'l1',
+        itemId: 'i1',
+        itemName: 'Ayam Potong',
+        unitCode: 'kg',
+        qtyOrdered: '100.000',
+        unitPrice: '50000.00',
+        lineTotal: '5000000.00',
+        qtyReceived: '0.000',
+        qtyDifference: '100.000',
+      },
     ],
     ...overrides,
   };
@@ -57,7 +86,8 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
   it('shows the PO total column when supplier.price.read is granted', async () => {
     setPermissions(['purchasing.read', 'supplier.price.read', 'supplier.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/purchasing/orders?')) return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
       return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
     });
 
@@ -71,8 +101,19 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
     setPermissions(['purchasing.read', 'purchasing.po.receive']);
     vi.mocked(api.get).mockImplementation((path: string) => {
       if (path.startsWith('/purchasing/orders/po-1')) return Promise.resolve(poDetail());
-      if (path.startsWith('/purchasing/orders?')) return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
-      if (path.startsWith('/locations/')) return Promise.resolve([{ id: 'area-1', locationId: 'loc-1', code: 'GD1', name: 'Gudang Kering', type: 'dry', isActive: true }]);
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/locations/'))
+        return Promise.resolve([
+          {
+            id: 'area-1',
+            locationId: 'loc-1',
+            code: 'GD1',
+            name: 'Gudang Kering',
+            type: 'dry',
+            isActive: true,
+          },
+        ]);
       return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
     });
 
@@ -95,11 +136,39 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
     setPermissions(['purchasing.read', 'purchasing.po.receive']);
     vi.mocked(api.get).mockImplementation((path: string) => {
       if (path.startsWith('/purchasing/orders/po-1')) return Promise.resolve(poDetail());
-      if (path.startsWith('/purchasing/orders?')) return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
-      if (path.startsWith('/locations/')) return Promise.resolve([{ id: 'area-1', locationId: 'loc-1', code: 'GD1', name: 'Gudang Kering', type: 'dry', isActive: true }]);
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/locations/'))
+        return Promise.resolve([
+          {
+            id: 'area-1',
+            locationId: 'loc-1',
+            code: 'GD1',
+            name: 'Gudang Kering',
+            type: 'dry',
+            isActive: true,
+          },
+        ]);
       return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
     });
-    vi.mocked(api.post).mockResolvedValue(poDetail({ status: 'received', lines: [{ id: 'l1', itemId: 'i1', itemName: 'Ayam Potong', unitCode: 'kg', qtyOrdered: '100.000', unitPrice: '50000.00', lineTotal: '5000000.00', qtyReceived: '100.000', qtyDifference: '0.000' }] }));
+    vi.mocked(api.post).mockResolvedValue(
+      poDetail({
+        status: 'received',
+        lines: [
+          {
+            id: 'l1',
+            itemId: 'i1',
+            itemName: 'Ayam Potong',
+            unitCode: 'kg',
+            qtyOrdered: '100.000',
+            unitPrice: '50000.00',
+            lineTotal: '5000000.00',
+            qtyReceived: '100.000',
+            qtyDifference: '0.000',
+          },
+        ],
+      }),
+    );
 
     render(<PurchaseOrdersPanel />);
     fireEvent.click(await screen.findByText('PO-202608-00001'));
@@ -114,20 +183,37 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
     setPermissions(['purchasing.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
       if (path.startsWith('/purchasing/orders/po-1')) {
-        return Promise.resolve(poDetail({
-          status: 'approved',
-          approval: {
-            approvalId: 'appr-1',
-            state: 'approved',
-            amount: '5000000.00',
-            currentStep: null, // finalized — the documented completion signal, not an error.
-            steps: [
-              { stepNo: 1, approverRole: 'manager', state: 'approved', actedBy: 'Manager Satu', actedAt: '2026-08-11T00:00:00.000Z', reason: null, offlineAuthorized: false, reverificationStatus: null },
-            ],
-          },
-        }));
+        return Promise.resolve(
+          poDetail({
+            status: 'approved',
+            approval: {
+              approvalId: 'appr-1',
+              state: 'approved',
+              amount: '5000000.00',
+              currentStep: null, // finalized — the documented completion signal, not an error.
+              steps: [
+                {
+                  stepNo: 1,
+                  approverRole: 'manager',
+                  state: 'approved',
+                  actedBy: 'Manager Satu',
+                  actedAt: '2026-08-11T00:00:00.000Z',
+                  reason: null,
+                  offlineAuthorized: false,
+                  reverificationStatus: null,
+                },
+              ],
+            },
+          }),
+        );
       }
-      if (path.startsWith('/purchasing/orders?')) return Promise.resolve({ rows: [poRow({ status: 'approved' })], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({
+          rows: [poRow({ status: 'approved' })],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+        });
       if (path.startsWith('/locations/')) return Promise.resolve([]);
       return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
     });
@@ -142,8 +228,15 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
   it('a null paymentStatus (e.g. the kepala_gudang RLS gap) renders as "unavailable", never a crash or a misleading unpaid badge', async () => {
     setPermissions(['purchasing.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/purchasing/orders/po-1')) return Promise.resolve(poDetail({ paymentStatus: null }));
-      if (path.startsWith('/purchasing/orders?')) return Promise.resolve({ rows: [poRow({ paymentStatus: null })], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/purchasing/orders/po-1'))
+        return Promise.resolve(poDetail({ paymentStatus: null }));
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({
+          rows: [poRow({ paymentStatus: null })],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+        });
       if (path.startsWith('/locations/')) return Promise.resolve([]);
       return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
     });
@@ -158,8 +251,15 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
   it('a populated paymentStatus renders the real payment-status badge', async () => {
     setPermissions(['purchasing.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/purchasing/orders/po-1')) return Promise.resolve(poDetail({ paymentStatus: 'paid' }));
-      if (path.startsWith('/purchasing/orders?')) return Promise.resolve({ rows: [poRow({ paymentStatus: 'paid' })], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/purchasing/orders/po-1'))
+        return Promise.resolve(poDetail({ paymentStatus: 'paid' }));
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({
+          rows: [poRow({ paymentStatus: 'paid' })],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+        });
       if (path.startsWith('/locations/')) return Promise.resolve([]);
       return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
     });
@@ -174,15 +274,24 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
   it('never renders Setujui/Tolak on a pending_approval PO without purchasing.po.approve', async () => {
     setPermissions(['purchasing.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/purchasing/orders/po-1')) return Promise.resolve(poDetail({ status: 'pending_approval' }));
-      if (path.startsWith('/purchasing/orders?')) return Promise.resolve({ rows: [poRow({ status: 'pending_approval' })], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/purchasing/orders/po-1'))
+        return Promise.resolve(poDetail({ status: 'pending_approval' }));
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({
+          rows: [poRow({ status: 'pending_approval' })],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+        });
       return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
     });
 
     render(<PurchaseOrdersPanel />);
     fireEvent.click(await screen.findByText('PO-202608-00001'));
 
-    await waitFor(() => expect(screen.getAllByText('Menunggu Persetujuan').length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(screen.getAllByText('Menunggu Persetujuan').length).toBeGreaterThan(0),
+    );
     expect(screen.queryByRole('button', { name: 'Setujui' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Tolak' })).not.toBeInTheDocument();
   });

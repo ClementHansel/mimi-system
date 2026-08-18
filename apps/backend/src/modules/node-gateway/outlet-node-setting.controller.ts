@@ -32,7 +32,13 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
-import { ERR_FORBIDDEN, ERR_NODE_QUEUE_PENDING, ERR_NODE_UNREACHABLE, ERR_NOT_FOUND, ERR_VALIDATION } from '@mimi/shared';
+import {
+  ERR_FORBIDDEN,
+  ERR_NODE_QUEUE_PENDING,
+  ERR_NODE_UNREACHABLE,
+  ERR_NOT_FOUND,
+  ERR_VALIDATION,
+} from '@mimi/shared';
 import type { UUID } from '@mimi/shared';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { Audited } from '../../common/decorators/audited.decorator';
@@ -42,7 +48,10 @@ import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { DeviceRegistryRepository } from '../device-registry/device-registry.repository';
 import { BranchNodesRepository, type BranchNodeRow } from './branch-nodes.repository';
 import { BridgeGateway } from './bridge.gateway';
-import { OutletNodeSettingRepository, type OutletNodeSettingRow } from './outlet-node-setting.repository';
+import {
+  OutletNodeSettingRepository,
+  type OutletNodeSettingRow,
+} from './outlet-node-setting.repository';
 import { withWrite } from './db-tx';
 
 /** §7.3's own node "stale after" threshold: a `relayQueueDepth` reading older than this cannot be
@@ -59,15 +68,25 @@ interface DrainStatus {
 }
 
 function drainStatusFor(node: BranchNodeRow, connected: boolean): DrainStatus {
-  const settings = (node.settings ?? {}) as { relayQueueDepth?: number; relayQueueDepthAt?: string };
-  const pendingCount = typeof settings.relayQueueDepth === 'number' ? settings.relayQueueDepth : null;
+  const settings = (node.settings ?? {}) as {
+    relayQueueDepth?: number;
+    relayQueueDepthAt?: string;
+  };
+  const pendingCount =
+    typeof settings.relayQueueDepth === 'number' ? settings.relayQueueDepth : null;
   const lastReportedAt = settings.relayQueueDepthAt ?? null;
-  const fresh = lastReportedAt !== null && Date.now() - new Date(lastReportedAt).getTime() <= FRESH_QUEUE_READING_MS;
+  const fresh =
+    lastReportedAt !== null &&
+    Date.now() - new Date(lastReportedAt).getTime() <= FRESH_QUEUE_READING_MS;
   const reachable = connected && fresh;
   return { ready: reachable && pendingCount === 0, reachable, pendingCount, lastReportedAt };
 }
 
-function toStateDto(loc: OutletNodeSettingRow, node: BranchNodeRow | undefined | null, extra?: { isConnected?: boolean }) {
+function toStateDto(
+  loc: OutletNodeSettingRow,
+  node: BranchNodeRow | undefined | null,
+  extra?: { isConnected?: boolean },
+) {
   return {
     locationId: loc.id,
     locationCode: loc.code,
@@ -135,7 +154,11 @@ export class OutletNodeSettingController {
     return {
       ...toStateDto(loc, node, { isConnected }),
       pendingPairingToken: pendingToken
-        ? { tokenId: pendingToken.id, displayCode: pendingToken.display_code, expiresAt: pendingToken.expires_at }
+        ? {
+            tokenId: pendingToken.id,
+            displayCode: pendingToken.display_code,
+            expiresAt: pendingToken.expires_at,
+          }
         : null,
       ready,
     };
@@ -152,7 +175,11 @@ export class OutletNodeSettingController {
   @RequirePermission('node.manage')
   @Audited({ entityType: 'locations', action: 'node.manage' })
   @Put(':locationId')
-  async setEnabled(@Req() req: RequestWithDbContext, @Param('locationId') locationId: UUID, @Body() body: { nodeEnabled: boolean }) {
+  async setEnabled(
+    @Req() req: RequestWithDbContext,
+    @Param('locationId') locationId: UUID,
+    @Body() body: { nodeEnabled: boolean },
+  ) {
     if (req.user!.roleKey !== 'owner') {
       throw new ForbiddenException({
         code: ERR_FORBIDDEN,
@@ -160,7 +187,10 @@ export class OutletNodeSettingController {
       });
     }
     if (typeof body?.nodeEnabled !== 'boolean') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'nodeEnabled (boolean) is required' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'nodeEnabled (boolean) is required',
+      });
     }
 
     const client = (req.dbClient ?? this.pool) as PoolClient;
@@ -178,7 +208,9 @@ export class OutletNodeSettingController {
         // unlocked by `NodesController.mintPairingToken`'s own `nodeEnabled` gate.
         const updated = await this.outletSetting.setEnabled(client, locationId, true);
         const node = await this.branchNodes.findByLocationId(client, locationId);
-        return toStateDto(updated!, node, { isConnected: node ? this.bridge.isConnected(node.id) : false });
+        return toStateDto(updated!, node, {
+          isConnected: node ? this.bridge.isConnected(node.id) : false,
+        });
       }
 
       // OFF — drain-before-off (D-26's core guarantee).
@@ -195,14 +227,22 @@ export class OutletNodeSettingController {
               drain.pendingCount === null
                 ? 'This node has not reported a queue depth yet — cannot confirm it has drained. Wait for its next heartbeat and try again.'
                 : `This node is unreachable right now, so its drain cannot be re-confirmed. Last known: ${drain.pendingCount} event(s) pending as of ${drain.lastReportedAt}. An unreachable node with a possible backlog is never switched off silently — reconnect it first.`,
-            details: { pendingCount: drain.pendingCount, lastReportedAt: drain.lastReportedAt, reachable: false },
+            details: {
+              pendingCount: drain.pendingCount,
+              lastReportedAt: drain.lastReportedAt,
+              reachable: false,
+            },
           });
         }
         if (!drain.ready) {
           throw new BadRequestException({
             code: ERR_NODE_QUEUE_PENDING,
             message: `${drain.pendingCount} event(s) are still queued on this node and have not reached the cloud yet. Turning the node off is refused until it drains to zero.`,
-            details: { pendingCount: drain.pendingCount, lastReportedAt: drain.lastReportedAt, reachable: true },
+            details: {
+              pendingCount: drain.pendingCount,
+              lastReportedAt: drain.lastReportedAt,
+              reachable: true,
+            },
           });
         }
 

@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { computeAreaBalanceChecksums, computeStateChecksum, fnv1a64Hex, combineChecksums, canonicalRowString } from './checksum';
+import {
+  computeAreaBalanceChecksums,
+  computeStateChecksum,
+  fnv1a64Hex,
+  combineChecksums,
+  canonicalRowString,
+} from './checksum';
 
 describe('fnv1a64Hex', () => {
   it('is deterministic', () => {
@@ -24,7 +30,11 @@ describe('combineChecksums / computeStateChecksum — order independence', () =>
   });
 
   it('computeStateChecksum is order-independent over a list of rows', () => {
-    const rows = [{ id: '1', qty: '10.000' }, { id: '2', qty: '5.000' }, { id: '3', qty: '0.000' }];
+    const rows = [
+      { id: '1', qty: '10.000' },
+      { id: '2', qty: '5.000' },
+      { id: '3', qty: '0.000' },
+    ];
     expect(computeStateChecksum(rows)).toBe(computeStateChecksum([...rows].reverse()));
   });
 
@@ -60,7 +70,9 @@ describe('canonicalRowString / computeStateChecksum — must survive a bigint fi
   });
 
   it('does not throw for a bigint beyond Number.MAX_SAFE_INTEGER', () => {
-    expect(() => computeStateChecksum([{ id: '1', clientSeq: 9_007_199_254_740_993n }])).not.toThrow();
+    expect(() =>
+      computeStateChecksum([{ id: '1', clientSeq: 9_007_199_254_740_993n }]),
+    ).not.toThrow();
   });
 
   it('two rows differing only in a bigint field produce different checksums (the field is not silently dropped)', () => {
@@ -70,7 +82,10 @@ describe('canonicalRowString / computeStateChecksum — must survive a bigint fi
   });
 
   it('stays order-independent (both by row order and by key order) even with a bigint field present', () => {
-    const rows = [{ id: '1', clientSeq: 5n }, { id: '2', clientSeq: 9_007_199_254_740_993n }];
+    const rows = [
+      { id: '1', clientSeq: 5n },
+      { id: '2', clientSeq: 9_007_199_254_740_993n },
+    ];
     expect(computeStateChecksum(rows)).toBe(computeStateChecksum([...rows].reverse()));
 
     const forward = canonicalRowString({ id: '1', clientSeq: 5n });
@@ -91,7 +106,7 @@ describe('computeAreaBalanceChecksums', () => {
     expect(result['area-1']).not.toBe(result['area-2']);
   });
 
-  it('a divergence in one area does not change the other area\'s checksum', () => {
+  it("a divergence in one area does not change the other area's checksum", () => {
     const base = [
       { storageAreaId: 'area-1', itemId: 'i1', qtyOnHand: '10.000' },
       { storageAreaId: 'area-2', itemId: 'i1', qtyOnHand: '3.000' },

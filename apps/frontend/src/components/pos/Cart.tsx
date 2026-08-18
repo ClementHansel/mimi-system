@@ -40,7 +40,13 @@ export function Cart({
   }
 
   if (lines.length === 0) {
-    return <EmptyState icon={ShoppingCart} title={t('pos.cartEmptyTitle')} description={t('pos.cartEmptyDescription')} />;
+    return (
+      <EmptyState
+        icon={ShoppingCart}
+        title={t('pos.cartEmptyTitle')}
+        description={t('pos.cartEmptyDescription')}
+      />
+    );
   }
 
   const lineTotalsById = new Map(summary.lines.map((l) => [l.productId, l.lineTotal]));
@@ -53,7 +59,9 @@ export function Cart({
             <li key={line.productId} className="flex items-center gap-2 py-2.5">
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-text-primary">{line.productName}</p>
-                <p className="text-sm text-text-muted tabular-nums">{formatMoney(line.unitPrice)}</p>
+                <p className="text-sm text-text-muted tabular-nums">
+                  {formatMoney(line.unitPrice)}
+                </p>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -95,7 +103,9 @@ export function Cart({
 
       <div className="flex flex-col gap-2 border-t border-border pt-3">
         <div className="flex items-center justify-between text-sm text-text-muted">
-          <span>{t('common.total')} ({t('pos.subtotal')})</span>
+          <span>
+            {t('common.total')} ({t('pos.subtotal')})
+          </span>
           <span className="tabular-nums">{formatMoney(summary.subtotal)}</span>
         </div>
         <MoneyInput

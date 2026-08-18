@@ -14,7 +14,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MovementType } from '@mimi/shared';
-import type { NotifyRequest, NotifyResult } from '../../../kernel/notification/notification.service';
+import type {
+  NotifyRequest,
+  NotifyResult,
+} from '../../../kernel/notification/notification.service';
 import { EventBus } from '../../../kernel/events/event-bus.service';
 import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.service';
 import { StockMovedEventEmitter } from '../../../kernel/stock-ledger/stock-ledger-events';
@@ -31,7 +34,10 @@ import {
   withRollback,
   type Fixtures,
 } from '../test-support/live-db';
-import { LowStockDetectorService, type LowStockDetectorOptions } from './low-stock-detector.service';
+import {
+  LowStockDetectorService,
+  type LowStockDetectorOptions,
+} from './low-stock-detector.service';
 
 class SpyNotificationService {
   readonly calls: NotifyRequest[] = [];
@@ -89,16 +95,19 @@ async function postFactMovement(
  * this location (`pickUnusedStockKey` only guarantees no balance at the
  * exact triple it picked) — an unscoped delete would collaterally wipe it.
  */
-async function cleanupKey(locationId: string, storageAreaId: string, itemId: string): Promise<void> {
+async function cleanupKey(
+  locationId: string,
+  storageAreaId: string,
+  itemId: string,
+): Promise<void> {
   await getOwnerPool().query(
     `DELETE FROM stock_movements WHERE ref_type = 'low_stock_test' AND location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
     [locationId, storageAreaId, itemId],
   );
-  await getOwnerPool().query(`DELETE FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [
-    locationId,
-    storageAreaId,
-    itemId,
-  ]);
+  await getOwnerPool().query(
+    `DELETE FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+    [locationId, storageAreaId, itemId],
+  );
 }
 
 describe('LowStockDetectorService.checkAndNotify — live DB', () => {
@@ -119,7 +128,13 @@ describe('LowStockDetectorService.checkAndNotify — live DB', () => {
       const spy = new SpyNotificationService();
       const detector = detectorWith(spy);
 
-      await postFactMovement(key.locationId, key.storageAreaId, key.itemId, MovementType.OPENING_BALANCE, '5.000');
+      await postFactMovement(
+        key.locationId,
+        key.storageAreaId,
+        key.itemId,
+        MovementType.OPENING_BALANCE,
+        '5.000',
+      );
       await detector.checkAndNotify(key.locationId, key.itemId);
 
       expect(spy.calls).toHaveLength(0);
@@ -136,7 +151,13 @@ describe('LowStockDetectorService.checkAndNotify — live DB', () => {
       const detector = detectorWith(spy);
 
       // Balance opens at 5, below the 10 min_qty — a real "already low" state.
-      await postFactMovement(key.locationId, key.storageAreaId, key.itemId, MovementType.OPENING_BALANCE, '5.000');
+      await postFactMovement(
+        key.locationId,
+        key.storageAreaId,
+        key.itemId,
+        MovementType.OPENING_BALANCE,
+        '5.000',
+      );
 
       // Simulate a busy shift: several checks fire in quick succession for
       // the SAME still-below balance (this is exactly what a burst of
@@ -170,7 +191,13 @@ describe('LowStockDetectorService.checkAndNotify — live DB', () => {
       const spy = new SpyNotificationService();
       const detector = detectorWith(spy);
 
-      await postFactMovement(key.locationId, key.storageAreaId, key.itemId, MovementType.OPENING_BALANCE, '20.000');
+      await postFactMovement(
+        key.locationId,
+        key.storageAreaId,
+        key.itemId,
+        MovementType.OPENING_BALANCE,
+        '20.000',
+      );
       await detector.checkAndNotify(key.locationId, key.itemId);
       expect(spy.calls).toHaveLength(0);
     } finally {
@@ -186,7 +213,13 @@ describe('LowStockDetectorService.checkAndNotify — live DB', () => {
     await createMinStockRule(warehouseKey.locationId, warehouseKey.itemId, '10.000');
     try {
       const outletSpy = new SpyNotificationService();
-      await postFactMovement(outletKey.locationId, outletKey.storageAreaId, outletKey.itemId, MovementType.OPENING_BALANCE, '1.000');
+      await postFactMovement(
+        outletKey.locationId,
+        outletKey.storageAreaId,
+        outletKey.itemId,
+        MovementType.OPENING_BALANCE,
+        '1.000',
+      );
       await detectorWith(outletSpy).checkAndNotify(outletKey.locationId, outletKey.itemId);
       expect(outletSpy.calls).toHaveLength(1);
       const outletRecipientIds = outletSpy.calls[0]!.userIds;
@@ -218,7 +251,9 @@ describe('LowStockDetectorService.checkAndNotify — live DB', () => {
   }, 30_000);
 });
 
-async function freshKeyIn(locationId: string): Promise<{ locationId: string; storageAreaId: string; itemId: string }> {
+async function freshKeyIn(
+  locationId: string,
+): Promise<{ locationId: string; storageAreaId: string; itemId: string }> {
   // `pickUnusedItemInLocation`, NOT `pickUnusedStockKey`: the detector sums
   // balance ACROSS every area of the location for one item, so the fixture
   // must guarantee zero balance anywhere in the location for this item, not

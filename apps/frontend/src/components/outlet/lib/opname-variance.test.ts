@@ -55,7 +55,9 @@ describe('isLineReady / canSubmitOpname (the mandatory-reason gate, FR-SO-02)', 
   });
 
   it('a counted line with variance and a real reason IS ready', () => {
-    expect(isLineReady({ ...base, countedQty: '8.000', varianceReason: 'Kedaluwarsa, dibuang' })).toBe(true);
+    expect(
+      isLineReady({ ...base, countedQty: '8.000', varianceReason: 'Kedaluwarsa, dibuang' }),
+    ).toBe(true);
   });
 
   it('canSubmitOpname blocks submit while ANY line has an unexplained variance', () => {

@@ -8,8 +8,14 @@ import { Button, Input, MoneyInput, Select } from '@/components/ui';
 import { formatMoney } from '@/lib/formatters';
 import { EffectiveWindowEditor } from './EffectiveWindowEditor';
 import {
-  getStatutoryArticle17, getStatutoryBpjs, getStatutoryPtkp, getStatutoryTer,
-  putStatutoryArticle17, putStatutoryBpjs, putStatutoryPtkp, putStatutoryTer,
+  getStatutoryArticle17,
+  getStatutoryBpjs,
+  getStatutoryPtkp,
+  getStatutoryTer,
+  putStatutoryArticle17,
+  putStatutoryBpjs,
+  putStatutoryPtkp,
+  putStatutoryTer,
 } from './lib/hr-api';
 import type { Article17BracketRow, BpjsRow, PtkpRow, TerBracketRow } from './lib/types';
 
@@ -44,15 +50,32 @@ function BpjsEditor() {
   const [rows, setRows] = useState<BpjsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
-  const [draft, setDraft] = useState<Record<string, { employerPct: string; employeePct: string; salaryFloor: string | null; salaryCap: string | null }>>(
-    Object.fromEntries(BPJS_PROGRAMS.map((p) => [p, { employerPct: '', employeePct: '', salaryFloor: null, salaryCap: null }])),
+  const [draft, setDraft] = useState<
+    Record<
+      string,
+      {
+        employerPct: string;
+        employeePct: string;
+        salaryFloor: string | null;
+        salaryCap: string | null;
+      }
+    >
+  >(
+    Object.fromEntries(
+      BPJS_PROGRAMS.map((p) => [
+        p,
+        { employerPct: '', employeePct: '', salaryFloor: null, salaryCap: null },
+      ]),
+    ),
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   function reload() {
     setLoading(true);
-    getStatutoryBpjs().then(setRows).finally(() => setLoading(false));
+    getStatutoryBpjs()
+      .then(setRows)
+      .finally(() => setLoading(false));
   }
   useEffect(reload, []);
 
@@ -85,7 +108,13 @@ function BpjsEditor() {
       description={t('hr.statutory.bpjsDescription')}
       rows={rows}
       loading={loading}
-      historyColumns={[t('hr.statutory.program'), t('hr.statutory.employerPct'), t('hr.statutory.employeePct'), t('hr.statutory.floor'), t('hr.statutory.cap')]}
+      historyColumns={[
+        t('hr.statutory.program'),
+        t('hr.statutory.employerPct'),
+        t('hr.statutory.employeePct'),
+        t('hr.statutory.floor'),
+        t('hr.statutory.cap'),
+      ]}
       renderHistoryRow={(row) => (
         <>
           <td className="px-3 py-2.5">{t(`hr.statutory.bpjsProgram.${row.program}`)}</td>
@@ -104,31 +133,47 @@ function BpjsEditor() {
         <div className="flex flex-col gap-2">
           {BPJS_PROGRAMS.map((program) => (
             <div key={program} className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:items-end">
-              <span className="text-sm font-medium text-text-primary sm:col-span-1">{t(`hr.statutory.bpjsProgram.${program}`)}</span>
+              <span className="text-sm font-medium text-text-primary sm:col-span-1">
+                {t(`hr.statutory.bpjsProgram.${program}`)}
+              </span>
               <Input
                 label={t('hr.statutory.employerPct')}
                 value={draft[program]!.employerPct}
-                onChange={(e) => setDraft((d) => ({ ...d, [program]: { ...d[program]!, employerPct: e.target.value } }))}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    [program]: { ...d[program]!, employerPct: e.target.value },
+                  }))
+                }
                 placeholder="4.000"
                 size="sm"
               />
               <Input
                 label={t('hr.statutory.employeePct')}
                 value={draft[program]!.employeePct}
-                onChange={(e) => setDraft((d) => ({ ...d, [program]: { ...d[program]!, employeePct: e.target.value } }))}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    [program]: { ...d[program]!, employeePct: e.target.value },
+                  }))
+                }
                 placeholder="1.000"
                 size="sm"
               />
               <MoneyInput
                 label={t('hr.statutory.floor')}
                 value={draft[program]!.salaryFloor}
-                onChange={(v) => setDraft((d) => ({ ...d, [program]: { ...d[program]!, salaryFloor: v } }))}
+                onChange={(v) =>
+                  setDraft((d) => ({ ...d, [program]: { ...d[program]!, salaryFloor: v } }))
+                }
                 size="sm"
               />
               <MoneyInput
                 label={t('hr.statutory.cap')}
                 value={draft[program]!.salaryCap}
-                onChange={(v) => setDraft((d) => ({ ...d, [program]: { ...d[program]!, salaryCap: v } }))}
+                onChange={(v) =>
+                  setDraft((d) => ({ ...d, [program]: { ...d[program]!, salaryCap: v } }))
+                }
                 size="sm"
               />
             </div>
@@ -144,15 +189,17 @@ function TerEditor() {
   const [rows, setRows] = useState<TerBracketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
-  const [draftRows, setDraftRows] = useState<{ category?: 'A' | 'B' | 'C'; bracketMin: string; bracketMax: string; ratePct: string }[]>([
-    { category: 'A', bracketMin: '0', bracketMax: '', ratePct: '' },
-  ]);
+  const [draftRows, setDraftRows] = useState<
+    { category?: 'A' | 'B' | 'C'; bracketMin: string; bracketMax: string; ratePct: string }[]
+  >([{ category: 'A', bracketMin: '0', bracketMax: '', ratePct: '' }]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   function reload() {
     setLoading(true);
-    getStatutoryTer().then(setRows).finally(() => setLoading(false));
+    getStatutoryTer()
+      .then(setRows)
+      .finally(() => setLoading(false));
   }
   useEffect(reload, []);
 
@@ -162,7 +209,12 @@ function TerEditor() {
     try {
       await putStatutoryTer(
         effectiveFrom,
-        draftRows.map((r) => ({ category: r.category ?? 'A', bracketMin: r.bracketMin, bracketMax: r.bracketMax || undefined, ratePct: r.ratePct })),
+        draftRows.map((r) => ({
+          category: r.category ?? 'A',
+          bracketMin: r.bracketMin,
+          bracketMax: r.bracketMax || undefined,
+          ratePct: r.ratePct,
+        })),
       );
       toast({ title: t('hr.statutory.saveSuccess'), variant: 'success' });
       setEffectiveFrom('');
@@ -180,12 +232,19 @@ function TerEditor() {
       description={t('hr.statutory.terDescription')}
       rows={rows}
       loading={loading}
-      historyColumns={[t('hr.statutory.category'), t('hr.statutory.bracketMin'), t('hr.statutory.bracketMax'), t('hr.statutory.ratePct')]}
+      historyColumns={[
+        t('hr.statutory.category'),
+        t('hr.statutory.bracketMin'),
+        t('hr.statutory.bracketMax'),
+        t('hr.statutory.ratePct'),
+      ]}
       renderHistoryRow={(row) => (
         <>
           <td className="px-3 py-2.5">{row.category}</td>
           <td className="px-3 py-2.5">{formatMoney(row.bracketMin)}</td>
-          <td className="px-3 py-2.5">{row.bracketMax ? formatMoney(row.bracketMax) : t('hr.statutory.openEnded')}</td>
+          <td className="px-3 py-2.5">
+            {row.bracketMax ? formatMoney(row.bracketMax) : t('hr.statutory.openEnded')}
+          </td>
           <td className="px-3 py-2.5">{row.ratePct}%</td>
         </>
       )}
@@ -211,15 +270,17 @@ function PtkpEditor() {
   const [rows, setRows] = useState<PtkpRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
-  const [draftRows, setDraftRows] = useState<{ ptkpCode: string; annualAmount: string | null; terCategory: 'A' | 'B' | 'C' }[]>([
-    { ptkpCode: 'TK/0', annualAmount: null, terCategory: 'A' },
-  ]);
+  const [draftRows, setDraftRows] = useState<
+    { ptkpCode: string; annualAmount: string | null; terCategory: 'A' | 'B' | 'C' }[]
+  >([{ ptkpCode: 'TK/0', annualAmount: null, terCategory: 'A' }]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   function reload() {
     setLoading(true);
-    getStatutoryPtkp().then(setRows).finally(() => setLoading(false));
+    getStatutoryPtkp()
+      .then(setRows)
+      .finally(() => setLoading(false));
   }
   useEffect(reload, []);
 
@@ -229,7 +290,11 @@ function PtkpEditor() {
     try {
       await putStatutoryPtkp(
         effectiveFrom,
-        draftRows.map((r) => ({ ptkpCode: r.ptkpCode, annualAmount: r.annualAmount ?? '0.00', terCategory: r.terCategory })),
+        draftRows.map((r) => ({
+          ptkpCode: r.ptkpCode,
+          annualAmount: r.annualAmount ?? '0.00',
+          terCategory: r.terCategory,
+        })),
       );
       toast({ title: t('hr.statutory.saveSuccess'), variant: 'success' });
       setEffectiveFrom('');
@@ -247,7 +312,11 @@ function PtkpEditor() {
       description={t('hr.statutory.ptkpDescription')}
       rows={rows}
       loading={loading}
-      historyColumns={[t('hr.statutory.ptkpCode'), t('hr.statutory.annualAmount'), t('hr.statutory.category')]}
+      historyColumns={[
+        t('hr.statutory.ptkpCode'),
+        t('hr.statutory.annualAmount'),
+        t('hr.statutory.category'),
+      ]}
       renderHistoryRow={(row) => (
         <>
           <td className="px-3 py-2.5">{row.ptkpCode}</td>
@@ -268,24 +337,39 @@ function PtkpEditor() {
               <Input
                 label={t('hr.statutory.ptkpCode')}
                 value={row.ptkpCode}
-                onChange={(e) => setDraftRows((rs) => rs.map((r, j) => (j === i ? { ...r, ptkpCode: e.target.value } : r)))}
+                onChange={(e) =>
+                  setDraftRows((rs) =>
+                    rs.map((r, j) => (j === i ? { ...r, ptkpCode: e.target.value } : r)),
+                  )
+                }
                 size="sm"
               />
               <MoneyInput
                 label={t('hr.statutory.annualAmount')}
                 value={row.annualAmount}
-                onChange={(v) => setDraftRows((rs) => rs.map((r, j) => (j === i ? { ...r, annualAmount: v } : r)))}
+                onChange={(v) =>
+                  setDraftRows((rs) => rs.map((r, j) => (j === i ? { ...r, annualAmount: v } : r)))
+                }
                 size="sm"
               />
               <div className="flex items-end gap-2">
                 <Select
                   label={t('hr.statutory.category')}
                   value={row.terCategory}
-                  onValueChange={(v) => setDraftRows((rs) => rs.map((r, j) => (j === i ? { ...r, terCategory: v as 'A' | 'B' | 'C' } : r)))}
+                  onValueChange={(v) =>
+                    setDraftRows((rs) =>
+                      rs.map((r, j) => (j === i ? { ...r, terCategory: v as 'A' | 'B' | 'C' } : r)),
+                    )
+                  }
                   options={TER_CATEGORIES.map((c) => ({ value: c, label: c }))}
                   size="sm"
                 />
-                <Button variant="ghost" size="sm" onClick={() => setDraftRows((rs) => rs.filter((_, j) => j !== i))} aria-label={t('common.delete')}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDraftRows((rs) => rs.filter((_, j) => j !== i))}
+                  aria-label={t('common.delete')}
+                >
                   <Trash2 className="size-4" />
                 </Button>
               </div>
@@ -295,7 +379,9 @@ function PtkpEditor() {
             variant="outline"
             size="sm"
             leftIcon={<Plus className="size-4" />}
-            onClick={() => setDraftRows((rs) => [...rs, { ptkpCode: '', annualAmount: null, terCategory: 'A' }])}
+            onClick={() =>
+              setDraftRows((rs) => [...rs, { ptkpCode: '', annualAmount: null, terCategory: 'A' }])
+            }
           >
             {t('hr.statutory.addRow')}
           </Button>
@@ -310,15 +396,17 @@ function Article17Editor() {
   const [rows, setRows] = useState<Article17BracketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
-  const [draftRows, setDraftRows] = useState<{ bracketMin: string; bracketMax: string; ratePct: string }[]>([
-    { bracketMin: '0', bracketMax: '', ratePct: '' },
-  ]);
+  const [draftRows, setDraftRows] = useState<
+    { bracketMin: string; bracketMax: string; ratePct: string }[]
+  >([{ bracketMin: '0', bracketMax: '', ratePct: '' }]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   function reload() {
     setLoading(true);
-    getStatutoryArticle17().then(setRows).finally(() => setLoading(false));
+    getStatutoryArticle17()
+      .then(setRows)
+      .finally(() => setLoading(false));
   }
   useEffect(reload, []);
 
@@ -328,7 +416,11 @@ function Article17Editor() {
     try {
       await putStatutoryArticle17(
         effectiveFrom,
-        draftRows.map((r) => ({ bracketMin: r.bracketMin, bracketMax: r.bracketMax || undefined, ratePct: r.ratePct })),
+        draftRows.map((r) => ({
+          bracketMin: r.bracketMin,
+          bracketMax: r.bracketMax || undefined,
+          ratePct: r.ratePct,
+        })),
       );
       toast({ title: t('hr.statutory.saveSuccess'), variant: 'success' });
       setEffectiveFrom('');
@@ -346,11 +438,17 @@ function Article17Editor() {
       description={t('hr.statutory.article17Description')}
       rows={rows}
       loading={loading}
-      historyColumns={[t('hr.statutory.bracketMin'), t('hr.statutory.bracketMax'), t('hr.statutory.ratePct')]}
+      historyColumns={[
+        t('hr.statutory.bracketMin'),
+        t('hr.statutory.bracketMax'),
+        t('hr.statutory.ratePct'),
+      ]}
       renderHistoryRow={(row) => (
         <>
           <td className="px-3 py-2.5">{formatMoney(row.bracketMin)}</td>
-          <td className="px-3 py-2.5">{row.bracketMax ? formatMoney(row.bracketMax) : t('hr.statutory.openEnded')}</td>
+          <td className="px-3 py-2.5">
+            {row.bracketMax ? formatMoney(row.bracketMax) : t('hr.statutory.openEnded')}
+          </td>
           <td className="px-3 py-2.5">{row.ratePct}%</td>
         </>
       )}
@@ -367,10 +465,14 @@ function Article17Editor() {
 
 /** Shared "N brackets, add/remove rows" editor for TER (with a category select) and Article-17 (no category). */
 function BracketRowsEditor<C extends string>({
-  rows, onChange, categoryOptions,
+  rows,
+  onChange,
+  categoryOptions,
 }: {
   rows: { category?: C; bracketMin: string; bracketMax: string; ratePct: string }[];
-  onChange: (rows: { category?: C; bracketMin: string; bracketMax: string; ratePct: string }[]) => void;
+  onChange: (
+    rows: { category?: C; bracketMin: string; bracketMax: string; ratePct: string }[],
+  ) => void;
   categoryOptions?: readonly C[];
 }) {
   const { t } = useI18n();
@@ -382,7 +484,9 @@ function BracketRowsEditor<C extends string>({
             <Select
               label={t('hr.statutory.category')}
               value={String(row.category ?? categoryOptions[0] ?? '')}
-              onValueChange={(v) => onChange(rows.map((r, j) => (j === i ? { ...r, category: v as C } : r)))}
+              onValueChange={(v) =>
+                onChange(rows.map((r, j) => (j === i ? { ...r, category: v as C } : r)))
+              }
               options={categoryOptions.map((c) => ({ value: c, label: c }))}
               size="sm"
             />
@@ -390,24 +494,35 @@ function BracketRowsEditor<C extends string>({
           <Input
             label={t('hr.statutory.bracketMin')}
             value={row.bracketMin}
-            onChange={(e) => onChange(rows.map((r, j) => (j === i ? { ...r, bracketMin: e.target.value } : r)))}
+            onChange={(e) =>
+              onChange(rows.map((r, j) => (j === i ? { ...r, bracketMin: e.target.value } : r)))
+            }
             size="sm"
           />
           <Input
             label={t('hr.statutory.bracketMax')}
             placeholder={t('hr.statutory.openEnded')}
             value={row.bracketMax}
-            onChange={(e) => onChange(rows.map((r, j) => (j === i ? { ...r, bracketMax: e.target.value } : r)))}
+            onChange={(e) =>
+              onChange(rows.map((r, j) => (j === i ? { ...r, bracketMax: e.target.value } : r)))
+            }
             size="sm"
           />
           <Input
             label={t('hr.statutory.ratePct')}
             placeholder="15.000"
             value={row.ratePct}
-            onChange={(e) => onChange(rows.map((r, j) => (j === i ? { ...r, ratePct: e.target.value } : r)))}
+            onChange={(e) =>
+              onChange(rows.map((r, j) => (j === i ? { ...r, ratePct: e.target.value } : r)))
+            }
             size="sm"
           />
-          <Button variant="ghost" size="sm" onClick={() => onChange(rows.filter((_, j) => j !== i))} aria-label={t('common.delete')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange(rows.filter((_, j) => j !== i))}
+            aria-label={t('common.delete')}
+          >
             <Trash2 className="size-4" />
           </Button>
         </div>
@@ -416,7 +531,12 @@ function BracketRowsEditor<C extends string>({
         variant="outline"
         size="sm"
         leftIcon={<Plus className="size-4" />}
-        onClick={() => onChange([...rows, { category: categoryOptions?.[0], bracketMin: '', bracketMax: '', ratePct: '' }])}
+        onClick={() =>
+          onChange([
+            ...rows,
+            { category: categoryOptions?.[0], bracketMin: '', bracketMax: '', ratePct: '' },
+          ])
+        }
       >
         {t('hr.statutory.addRow')}
       </Button>

@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { businessDateOf, formatCloudDocNumber, type ISODate, type Qty, type UUID } from '@mimi/shared';
+import {
+  businessDateOf,
+  formatCloudDocNumber,
+  type ISODate,
+  type Qty,
+  type UUID,
+} from '@mimi/shared';
 import { formatDateOnly } from '../../common/date-only.util';
 
 export interface ReplenishmentRow {
@@ -161,7 +167,15 @@ export class ReplenishmentRepository {
       `INSERT INTO replenishment_requests (request_number, location_id, source, requested_by, needed_by, notes, client_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [params.requestNumber, params.locationId, params.source, params.requestedBy, params.neededBy, params.notes, params.clientId],
+      [
+        params.requestNumber,
+        params.locationId,
+        params.source,
+        params.requestedBy,
+        params.neededBy,
+        params.notes,
+        params.clientId,
+      ],
     );
     return res.rows[0]!.id;
   }
@@ -213,10 +227,16 @@ export class ReplenishmentRepository {
       }
     }
     // Unreachable (the loop always returns or throws), but keeps the return type total for the compiler.
-    throw new Error('insertRequestWithNumber: exhausted retry attempts without returning or throwing');
+    throw new Error(
+      'insertRequestWithNumber: exhausted retry attempts without returning or throwing',
+    );
   }
 
-  async insertLines(client: PoolClient, requestId: UUID, lines: readonly CreateLineInput[]): Promise<void> {
+  async insertLines(
+    client: PoolClient,
+    requestId: UUID,
+    lines: readonly CreateLineInput[],
+  ): Promise<void> {
     for (const line of lines) {
       await client.query(
         `INSERT INTO replenishment_request_lines (request_id, item_id, unit_id, qty_requested)
@@ -227,7 +247,9 @@ export class ReplenishmentRepository {
   }
 
   async deleteLines(client: PoolClient, requestId: UUID): Promise<void> {
-    await client.query(`DELETE FROM replenishment_request_lines WHERE request_id = $1`, [requestId]);
+    await client.query(`DELETE FROM replenishment_request_lines WHERE request_id = $1`, [
+      requestId,
+    ]);
   }
 
   async findById(client: PoolClient, id: UUID): Promise<ReplenishmentRow | null> {
@@ -255,7 +277,10 @@ export class ReplenishmentRepository {
     return res.rows.map(mapLineRow);
   }
 
-  async list(client: PoolClient, filter: ListFilter): Promise<{ rows: ReplenishmentRow[]; total: number }> {
+  async list(
+    client: PoolClient,
+    filter: ListFilter,
+  ): Promise<{ rows: ReplenishmentRow[]; total: number }> {
     const conditions: string[] = [];
     const params: unknown[] = [];
     const push = (sql: string, value: unknown) => {
@@ -282,8 +307,13 @@ export class ReplenishmentRepository {
   }
 
   /** `GET /api/replenishment/queue/warehouse` — the KGD work queue: `approved`+`processing` feed SJ building (M10); `awaiting_approval` is what KGD still has to decide. No location filter (D-14: one central warehouse serves every outlet). */
-  async listWarehouseQueue(client: PoolClient, filter: WarehouseQueueFilter): Promise<{ rows: ReplenishmentRow[]; total: number }> {
-    const statuses = filter.status ? [filter.status] : ['awaiting_approval', 'approved', 'processing'];
+  async listWarehouseQueue(
+    client: PoolClient,
+    filter: WarehouseQueueFilter,
+  ): Promise<{ rows: ReplenishmentRow[]; total: number }> {
+    const statuses = filter.status
+      ? [filter.status]
+      : ['awaiting_approval', 'approved', 'processing'];
     const countRes = await client.query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM replenishment_requests rr WHERE rr.status = ANY($1)`,
       [statuses],
@@ -300,15 +330,31 @@ export class ReplenishmentRepository {
   }
 
   async markSubmitted(client: PoolClient, id: UUID, status: string): Promise<void> {
-    await client.query(`UPDATE replenishment_requests SET status = $2, submitted_at = NOW() WHERE id = $1`, [id, status]);
+    await client.query(
+      `UPDATE replenishment_requests SET status = $2, submitted_at = NOW() WHERE id = $1`,
+      [id, status],
+    );
   }
 
-  async setRejectionReason(client: PoolClient, id: UUID, status: string, reason: string): Promise<void> {
-    await client.query(`UPDATE replenishment_requests SET status = $2, rejection_reason = $3 WHERE id = $1`, [id, status, reason]);
+  async setRejectionReason(
+    client: PoolClient,
+    id: UUID,
+    status: string,
+    reason: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE replenishment_requests SET status = $2, rejection_reason = $3 WHERE id = $1`,
+      [id, status, reason],
+    );
   }
 
   /** FR-LOG-13: the approver amended the requested quantity. `amend_reason` is the recoverable "from what, to what, why" audit trail on the LINE itself; `@Audited()` on the owning HTTP endpoint additionally captures the before/after of the whole row via the interceptor (D-09) — this column is what survives even a raw `SELECT` against the line, without needing to replay audit_log. */
-  async applyLineAmendment(client: PoolClient, lineId: UUID, qtyApproved: Qty, reason: string): Promise<void> {
+  async applyLineAmendment(
+    client: PoolClient,
+    lineId: UUID,
+    qtyApproved: Qty,
+    reason: string,
+  ): Promise<void> {
     await client.query(
       `UPDATE replenishment_request_lines SET qty_approved = $2, amend_reason = $3 WHERE id = $1`,
       [lineId, qtyApproved, reason],
@@ -325,15 +371,24 @@ export class ReplenishmentRepository {
   }
 
   async setSjLink(client: PoolClient, id: UUID, sjId: UUID): Promise<void> {
-    await client.query(`UPDATE replenishment_requests SET sj_id = $2 WHERE id = $1 AND sj_id IS NULL`, [id, sjId]);
+    await client.query(
+      `UPDATE replenishment_requests SET sj_id = $2 WHERE id = $1 AND sj_id IS NULL`,
+      [id, sjId],
+    );
   }
 
   async setLineShipped(client: PoolClient, lineId: UUID, qtyShipped: Qty): Promise<void> {
-    await client.query(`UPDATE replenishment_request_lines SET qty_shipped = $2 WHERE id = $1`, [lineId, qtyShipped]);
+    await client.query(`UPDATE replenishment_request_lines SET qty_shipped = $2 WHERE id = $1`, [
+      lineId,
+      qtyShipped,
+    ]);
   }
 
   async setLineReceived(client: PoolClient, lineId: UUID, qtyReceived: Qty): Promise<void> {
-    await client.query(`UPDATE replenishment_request_lines SET qty_received = $2 WHERE id = $1`, [lineId, qtyReceived]);
+    await client.query(`UPDATE replenishment_request_lines SET qty_received = $2 WHERE id = $1`, [
+      lineId,
+      qtyReceived,
+    ]);
   }
 
   async countUnreconciledLines(client: PoolClient, requestId: UUID): Promise<number> {
@@ -349,7 +404,10 @@ export class ReplenishmentRepository {
   }
 
   /** FR-LOG-12: full history — every status/qty change the `@Audited()` interceptor recorded under this entity, oldest first (a timeline reads naturally top-down). */
-  async history(client: PoolClient, id: UUID): Promise<
+  async history(
+    client: PoolClient,
+    id: UUID,
+  ): Promise<
     {
       id: string;
       userId: string | null;

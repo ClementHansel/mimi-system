@@ -1,5 +1,16 @@
 /** Request DTOs — M02 `users` (CONTRACTS.md §4.2). Validated by the global `ValidationPipe`. */
-import { ArrayUnique, IsArray, IsEmail, IsIn, IsOptional, IsPhoneNumber, IsString, IsUUID, Matches, MinLength } from 'class-validator';
+import {
+  ArrayUnique,
+  IsArray,
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsPhoneNumber,
+  IsString,
+  IsUUID,
+  Matches,
+  MinLength,
+} from 'class-validator';
 import { RBAC_ROLE_ORDER, type RoleKey } from '@mimi/shared';
 
 const ROLE_KEYS = RBAC_ROLE_ORDER as readonly string[];
@@ -99,4 +110,3 @@ export class ResetPasswordDto {
   @MinLength(8)
   newPassword!: string;
 }
-

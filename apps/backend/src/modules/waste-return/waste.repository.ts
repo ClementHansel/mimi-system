@@ -49,13 +49,34 @@ export class WasteRepository {
     return formatCloudDocNumber('WST', period, res.rows[0]!.last_number);
   }
 
-  async insertRecord(client: PoolClient, input: {
-    wasteNumber: string; batchId: UUID; locationId: UUID; storageAreaId: UUID; itemId: UUID; qty: Qty; reason: string; reasonDetail: string | null; reportedBy: UUID;
-  }): Promise<string> {
+  async insertRecord(
+    client: PoolClient,
+    input: {
+      wasteNumber: string;
+      batchId: UUID;
+      locationId: UUID;
+      storageAreaId: UUID;
+      itemId: UUID;
+      qty: Qty;
+      reason: string;
+      reasonDetail: string | null;
+      reportedBy: UUID;
+    },
+  ): Promise<string> {
     const res = await client.query<{ id: string }>(
       `INSERT INTO waste_records (waste_number, batch_id, location_id, storage_area_id, item_id, qty, reason, reason_detail, reported_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-      [input.wasteNumber, input.batchId, input.locationId, input.storageAreaId, input.itemId, input.qty, input.reason, input.reasonDetail, input.reportedBy],
+      [
+        input.wasteNumber,
+        input.batchId,
+        input.locationId,
+        input.storageAreaId,
+        input.itemId,
+        input.qty,
+        input.reason,
+        input.reasonDetail,
+        input.reportedBy,
+      ],
     );
     return res.rows[0]!.id;
   }
@@ -66,28 +87,60 @@ export class WasteRepository {
   }
 
   async findByBatch(client: PoolClient, batchId: string): Promise<WasteRecordRow[]> {
-    const res = await client.query<WasteRecordRow>(`${SELECT} WHERE w.batch_id = $1 ORDER BY w.id`, [batchId]);
+    const res = await client.query<WasteRecordRow>(
+      `${SELECT} WHERE w.batch_id = $1 ORDER BY w.id`,
+      [batchId],
+    );
     return res.rows;
   }
 
   async listRecords(
     client: PoolClient,
-    query: { locationId?: string; status?: string; reason?: string; from?: string; to?: string; page: number; pageSize: number },
+    query: {
+      locationId?: string;
+      status?: string;
+      reason?: string;
+      from?: string;
+      to?: string;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<{ rows: WasteRecordRow[]; total: number }> {
     const conds: string[] = [];
     const args: unknown[] = [];
     let i = 1;
-    if (query.locationId) { conds.push(`w.location_id = $${i++}`); args.push(query.locationId); }
-    if (query.status) { conds.push(`w.status = $${i++}`); args.push(query.status); }
-    if (query.reason) { conds.push(`w.reason = $${i++}`); args.push(query.reason); }
-    if (query.from) { conds.push(`w.occurred_at >= $${i++}`); args.push(query.from); }
-    if (query.to) { conds.push(`w.occurred_at <= $${i++}`); args.push(query.to); }
+    if (query.locationId) {
+      conds.push(`w.location_id = $${i++}`);
+      args.push(query.locationId);
+    }
+    if (query.status) {
+      conds.push(`w.status = $${i++}`);
+      args.push(query.status);
+    }
+    if (query.reason) {
+      conds.push(`w.reason = $${i++}`);
+      args.push(query.reason);
+    }
+    if (query.from) {
+      conds.push(`w.occurred_at >= $${i++}`);
+      args.push(query.from);
+    }
+    if (query.to) {
+      conds.push(`w.occurred_at <= $${i++}`);
+      args.push(query.to);
+    }
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const offset = (query.page - 1) * query.pageSize;
 
     const [rows, count] = await Promise.all([
-      client.query<WasteRecordRow>(`${SELECT} ${where} ORDER BY w.occurred_at DESC LIMIT $${i} OFFSET $${i + 1}`, [...args, query.pageSize, offset]),
-      client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM waste_records w ${where}`, args),
+      client.query<WasteRecordRow>(
+        `${SELECT} ${where} ORDER BY w.occurred_at DESC LIMIT $${i} OFFSET $${i + 1}`,
+        [...args, query.pageSize, offset],
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM waste_records w ${where}`,
+        args,
+      ),
     ]);
     return { rows: rows.rows, total: Number(count.rows[0]?.count ?? '0') };
   }
@@ -100,16 +153,30 @@ export class WasteRepository {
     await client.query(`UPDATE waste_records SET unit_cost = $2 WHERE id = $1`, [id, unitCost]);
   }
 
-  async setApproved(client: PoolClient, id: string, approvedBy: UUID, approvedAt: string): Promise<void> {
-    await client.query(`UPDATE waste_records SET status = 'approved', approved_by = $2, approved_at = $3, updated_at = NOW() WHERE id = $1`, [id, approvedBy, approvedAt]);
+  async setApproved(
+    client: PoolClient,
+    id: string,
+    approvedBy: UUID,
+    approvedAt: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE waste_records SET status = 'approved', approved_by = $2, approved_at = $3, updated_at = NOW() WHERE id = $1`,
+      [id, approvedBy, approvedAt],
+    );
   }
 
   async setRejected(client: PoolClient, id: string, reason: string): Promise<void> {
-    await client.query(`UPDATE waste_records SET status = 'rejected', rejection_reason = $2, updated_at = NOW() WHERE id = $1`, [id, reason]);
+    await client.query(
+      `UPDATE waste_records SET status = 'rejected', rejection_reason = $2, updated_at = NOW() WHERE id = $1`,
+      [id, reason],
+    );
   }
 
   async itemAvgCost(client: PoolClient, itemId: UUID): Promise<Money> {
-    const res = await client.query<{ avg_cost: string }>(`SELECT avg_cost FROM items WHERE id = $1`, [itemId]);
+    const res = await client.query<{ avg_cost: string }>(
+      `SELECT avg_cost FROM items WHERE id = $1`,
+      [itemId],
+    );
     return (res.rows[0]?.avg_cost ?? '0.00') as Money;
   }
 }

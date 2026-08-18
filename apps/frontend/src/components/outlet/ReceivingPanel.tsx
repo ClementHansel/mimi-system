@@ -60,7 +60,9 @@ export function ReceivingPanel() {
   }, [locationId]);
 
   const incomingDrops = sjList.flatMap((sj) =>
-    sj.drops.filter((d) => d.locationId === locationId && OPEN_DROP_STATUSES.has(d.status)).map((d) => ({ sj, drop: d })),
+    sj.drops
+      .filter((d) => d.locationId === locationId && OPEN_DROP_STATUSES.has(d.status))
+      .map((d) => ({ sj, drop: d })),
   );
 
   function openReceive(drop: Drop) {
@@ -81,11 +83,19 @@ export function ReceivingPanel() {
       // own `attachmentId` (W2-E's canonical id, resolved cloud-side via
       // `X-Attachment-Id`) — NOT a freshly minted id, which would point at
       // nothing and silently break the FR-LOG-15 wajib-foto evidence trail.
-      const photoRef = await runtime.captureEvidence(photoFile, photoFile.type || 'image/jpeg', 'receiving_photo');
+      const photoRef = await runtime.captureEvidence(
+        photoFile,
+        photoFile.type || 'image/jpeg',
+        'receiving_photo',
+      );
       const photoAttachmentId = photoRef.attachmentId;
 
       const signatureFile = dataUrlToFile(signature, 'signature.png');
-      const signatureRef = await runtime.captureEvidence(signatureFile, signatureFile.type, 'receiving_signature');
+      const signatureRef = await runtime.captureEvidence(
+        signatureFile,
+        signatureFile.type,
+        'receiving_signature',
+      );
       const signatureAttachmentId = signatureRef.attachmentId;
 
       await runtime.commitDropReceived(
@@ -117,19 +127,26 @@ export function ReceivingPanel() {
 
   if (!locationId) return <EmptyState title={t('table.error')} size="lg" />;
   if (loading) return <EmptyState title={t('table.loading')} size="lg" />;
-  if (incomingDrops.length === 0) return <EmptyState title={t('outlet.receiving.empty')} size="lg" />;
+  if (incomingDrops.length === 0)
+    return <EmptyState title={t('outlet.receiving.empty')} size="lg" />;
 
   return (
     <div className="flex flex-col gap-3">
       {incomingDrops.map(({ sj, drop }) => (
-        <Card key={drop.id} className="cursor-pointer hover:bg-surface-sunken" onClick={() => openReceive(drop)}>
+        <Card
+          key={drop.id}
+          className="cursor-pointer hover:bg-surface-sunken"
+          onClick={() => openReceive(drop)}
+        >
           <CardContent className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="font-medium text-text-primary">{sj.sjNumber}</p>
               <p className="text-sm text-text-muted">
                 {t('outlet.receiving.driver')}: {sj.driver.name} — {drop.lines.length} item
               </p>
-              {drop.arrivedAt && <p className="text-xs text-text-muted">{fmtDateTime(drop.arrivedAt)}</p>}
+              {drop.arrivedAt && (
+                <p className="text-xs text-text-muted">{fmtDateTime(drop.arrivedAt)}</p>
+              )}
             </div>
             <StatusBadge domain="drop" status={drop.status} />
           </CardContent>

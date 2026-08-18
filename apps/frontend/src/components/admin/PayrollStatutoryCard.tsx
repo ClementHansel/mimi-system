@@ -53,30 +53,43 @@ export function PayrollStatutoryCard() {
 
   function reload() {
     setLoading(true);
-    api.get<StatutoryStatus>('/payroll/statutory/status').then(setStatus).finally(() => setLoading(false));
+    api
+      .get<StatutoryStatus>('/payroll/statutory/status')
+      .then(setStatus)
+      .finally(() => setLoading(false));
   }
   useEffect(reload, []);
 
   async function enable() {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
-      const updated = await api.post<StatutoryStatus>('/payroll/statutory/enable', { confirm: true });
+      const updated = await api.post<StatutoryStatus>('/payroll/statutory/enable', {
+        confirm: true,
+      });
       setStatus(updated);
       setConfirmEnableOpen(false);
       toast({ title: t('admin.settings.payrollStatutory.enableSuccess'), variant: 'success' });
     } catch (err) {
-      setError(err instanceof ApiError && err.code === 'ERR_STATUTORY_NOT_READY'
-        ? t('admin.settings.payrollStatutory.notReadyError')
-        : err instanceof ApiError ? err.message : t('auth.genericError'));
+      setError(
+        err instanceof ApiError && err.code === 'ERR_STATUTORY_NOT_READY'
+          ? t('admin.settings.payrollStatutory.notReadyError')
+          : err instanceof ApiError
+            ? err.message
+            : t('auth.genericError'),
+      );
     } finally {
       setBusy(false);
     }
   }
 
   async function disable() {
-    setBusy(true); setError(null);
+    setBusy(true);
+    setError(null);
     try {
-      const updated = await api.post<StatutoryStatus>('/payroll/statutory/disable', { reason: disableReason });
+      const updated = await api.post<StatutoryStatus>('/payroll/statutory/disable', {
+        reason: disableReason,
+      });
       setStatus(updated);
       setDisableOpen(false);
       setDisableReason('');
@@ -102,24 +115,33 @@ export function PayrollStatutoryCard() {
             <div className="flex flex-wrap items-center gap-2">
               {status.enabled ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-sm font-medium text-success-700">
-                  <CheckCircle2 className="size-3.5" aria-hidden /> {t('admin.settings.payrollStatutory.statusEnabled')}
+                  <CheckCircle2 className="size-3.5" aria-hidden />{' '}
+                  {t('admin.settings.payrollStatutory.statusEnabled')}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 text-sm font-medium text-stone-600">
-                  <ShieldCheck className="size-3.5" aria-hidden /> {t('admin.settings.payrollStatutory.statusDisabled')}
+                  <ShieldCheck className="size-3.5" aria-hidden />{' '}
+                  {t('admin.settings.payrollStatutory.statusDisabled')}
                 </span>
               )}
               {status.ready ? (
-                <Badge variant="success" size="sm">{t('admin.settings.payrollStatutory.readyBadge')}</Badge>
+                <Badge variant="success" size="sm">
+                  {t('admin.settings.payrollStatutory.readyBadge')}
+                </Badge>
               ) : (
-                <Badge variant="warning" size="sm">{t('admin.settings.payrollStatutory.notReadyBadge')}</Badge>
+                <Badge variant="warning" size="sm">
+                  {t('admin.settings.payrollStatutory.notReadyBadge')}
+                </Badge>
               )}
             </div>
 
             {status.enabled && status.enabledAt && (
               <p className="text-sm text-text-muted">
-                {t('admin.settings.payrollStatutory.enabledAt', { when: fmtDateTime(status.enabledAt) })}
-                {status.enabledBy && ` ${t('admin.settings.payrollStatutory.enabledBy', { name: status.enabledBy })}`}
+                {t('admin.settings.payrollStatutory.enabledAt', {
+                  when: fmtDateTime(status.enabledAt),
+                })}
+                {status.enabledBy &&
+                  ` ${t('admin.settings.payrollStatutory.enabledBy', { name: status.enabledBy })}`}
               </p>
             )}
 
@@ -133,12 +155,17 @@ export function PayrollStatutoryCard() {
             {status.missing.length > 0 && (
               <div className="rounded-md border border-warning-600/30 bg-warning-50 p-3">
                 <p className="mb-1 flex items-center gap-1.5 text-sm font-medium text-warning-700">
-                  <AlertTriangle className="size-4" aria-hidden /> {t('admin.settings.payrollStatutory.missingTitle')}
+                  <AlertTriangle className="size-4" aria-hidden />{' '}
+                  {t('admin.settings.payrollStatutory.missingTitle')}
                 </p>
                 <ul className="list-inside list-disc text-sm text-warning-700">
-                  {status.missing.map((m) => <li key={m}>{t(MISSING_LABELS[m] ?? m)}</li>)}
+                  {status.missing.map((m) => (
+                    <li key={m}>{t(MISSING_LABELS[m] ?? m)}</li>
+                  ))}
                 </ul>
-                <p className="mt-2 text-sm text-text-muted">{t('admin.settings.payrollStatutory.configureHint')}</p>
+                <p className="mt-2 text-sm text-text-muted">
+                  {t('admin.settings.payrollStatutory.configureHint')}
+                </p>
               </div>
             )}
 
@@ -147,7 +174,9 @@ export function PayrollStatutoryCard() {
             {can('payroll.statutory.enable') && (
               <div>
                 {status.enabled ? (
-                  <Button variant="outline" onClick={() => setDisableOpen(true)}>{t('admin.settings.payrollStatutory.disableButton')}</Button>
+                  <Button variant="outline" onClick={() => setDisableOpen(true)}>
+                    {t('admin.settings.payrollStatutory.disableButton')}
+                  </Button>
                 ) : (
                   <Button onClick={() => setConfirmEnableOpen(true)} disabled={!status.ready}>
                     {t('admin.settings.payrollStatutory.enableButton')}
@@ -161,20 +190,42 @@ export function PayrollStatutoryCard() {
 
       {confirmEnableOpen && (
         <Modal
-          open onClose={() => setConfirmEnableOpen(false)}
+          open
+          onClose={() => setConfirmEnableOpen(false)}
           title={t('admin.settings.payrollStatutory.confirmEnableTitle')}
           description={t('admin.settings.payrollStatutory.confirmEnableDescription')}
-          footer={<><Button variant="outline" onClick={() => setConfirmEnableOpen(false)}>{t('common.cancel')}</Button><Button onClick={enable} loading={busy}>{t('common.confirm')}</Button></>}
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setConfirmEnableOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button onClick={enable} loading={busy}>
+                {t('common.confirm')}
+              </Button>
+            </>
+          }
         >
-          <p className="text-sm text-text-secondary">{t('admin.settings.payrollStatutory.confirmEnableDescription')}</p>
+          <p className="text-sm text-text-secondary">
+            {t('admin.settings.payrollStatutory.confirmEnableDescription')}
+          </p>
         </Modal>
       )}
 
       {disableOpen && (
         <Modal
-          open onClose={() => setDisableOpen(false)}
+          open
+          onClose={() => setDisableOpen(false)}
           title={t('admin.settings.payrollStatutory.disableTitle')}
-          footer={<><Button variant="outline" onClick={() => setDisableOpen(false)}>{t('common.cancel')}</Button><Button variant="danger" onClick={disable} loading={busy} disabled={!disableReason}>{t('common.confirm')}</Button></>}
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setDisableOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button variant="danger" onClick={disable} loading={busy} disabled={!disableReason}>
+                {t('common.confirm')}
+              </Button>
+            </>
+          }
         >
           <Textarea
             label={t('admin.settings.payrollStatutory.disableReasonLabel')}

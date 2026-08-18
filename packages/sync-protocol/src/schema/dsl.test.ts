@@ -110,11 +110,15 @@ describe('object', () => {
   const schema = object({ id: uuid(), name: string(), age: optional(number()) });
 
   it('accepts a fully-populated object', () => {
-    expect(ok(validate(schema, { id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', name: 'Ayam', age: 3 }))).toBe(true);
+    expect(
+      ok(validate(schema, { id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', name: 'Ayam', age: 3 })),
+    ).toBe(true);
   });
 
   it('accepts an optional field being absent', () => {
-    expect(ok(validate(schema, { id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', name: 'Ayam' }))).toBe(true);
+    expect(ok(validate(schema, { id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', name: 'Ayam' }))).toBe(
+      true,
+    );
   });
 
   it('rejects a missing required field', () => {
@@ -141,7 +145,11 @@ describe('object', () => {
 
   it('validates nested objects and reports a dotted path', () => {
     const nested = object({ line: object({ productId: uuid(), qty: qty() }) });
-    const result = validate(nested, { line: { productId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', qty: 'bad' } }, '$');
+    const result = validate(
+      nested,
+      { line: { productId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', qty: 'bad' } },
+      '$',
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.issues[0]?.path).toBe('$.line.qty');
   });

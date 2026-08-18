@@ -6,7 +6,15 @@ import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
 import {
-  Button, Card, CardContent, CardHeader, CardTitle, StatusBadge, ApprovalTimeline, EmptyState, toast,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  StatusBadge,
+  ApprovalTimeline,
+  EmptyState,
+  toast,
 } from '@/components/ui';
 import { formatMoney } from '@/lib/formatters';
 import { fmtDateTime, fmtRelative } from '@/lib/dates';
@@ -14,11 +22,19 @@ import { ApiError } from '@/lib/api';
 import { ApprovalDocumentType } from '@/lib/shared-types';
 import { documentTypeConfig } from './lib/document-types';
 import {
-  getApprovalDetail, getPendingApprovals, approveDocument, rejectDocument,
-  getReplenishmentForApproval, approveReplenishment, rejectReplenishment,
+  getApprovalDetail,
+  getPendingApprovals,
+  approveDocument,
+  rejectDocument,
+  getReplenishmentForApproval,
+  approveReplenishment,
+  rejectReplenishment,
 } from './lib/approvals-api';
 import { ApprovalActionPanel } from './ApprovalActionPanel';
-import { ReplenishmentApproveForm, type AmendmentInput } from '@/components/warehouse/ReplenishmentApproveForm';
+import {
+  ReplenishmentApproveForm,
+  type AmendmentInput,
+} from '@/components/warehouse/ReplenishmentApproveForm';
 import type { Replenishment } from '@/components/warehouse/lib/types';
 import type { ApprovalDetail, PendingApprovalRow } from './lib/types';
 
@@ -95,7 +111,10 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
   async function handleReplenishmentApprove(amendments: AmendmentInput[], note?: string) {
     setSubmitting(true);
     try {
-      await approveReplenishment(documentId, { note, amendments: amendments.length ? amendments : undefined });
+      await approveReplenishment(documentId, {
+        note,
+        amendments: amendments.length ? amendments : undefined,
+      });
       toast({ title: t('approvalDetail.approved'), variant: 'success' });
       load();
     } catch {
@@ -156,7 +175,10 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
   }
 
   const finished = detail?.currentStep === null;
-  const currentStepDetail = detail && detail.currentStep !== null ? detail.steps.find((s) => s.stepNo === detail.currentStep) : undefined;
+  const currentStepDetail =
+    detail && detail.currentStep !== null
+      ? detail.steps.find((s) => s.stepNo === detail.currentStep)
+      : undefined;
   const currentStepRoleLabel = currentStepDetail
     ? (() => {
         const key = `role.${currentStepDetail.approverRole}`;
@@ -174,7 +196,9 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
   // permission required"), so falling through to `approvePermission` when
   // it's legitimately `undefined` would wrongly show the reject-only panel
   // to every caller regardless of role.
-  const eligibilityPermission = config.approveSupported ? config.approvePermission : config.rejectPermission;
+  const eligibilityPermission = config.approveSupported
+    ? config.approvePermission
+    : config.rejectPermission;
   const canApprove = !finished && can(eligibilityPermission);
   const documentLabel = t(config.labelKey);
   const title = context?.documentNumber ?? `${documentLabel} #${documentId.slice(0, 8)}`;
@@ -210,11 +234,21 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryField label={t('approvalDetail.amount')} value={formatMoney(detail.amount)} />
-              <SummaryField label={t('approvalDetail.requestedBy')} value={context?.requestedBy ?? '—'} />
-              <SummaryField label={t('approvalDetail.location')} value={context?.locationName ?? '—'} />
+              <SummaryField
+                label={t('approvalDetail.requestedBy')}
+                value={context?.requestedBy ?? '—'}
+              />
+              <SummaryField
+                label={t('approvalDetail.location')}
+                value={context?.locationName ?? '—'}
+              />
               <SummaryField
                 label={t('approvalDetail.waiting')}
-                value={context ? `${fmtRelative(context.requestedAt)} (${fmtDateTime(context.requestedAt)})` : '—'}
+                value={
+                  context
+                    ? `${fmtRelative(context.requestedAt)} (${fmtDateTime(context.requestedAt)})`
+                    : '—'
+                }
               />
             </CardContent>
           </Card>
@@ -223,14 +257,21 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
             <Card className="border-success-600/30 bg-success-50/40">
               <CardContent className="flex items-center gap-2 p-3 text-sm text-success-700">
                 <CheckCircle2 className="size-4 flex-none" aria-hidden />
-                <span>{t('approvalDetail.chainFinished', { state: t(`status.approval.${detail.state}`) })}</span>
+                <span>
+                  {t('approvalDetail.chainFinished', {
+                    state: t(`status.approval.${detail.state}`),
+                  })}
+                </span>
               </CardContent>
             </Card>
           ) : (
             currentStepRoleLabel && (
               <Card className="border-warning-600/30 bg-warning-50/40">
                 <CardContent className="p-3 text-sm text-warning-700">
-                  {t('approvalDetail.waitingOnStep', { step: detail.currentStep ?? 0, role: currentStepRoleLabel })}
+                  {t('approvalDetail.waitingOnStep', {
+                    step: detail.currentStep ?? 0,
+                    role: currentStepRoleLabel,
+                  })}
                 </CardContent>
               </Card>
             )
@@ -261,7 +302,9 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
                 ) : (
                   <ApprovalActionPanel
                     approveSupported={config.approveSupported}
-                    approveUnsupportedMessage={config.approveUnsupportedKey ? t(config.approveUnsupportedKey) : undefined}
+                    approveUnsupportedMessage={
+                      config.approveUnsupportedKey ? t(config.approveUnsupportedKey) : undefined
+                    }
                     reasonRequiredOnApprove={config.reasonRequiredOnApprove}
                     submitting={submitting}
                     onApprove={handleGenericApprove}

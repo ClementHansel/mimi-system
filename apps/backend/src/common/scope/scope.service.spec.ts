@@ -54,7 +54,10 @@ describe('ScopeService', () => {
     it(`returns an empty scope — not every location — for a ${roleKey} who owns zero user_locations rows`, async () => {
       client = makeClient({ 'FROM user_locations': [] });
       const service = new ScopeService();
-      const result = await service.resolveLocationIds(client as never, { sub: 'ghost-user', roleKey });
+      const result = await service.resolveLocationIds(client as never, {
+        sub: 'ghost-user',
+        roleKey,
+      });
       expect(result).toEqual([]);
       expect(result).not.toBeNull();
     });
@@ -63,9 +66,14 @@ describe('ScopeService', () => {
   it('scopes the user_locations lookup by the exact caller-supplied user id — never an unscoped read', async () => {
     client = makeClient({ 'FROM user_locations': [] });
     const service = new ScopeService();
-    await service.resolveLocationIds(client as never, { sub: 'user-scoped-check', roleKey: 'kasir' });
+    await service.resolveLocationIds(client as never, {
+      sub: 'user-scoped-check',
+      roleKey: 'kasir',
+    });
 
-    const call = client.query.mock.calls.find(([sql]: [string]) => sql.includes('FROM user_locations'));
+    const call = client.query.mock.calls.find(([sql]: [string]) =>
+      sql.includes('FROM user_locations'),
+    );
     expect(call).toBeDefined();
     expect(call![0]).toContain('WHERE user_id = $1');
     expect(call![1]).toEqual(['user-scoped-check']);
@@ -77,7 +85,10 @@ describe('ScopeService', () => {
       'FROM sj_drops': [{ location_id: 'loc-outlet-a' }, { location_id: 'loc-outlet-b' }],
     });
     const service = new ScopeService();
-    const result = await service.resolveLocationIds(client as never, { sub: 'user-3', roleKey: 'kepala_gudang' });
+    const result = await service.resolveLocationIds(client as never, {
+      sub: 'user-3',
+      roleKey: 'kepala_gudang',
+    });
     expect(result).not.toBeNull();
     expect(new Set(result)).toEqual(new Set(['loc-warehouse', 'loc-outlet-a', 'loc-outlet-b']));
   });
@@ -85,7 +96,10 @@ describe('ScopeService', () => {
   it('resolves kepala_gudang with no warehouse assignment to an empty scope, skipping the drops query', async () => {
     client = makeClient({ 'FROM user_locations': [] });
     const service = new ScopeService();
-    const result = await service.resolveLocationIds(client as never, { sub: 'user-4', roleKey: 'kepala_gudang' });
+    const result = await service.resolveLocationIds(client as never, {
+      sub: 'user-4',
+      roleKey: 'kepala_gudang',
+    });
     expect(result).toEqual([]);
   });
 
@@ -96,14 +110,20 @@ describe('ScopeService', () => {
       'FROM surat_jalan': [{ origin_location_id: 'loc-warehouse' }],
     });
     const service = new ScopeService();
-    const result = await service.resolveLocationIds(client as never, { sub: 'user-5', roleKey: 'driver' });
+    const result = await service.resolveLocationIds(client as never, {
+      sub: 'user-5',
+      roleKey: 'driver',
+    });
     expect(new Set(result)).toEqual(new Set(['loc-outlet-x', 'loc-warehouse']));
   });
 
   it('resolves a driver with no matching drivers row to an empty scope', async () => {
     client = makeClient({ 'FROM drivers': [] });
     const service = new ScopeService();
-    const result = await service.resolveLocationIds(client as never, { sub: 'user-6', roleKey: 'driver' });
+    const result = await service.resolveLocationIds(client as never, {
+      sub: 'user-6',
+      roleKey: 'driver',
+    });
     expect(result).toEqual([]);
   });
 });

@@ -29,13 +29,22 @@ export default function MePage() {
       <Tabs defaultValue="absen">
         <TabsList className="grid grid-cols-3">
           <TabsTrigger value="absen">
-            <span className="inline-flex items-center gap-1.5"><QrCode className="size-4" aria-hidden />{t('me.tabs.absen')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <QrCode className="size-4" aria-hidden />
+              {t('me.tabs.absen')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="slip">
-            <span className="inline-flex items-center gap-1.5"><FileText className="size-4" aria-hidden />{t('me.tabs.slip')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <FileText className="size-4" aria-hidden />
+              {t('me.tabs.slip')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="cuti">
-            <span className="inline-flex items-center gap-1.5"><CalendarPlus className="size-4" aria-hidden />{t('me.tabs.cuti')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarPlus className="size-4" aria-hidden />
+              {t('me.tabs.cuti')}
+            </span>
           </TabsTrigger>
         </TabsList>
 

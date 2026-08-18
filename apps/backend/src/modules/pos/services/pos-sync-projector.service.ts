@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { OnlineOrderStatus, OnlinePlatform, PaymentMethod, VoidRefundType, type Money, type Qty, type UUID } from '@mimi/shared';
+import {
+  OnlineOrderStatus,
+  OnlinePlatform,
+  PaymentMethod,
+  VoidRefundType,
+  type Money,
+  type Qty,
+  type UUID,
+} from '@mimi/shared';
 import type { SyncEventEnvelope } from '@mimi/sync-protocol';
 import type { ProjectionContext, SyncProjector } from '../../../kernel/sync/sync-projector.types';
 import { PosShiftService } from './pos-shift.service';
@@ -40,7 +48,14 @@ function readShiftOpened(data: unknown): ShiftOpenedPayload | undefined {
   const openingCash = str(d.openingCash);
   const openedAt = str(d.openedAt);
   if (!clientId || !locationId || !openingCash || !openedAt) return undefined;
-  return { clientId, locationId, deviceId: str(d.deviceId) ?? null, openingCash, openedAt, shiftNumber: str(d.shiftNumber) };
+  return {
+    clientId,
+    locationId,
+    deviceId: str(d.deviceId) ?? null,
+    openingCash,
+    openedAt,
+    shiftNumber: str(d.shiftNumber),
+  };
 }
 
 interface ShiftClosedPayload {
@@ -85,7 +100,8 @@ function readSaleCompleted(data: unknown): SaleCompletedPayload | undefined {
   const occurredAt = str(d.occurredAt);
   const linesRaw = Array.isArray(d.lines) ? d.lines : undefined;
   const paymentsRaw = Array.isArray(d.payments) ? d.payments : undefined;
-  if (!clientId || !locationId || !shiftId || !occurredAt || !linesRaw || !paymentsRaw) return undefined;
+  if (!clientId || !locationId || !shiftId || !occurredAt || !linesRaw || !paymentsRaw)
+    return undefined;
 
   const lines: SaleLinePayload[] = [];
   for (const raw of linesRaw) {
@@ -102,11 +118,26 @@ function readSaleCompleted(data: unknown): SaleCompletedPayload | undefined {
     const po = obj(raw);
     const method = str(po.method);
     const amount = str(po.amount);
-    if (!method || !amount || !Object.values(PaymentMethod).includes(method as PaymentMethod)) return undefined;
-    payments.push({ method: method as PaymentMethod, amount, reference: str(po.reference), proofAttachmentId: str(po.proofAttachmentId) });
+    if (!method || !amount || !Object.values(PaymentMethod).includes(method as PaymentMethod))
+      return undefined;
+    payments.push({
+      method: method as PaymentMethod,
+      amount,
+      reference: str(po.reference),
+      proofAttachmentId: str(po.proofAttachmentId),
+    });
   }
 
-  return { clientId, locationId, shiftId, occurredAt, lines, payments, discount: str(d.discount), receiptNumber: str(d.receiptNumber) };
+  return {
+    clientId,
+    locationId,
+    shiftId,
+    occurredAt,
+    lines,
+    payments,
+    discount: str(d.discount),
+    receiptNumber: str(d.receiptNumber),
+  };
 }
 
 interface VoidRequestedPayload {
@@ -120,7 +151,13 @@ function readVoidRequested(data: unknown): VoidRequestedPayload | undefined {
   const clientId = str(d.clientId);
   const type = str(d.type);
   const reason = str(d.reason);
-  if (!clientId || !reason || !type || !Object.values(VoidRefundType).includes(type as VoidRefundType)) return undefined;
+  if (
+    !clientId ||
+    !reason ||
+    !type ||
+    !Object.values(VoidRefundType).includes(type as VoidRefundType)
+  )
+    return undefined;
   return { clientId, type: type as VoidRefundType, reason, amount: str(d.amount) };
 }
 
@@ -269,7 +306,11 @@ export class PosSyncProjector implements SyncProjector {
     private readonly onlineOrders: PosOnlineOrderService,
   ) {}
 
-  async project(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<void> {
+  async project(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<void> {
     const key = `${event.entity}.${event.op}`;
     switch (key) {
       case 'pos_shifts.opened':
@@ -325,7 +366,11 @@ export class PosSyncProjector implements SyncProjector {
     });
   }
 
-  private async projectSaleCompleted(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<void> {
+  private async projectSaleCompleted(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<void> {
     if (context.isConflictLoser) return; // SYNC-PROTOCOL: not actually possible for `sales` (dedupe by eventId only) — defensive, matches the interface's stated default.
 
     const data = readSaleCompleted(event.payload.data);
@@ -356,7 +401,8 @@ export class PosSyncProjector implements SyncProjector {
   /** `event.entityId` for every `void_refunds.*` op is the SALE's id, not a separate void-refund id — SYNC-PROTOCOL §2.1's own example ("the sale id") for `entityId`, and there is no `saleId` field anywhere in the `void_refunds.*` payload schemas to get it from otherwise. A sale has at most one live void/refund document at a time (mirrors `PosVoidRefundService.requestVoid`'s own `pendingAlready` guard). */
   private async projectVoidRequested(client: PoolClient, event: SyncEventEnvelope): Promise<void> {
     const data = readVoidRequested(event.payload.data);
-    if (!data) throw new Error(`void_refunds.requested: unreadable payload for event ${event.eventId}`);
+    if (!data)
+      throw new Error(`void_refunds.requested: unreadable payload for event ${event.eventId}`);
 
     await this.voidRefunds.requestVoid(client, event.entityId, event.actorUserId, {
       clientId: data.clientId,
@@ -366,18 +412,33 @@ export class PosSyncProjector implements SyncProjector {
     });
   }
 
-  private async projectVoidApprovedOffline(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<void> {
+  private async projectVoidApprovedOffline(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<void> {
     const approverUserId = event.payload.meta?.authorization?.approverUserId ?? event.actorUserId;
-    await this.voidRefunds.applyVoidApprovedOffline(client, event.entityId, approverUserId, event.occurredAt, context.isConflictLoser);
+    await this.voidRefunds.applyVoidApprovedOffline(
+      client,
+      event.entityId,
+      approverUserId,
+      event.occurredAt,
+      context.isConflictLoser,
+    );
   }
 
   private async projectVoidExecuted(client: PoolClient, event: SyncEventEnvelope): Promise<void> {
     await this.voidRefunds.applyVoidExecuted(client, event.entityId, event.actorUserId);
   }
 
-  private async projectOnlineOrderRecorded(client: PoolClient, event: SyncEventEnvelope, context: ProjectionContext): Promise<void> {
+  private async projectOnlineOrderRecorded(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+    context: ProjectionContext,
+  ): Promise<void> {
     const data = readOnlineOrderRecorded(event.payload.data);
-    if (!data) throw new Error(`online_orders.recorded: unreadable payload for event ${event.eventId}`);
+    if (!data)
+      throw new Error(`online_orders.recorded: unreadable payload for event ${event.eventId}`);
 
     await this.onlineOrders.applyOnlineOrderFact(client, {
       id: event.entityId,
@@ -399,10 +460,19 @@ export class PosSyncProjector implements SyncProjector {
     });
   }
 
-  private async projectOnlineOrderStatusUpdated(client: PoolClient, event: SyncEventEnvelope): Promise<void> {
+  private async projectOnlineOrderStatusUpdated(
+    client: PoolClient,
+    event: SyncEventEnvelope,
+  ): Promise<void> {
     const d = obj(event.payload.data);
     const status = str(d.status);
-    if (!status) throw new Error(`online_orders.status_updated: unreadable payload for event ${event.eventId}`);
-    await client.query(`UPDATE online_orders SET status = $2 WHERE id = $1 AND status <> $2`, [event.entityId, status]);
+    if (!status)
+      throw new Error(
+        `online_orders.status_updated: unreadable payload for event ${event.eventId}`,
+      );
+    await client.query(`UPDATE online_orders SET status = $2 WHERE id = $1 AND status <> $2`, [
+      event.entityId,
+      status,
+    ]);
   }
 }

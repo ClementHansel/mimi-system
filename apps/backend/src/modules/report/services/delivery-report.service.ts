@@ -50,7 +50,11 @@ export interface DeliveryRecapReport {
  */
 @Injectable()
 export class DeliveryReportService {
-  async getDailyRecap(client: PoolClient, caller: ReportCallerContext, date: ISODate): Promise<DeliveryRecapReport> {
+  async getDailyRecap(
+    client: PoolClient,
+    caller: ReportCallerContext,
+    date: ISODate,
+  ): Promise<DeliveryRecapReport> {
     const scopeIds = caller.locationScope;
 
     const scopeWhere = scopeIds !== null ? `AND d.location_id = ANY($2::uuid[])` : '';

@@ -26,7 +26,11 @@ export class StatutoryController {
 
   @Get('statutory/bpjs')
   @RequirePermission('payroll.statutory.read')
-  async getBpjs(@Req() req: RequestWithDbContext, @Query('program') program?: string, @Query('asOf') asOf?: string) {
+  async getBpjs(
+    @Req() req: RequestWithDbContext,
+    @Query('program') program?: string,
+    @Query('asOf') asOf?: string,
+  ) {
     return this.service.getBpjs(req.dbClient!, program, asOf);
   }
 
@@ -39,7 +43,11 @@ export class StatutoryController {
 
   @Get('statutory/pph21/ter')
   @RequirePermission('payroll.statutory.read')
-  async getTer(@Req() req: RequestWithDbContext, @Query('category') category?: string, @Query('asOf') asOf?: string) {
+  async getTer(
+    @Req() req: RequestWithDbContext,
+    @Query('category') category?: string,
+    @Query('asOf') asOf?: string,
+  ) {
     return this.service.getTer(req.dbClient!, category, asOf);
   }
 
@@ -71,7 +79,11 @@ export class StatutoryController {
 
   @Put('statutory/pph21/article17')
   @RequirePermission('payroll.statutory.config')
-  @Audited({ module: 'payroll', entityType: 'pph21_article17_brackets', action: 'payroll.statutory.config' })
+  @Audited({
+    module: 'payroll',
+    entityType: 'pph21_article17_brackets',
+    action: 'payroll.statutory.config',
+  })
   async putArticle17(@Req() req: RequestWithDbContext, @Body() dto: PutArticle17Dto) {
     return this.service.putArticle17(req.dbClient!, dto);
   }
@@ -84,8 +96,16 @@ export class StatutoryController {
 
   @Put('employees/:employeeId/tax-profile')
   @RequirePermission('payroll.statutory.config')
-  @Audited({ module: 'payroll', entityType: 'employee_tax_profiles', action: 'payroll.statutory.config' })
-  async putTaxProfile(@Req() req: RequestWithDbContext, @Param('employeeId') employeeId: string, @Body() dto: PutTaxProfileDto) {
+  @Audited({
+    module: 'payroll',
+    entityType: 'employee_tax_profiles',
+    action: 'payroll.statutory.config',
+  })
+  async putTaxProfile(
+    @Req() req: RequestWithDbContext,
+    @Param('employeeId') employeeId: string,
+    @Body() dto: PutTaxProfileDto,
+  ) {
     return this.service.putTaxProfile(req.dbClient!, req.user!.sub, employeeId, dto);
   }
 

@@ -1,6 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { ERR_NOT_FOUND, SyncEntity, type Money, type Paginated, type Temp, type UUID } from '@mimi/shared';
+import {
+  ERR_NOT_FOUND,
+  SyncEntity,
+  type Money,
+  type Paginated,
+  type Temp,
+  type UUID,
+} from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { withWrite } from './db-tx';
 import { CreateItemDto, ListItemsQueryDto, UpdateItemDto } from './dto/item.dto';
@@ -90,7 +97,11 @@ export class ItemService {
     LEFT JOIN item_categories c ON c.id = i.category_id
     JOIN units u ON u.id = i.base_unit_id`;
 
-  async list(client: PoolClient, query: ListItemsQueryDto, includeCost: boolean): Promise<Paginated<Item>> {
+  async list(
+    client: PoolClient,
+    query: ListItemsQueryDto,
+    includeCost: boolean,
+  ): Promise<Paginated<Item>> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
     const where: string[] = [];
@@ -114,7 +125,10 @@ export class ItemService {
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM items i ${whereSql}`, params);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM items i ${whereSql}`,
+      params,
+    );
     const total = parseInt(countRes.rows[0]!.count, 10);
 
     params.push(pageSize, (page - 1) * pageSize);
@@ -128,7 +142,8 @@ export class ItemService {
 
   async getById(client: PoolClient, id: string, includeCost: boolean): Promise<Item> {
     const res = await client.query<ItemRow>(`${this.baseSelect} WHERE i.id = $1`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item not found' });
     return this.map(res.rows[0], includeCost);
   }
 
@@ -165,7 +180,12 @@ export class ItemService {
     });
   }
 
-  async update(client: PoolClient, id: string, dto: UpdateItemDto, actorUserId: string): Promise<Item> {
+  async update(
+    client: PoolClient,
+    id: string,
+    dto: UpdateItemDto,
+    actorUserId: string,
+  ): Promise<Item> {
     return withWrite(client, async () => {
       const sets: string[] = [];
       const params: unknown[] = [];
@@ -186,8 +206,12 @@ export class ItemService {
 
       if (sets.length > 0) {
         params.push(id);
-        const res = await client.query(`UPDATE items SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
-        if (res.rowCount === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item not found' });
+        const res = await client.query(
+          `UPDATE items SET ${sets.join(', ')} WHERE id = $${params.length}`,
+          params,
+        );
+        if (res.rowCount === 0)
+          throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item not found' });
       } else {
         await this.getById(client, id, true);
       }
@@ -205,10 +229,15 @@ export class ItemService {
     });
   }
 
-  async deactivate(client: PoolClient, id: string, actorUserId: string): Promise<{ id: string; deactivated: true }> {
+  async deactivate(
+    client: PoolClient,
+    id: string,
+    actorUserId: string,
+  ): Promise<{ id: string; deactivated: true }> {
     return withWrite(client, async () => {
       const res = await client.query(`UPDATE items SET is_active = false WHERE id = $1`, [id]);
-      if (res.rowCount === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item not found' });
+      if (res.rowCount === 0)
+        throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Item not found' });
       await this.sync.emit(client, {
         entity: SyncEntity.ITEMS,
         op: 'deactivated',

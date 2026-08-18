@@ -157,12 +157,24 @@ export const GROUP_1_SCHEMAS = {
 
 // ── Group 2 — Catalog (block 010-019) ────────────────────────────────────────
 
-const itemCategoryFields = { id: id(), name: string(), parentId: nullable(uuid()), sortOrder: number(), isActive: boolean() };
+const itemCategoryFields = {
+  id: id(),
+  name: string(),
+  parentId: nullable(uuid()),
+  sortOrder: number(),
+  isActive: boolean(),
+};
 const unitFields = { id: id(), code: string(), name: string(), isActive: boolean() };
 // AMBIGUOUS: `unit_conversions.factor` is NUMERIC(14,6) — a scale our Money(2)/Qty(3)/
 // Temp(1) field kinds don't cover. Validated only as a generic decimal-looking string
 // here (no scale check) until/unless a dedicated 6-scale field kind is added.
-const unitConversionFields = { id: id(), itemId: nullable(uuid()), fromUnitId: uuid(), toUnitId: uuid(), factor: string() };
+const unitConversionFields = {
+  id: id(),
+  itemId: nullable(uuid()),
+  fromUnitId: uuid(),
+  toUnitId: uuid(),
+  factor: string(),
+};
 const itemFields = {
   id: id(),
   sku: string(),
@@ -249,10 +261,18 @@ export const GROUP_3_SCHEMAS = {
     countedBy: uuid(),
     startedAt: isoDateTime(),
   }),
-  'stock_opname.area_counted': object({ opnameId: uuid(), storageAreaId: uuid(), lines: array(opnameLineField) }),
+  'stock_opname.area_counted': object({
+    opnameId: uuid(),
+    storageAreaId: uuid(),
+    lines: array(opnameLineField),
+  }),
   'stock_opname.submitted': object({ opnameId: uuid(), submittedAt: isoDateTime() }),
   'stock_opname.cancelled': object({ opnameId: uuid() }),
-  'stock_opname.approved': object({ opnameId: uuid(), approvedBy: uuid(), approvedAt: isoDateTime() }),
+  'stock_opname.approved': object({
+    opnameId: uuid(),
+    approvedBy: uuid(),
+    approvedAt: isoDateTime(),
+  }),
   'stock_opname.rejected': object({ opnameId: uuid(), reason: string() }),
 
   /**
@@ -280,7 +300,12 @@ export const GROUP_3_SCHEMAS = {
 const replenishmentLineField = object({ itemId: uuid(), qtyRequested: qty(), unitId: uuid() });
 const amendmentField = object({ lineId: uuid(), qtyApproved: qty(), reason: string() });
 
-const sjDropLineField = object({ itemId: uuid(), qty: qty(), unitId: uuid(), requestLineId: optional(uuid()) });
+const sjDropLineField = object({
+  itemId: uuid(),
+  qty: qty(),
+  unitId: uuid(),
+  requestLineId: optional(uuid()),
+});
 const sjDropField = object({
   id: uuid(),
   dropSeq: number(),
@@ -306,10 +331,21 @@ export const GROUP_4_SCHEMAS = {
     lines: array(replenishmentLineField),
   }),
   'replenishment_requests.cancelled': idOnly(),
-  'replenishment_requests.supervisor_approved': object({ id: id(), note: optional(string()), amendments: optional(array(amendmentField)) }),
-  'replenishment_requests.supervisor_approved_offline': object({ id: id(), amendments: optional(array(amendmentField)) }),
+  'replenishment_requests.supervisor_approved': object({
+    id: id(),
+    note: optional(string()),
+    amendments: optional(array(amendmentField)),
+  }),
+  'replenishment_requests.supervisor_approved_offline': object({
+    id: id(),
+    amendments: optional(array(amendmentField)),
+  }),
   'replenishment_requests.supervisor_rejected': object({ id: id(), reason: string() }),
-  'replenishment_requests.warehouse_approved': object({ id: id(), note: optional(string()), amendments: optional(array(amendmentField)) }),
+  'replenishment_requests.warehouse_approved': object({
+    id: id(),
+    note: optional(string()),
+    amendments: optional(array(amendmentField)),
+  }),
   'replenishment_requests.warehouse_rejected': object({ id: id(), reason: string() }),
   'replenishment_requests.amended': object({ id: id(), lines: array(amendmentField) }),
   'replenishment_requests.fulfillment_started': idOnly(),
@@ -365,7 +401,13 @@ export const GROUP_4_SCHEMAS = {
     dropId: uuid(),
     at: isoDateTime(),
     tempC: temp(),
-    sealCheck: optional(object({ sealId: uuid(), status: enumOf(['verified_intact', 'broken'] as const), notes: optional(string()) })),
+    sealCheck: optional(
+      object({
+        sealId: uuid(),
+        status: enumOf(['verified_intact', 'broken'] as const),
+        notes: optional(string()),
+      }),
+    ),
   }),
   'sj_drops.received': object({
     dropId: uuid(),
@@ -391,14 +433,49 @@ export const GROUP_4_SCHEMAS = {
     tempC: temp(),
   }),
 
-  'sj_seals.applied': object({ id: id(), sjId: uuid(), dropId: nullable(uuid()), sealNumber: string() }),
+  'sj_seals.applied': object({
+    id: id(),
+    sjId: uuid(),
+    dropId: nullable(uuid()),
+    sealNumber: string(),
+  }),
 
-  'drivers.created': object({ id: id(), name: string(), phone: nullable(string()), licenseNumber: nullable(string()), userId: nullable(uuid()), isActive: boolean() }),
-  'drivers.updated': object({ id: id(), name: string(), phone: nullable(string()), licenseNumber: nullable(string()), userId: nullable(uuid()), isActive: boolean() }),
+  'drivers.created': object({
+    id: id(),
+    name: string(),
+    phone: nullable(string()),
+    licenseNumber: nullable(string()),
+    userId: nullable(uuid()),
+    isActive: boolean(),
+  }),
+  'drivers.updated': object({
+    id: id(),
+    name: string(),
+    phone: nullable(string()),
+    licenseNumber: nullable(string()),
+    userId: nullable(uuid()),
+    isActive: boolean(),
+  }),
   'drivers.deactivated': idOnly(),
 
-  'vehicles.created': object({ id: id(), plateNumber: string(), type: string(), brand: nullable(string()), model: nullable(string()), hasFreezer: boolean(), isActive: boolean() }),
-  'vehicles.updated': object({ id: id(), plateNumber: string(), type: string(), brand: nullable(string()), model: nullable(string()), hasFreezer: boolean(), isActive: boolean() }),
+  'vehicles.created': object({
+    id: id(),
+    plateNumber: string(),
+    type: string(),
+    brand: nullable(string()),
+    model: nullable(string()),
+    hasFreezer: boolean(),
+    isActive: boolean(),
+  }),
+  'vehicles.updated': object({
+    id: id(),
+    plateNumber: string(),
+    type: string(),
+    brand: nullable(string()),
+    model: nullable(string()),
+    hasFreezer: boolean(),
+    isActive: boolean(),
+  }),
   'vehicles.deactivated': idOnly(),
 
   'goods_receipts.recorded': object({
@@ -469,14 +546,20 @@ export const GROUP_6_SCHEMAS = {
     openedAt: isoDateTime(),
     shiftNumber: optional(string()),
   }),
-  'pos_shifts.closed': object({ closingCashCounted: money(), notes: optional(string()), closedAt: optional(isoDateTime()) }),
+  'pos_shifts.closed': object({
+    closingCashCounted: money(),
+    notes: optional(string()),
+    closedAt: optional(isoDateTime()),
+  }),
 
   'sales.completed': object({
     clientId: clientId(),
     locationId: uuid(),
     shiftId: uuid(),
     occurredAt: isoDateTime(),
-    lines: array(object({ productId: uuid(), qty: qty(), unitPrice: money(), discount: optional(money()) })),
+    lines: array(
+      object({ productId: uuid(), qty: qty(), unitPrice: money(), discount: optional(money()) }),
+    ),
     payments: array(
       object({
         method: enumOf(Object.values(PaymentMethod)),
@@ -489,7 +572,12 @@ export const GROUP_6_SCHEMAS = {
     receiptNumber: optional(string()),
   }),
 
-  'void_refunds.requested': object({ clientId: clientId(), type: enumOf(Object.values(VoidRefundType)), reason: string(), amount: optional(money()) }),
+  'void_refunds.requested': object({
+    clientId: clientId(),
+    type: enumOf(Object.values(VoidRefundType)),
+    reason: string(),
+    amount: optional(money()),
+  }),
   // CONFIRMED by W3-08 (pos, CONTRACTS.md §4.13): this three-op split is correct as modeled, not
   // merely plausible. Reasoning, so a future editor doesn't second-guess it without re-deriving:
   //  - `approved_offline`'s and `approved`'s own `payload.data` are legitimately `{}`. The
@@ -536,7 +624,13 @@ export const GROUP_6_SCHEMAS = {
 // ── Group 7 — HR & payroll (block 060-069; employments/salary/loans/payroll_* are class X) ──
 
 /** `employees` is class M, field-projected (§3.2): id/name/position/location/active only — never salary, bank/KTP, or loan state. */
-const employeeProjectedFields = { id: id(), name: string(), position: string(), locationId: uuid(), isActive: boolean() };
+const employeeProjectedFields = {
+  id: id(),
+  name: string(),
+  position: string(),
+  locationId: uuid(),
+  isActive: boolean(),
+};
 
 export const GROUP_7_SCHEMAS = {
   'employees.created': object(employeeProjectedFields),
@@ -553,8 +647,20 @@ export const GROUP_7_SCHEMAS = {
     isActive: boolean(),
   }),
 
-  'shift_assignments.assigned': object({ id: id(), employeeId: uuid(), workShiftId: nullable(uuid()), locationId: uuid(), date: isoDate() }),
-  'shift_assignments.changed': object({ id: id(), employeeId: uuid(), workShiftId: nullable(uuid()), locationId: uuid(), date: isoDate() }),
+  'shift_assignments.assigned': object({
+    id: id(),
+    employeeId: uuid(),
+    workShiftId: nullable(uuid()),
+    locationId: uuid(),
+    date: isoDate(),
+  }),
+  'shift_assignments.changed': object({
+    id: id(),
+    employeeId: uuid(),
+    workShiftId: nullable(uuid()),
+    locationId: uuid(),
+    date: isoDate(),
+  }),
   'shift_assignments.removed': idOnly(),
 
   'attendance.checked_in': object({
@@ -657,8 +763,18 @@ const wasteLineField = object({
   reason: enumOf(Object.values(WasteReason)),
   reasonDetail: optional(string()),
 });
-const returnLineField = object({ itemId: uuid(), storageAreaId: uuid(), qty: qty(), condition: enumOf(Object.values(ReturnCondition)), reason: string() });
-const returnReceivedLineField = object({ lineId: uuid(), qtyReceived: qty(), storageAreaId: uuid() });
+const returnLineField = object({
+  itemId: uuid(),
+  storageAreaId: uuid(),
+  qty: qty(),
+  condition: enumOf(Object.values(ReturnCondition)),
+  reason: string(),
+});
+const returnReceivedLineField = object({
+  lineId: uuid(),
+  qtyReceived: qty(),
+  storageAreaId: uuid(),
+});
 
 export const GROUP_9_SCHEMAS = {
   'waste_records.reported': object({
@@ -683,14 +799,21 @@ export const GROUP_9_SCHEMAS = {
   'returns.shipped_back': object({ proofAttachmentIds: array(uuid()) }),
   'returns.approved': noteOptional(),
   'returns.rejected': reasonOnly(),
-  'returns.received_at_warehouse': object({ lines: array(returnReceivedLineField), proofAttachmentIds: array(uuid()) }),
+  'returns.received_at_warehouse': object({
+    lines: array(returnReceivedLineField),
+    proofAttachmentIds: array(uuid()),
+  }),
 } as const;
 
 // ── Group 10 — Accounting (block 090-099; GL/COA/PR/PO are class D/X, no schema) ──
 
 export const GROUP_10_SCHEMAS = {
   'payment_verifications.verified': object({ verifiedBy: uuid(), verifiedAt: isoDateTime() }),
-  'payment_verifications.paid': object({ paidBy: uuid(), paidAt: isoDateTime(), paidVia: string() }),
+  'payment_verifications.paid': object({
+    paidBy: uuid(),
+    paidAt: isoDateTime(),
+    paidVia: string(),
+  }),
   'payment_verifications.rejected': reasonOnly(),
 } as const;
 

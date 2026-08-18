@@ -32,19 +32,49 @@ describe('PaymentPanel — payment status rendering', () => {
   beforeEach(() => usePosCartStore.getState().clear());
 
   it('shows cash as paid ("Dibayar")', () => {
-    render(<PaymentPanel runtime={runtime} actor={actor} shift={shift} locationId="loc1" locationName="Outlet A" summary={emptySummary} onCompleted={() => {}} />);
+    render(
+      <PaymentPanel
+        runtime={runtime}
+        actor={actor}
+        shift={shift}
+        locationId="loc1"
+        locationName="Outlet A"
+        summary={emptySummary}
+        onCompleted={() => {}}
+      />,
+    );
     expect(screen.getByText('Dibayar')).toBeInTheDocument();
   });
 
   it('shows QRIS as verified, never as fully paid', () => {
-    render(<PaymentPanel runtime={runtime} actor={actor} shift={shift} locationId="loc1" locationName="Outlet A" summary={emptySummary} onCompleted={() => {}} />);
+    render(
+      <PaymentPanel
+        runtime={runtime}
+        actor={actor}
+        shift={shift}
+        locationId="loc1"
+        locationName="Outlet A"
+        summary={emptySummary}
+        onCompleted={() => {}}
+      />,
+    );
     fireEvent.click(screen.getByText('QRIS'));
     expect(screen.getByText('Terverifikasi')).toBeInTheDocument();
     expect(screen.queryByText('Dibayar')).not.toBeInTheDocument();
   });
 
   it('shows bank transfer as pending, with an explicit not-yet-verified note — never implying it is settled', () => {
-    render(<PaymentPanel runtime={runtime} actor={actor} shift={shift} locationId="loc1" locationName="Outlet A" summary={emptySummary} onCompleted={() => {}} />);
+    render(
+      <PaymentPanel
+        runtime={runtime}
+        actor={actor}
+        shift={shift}
+        locationId="loc1"
+        locationName="Outlet A"
+        summary={emptySummary}
+        onCompleted={() => {}}
+      />,
+    );
     fireEvent.click(screen.getByText('Transfer'));
     expect(screen.getByText('Belum Terverifikasi')).toBeInTheDocument();
     expect(screen.getByText(/menunggu verifikasi Finance/i)).toBeInTheDocument();
@@ -53,7 +83,17 @@ describe('PaymentPanel — payment status rendering', () => {
   });
 
   it('disables the submit action while the cart is empty, regardless of payment method', () => {
-    render(<PaymentPanel runtime={runtime} actor={actor} shift={shift} locationId="loc1" locationName="Outlet A" summary={emptySummary} onCompleted={() => {}} />);
+    render(
+      <PaymentPanel
+        runtime={runtime}
+        actor={actor}
+        shift={shift}
+        locationId="loc1"
+        locationName="Outlet A"
+        summary={emptySummary}
+        onCompleted={() => {}}
+      />,
+    );
     expect(screen.getByText('Selesaikan & Cetak Struk').closest('button')).toBeDisabled();
   });
 });

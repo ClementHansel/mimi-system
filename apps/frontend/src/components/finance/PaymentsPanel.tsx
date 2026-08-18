@@ -21,7 +21,12 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { useApiList } from '@/components/admin/useApiList';
 import { uploadAttachment } from './lib/attachments';
-import { PaymentVerificationRefType, PayeeType, type PaymentVerification, type Money } from './types';
+import {
+  PaymentVerificationRefType,
+  PayeeType,
+  type PaymentVerification,
+  type Money,
+} from './types';
 
 /**
  * F07 finance — payment verification queue (FR-ACCT-01..04, CONTRACTS
@@ -46,7 +51,10 @@ export function PaymentsPanel() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const { data, loading, error, reload } = useApiList<PaymentVerification>('/accounting/payments', {
-    status, refType, page, pageSize,
+    status,
+    refType,
+    page,
+    pageSize,
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -54,11 +62,32 @@ export function PaymentsPanel() {
 
   const columns: DataTableColumn<PaymentVerification>[] = [
     { key: 'pvNumber', header: t('finance.payments.columnNumber') },
-    { key: 'refType', header: t('finance.payments.columnRefType'), render: (r) => t(`finance.refType.${r.refType}`) },
-    { key: 'payeeName', header: t('finance.payments.columnPayee'), render: (r) => r.payeeName ?? '—' },
-    { key: 'amount', header: t('finance.payments.columnAmount'), align: 'right', render: (r) => formatMoney(r.amount, { cents: 'always' }) },
-    { key: 'status', header: t('finance.payments.columnStatus'), render: (r) => <StatusBadge domain="payment" status={r.status} /> },
-    { key: 'locationName', header: t('finance.payments.columnLocation'), render: (r) => r.locationName ?? '—' },
+    {
+      key: 'refType',
+      header: t('finance.payments.columnRefType'),
+      render: (r) => t(`finance.refType.${r.refType}`),
+    },
+    {
+      key: 'payeeName',
+      header: t('finance.payments.columnPayee'),
+      render: (r) => r.payeeName ?? '—',
+    },
+    {
+      key: 'amount',
+      header: t('finance.payments.columnAmount'),
+      align: 'right',
+      render: (r) => formatMoney(r.amount, { cents: 'always' }),
+    },
+    {
+      key: 'status',
+      header: t('finance.payments.columnStatus'),
+      render: (r) => <StatusBadge domain="payment" status={r.status} />,
+    },
+    {
+      key: 'locationName',
+      header: t('finance.payments.columnLocation'),
+      render: (r) => r.locationName ?? '—',
+    },
   ];
 
   return (
@@ -67,7 +96,10 @@ export function PaymentsPanel() {
         <div className="flex flex-wrap items-end gap-2">
           <Select
             value={status}
-            onValueChange={(v) => { setStatus(v); setPage(1); }}
+            onValueChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
             placeholder={t('finance.payments.filterStatusAll')}
             options={[
               { value: 'pending', label: t('finance.payments.statusPending') },
@@ -79,7 +111,10 @@ export function PaymentsPanel() {
           />
           <Select
             value={refType}
-            onValueChange={(v) => { setRefType(v); setPage(1); }}
+            onValueChange={(v) => {
+              setRefType(v);
+              setPage(1);
+            }}
             placeholder={t('finance.payments.filterRefTypeAll')}
             options={REF_TYPE_OPTIONS.map((v) => ({ value: v, label: t(`finance.refType.${v}`) }))}
             wrapperClassName="w-56"
@@ -101,13 +136,20 @@ export function PaymentsPanel() {
         emptyDescription={t('finance.payments.empty')}
         onRowClick={(r) => setSelectedId(r.id)}
         onPageChange={setPage}
-        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
       />
 
       {createOpen && (
         <CreatePaymentModal
           onClose={() => setCreateOpen(false)}
-          onCreated={() => { setCreateOpen(false); reload(); toast({ title: t('finance.payments.createSuccess'), variant: 'success' }); }}
+          onCreated={() => {
+            setCreateOpen(false);
+            reload();
+            toast({ title: t('finance.payments.createSuccess'), variant: 'success' });
+          }}
         />
       )}
 
@@ -126,7 +168,13 @@ export function PaymentsPanel() {
   );
 }
 
-function CreatePaymentModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreatePaymentModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const { t } = useI18n();
   const [refType, setRefType] = useState<string>(PaymentVerificationRefType.OTHER);
   const [payeeType, setPayeeType] = useState<string>(PayeeType.OTHER);
@@ -137,11 +185,15 @@ function CreatePaymentModal({ onClose, onCreated }: { onClose: () => void; onCre
   const [submitting, setSubmitting] = useState(false);
 
   async function submit() {
-    setSubmitting(true); setError(null);
+    setSubmitting(true);
+    setError(null);
     try {
       await api.post('/accounting/payments', {
-        refType, payeeType, amount: amount ?? '0.00',
-        referenceNumber: referenceNumber || undefined, notes: notes || undefined,
+        refType,
+        payeeType,
+        amount: amount ?? '0.00',
+        referenceNumber: referenceNumber || undefined,
+        notes: notes || undefined,
       });
       onCreated();
     } catch (err) {
@@ -159,8 +211,12 @@ function CreatePaymentModal({ onClose, onCreated }: { onClose: () => void; onCre
       description={t('finance.payments.createDescription')}
       footer={
         <>
-          <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button onClick={submit} loading={submitting} disabled={!amount || amount === '0.00'}>{t('common.save')}</Button>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={submit} loading={submitting} disabled={!amount || amount === '0.00'}>
+            {t('common.save')}
+          </Button>
         </>
       }
     >
@@ -176,18 +232,40 @@ function CreatePaymentModal({ onClose, onCreated }: { onClose: () => void; onCre
           label={t('finance.payments.payeeType')}
           value={payeeType}
           onValueChange={setPayeeType}
-          options={PAYEE_TYPE_OPTIONS.map((v) => ({ value: v, label: t(`finance.payeeType.${v}`) }))}
+          options={PAYEE_TYPE_OPTIONS.map((v) => ({
+            value: v,
+            label: t(`finance.payeeType.${v}`),
+          }))}
         />
-        <MoneyInput label={t('finance.payments.amount')} value={amount} onChange={setAmount} required />
-        <Input label={t('finance.payments.referenceNumber')} value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
-        <Textarea label={t('finance.payments.notes')} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <MoneyInput
+          label={t('finance.payments.amount')}
+          value={amount}
+          onChange={setAmount}
+          required
+        />
+        <Input
+          label={t('finance.payments.referenceNumber')}
+          value={referenceNumber}
+          onChange={(e) => setReferenceNumber(e.target.value)}
+        />
+        <Textarea
+          label={t('finance.payments.notes')}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
       </div>
     </Modal>
   );
 }
 
 function PaymentDrawer({
-  id, canUploadProof, canVerify, canPay, canReject, onClose, onChanged,
+  id,
+  canUploadProof,
+  canVerify,
+  canPay,
+  canReject,
+  onClose,
+  onChanged,
 }: {
   id: string;
   canUploadProof: boolean;
@@ -212,8 +290,12 @@ function PaymentDrawer({
 
   function load() {
     setLoading(true);
-    api.get<PaymentVerification & { history: unknown[] }>(`/accounting/payments/${id}`)
-      .then((row) => { setPv(row); setReferenceNumber(row.referenceNumber ?? ''); })
+    api
+      .get<PaymentVerification & { history: unknown[] }>(`/accounting/payments/${id}`)
+      .then((row) => {
+        setPv(row);
+        setReferenceNumber(row.referenceNumber ?? '');
+      })
       .catch((err) => setError(errMsg(err, t('auth.genericError'))))
       .finally(() => setLoading(false));
   }
@@ -222,47 +304,71 @@ function PaymentDrawer({
   async function doUploadProof() {
     const file = proofFiles[0];
     if (!file) return;
-    setBusy('proof'); setError(null);
+    setBusy('proof');
+    setError(null);
     try {
-      const attachmentId = await uploadAttachment({ file, fileName: file.name, mimeType: file.type || 'application/octet-stream', kind: 'payment_proof', entityType: 'payment_verification', entityId: id });
-      await api.post(`/accounting/payments/${id}/proof`, { proofAttachmentId: attachmentId, referenceNumber: referenceNumber || undefined });
+      const attachmentId = await uploadAttachment({
+        file,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        kind: 'payment_proof',
+        entityType: 'payment_verification',
+        entityId: id,
+      });
+      await api.post(`/accounting/payments/${id}/proof`, {
+        proofAttachmentId: attachmentId,
+        referenceNumber: referenceNumber || undefined,
+      });
       toast({ title: t('finance.payments.proofUploadSuccess'), variant: 'success' });
       setProofFiles([]);
-      load(); onChanged();
+      load();
+      onChanged();
     } catch (err) {
       setError(errMsg(err, t('auth.genericError')));
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function doVerify() {
-    setBusy('verify'); setError(null);
+    setBusy('verify');
+    setError(null);
     try {
       await api.post(`/accounting/payments/${id}/verify`, { note: verifyNote || undefined });
       toast({ title: t('finance.payments.verifySuccess'), variant: 'success' });
-      load(); onChanged();
+      load();
+      onChanged();
     } catch (err) {
       setError(errMsg(err, t('auth.genericError')));
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function doPay() {
-    setBusy('pay'); setError(null);
+    setBusy('pay');
+    setError(null);
     try {
       await api.post(`/accounting/payments/${id}/pay`, { paidVia });
       toast({ title: t('finance.payments.paySuccess'), variant: 'success' });
-      load(); onChanged();
+      load();
+      onChanged();
     } catch (err) {
       setError(errMsg(err, t('auth.genericError')));
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function doReject() {
-    setBusy('reject'); setError(null);
+    setBusy('reject');
+    setError(null);
     try {
       await api.post(`/accounting/payments/${id}/reject`, { reason: rejectReason });
       toast({ title: t('finance.payments.rejectSuccess'), variant: 'success' });
       setRejectOpen(false);
-      load(); onChanged();
+      load();
+      onChanged();
     } catch (err) {
       setError(errMsg(err, t('auth.genericError')));
       setBusy(null);
@@ -270,7 +376,12 @@ function PaymentDrawer({
   }
 
   return (
-    <Drawer open onClose={onClose} title={pv?.pvNumber ?? t('finance.payments.detailTitle')} size="lg">
+    <Drawer
+      open
+      onClose={onClose}
+      title={pv?.pvNumber ?? t('finance.payments.detailTitle')}
+      size="lg"
+    >
       {loading || !pv ? (
         <p className="text-sm text-text-muted">{t('common.loading')}</p>
       ) : (
@@ -280,7 +391,9 @@ function PaymentDrawer({
           <section className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <StatusBadge domain="payment" status={pv.status} size="md" />
-              <span className="text-lg font-semibold tabular-nums text-text-primary">{formatMoney(pv.amount, { cents: 'always' })}</span>
+              <span className="text-lg font-semibold tabular-nums text-text-primary">
+                {formatMoney(pv.amount, { cents: 'always' })}
+              </span>
             </div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
               <dt className="text-text-muted">{t('finance.payments.refType')}</dt>
@@ -292,12 +405,21 @@ function PaymentDrawer({
               <dt className="text-text-muted">{t('finance.payments.referenceNumber')}</dt>
               <dd className="text-text-primary">{pv.referenceNumber ?? '—'}</dd>
               <dt className="text-text-muted">{t('finance.payments.verifiedAt')}</dt>
-              <dd className="text-text-primary">{pv.verifiedBy ? `${fmtDateTime(pv.verifiedAt)}` : '—'}</dd>
+              <dd className="text-text-primary">
+                {pv.verifiedBy ? `${fmtDateTime(pv.verifiedAt)}` : '—'}
+              </dd>
               <dt className="text-text-muted">{t('finance.payments.paidAt')}</dt>
-              <dd className="text-text-primary">{pv.paidBy ? `${fmtDateTime(pv.paidAt)} (${pv.paidVia})` : '—'}</dd>
+              <dd className="text-text-primary">
+                {pv.paidBy ? `${fmtDateTime(pv.paidAt)} (${pv.paidVia})` : '—'}
+              </dd>
             </dl>
             {pv.proofUrl && (
-              <a href={pv.proofUrl} target="_blank" rel="noreferrer" className="text-sm font-medium text-brand-600 hover:underline">
+              <a
+                href={pv.proofUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-brand-600 hover:underline"
+              >
                 {t('finance.payments.viewProof')}
               </a>
             )}
@@ -305,10 +427,28 @@ function PaymentDrawer({
 
           {pv.status === 'pending' && canUploadProof && (
             <section className="flex flex-col gap-3 border-t border-border pt-4">
-              <h3 className="text-sm font-semibold text-text-primary">{t('finance.payments.uploadProofTitle')}</h3>
-              <Input label={t('finance.payments.referenceNumber')} value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
-              <FileUpload label={t('finance.payments.proofFile')} accept="image/*,application/pdf" value={proofFiles} onChange={setProofFiles} />
-              <Button size="sm" leftIcon={<Upload className="size-4" />} onClick={doUploadProof} loading={busy === 'proof'} disabled={proofFiles.length === 0} className="self-start">
+              <h3 className="text-sm font-semibold text-text-primary">
+                {t('finance.payments.uploadProofTitle')}
+              </h3>
+              <Input
+                label={t('finance.payments.referenceNumber')}
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+              />
+              <FileUpload
+                label={t('finance.payments.proofFile')}
+                accept="image/*,application/pdf"
+                value={proofFiles}
+                onChange={setProofFiles}
+              />
+              <Button
+                size="sm"
+                leftIcon={<Upload className="size-4" />}
+                onClick={doUploadProof}
+                loading={busy === 'proof'}
+                disabled={proofFiles.length === 0}
+                className="self-start"
+              >
                 {t('finance.payments.uploadProofButton')}
               </Button>
             </section>
@@ -316,8 +456,14 @@ function PaymentDrawer({
 
           {pv.status === 'pending' && canVerify && (
             <section className="flex flex-col gap-2 border-t border-border pt-4">
-              <h3 className="text-sm font-semibold text-text-primary">{t('finance.payments.verifyTitle')}</h3>
-              <Textarea label={t('finance.payments.verifyNote')} value={verifyNote} onChange={(e) => setVerifyNote(e.target.value)} />
+              <h3 className="text-sm font-semibold text-text-primary">
+                {t('finance.payments.verifyTitle')}
+              </h3>
+              <Textarea
+                label={t('finance.payments.verifyNote')}
+                value={verifyNote}
+                onChange={(e) => setVerifyNote(e.target.value)}
+              />
               <Button
                 size="sm"
                 onClick={doVerify}
@@ -327,13 +473,17 @@ function PaymentDrawer({
               >
                 {t('finance.payments.verifyButton')}
               </Button>
-              {!pv.proofUrl && <p className="text-xs text-text-muted">{t('finance.payments.proofRequiredHint')}</p>}
+              {!pv.proofUrl && (
+                <p className="text-xs text-text-muted">{t('finance.payments.proofRequiredHint')}</p>
+              )}
             </section>
           )}
 
           {pv.status === 'verified' && canPay && (
             <section className="flex flex-col gap-2 border-t border-border pt-4">
-              <h3 className="text-sm font-semibold text-text-primary">{t('finance.payments.payTitle')}</h3>
+              <h3 className="text-sm font-semibold text-text-primary">
+                {t('finance.payments.payTitle')}
+              </h3>
               <Select
                 label={t('finance.payments.paidVia')}
                 value={paidVia}
@@ -344,13 +494,20 @@ function PaymentDrawer({
                   { value: 'qris', label: t('finance.payments.paidViaQris') },
                 ]}
               />
-              <Button size="sm" onClick={doPay} loading={busy === 'pay'} className="self-start">{t('finance.payments.payButton')}</Button>
+              <Button size="sm" onClick={doPay} loading={busy === 'pay'} className="self-start">
+                {t('finance.payments.payButton')}
+              </Button>
             </section>
           )}
 
           {(pv.status === 'pending' || pv.status === 'verified') && canReject && (
             <section className="flex flex-col gap-2 border-t border-border pt-4">
-              <Button variant="danger" size="sm" onClick={() => setRejectOpen(true)} className="self-start">
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setRejectOpen(true)}
+                className="self-start"
+              >
                 {t('finance.payments.rejectButton')}
               </Button>
             </section>
@@ -365,12 +522,26 @@ function PaymentDrawer({
           title={t('finance.payments.rejectTitle')}
           footer={
             <>
-              <Button variant="outline" onClick={() => setRejectOpen(false)}>{t('common.cancel')}</Button>
-              <Button variant="danger" onClick={doReject} loading={busy === 'reject'} disabled={!rejectReason}>{t('finance.payments.rejectButton')}</Button>
+              <Button variant="outline" onClick={() => setRejectOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={doReject}
+                loading={busy === 'reject'}
+                disabled={!rejectReason}
+              >
+                {t('finance.payments.rejectButton')}
+              </Button>
             </>
           }
         >
-          <Textarea label={t('finance.payments.rejectReason')} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} required />
+          <Textarea
+            label={t('finance.payments.rejectReason')}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            required
+          />
         </Modal>
       )}
     </Drawer>

@@ -34,7 +34,13 @@ export interface CsvShape<T> {
 }
 
 /** Shared by both send functions below — the xlsx-501 and csv-attachment paths are identical either way. */
-function sendNonJson<T>(res: Response, format: ReportFormat, filenameBase: string, rows: T[], csv: CsvShape<T>): void {
+function sendNonJson<T>(
+  res: Response,
+  format: ReportFormat,
+  filenameBase: string,
+  rows: T[],
+  csv: CsvShape<T>,
+): void {
   if (format === 'xlsx') {
     throw new NotImplementedException({
       message:
@@ -45,7 +51,10 @@ function sendNonJson<T>(res: Response, format: ReportFormat, filenameBase: strin
   // format === 'csv' — direct file-stream attachment (never the `{url}`-via-StorageService
   // option CONTRACTS.md also allows): keeps every export endpoint's behavior identical and
   // simple, consistent with this ticket's explicit instruction.
-  const body = writeCsv(csv.header, rows.map((r) => csv.toRow(r)));
+  const body = writeCsv(
+    csv.header,
+    rows.map((r) => csv.toRow(r)),
+  );
   res.status(200);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filenameBase}.csv"`);
@@ -63,7 +72,13 @@ function sendNonJson<T>(res: Response, format: ReportFormat, filenameBase: strin
  * its own body-sending for that route, so this function (not a `return`)
  * is what actually ends the response, for EVERY format, JSON included.
  */
-export function sendReportRows<T>(res: Response, format: ReportFormat | undefined, filenameBase: string, rows: T[], csv: CsvShape<T>): void {
+export function sendReportRows<T>(
+  res: Response,
+  format: ReportFormat | undefined,
+  filenameBase: string,
+  rows: T[],
+  csv: CsvShape<T>,
+): void {
   const effectiveFormat: ReportFormat = format ?? 'json';
   if (effectiveFormat === 'json') {
     res.json(rows);

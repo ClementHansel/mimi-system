@@ -80,7 +80,11 @@ export class SyncEventsRepository {
   }
 
   /** `event_id` already stored at this exact `client_seq` for this origin, if any (§2.2 rule 4 lookup). */
-  async findEventIdAtSeq(client: DbClient, originDeviceId: UUID, clientSeq: bigint): Promise<UUID | undefined> {
+  async findEventIdAtSeq(
+    client: DbClient,
+    originDeviceId: UUID,
+    clientSeq: bigint,
+  ): Promise<UUID | undefined> {
     const res = await client.query<{ event_id: UUID }>(
       `SELECT event_id FROM sync_events WHERE origin_device_id = $1 AND client_seq = $2`,
       [originDeviceId, clientSeq.toString()],
@@ -128,12 +132,19 @@ export class SyncEventsRepository {
   }
 
   async findByEventId(client: DbClient, eventId: UUID): Promise<SyncEventRow | undefined> {
-    const res = await client.query<SyncEventRow>(`SELECT * FROM sync_events WHERE event_id = $1`, [eventId]);
+    const res = await client.query<SyncEventRow>(`SELECT * FROM sync_events WHERE event_id = $1`, [
+      eventId,
+    ]);
     return res.rows[0];
   }
 
   /** All of one actor's events for `entity`, most recent 3 days (business-day math is done by the caller in JS — cheap here, avoids WITA arithmetic in SQL). Used by C4 (attendance overlap), which is keyed by actor+day, not by a shared `entity_id`. */
-  async findRecentByActor(client: DbClient, entity: string, actorUserId: UUID, excludeEventId?: UUID): Promise<SyncEventRow[]> {
+  async findRecentByActor(
+    client: DbClient,
+    entity: string,
+    actorUserId: UUID,
+    excludeEventId?: UUID,
+  ): Promise<SyncEventRow[]> {
     const res = await client.query<SyncEventRow>(
       `SELECT * FROM sync_events
         WHERE entity = $1 AND actor_user_id = $2 AND ($3::uuid IS NULL OR event_id <> $3)
@@ -144,7 +155,12 @@ export class SyncEventsRepository {
     return res.rows;
   }
 
-  async findByEntityId(client: DbClient, entity: string, entityId: UUID, excludeEventId?: UUID): Promise<SyncEventRow[]> {
+  async findByEntityId(
+    client: DbClient,
+    entity: string,
+    entityId: UUID,
+    excludeEventId?: UUID,
+  ): Promise<SyncEventRow[]> {
     const res = await client.query<SyncEventRow>(
       `SELECT * FROM sync_events
         WHERE entity = $1 AND entity_id = $2 AND ($3::uuid IS NULL OR event_id <> $3)
@@ -155,12 +171,23 @@ export class SyncEventsRepository {
   }
 
   async insertEvent(client: DbClient, params: InsertEventParams): Promise<SyncEventRow> {
-    const { event, applyStatus, batchId, rejectCode, rejectDetail, relayReceivedAt, relayedViaNodeId, appliedAt } = params;
+    const {
+      event,
+      applyStatus,
+      batchId,
+      rejectCode,
+      rejectDetail,
+      relayReceivedAt,
+      relayedViaNodeId,
+      appliedAt,
+    } = params;
     const effectiveRelayedViaNodeId = relayedViaNodeId ?? event.relayedViaNodeId ?? null;
     // §2.1: relay_received_at is stamped by the FIRST non-origin tier to durably store the event; when
     // no node relayed (device-direct or cloud-born), it "equals cloud received_at" — i.e. right now.
     const effectiveRelayReceivedAt =
-      relayReceivedAt ?? event.relayReceivedAt ?? (effectiveRelayedViaNodeId ? null : new Date().toISOString());
+      relayReceivedAt ??
+      event.relayReceivedAt ??
+      (effectiveRelayedViaNodeId ? null : new Date().toISOString());
     const res = await client.query<SyncEventRow>(
       `INSERT INTO sync_events (
          event_id, origin_tier, origin_device_id, location_id, entity, entity_id, op, payload,
@@ -200,12 +227,18 @@ export class SyncEventsRepository {
 
   /** Promotes a parked `pending_dependency` row to `applied` once its gap is filled. */
   async markApplied(client: DbClient, eventId: UUID): Promise<void> {
-    await client.query(`UPDATE sync_events SET apply_status = 'applied', applied_at = NOW() WHERE event_id = $1`, [
-      eventId,
-    ]);
+    await client.query(
+      `UPDATE sync_events SET apply_status = 'applied', applied_at = NOW() WHERE event_id = $1`,
+      [eventId],
+    );
   }
 
-  async markQuarantined(client: DbClient, eventId: UUID, rejectCode: string, rejectDetail: string): Promise<void> {
+  async markQuarantined(
+    client: DbClient,
+    eventId: UUID,
+    rejectCode: string,
+    rejectDetail: string,
+  ): Promise<void> {
     await client.query(
       `UPDATE sync_events SET apply_status = 'quarantined', reject_code = $2, reject_detail = $3 WHERE event_id = $1`,
       [eventId, rejectCode, rejectDetail],
@@ -213,24 +246,47 @@ export class SyncEventsRepository {
   }
 
   async markSuperseded(client: DbClient, eventId: UUID): Promise<void> {
-    await client.query(`UPDATE sync_events SET apply_status = 'superseded' WHERE event_id = $1`, [eventId]);
+    await client.query(`UPDATE sync_events SET apply_status = 'superseded' WHERE event_id = $1`, [
+      eventId,
+    ]);
   }
 
   // ── sync_batches (transport observability, §4.3) ──────────────────────────
 
   async insertBatch(
     client: DbClient,
-    params: { id: UUID; originTier: string; originDeviceId: UUID; locationId: UUID | null; eventCount: number; firstSeq: bigint; lastSeq: bigint },
+    params: {
+      id: UUID;
+      originTier: string;
+      originDeviceId: UUID;
+      locationId: UUID | null;
+      eventCount: number;
+      firstSeq: bigint;
+      lastSeq: bigint;
+    },
   ): Promise<void> {
     await client.query(
       `INSERT INTO sync_batches (id, origin_tier, origin_device_id, location_id, event_count, first_seq, last_seq, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'received')
        ON CONFLICT (id) DO NOTHING`,
-      [params.id, params.originTier, params.originDeviceId, params.locationId, params.eventCount, params.firstSeq.toString(), params.lastSeq.toString()],
+      [
+        params.id,
+        params.originTier,
+        params.originDeviceId,
+        params.locationId,
+        params.eventCount,
+        params.firstSeq.toString(),
+        params.lastSeq.toString(),
+      ],
     );
   }
 
-  async completeBatch(client: DbClient, id: UUID, status: SyncBatchRow['status'], result: unknown): Promise<void> {
+  async completeBatch(
+    client: DbClient,
+    id: UUID,
+    status: SyncBatchRow['status'],
+    result: unknown,
+  ): Promise<void> {
     await client.query(
       `UPDATE sync_batches SET status = $2, result = $3, processed_at = NOW() WHERE id = $1`,
       [id, status, JSON.stringify(result)],
@@ -266,7 +322,9 @@ export class SyncEventsRepository {
 
   /** The highest `server_seq` currently in the log — used to bound `next_cursor`/bootstrap `starting_cursor` (§4.6). */
   async getMaxServerSeq(client: DbClient): Promise<bigint> {
-    const res = await client.query<{ max_seq: string }>(`SELECT COALESCE(MAX(server_seq), 0)::text AS max_seq FROM sync_events`);
+    const res = await client.query<{ max_seq: string }>(
+      `SELECT COALESCE(MAX(server_seq), 0)::text AS max_seq FROM sync_events`,
+    );
     return BigInt(res.rows[0]?.max_seq ?? '0');
   }
 

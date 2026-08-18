@@ -67,7 +67,10 @@ export interface OfflineCredentialRow {
 
 @Injectable()
 export class AuthRepository {
-  async findUserAuthByUsername(client: PoolClient, username: string): Promise<UserAuthRow | undefined> {
+  async findUserAuthByUsername(
+    client: PoolClient,
+    username: string,
+  ): Promise<UserAuthRow | undefined> {
     const res = await client.query<UserAuthRow>(
       `SELECT u.id, u.username, u.name, u.email, u.phone, u.password_hash, u.pin_hash, u.is_active,
               u.role_id, r.key AS role_key, r.name AS role_name
@@ -113,18 +116,37 @@ export class AuthRepository {
   }
 
   async employeeIdForUser(client: PoolClient, userId: UUID): Promise<UUID | null> {
-    const res = await client.query<{ id: UUID }>(`SELECT id FROM employees WHERE user_id = $1 LIMIT 1`, [userId]);
+    const res = await client.query<{ id: UUID }>(
+      `SELECT id FROM employees WHERE user_id = $1 LIMIT 1`,
+      [userId],
+    );
     return res.rows[0]?.id ?? null;
   }
 
   async insertSession(
     client: PoolClient,
-    row: { id: UUID; userId: UUID; refreshTokenHash: string; deviceId: UUID | null; ipAddress: string | null; userAgent: string | null; expiresAt: string },
+    row: {
+      id: UUID;
+      userId: UUID;
+      refreshTokenHash: string;
+      deviceId: UUID | null;
+      ipAddress: string | null;
+      userAgent: string | null;
+      expiresAt: string;
+    },
   ): Promise<void> {
     await client.query(
       `INSERT INTO sessions (id, user_id, refresh_token_hash, device_id, ip_address, user_agent, expires_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [row.id, row.userId, row.refreshTokenHash, row.deviceId, row.ipAddress, row.userAgent, row.expiresAt],
+      [
+        row.id,
+        row.userId,
+        row.refreshTokenHash,
+        row.deviceId,
+        row.ipAddress,
+        row.userAgent,
+        row.expiresAt,
+      ],
     );
   }
 
@@ -134,20 +156,29 @@ export class AuthRepository {
   }
 
   /** Rotates the refresh token in place on a refresh call — `ip_address`/`user_agent` stay as recorded at login (only the token/hash and expiry move). */
-  async rotateSession(client: PoolClient, sessionId: UUID, row: { refreshTokenHash: string; expiresAt: string }): Promise<void> {
-    await client.query(`UPDATE sessions SET refresh_token_hash = $2, expires_at = $3 WHERE id = $1`, [
-      sessionId,
-      row.refreshTokenHash,
-      row.expiresAt,
-    ]);
+  async rotateSession(
+    client: PoolClient,
+    sessionId: UUID,
+    row: { refreshTokenHash: string; expiresAt: string },
+  ): Promise<void> {
+    await client.query(
+      `UPDATE sessions SET refresh_token_hash = $2, expires_at = $3 WHERE id = $1`,
+      [sessionId, row.refreshTokenHash, row.expiresAt],
+    );
   }
 
   async revokeSession(client: PoolClient, sessionId: UUID): Promise<void> {
-    await client.query(`UPDATE sessions SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL`, [sessionId]);
+    await client.query(
+      `UPDATE sessions SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL`,
+      [sessionId],
+    );
   }
 
   async revokeAllSessionsForUser(client: PoolClient, userId: UUID): Promise<void> {
-    await client.query(`UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    await client.query(
+      `UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId],
+    );
   }
 
   async updatePinHash(client: PoolClient, userId: UUID, pinHash: string): Promise<void> {
@@ -155,7 +186,9 @@ export class AuthRepository {
   }
 
   async getSettingValue<T>(client: PoolClient, key: string): Promise<T | undefined> {
-    const res = await client.query<{ value: T }>(`SELECT value FROM settings WHERE key = $1`, [key]);
+    const res = await client.query<{ value: T }>(`SELECT value FROM settings WHERE key = $1`, [
+      key,
+    ]);
     return res.rows[0]?.value;
   }
 
@@ -167,7 +200,11 @@ export class AuthRepository {
    * both read as "uncapped" by the caller, matching SYNC-PROTOCOL §7.2's own
    * example (`replenishment.supervisor_approve: {}`, no `maxIdr`).
    */
-  async nextStepMinAmount(client: PoolClient, documentType: string, approverRole: string): Promise<Money | null> {
+  async nextStepMinAmount(
+    client: PoolClient,
+    documentType: string,
+    approverRole: string,
+  ): Promise<Money | null> {
     const res = await client.query<{ min_amount: Money | null }>(
       `SELECT next.min_amount
          FROM approval_chain_steps mine
@@ -180,7 +217,11 @@ export class AuthRepository {
   }
 
   /** Supersedes (revokes) any still-live credential for this exact (user, device) pair before minting a fresh one — "mints (or refreshes)" (§7.2). */
-  async revokeLiveCredentialsForUserDevice(client: PoolClient, userId: UUID, deviceId: UUID | null): Promise<void> {
+  async revokeLiveCredentialsForUserDevice(
+    client: PoolClient,
+    userId: UUID,
+    deviceId: UUID | null,
+  ): Promise<void> {
     await client.query(
       `UPDATE offline_credentials
           SET revoked_at = NOW()
@@ -189,7 +230,10 @@ export class AuthRepository {
     );
   }
 
-  async insertOfflineCredential(client: PoolClient, row: OfflineCredentialInsert): Promise<OfflineCredentialRow> {
+  async insertOfflineCredential(
+    client: PoolClient,
+    row: OfflineCredentialInsert,
+  ): Promise<OfflineCredentialRow> {
     const res = await client.query<OfflineCredentialRow>(
       `INSERT INTO offline_credentials
          (credential_id, user_id, device_id, role_key, location_ids, scopes, binding_secret_enc,
@@ -213,16 +257,28 @@ export class AuthRepository {
     return res.rows[0]!;
   }
 
-  async findOfflineCredential(client: PoolClient, credentialId: UUID): Promise<OfflineCredentialRow | undefined> {
-    const res = await client.query<OfflineCredentialRow>(`SELECT * FROM offline_credentials WHERE credential_id = $1`, [credentialId]);
+  async findOfflineCredential(
+    client: PoolClient,
+    credentialId: UUID,
+  ): Promise<OfflineCredentialRow | undefined> {
+    const res = await client.query<OfflineCredentialRow>(
+      `SELECT * FROM offline_credentials WHERE credential_id = $1`,
+      [credentialId],
+    );
     return res.rows[0];
   }
 
   async revokeOfflineCredential(client: PoolClient, credentialId: UUID): Promise<void> {
-    await client.query(`UPDATE offline_credentials SET revoked_at = NOW() WHERE credential_id = $1 AND revoked_at IS NULL`, [credentialId]);
+    await client.query(
+      `UPDATE offline_credentials SET revoked_at = NOW() WHERE credential_id = $1 AND revoked_at IS NULL`,
+      [credentialId],
+    );
   }
 
   async revokeAllOfflineCredentialsForUser(client: PoolClient, userId: UUID): Promise<void> {
-    await client.query(`UPDATE offline_credentials SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    await client.query(
+      `UPDATE offline_credentials SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId],
+    );
   }
 }

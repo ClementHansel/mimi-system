@@ -105,7 +105,9 @@ export class LowStockDetectorService implements OnModuleInit, OnModuleDestroy {
     const { locationId, itemId } = event.payload;
     this.debouncer.trigger(keyOf(locationId, itemId), () =>
       this.checkAndNotify(locationId, itemId).catch((err) =>
-        this.logger.error(`low-stock check failed for ${keyOf(locationId, itemId)}: ${err instanceof Error ? err.message : String(err)}`),
+        this.logger.error(
+          `low-stock check failed for ${keyOf(locationId, itemId)}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
       ),
     );
   }
@@ -153,10 +155,22 @@ export class LowStockDetectorService implements OnModuleInit, OnModuleDestroy {
       const minQty = data.min_qty;
 
       if (compareQty(data.qty_on_hand, minQty) >= 0) {
-        return { hasRule: true as const, isBelow: false as const, itemName: data.item_name, locationName: data.location_name, unitCode: data.unit_code, qtyOnHand: data.qty_on_hand, minQty };
+        return {
+          hasRule: true as const,
+          isBelow: false as const,
+          itemName: data.item_name,
+          locationName: data.location_name,
+          unitCode: data.unit_code,
+          qtyOnHand: data.qty_on_hand,
+          minQty,
+        };
       }
 
-      const recipientIds = await this.resolveRecipients(client, locationId, data.location_type === 'warehouse');
+      const recipientIds = await this.resolveRecipients(
+        client,
+        locationId,
+        data.location_type === 'warehouse',
+      );
       return {
         hasRule: true as const,
         isBelow: true as const,
@@ -185,7 +199,9 @@ export class LowStockDetectorService implements OnModuleInit, OnModuleDestroy {
 
     const { itemName, locationName, unitCode, qtyOnHand, minQty, recipientIds } = outcome;
     if (recipientIds.length === 0) {
-      this.logger.warn(`low_stock crossing at location ${locationId} item ${itemId} has no LDR/SPV/KGD recipient to notify`);
+      this.logger.warn(
+        `low_stock crossing at location ${locationId} item ${itemId} has no LDR/SPV/KGD recipient to notify`,
+      );
       this.lastNotifiedAt.set(key, Date.now());
       return;
     }
@@ -206,8 +222,14 @@ export class LowStockDetectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** LDR/SPV of the location; KGD too when the location is the central warehouse (CONTRACTS.md §4.7's note). */
-  private async resolveRecipients(client: PoolClient, locationId: string, isWarehouse: boolean): Promise<string[]> {
-    const roles = isWarehouse ? ['leader_outlet', 'supervisor', 'kepala_gudang'] : ['leader_outlet', 'supervisor'];
+  private async resolveRecipients(
+    client: PoolClient,
+    locationId: string,
+    isWarehouse: boolean,
+  ): Promise<string[]> {
+    const roles = isWarehouse
+      ? ['leader_outlet', 'supervisor', 'kepala_gudang']
+      : ['leader_outlet', 'supervisor'];
     const res = await client.query<{ id: string }>(
       `SELECT DISTINCT u.id
          FROM users u

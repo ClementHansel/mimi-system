@@ -61,17 +61,26 @@ export interface RlsCtx {
 }
 
 const SYSTEM_CONTEXT_USER_ID = '00000000-0000-0000-0000-0000000000ad';
-export const CENTRAL_CTX: RlsCtx = { role: 'owner', userId: SYSTEM_CONTEXT_USER_ID, locationIds: null };
+export const CENTRAL_CTX: RlsCtx = {
+  role: 'owner',
+  userId: SYSTEM_CONTEXT_USER_ID,
+  locationIds: null,
+};
 
 /** Runs `fn` against a fresh `mimi_app` connection inside a transaction that is ALWAYS rolled back. */
-export async function withRollback<T>(fn: (client: PoolClient) => Promise<T>, ctx: RlsCtx = CENTRAL_CTX): Promise<T> {
+export async function withRollback<T>(
+  fn: (client: PoolClient) => Promise<T>,
+  ctx: RlsCtx = CENTRAL_CTX,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds === null ? '' : ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds === null ? '' : ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -87,14 +96,19 @@ export async function withRollback<T>(fn: (client: PoolClient) => Promise<T>, ct
  * exercising a real mutating call therefore needs its OWN cleanup — this
  * helper does not hide that; callers clean up explicitly afterward.
  */
-export async function withCommit<T>(fn: (client: PoolClient) => Promise<T>, ctx: RlsCtx = CENTRAL_CTX): Promise<T> {
+export async function withCommit<T>(
+  fn: (client: PoolClient) => Promise<T>,
+  ctx: RlsCtx = CENTRAL_CTX,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds === null ? '' : ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds === null ? '' : ctx.locationIds.join(','),
+    ]);
     const result = await fn(client);
     await client.query('COMMIT').catch(() => {}); // no-op NOTICE if `fn` already committed — same tolerance as RlsCleanupInterceptor
     return result;
@@ -133,21 +147,31 @@ export interface Fixtures {
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
 
-  const warehouse = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' AND is_active = true ORDER BY created_at ASC LIMIT 1`);
-  const outlet = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'outlet' AND is_active = true ORDER BY code ASC LIMIT 1`);
+  const warehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'warehouse' AND is_active = true ORDER BY created_at ASC LIMIT 1`,
+  );
+  const outlet = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'outlet' AND is_active = true ORDER BY code ASC LIMIT 1`,
+  );
   const warehouseId = warehouse.rows[0]!.id;
   const outletId = outlet.rows[0]!.id;
 
   const areaFor = async (locationId: string, type: string): Promise<string> => {
-    const res = await pool.query<{ id: string }>(`SELECT id FROM storage_areas WHERE location_id = $1 AND type = $2 AND is_active = true LIMIT 1`, [locationId, type]);
-    if (!res.rows[0]) throw new Error(`Seed is missing a '${type}' storage area at location ${locationId}`);
+    const res = await pool.query<{ id: string }>(
+      `SELECT id FROM storage_areas WHERE location_id = $1 AND type = $2 AND is_active = true LIMIT 1`,
+      [locationId, type],
+    );
+    if (!res.rows[0])
+      throw new Error(`Seed is missing a '${type}' storage area at location ${locationId}`);
     return res.rows[0].id;
   };
 
   const frozenItem = await pool.query<{ id: string; base_unit_id: string; category_id: string }>(
     `SELECT id, base_unit_id, category_id FROM items WHERE storage_type = 'frozen' AND is_active = true LIMIT 1`,
   );
-  const dryItem = await pool.query<{ id: string; base_unit_id: string }>(`SELECT id, base_unit_id FROM items WHERE storage_type = 'dry' AND is_active = true LIMIT 1`);
+  const dryItem = await pool.query<{ id: string; base_unit_id: string }>(
+    `SELECT id, base_unit_id FROM items WHERE storage_type = 'dry' AND is_active = true LIMIT 1`,
+  );
   if (!frozenItem.rows[0]) throw new Error(`Seed data is missing a 'frozen' item`);
   if (!dryItem.rows[0]) throw new Error(`Seed data is missing a 'dry' item`);
 
@@ -163,18 +187,31 @@ export async function loadFixtures(): Promise<Fixtures> {
     [chilledSku, frozenItem.rows[0].category_id, frozenItem.rows[0].base_unit_id],
   );
 
-  const driver = await pool.query<{ id: string; user_id: string }>(`SELECT id, user_id FROM drivers WHERE is_active = true AND user_id IS NOT NULL LIMIT 1`);
-  if (!driver.rows[0]) throw new Error(`Seed data is missing an active driver with a linked user_id`);
+  const driver = await pool.query<{ id: string; user_id: string }>(
+    `SELECT id, user_id FROM drivers WHERE is_active = true AND user_id IS NOT NULL LIMIT 1`,
+  );
+  if (!driver.rows[0])
+    throw new Error(`Seed data is missing an active driver with a linked user_id`);
 
-  const frozenVehicle = await pool.query<{ id: string }>(`SELECT id FROM vehicles WHERE has_freezer = true AND is_active = true LIMIT 1`);
-  const dryVehicle = await pool.query<{ id: string }>(`SELECT id FROM vehicles WHERE has_freezer = false AND is_active = true LIMIT 1`);
+  const frozenVehicle = await pool.query<{ id: string }>(
+    `SELECT id FROM vehicles WHERE has_freezer = true AND is_active = true LIMIT 1`,
+  );
+  const dryVehicle = await pool.query<{ id: string }>(
+    `SELECT id FROM vehicles WHERE has_freezer = false AND is_active = true LIMIT 1`,
+  );
   if (!frozenVehicle.rows[0]) throw new Error(`Seed data is missing a freezer-capable vehicle`);
   if (!dryVehicle.rows[0]) throw new Error(`Seed data is missing a non-freezer vehicle`);
 
   const usersByRole = {} as Record<RoleKey, string>;
   for (const roleKey of Object.values(RoleKey)) {
-    const res = await pool.query<{ id: string }>(`SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`, [roleKey]);
-    if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`);
+    const res = await pool.query<{ id: string }>(
+      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
+      [roleKey],
+    );
+    if (!res.rows[0])
+      throw new Error(
+        `Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`,
+      );
     usersByRole[roleKey] = res.rows[0].id;
   }
 
@@ -202,19 +239,30 @@ export async function loadFixtures(): Promise<Fixtures> {
         `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id JOIN user_locations ul ON ul.user_id = u.id WHERE r.key = $1 AND ul.location_id = $2 LIMIT 1`,
         [roleKey, outletId],
       );
-      if (!res.rows[0]) throw new Error(`No user with role '${roleKey}' assigned to outlet ${outletId}`);
+      if (!res.rows[0])
+        throw new Error(`No user with role '${roleKey}' assigned to outlet ${outletId}`);
       return res.rows[0].id;
     },
   };
 }
 
 /** A real, confirmed `attachments` row (kernel/storage's table) — SJ receiving needs at least one photo + a signature, both pre-existing/confirmed before `receive()` is called. Written on the OWNER pool (fixture setup in a table this module doesn't own the writer for; presign/confirm is kernel/storage's HTTP surface, not exercised here). */
-export async function createConfirmedAttachment(kind: string, entityType: string | null, entityId: string | null): Promise<string> {
+export async function createConfirmedAttachment(
+  kind: string,
+  entityType: string | null,
+  entityId: string | null,
+): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
     `INSERT INTO attachments (bucket, object_key, file_name, mime_type, size_bytes, kind, entity_type, entity_id)
      VALUES ('mimi-test', $1, $2, 'image/jpeg', 1024, $3, $4, $5)
      RETURNING id`,
-    [`test/${kind}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`, `${kind}.jpg`, kind, entityType, entityId],
+    [
+      `test/${kind}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`,
+      `${kind}.jpg`,
+      kind,
+      entityType,
+      entityId,
+    ],
   );
   return res.rows[0]!.id;
 }
@@ -251,7 +299,11 @@ export async function deleteGoodsReceipt(id: string): Promise<void> {
  * (their own `ref_type`/`ref_id` residue is left in place — harmless, polymorphic, and
  * itself already accounted for by the very fold this reconciles against).
  */
-export async function resetStockKey(locationId: string, storageAreaId: string, itemId: string): Promise<void> {
+export async function resetStockKey(
+  locationId: string,
+  storageAreaId: string,
+  itemId: string,
+): Promise<void> {
   await getOwnerPool().query(
     `UPDATE stock_balances
         SET qty_on_hand = COALESCE(
@@ -267,7 +319,13 @@ export async function resetStockKey(locationId: string, storageAreaId: string, i
   );
 }
 
-export async function createReplenishmentRequestFixture(locationId: string, requestedBy: string, itemId: string, unitId: string, qty: string): Promise<{ requestId: string; lineId: string }> {
+export async function createReplenishmentRequestFixture(
+  locationId: string,
+  requestedBy: string,
+  itemId: string,
+  unitId: string,
+  qty: string,
+): Promise<{ requestId: string; lineId: string }> {
   const owner = getOwnerPool();
   const period = new Date().toISOString().slice(0, 7).replace('-', '');
   const numRes = await owner.query<{ last_number: number }>(
@@ -294,6 +352,9 @@ export async function deleteReplenishmentRequest(id: string): Promise<void> {
 }
 
 export async function readReplenishmentRequestStatus(id: string): Promise<string | null> {
-  const res = await getOwnerPool().query<{ status: string }>(`SELECT status FROM replenishment_requests WHERE id = $1`, [id]);
+  const res = await getOwnerPool().query<{ status: string }>(
+    `SELECT status FROM replenishment_requests WHERE id = $1`,
+    [id],
+  );
   return res.rows[0]?.status ?? null;
 }

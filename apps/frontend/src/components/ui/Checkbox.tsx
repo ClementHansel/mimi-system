@@ -4,7 +4,10 @@ import { forwardRef, useId, type InputHTMLAttributes } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'type' | 'size'> {
+export interface CheckboxProps extends Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'onChange' | 'type' | 'size'
+> {
   label?: string;
   description?: string;
   error?: string;
@@ -19,7 +22,13 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
   const boxId = id ?? autoId;
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={boxId} className={cn('flex cursor-pointer items-start gap-2.5', disabled && 'cursor-not-allowed opacity-60')}>
+      <label
+        htmlFor={boxId}
+        className={cn(
+          'flex cursor-pointer items-start gap-2.5',
+          disabled && 'cursor-not-allowed opacity-60',
+        )}
+      >
         <span className="relative mt-0.5 flex-none">
           <input
             ref={ref}

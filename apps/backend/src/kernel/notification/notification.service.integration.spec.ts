@@ -24,20 +24,26 @@ import { NotificationGateway } from './notification.gateway';
  * the same `SET LOCAL ROLE app_user` treatment `RlsContextGuard` gives a
  * real request; `withRequestContext()` below reproduces it.
  */
-const DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://mimi_app:mimi_app_secret@localhost:55433/mimi';
+const DATABASE_URL =
+  process.env.TEST_DATABASE_URL ?? 'postgres://mimi_app:mimi_app_secret@localhost:55433/mimi';
 
 function fakeConfig(values: Record<string, string>) {
   return { get: (key: string, def?: unknown) => values[key] ?? def } as never;
 }
 
 /** A central-role request context for this test's own setup/assertion queries against tables with a central-role RLS bypass (`users`, `locations`, `notification_outbox` — the latter has no RLS at all but the role switch is still required). NOT used by the service under test, which manages its own contexts. */
-async function withRequestContext<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+async function withRequestContext<T>(
+  pool: Pool,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.role', 'owner', true)`);
-    await client.query(`SELECT set_config('app.user_id', '00000000-0000-0000-0000-000000000000', true)`);
+    await client.query(
+      `SELECT set_config('app.user_id', '00000000-0000-0000-0000-000000000000', true)`,
+    );
     await client.query(`SELECT set_config('app.location_ids', '', true)`);
     const result = await fn(client);
     await client.query('COMMIT');
@@ -57,7 +63,11 @@ async function withRequestContext<T>(pool: Pool, fn: (client: PoolClient) => Pro
  * (exactly what `GET /api/notifications` does for that recipient) requires
  * impersonating that recipient's `app.user_id`, not a central role.
  */
-async function withOwnUserContext<T>(pool: Pool, userId: string, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+async function withOwnUserContext<T>(
+  pool: Pool,
+  userId: string,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -97,7 +107,9 @@ describe('NotificationService (integration, live Postgres as mimi_app)', () => {
       // WhatsApp fan-out path is actually exercised (not skipped for lack
       // of a contact number).
       await withRequestContext(pool, (client) =>
-        client.query(`UPDATE users SET phone = COALESCE(phone, '628111222333') WHERE id = $1`, [managerId]),
+        client.query(`UPDATE users SET phone = COALESCE(phone, '628111222333') WHERE id = $1`, [
+          managerId,
+        ]),
       );
     } catch {
       dbAvailable = false;
@@ -153,7 +165,9 @@ describe('NotificationService (integration, live Postgres as mimi_app)', () => {
       expect(result.whatsapp).toHaveLength(1);
       expect(result.whatsapp[0]!.success).toBe(false);
       const outboxRow = await withRequestContext(pool, (client) =>
-        client.query('SELECT * FROM notification_outbox WHERE id = $1', [result.whatsapp[0]!.outboxId]),
+        client.query('SELECT * FROM notification_outbox WHERE id = $1', [
+          result.whatsapp[0]!.outboxId,
+        ]),
       );
       expect(outboxRow.rows).toHaveLength(1);
       expect(outboxRow.rows[0].channel).toBe('whatsapp');
@@ -165,7 +179,9 @@ describe('NotificationService (integration, live Postgres as mimi_app)', () => {
       expect(result.email).toHaveLength(1);
       expect(result.email[0]!.success).toBe(false);
       const emailOutboxRow = await withRequestContext(pool, (client) =>
-        client.query('SELECT * FROM notification_outbox WHERE id = $1', [result.email[0]!.outboxId]),
+        client.query('SELECT * FROM notification_outbox WHERE id = $1', [
+          result.email[0]!.outboxId,
+        ]),
       );
       expect(emailOutboxRow.rows[0].channel).toBe('email');
       expect(emailOutboxRow.rows[0].status).toBe('failed');
@@ -184,9 +200,11 @@ describe('NotificationService (integration, live Postgres as mimi_app)', () => {
     await expect(pool.query('SELECT id, email, phone FROM users LIMIT 1')).rejects.toMatchObject({
       code: '42501', // permission denied
     });
-    await expect(pool.query(`INSERT INTO notifications (user_id, type, title, body) VALUES ($1,'x','x','x')`, [
-      managerId,
-    ])).rejects.toMatchObject({ code: '42501' });
+    await expect(
+      pool.query(`INSERT INTO notifications (user_id, type, title, body) VALUES ($1,'x','x','x')`, [
+        managerId,
+      ]),
+    ).rejects.toMatchObject({ code: '42501' });
 
     // The fixed shape: NotificationService.notify() succeeds against the
     // SAME unprivileged pool because it manages its own system context
@@ -201,7 +219,13 @@ describe('NotificationService (integration, live Postgres as mimi_app)', () => {
     const result = await service.notify({
       templateKey: 'low_stock',
       userIds: [managerId],
-      params: { itemName: 'Ayam Fillet', locationName: 'Gudang', currentQty: '1', minQty: '10', unit: 'kg' },
+      params: {
+        itemName: 'Ayam Fillet',
+        locationName: 'Gudang',
+        currentQty: '1',
+        minQty: '10',
+        unit: 'kg',
+      },
     });
     expect(result.inApp).toHaveLength(1);
   });

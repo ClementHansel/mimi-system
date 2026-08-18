@@ -37,7 +37,9 @@ export class EmailChannelService {
 
     if (!host) {
       this.transporter = null;
-      this.logger.warn('SMTP_HOST not configured — email channel will record outbox rows without sending.');
+      this.logger.warn(
+        'SMTP_HOST not configured — email channel will record outbox rows without sending.',
+      );
       return;
     }
 
@@ -46,7 +48,10 @@ export class EmailChannelService {
       port: this.config.get<number>('SMTP_PORT', 587),
       secure: String(this.config.get('SMTP_SECURE', 'false')).toLowerCase() === 'true',
       auth: this.config.get<string>('SMTP_USER')
-        ? { user: this.config.get<string>('SMTP_USER'), pass: this.config.get<string>('SMTP_PASSWORD') }
+        ? {
+            user: this.config.get<string>('SMTP_USER'),
+            pass: this.config.get<string>('SMTP_PASSWORD'),
+          }
         : undefined,
     });
   }
@@ -55,11 +60,18 @@ export class EmailChannelService {
     return this.transporter !== null;
   }
 
-  async send(to: string, templateKey: string, subject: string, body: string): Promise<EmailSendResult> {
+  async send(
+    to: string,
+    templateKey: string,
+    subject: string,
+    body: string,
+  ): Promise<EmailSendResult> {
     const outboxId = await this.outbox.create('email', to, templateKey, { subject, body });
 
     if (!this.transporter) {
-      this.logger.warn(`SMTP not configured — outbox row ${outboxId} left pending: to=${to} subject="${subject}"`);
+      this.logger.warn(
+        `SMTP not configured — outbox row ${outboxId} left pending: to=${to} subject="${subject}"`,
+      );
       await this.outbox.markFailed(outboxId, 'SMTP not configured');
       return { success: false, outboxId, error: 'SMTP not configured' };
     }

@@ -1,6 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { convertQty, divQty, ERR_NOT_FOUND, isZeroQty, SyncEntity, ZERO_QTY, type Qty, type UUID } from '@mimi/shared';
+import {
+  convertQty,
+  divQty,
+  ERR_NOT_FOUND,
+  isZeroQty,
+  SyncEntity,
+  ZERO_QTY,
+  type Qty,
+  type UUID,
+} from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { withWrite } from './db-tx';
 import { PutRecipeDto } from './dto/recipe.dto';
@@ -50,7 +59,8 @@ export class RecipeService {
 
   private async ensureProductExists(client: PoolClient, productId: string): Promise<void> {
     const res = await client.query(`SELECT 1 FROM products WHERE id = $1`, [productId]);
-    if (res.rowCount === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Product not found' });
+    if (res.rowCount === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Product not found' });
   }
 
   async getRecipe(client: PoolClient, productId: string): Promise<Recipe> {
@@ -61,7 +71,13 @@ export class RecipeService {
     );
     if (!recipeRes.rows[0]) return { productId, yieldQty: '1.000', lines: [] };
 
-    const linesRes = await client.query<{ item_id: string; item_name: string; qty: string; unit_id: string; unit_code: string }>(
+    const linesRes = await client.query<{
+      item_id: string;
+      item_name: string;
+      qty: string;
+      unit_id: string;
+      unit_code: string;
+    }>(
       `SELECT rl.item_id, i.name AS item_name, rl.qty, rl.unit_id, u.code AS unit_code
        FROM recipe_lines rl
        JOIN items i ON i.id = rl.item_id
@@ -85,13 +101,21 @@ export class RecipeService {
   }
 
   /** Full replace of the product's BOM (CONTRACTS.md §4.5 `PUT .../recipe`). Upserts the `recipes` row, replaces every line. */
-  async putRecipe(client: PoolClient, productId: string, dto: PutRecipeDto, actorUserId: string): Promise<Recipe> {
+  async putRecipe(
+    client: PoolClient,
+    productId: string,
+    dto: PutRecipeDto,
+    actorUserId: string,
+  ): Promise<Recipe> {
     return withWrite(client, async () => {
       await this.ensureProductExists(client, productId);
 
       const itemIds = new Set(dto.lines.map((l) => l.itemId));
       if (itemIds.size !== dto.lines.length) {
-        throw new BadRequestException({ code: 'ERR_VALIDATION', message: 'Duplicate itemId in recipe lines' });
+        throw new BadRequestException({
+          code: 'ERR_VALIDATION',
+          message: 'Duplicate itemId in recipe lines',
+        });
       }
 
       const recipeRes = await client.query<{ id: string }>(

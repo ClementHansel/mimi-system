@@ -18,7 +18,12 @@
 import { Injectable } from '@nestjs/common';
 import type { UUID } from '@mimi/shared';
 import { SyncOriginType } from '@mimi/shared';
-import { canOriginate, formatUuidV7, type SyncEventEnvelope, type SyncPayload } from '@mimi/sync-protocol';
+import {
+  canOriginate,
+  formatUuidV7,
+  type SyncEventEnvelope,
+  type SyncPayload,
+} from '@mimi/sync-protocol';
 import { randomBytes } from 'node:crypto';
 import { SyncEventsRepository, type DbClient } from './sync-events.repository';
 import { ConflictDetectorService } from './conflict-detector.service';
@@ -52,7 +57,10 @@ export class SyncEmitService {
    * writes without emitting silently breaks offline outlets); opens its own
    * transaction otherwise.
    */
-  async emit<TData = unknown>(client: DbClient | undefined, params: EmitParams<TData>): Promise<SyncEventEnvelope<TData>> {
+  async emit<TData = unknown>(
+    client: DbClient | undefined,
+    params: EmitParams<TData>,
+  ): Promise<SyncEventEnvelope<TData>> {
     // FIXED (was checking `resolveDirection(entity)` against 'pull'/'bidirectional' — wrong axis, per
     // W3-07/the coordinator's report). `sj_drops.*`, `sj_temperature_logs.logged`, `goods_receipts
     // .recorded`, `attendance.*`, and any other class-F/B entity whose direction happens to be declared

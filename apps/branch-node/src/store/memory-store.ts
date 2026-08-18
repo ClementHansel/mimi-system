@@ -6,8 +6,21 @@
  * lifecycle. `pg-store.ts` implements the identical interface for a real
  * on-prem deployment.
  */
-import { stockKeyOf, type MovementFact, type ProjectedBalance, type StockKey } from '@mimi/sync-protocol';
-import { addFixed, formatFixed, parseFixed, QTY_SCALE, type ISODateTime, type Qty, type UUID } from '@mimi/shared';
+import {
+  stockKeyOf,
+  type MovementFact,
+  type ProjectedBalance,
+  type StockKey,
+} from '@mimi/sync-protocol';
+import {
+  addFixed,
+  formatFixed,
+  parseFixed,
+  QTY_SCALE,
+  type ISODateTime,
+  type Qty,
+  type UUID,
+} from '@mimi/shared';
 import type {
   DiscoveredDeviceRecord,
   EventPage,
@@ -67,7 +80,10 @@ export class MemoryStore implements Store {
     const stored: StoredSyncEvent = { ...event, serverSeq: this.nextServerSeq++ };
     this.events.push(stored);
     this.eventsById.set(stored.eventId, stored);
-    this.eventIdAtSeq.set(`${stored.originDeviceId}:${stored.clientSeq.toString()}`, stored.eventId);
+    this.eventIdAtSeq.set(
+      `${stored.originDeviceId}:${stored.clientSeq.toString()}`,
+      stored.eventId,
+    );
     return stored;
   }
 
@@ -167,7 +183,13 @@ export class MemoryStore implements Store {
       return { ...updated };
     }
     const id = `disc-${++discoveredIdSeq}` as UUID;
-    const created: DiscoveredDeviceRecord = { ...input, id, firstSeenAt: now, lastSeenAt: now, status: 'new' };
+    const created: DiscoveredDeviceRecord = {
+      ...input,
+      id,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      status: 'new',
+    };
     this.discovered.set(id, created);
     this.discoveredByKey.set(key, id);
     return { ...created };
@@ -207,13 +229,23 @@ export class MemoryStore implements Store {
   }
 
   // ── whitelisted fan-out projections ──────────────────────────────────
-  async upsertProjection(entity: string, entityId: UUID, locationId: UUID | null, payload: unknown): Promise<void> {
+  async upsertProjection(
+    entity: string,
+    entityId: UUID,
+    locationId: UUID | null,
+    payload: unknown,
+  ): Promise<void> {
     let byId = this.projections.get(entity);
     if (!byId) {
       byId = new Map();
       this.projections.set(entity, byId);
     }
-    byId.set(entityId, { entityId, locationId, payload, updatedAt: new Date().toISOString() as ISODateTime });
+    byId.set(entityId, {
+      entityId,
+      locationId,
+      payload,
+      updatedAt: new Date().toISOString() as ISODateTime,
+    });
   }
 
   async listProjections(entity: string, locationId?: UUID): Promise<ProjectionRow[]> {
@@ -252,9 +284,16 @@ export class MemoryStore implements Store {
       const signed = parseFixed(m.qty, QTY_SCALE) * sign;
       const prev = totals.get(k);
       if (prev) prev.total = addFixed(prev.total, signed);
-      else totals.set(k, { key: { locationId: m.locationId, storageAreaId: m.storageAreaId, itemId: m.itemId }, total: signed });
+      else
+        totals.set(k, {
+          key: { locationId: m.locationId, storageAreaId: m.storageAreaId, itemId: m.itemId },
+          total: signed,
+        });
     }
-    return [...totals.values()].map(({ key, total }) => ({ ...key, qtyOnHand: formatFixed(total, QTY_SCALE) }));
+    return [...totals.values()].map(({ key, total }) => ({
+      ...key,
+      qtyOnHand: formatFixed(total, QTY_SCALE),
+    }));
   }
 
   async listMovements(locationId: UUID): Promise<MovementFact[]> {

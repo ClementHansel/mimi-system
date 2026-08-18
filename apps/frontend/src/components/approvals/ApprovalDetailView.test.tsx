@@ -24,15 +24,22 @@ vi.mock('@/lib/api', async () => {
 function setPermissions(permissions: string[]) {
   useSessionStore.setState({
     user: {
-      id: 'u1', username: 'mgr1', name: 'Manajer Satu', roleKey: 'manager',
-      permissions, locations: [], employeeId: null, mustSetPin: false,
+      id: 'u1',
+      username: 'mgr1',
+      name: 'Manajer Satu',
+      roleKey: 'manager',
+      permissions,
+      locations: [],
+      employeeId: null,
+      mustSetPin: false,
     },
   });
 }
 
 function mockDetail(detail: ApprovalDetail, path = '/approvals/purchase_request/doc-1') {
   vi.mocked(api.get).mockImplementation((p: string) => {
-    if (p.startsWith('/approvals/pending')) return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 200 });
+    if (p.startsWith('/approvals/pending'))
+      return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 200 });
     if (p === path) return Promise.resolve(detail);
     return Promise.reject(new Error(`unexpected path: ${p}`));
   });
@@ -53,7 +60,16 @@ describe('ApprovalDetailView', () => {
       amount: '500000.00',
       currentStep: null,
       steps: [
-        { stepNo: 1, approverRole: 'manager', state: 'approved', actedBy: 'Manajer Satu', actedAt: '2026-08-10T00:00:00Z', reason: null, offlineAuthorized: false, reverificationStatus: null },
+        {
+          stepNo: 1,
+          approverRole: 'manager',
+          state: 'approved',
+          actedBy: 'Manajer Satu',
+          actedAt: '2026-08-10T00:00:00Z',
+          reason: null,
+          offlineAuthorized: false,
+          reverificationStatus: null,
+        },
       ],
     });
 
@@ -72,7 +88,16 @@ describe('ApprovalDetailView', () => {
       amount: '750000.00',
       currentStep: 1,
       steps: [
-        { stepNo: 1, approverRole: 'manager', state: 'pending', actedBy: null, actedAt: null, reason: null, offlineAuthorized: false, reverificationStatus: null },
+        {
+          stepNo: 1,
+          approverRole: 'manager',
+          state: 'pending',
+          actedBy: null,
+          actedAt: null,
+          reason: null,
+          offlineAuthorized: false,
+          reverificationStatus: null,
+        },
       ],
     });
 
@@ -83,7 +108,7 @@ describe('ApprovalDetailView', () => {
     expect(screen.getByText(/menunggu persetujuan pihak lain/)).toBeInTheDocument();
   });
 
-  it('renders the action panel once the caller holds the current step\'s permission', async () => {
+  it("renders the action panel once the caller holds the current step's permission", async () => {
     setPermissions(['purchasing.pr.approve']);
     mockDetail({
       approvalId: 'apr-3',
@@ -91,7 +116,16 @@ describe('ApprovalDetailView', () => {
       amount: '750000.00',
       currentStep: 1,
       steps: [
-        { stepNo: 1, approverRole: 'manager', state: 'pending', actedBy: null, actedAt: null, reason: null, offlineAuthorized: false, reverificationStatus: null },
+        {
+          stepNo: 1,
+          approverRole: 'manager',
+          state: 'pending',
+          actedBy: null,
+          actedAt: null,
+          reason: null,
+          offlineAuthorized: false,
+          reverificationStatus: null,
+        },
       ],
     });
 
@@ -116,7 +150,16 @@ describe('ApprovalDetailView', () => {
         amount: '100000.00',
         currentStep: 1,
         steps: [
-          { stepNo: 1, approverRole: 'supervisor', state: 'pending', actedBy: null, actedAt: null, reason: null, offlineAuthorized: false, reverificationStatus: null },
+          {
+            stepNo: 1,
+            approverRole: 'supervisor',
+            state: 'pending',
+            actedBy: null,
+            actedAt: null,
+            reason: null,
+            offlineAuthorized: false,
+            reverificationStatus: null,
+          },
         ],
       },
       '/approvals/void_refund/doc-2',
@@ -138,7 +181,16 @@ describe('ApprovalDetailView', () => {
         amount: '100000.00',
         currentStep: 1,
         steps: [
-          { stepNo: 1, approverRole: 'supervisor', state: 'pending', actedBy: null, actedAt: null, reason: null, offlineAuthorized: false, reverificationStatus: null },
+          {
+            stepNo: 1,
+            approverRole: 'supervisor',
+            state: 'pending',
+            actedBy: null,
+            actedAt: null,
+            reason: null,
+            offlineAuthorized: false,
+            reverificationStatus: null,
+          },
         ],
       },
       '/approvals/void_refund/doc-2',
@@ -159,14 +211,25 @@ describe('ApprovalDetailView', () => {
       amount: '250000.00',
       currentStep: null,
       steps: [
-        { stepNo: 1, approverRole: 'supervisor', state: 'approved', actedBy: 'Sari', actedAt: '2026-08-01T00:00:00Z', reason: null, offlineAuthorized: true, reverificationStatus: 'unprovable' },
+        {
+          stepNo: 1,
+          approverRole: 'supervisor',
+          state: 'approved',
+          actedBy: 'Sari',
+          actedAt: '2026-08-01T00:00:00Z',
+          reason: null,
+          offlineAuthorized: true,
+          reverificationStatus: 'unprovable',
+        },
       ],
     });
 
     render(<ApprovalDetailView documentType="purchase_request" documentId="doc-1" />);
 
     expect(await screen.findByText('Diotorisasi offline')).toBeInTheDocument();
-    expect(screen.getByText('Tidak dapat diverifikasi — menunggu tinjauan keuangan')).toBeInTheDocument();
+    expect(
+      screen.getByText('Tidak dapat diverifikasi — menunggu tinjauan keuangan'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Terverifikasi saat sinkron')).not.toBeInTheDocument();
   });
 });

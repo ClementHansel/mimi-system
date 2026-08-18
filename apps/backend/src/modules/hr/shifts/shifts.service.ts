@@ -75,21 +75,39 @@ export class ShiftsService {
         entityId: shift.id,
         locationId: dto.locationId ?? null,
         actorUserId,
-        data: { id: shift.id, locationId: dto.locationId ?? null, name: shift.name, startTime: shift.startTime, endTime: shift.endTime, breakMinutes: shift.breakMinutes, isActive: true },
+        data: {
+          id: shift.id,
+          locationId: dto.locationId ?? null,
+          name: shift.name,
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          breakMinutes: shift.breakMinutes,
+          isActive: true,
+        },
       });
 
       return shift;
     });
   }
 
-  async updateShift(client: PoolClient, actorUserId: UUID, id: UUID, dto: UpdateShiftDto): Promise<ShiftDto> {
-    const existingRes = await client.query<Record<string, any>>('SELECT * FROM work_shifts WHERE id = $1', [id]);
+  async updateShift(
+    client: PoolClient,
+    actorUserId: UUID,
+    id: UUID,
+    dto: UpdateShiftDto,
+  ): Promise<ShiftDto> {
+    const existingRes = await client.query<Record<string, any>>(
+      'SELECT * FROM work_shifts WHERE id = $1',
+      [id],
+    );
     const existing = existingRes.rows[0];
-    if (!existing) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Shift not found' });
+    if (!existing)
+      throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Shift not found' });
 
     const nextStart = dto.startTime ?? existing.start_time;
     const nextEnd = dto.endTime ?? existing.end_time;
-    if (dto.startTime !== undefined || dto.endTime !== undefined) this.assertWindow(nextStart, nextEnd);
+    if (dto.startTime !== undefined || dto.endTime !== undefined)
+      this.assertWindow(nextStart, nextEnd);
 
     return withWrite(client, async () => {
       const sets: string[] = [];
@@ -129,14 +147,28 @@ export class ShiftsService {
         entityId: id,
         locationId: updated.location_id ?? null,
         actorUserId,
-        data: { id, locationId: updated.location_id ?? null, name: updated.name, startTime: updated.start_time, endTime: updated.end_time, breakMinutes: updated.break_minutes, isActive: updated.is_active },
+        data: {
+          id,
+          locationId: updated.location_id ?? null,
+          name: updated.name,
+          startTime: updated.start_time,
+          endTime: updated.end_time,
+          breakMinutes: updated.break_minutes,
+          isActive: updated.is_active,
+        },
       });
 
       return shift;
     });
   }
 
-  async getRoster(client: PoolClient, locationId: UUID, from: string, to: string, employeeId?: UUID): Promise<RosterRow[]> {
+  async getRoster(
+    client: PoolClient,
+    locationId: UUID,
+    from: string,
+    to: string,
+    employeeId?: UUID,
+  ): Promise<RosterRow[]> {
     const employeeParams: unknown[] = [locationId];
     let employeeWhere = "e.location_id = $1 AND e.employment_status = 'active'";
     if (employeeId) {
@@ -167,7 +199,11 @@ export class ShiftsService {
     const byEmployee = new Map<UUID, RosterDay[]>();
     for (const row of assignmentsRes.rows) {
       const list = byEmployee.get(row.employee_id) ?? [];
-      list.push({ date: pgDateToIso(row.date), workShiftId: row.work_shift_id ?? null, shiftName: row.shift_name ?? null });
+      list.push({
+        date: pgDateToIso(row.date),
+        workShiftId: row.work_shift_id ?? null,
+        shiftName: row.shift_name ?? null,
+      });
       byEmployee.set(row.employee_id, list);
     }
 
@@ -178,7 +214,11 @@ export class ShiftsService {
     }));
   }
 
-  async upsertRoster(client: PoolClient, actorUserId: UUID, dto: UpsertRosterDto): Promise<{ updated: number }> {
+  async upsertRoster(
+    client: PoolClient,
+    actorUserId: UUID,
+    dto: UpsertRosterDto,
+  ): Promise<{ updated: number }> {
     return withWrite(client, async () => {
       for (const a of dto.assignments) {
         const res = await client.query<{ id: UUID }>(
@@ -197,7 +237,13 @@ export class ShiftsService {
           entityId: assignmentId,
           locationId: dto.locationId,
           actorUserId,
-          data: { id: assignmentId, employeeId: a.employeeId, workShiftId: a.workShiftId ?? null, locationId: dto.locationId, date: a.date },
+          data: {
+            id: assignmentId,
+            employeeId: a.employeeId,
+            workShiftId: a.workShiftId ?? null,
+            locationId: dto.locationId,
+            date: a.date,
+          },
         });
       }
       return { updated: dto.assignments.length };
@@ -206,7 +252,10 @@ export class ShiftsService {
 
   private assertWindow(startTime: string, endTime: string): void {
     if (startTime === endTime) {
-      throw new BadRequestException({ code: 'ERR_VALIDATION', message: 'startTime and endTime cannot be equal' });
+      throw new BadRequestException({
+        code: 'ERR_VALIDATION',
+        message: 'startTime and endTime cannot be equal',
+      });
     }
   }
 

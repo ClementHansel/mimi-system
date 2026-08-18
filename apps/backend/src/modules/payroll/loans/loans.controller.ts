@@ -19,7 +19,13 @@ export class LoansController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.service.list(req.dbClient!, employeeId, status, page ? parseInt(page, 10) : 1, pageSize ? parseInt(pageSize, 10) : 50);
+    return this.service.list(
+      req.dbClient!,
+      employeeId,
+      status,
+      page ? parseInt(page, 10) : 1,
+      pageSize ? parseInt(pageSize, 10) : 50,
+    );
   }
 
   @Post()
@@ -32,14 +38,22 @@ export class LoansController {
   @Post(':id/approve')
   @RequirePermission('payroll.loan.approve')
   @Audited({ module: 'payroll', entityType: 'employee_loans', action: 'payroll.loan.approve' })
-  async approve(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ApproveLoanDto) {
+  async approve(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ApproveLoanDto,
+  ) {
     return this.service.approve(req.dbClient!, req.user!.sub, req.user!.roleKey, id, dto.note);
   }
 
   @Post(':id/reject')
   @RequirePermission('payroll.loan.approve')
   @Audited({ module: 'payroll', entityType: 'employee_loans', action: 'payroll.loan.approve' })
-  async reject(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: RejectLoanDto) {
+  async reject(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: RejectLoanDto,
+  ) {
     return this.service.reject(req.dbClient!, req.user!.sub, req.user!.roleKey, id, dto.reason);
   }
 

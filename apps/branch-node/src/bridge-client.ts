@@ -24,7 +24,10 @@ import type {
 } from './bridge-types';
 
 /** `POST /api/nodes/register` (CONTRACTS §4.22) — public endpoint, single-use pairing token in the body. */
-export async function registerNode(cloudUrl: string, req: NodeRegisterRequest): Promise<NodeRegisterResponse> {
+export async function registerNode(
+  cloudUrl: string,
+  req: NodeRegisterRequest,
+): Promise<NodeRegisterResponse> {
   const res = await fetch(`${cloudUrl}/api/nodes/register`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -46,7 +49,12 @@ export interface BridgeHandlers {
 export class BridgeClient {
   private socket: MinimalSocket;
 
-  constructor(cloudUrl: string, nodeToken: string, private handlers: BridgeHandlers, socketFactory?: SocketFactory) {
+  constructor(
+    cloudUrl: string,
+    nodeToken: string,
+    private handlers: BridgeHandlers,
+    socketFactory?: SocketFactory,
+  ) {
     const factory = socketFactory ?? ((url, opts) => io(url, opts) as unknown as MinimalSocket);
     this.socket = factory(`${cloudUrl}/bridge`, {
       auth: { token: nodeToken },
@@ -58,12 +66,25 @@ export class BridgeClient {
 
   private registerHandlers(): void {
     this.socket.on('connect', () => console.log('[bridge-client] connected to /bridge'));
-    this.socket.on('disconnect', (...args: unknown[]) => console.log(`[bridge-client] disconnected: ${args[0]}`));
-    this.socket.on('connect_error', (...args: unknown[]) => console.error('[bridge-client] connect_error:', (args[0] as Error)?.message));
+    this.socket.on('disconnect', (...args: unknown[]) =>
+      console.log(`[bridge-client] disconnected: ${args[0]}`),
+    );
+    this.socket.on('connect_error', (...args: unknown[]) =>
+      console.error('[bridge-client] connect_error:', (args[0] as Error)?.message),
+    );
 
-    this.socket.on('command', (...args: unknown[]) => void this.handlers.onCommand(args[0] as NodeCommand));
-    this.socket.on('cert_rotated', (...args: unknown[]) => void this.handlers.onCertRotated?.(args[0] as CertRotated));
-    this.socket.on('config_updated', (...args: unknown[]) => void this.handlers.onConfigUpdated?.(args[0] as ConfigUpdated));
+    this.socket.on(
+      'command',
+      (...args: unknown[]) => void this.handlers.onCommand(args[0] as NodeCommand),
+    );
+    this.socket.on(
+      'cert_rotated',
+      (...args: unknown[]) => void this.handlers.onCertRotated?.(args[0] as CertRotated),
+    );
+    this.socket.on(
+      'config_updated',
+      (...args: unknown[]) => void this.handlers.onConfigUpdated?.(args[0] as ConfigUpdated),
+    );
     this.socket.on('revoked', () => void this.handlers.onRevoked?.());
   }
 
@@ -74,7 +95,10 @@ export class BridgeClient {
   waitUntilConnected(timeoutMs = 10_000): Promise<void> {
     if (this.socket.connected) return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timed out connecting to cloud /bridge')), timeoutMs);
+      const timer = setTimeout(
+        () => reject(new Error('timed out connecting to cloud /bridge')),
+        timeoutMs,
+      );
       this.socket.once('connect', () => {
         clearTimeout(timer);
         resolve();

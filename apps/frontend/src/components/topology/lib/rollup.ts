@@ -25,13 +25,17 @@ import type { TopologyLocation } from './types';
  */
 export type NodeDisplayState = 'none' | 'pairing_pending' | 'paired';
 
-export function nodeDisplayState(location: Pick<TopologyLocation, 'nodeEnabled' | 'node'>): NodeDisplayState {
+export function nodeDisplayState(
+  location: Pick<TopologyLocation, 'nodeEnabled' | 'node'>,
+): NodeDisplayState {
   if (location.node) return 'paired';
   return location.nodeEnabled ? 'pairing_pending' : 'none';
 }
 
 /** Outlet status -> StatusBadge status token (`status.topologyOutlet.*`, VOCAB `degraded`/`online`/`offline`). */
-export function outletStatusToken(outletStatus: TopologyLocation['outletStatus']): 'online' | 'degraded' | 'offline' {
+export function outletStatusToken(
+  outletStatus: TopologyLocation['outletStatus'],
+): 'online' | 'degraded' | 'offline' {
   return outletStatus;
 }
 
@@ -43,12 +47,19 @@ export function outletStatusToken(outletStatus: TopologyLocation['outletStatus']
  * lone offline tablet at a closed outlet renders as quiet/neutral, matching
  * `StatusBadge`'s existing muted tone for `offline`.
  */
-export function isDeviceAlarmWorthy(deviceStatus: string, outletStatus: TopologyLocation['outletStatus']): boolean {
+export function isDeviceAlarmWorthy(
+  deviceStatus: string,
+  outletStatus: TopologyLocation['outletStatus'],
+): boolean {
   return deviceStatus === 'offline' && outletStatus === 'offline';
 }
 
 /** Sort key so the worst outlets (offline first, then degraded, then online) surface at the top of a city group. */
-const OUTLET_SEVERITY: Record<TopologyLocation['outletStatus'], number> = { offline: 0, degraded: 1, online: 2 };
+const OUTLET_SEVERITY: Record<TopologyLocation['outletStatus'], number> = {
+  offline: 0,
+  degraded: 1,
+  online: 2,
+};
 
 export function sortOutletsBySeverity(outlets: TopologyLocation[]): TopologyLocation[] {
   return [...outlets].sort((a, b) => {

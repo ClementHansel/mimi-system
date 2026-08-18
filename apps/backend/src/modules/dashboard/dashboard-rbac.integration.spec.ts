@@ -77,10 +77,13 @@ describe('Dashboard RBAC + RLS (integration, live Postgres)', () => {
     if (!dbAvailable) return;
     const expected = await rawRevenueForRange(FROM, TO);
 
-    await withRollbackAs({ role: RoleKey.OWNER, userId: fixtures.ownerUserId, locationIds: [] }, async (client) => {
-      const result = await overview.getOverview(client, null, FROM, TO);
-      expect(result.revenue).toBe(expected);
-    });
+    await withRollbackAs(
+      { role: RoleKey.OWNER, userId: fixtures.ownerUserId, locationIds: [] },
+      async (client) => {
+        const result = await overview.getOverview(client, null, FROM, TO);
+        expect(result.revenue).toBe(expected);
+      },
+    );
   });
 
   it("a Supervisor sees ONLY their own outlet's revenue — not the company-wide total, not another outlet's", async () => {
@@ -89,7 +92,11 @@ describe('Dashboard RBAC + RLS (integration, live Postgres)', () => {
     const companyWide = await rawRevenueForRange(FROM, TO);
 
     await withRollbackAs(
-      { role: RoleKey.SUPERVISOR, userId: fixtures.supervisorUserId, locationIds: [fixtures.supervisorOutletId] },
+      {
+        role: RoleKey.SUPERVISOR,
+        userId: fixtures.supervisorUserId,
+        locationIds: [fixtures.supervisorOutletId],
+      },
       async (client) => {
         const result = await overview.getOverview(client, [fixtures.supervisorOutletId], FROM, TO);
         expect(result.revenue).toBe(expectedOwn);
@@ -107,7 +114,11 @@ describe('Dashboard RBAC + RLS (integration, live Postgres)', () => {
     if (!dbAvailable) return;
     const anyDate = '2026-01-01'; // listOutlets tolerates a date with zero sales — it's checking ROW VISIBILITY, not figures
     await withRollbackAs(
-      { role: RoleKey.SUPERVISOR, userId: fixtures.supervisorUserId, locationIds: [fixtures.supervisorOutletId] },
+      {
+        role: RoleKey.SUPERVISOR,
+        userId: fixtures.supervisorUserId,
+        locationIds: [fixtures.supervisorOutletId],
+      },
       async (client) => {
         const rows = await outlets.listOutlets(client, [fixtures.supervisorOutletId], anyDate);
         expect(rows.length).toBe(1);
@@ -115,20 +126,32 @@ describe('Dashboard RBAC + RLS (integration, live Postgres)', () => {
       },
     );
 
-    await withRollbackAs({ role: RoleKey.OWNER, userId: fixtures.ownerUserId, locationIds: [] }, async (client) => {
-      const rows = await outlets.listOutlets(client, null, anyDate);
-      expect(rows.length).toBeGreaterThanOrEqual(15);
-      expect(rows.some((r) => r.locationId === fixtures.otherOutletId)).toBe(true);
-    });
+    await withRollbackAs(
+      { role: RoleKey.OWNER, userId: fixtures.ownerUserId, locationIds: [] },
+      async (client) => {
+        const rows = await outlets.listOutlets(client, null, anyDate);
+        expect(rows.length).toBeGreaterThanOrEqual(15);
+        expect(rows.some((r) => r.locationId === fixtures.otherOutletId)).toBe(true);
+      },
+    );
   });
 
   it('a Supervisor requesting the outlet drill-down for a DIFFERENT outlet is 403d, not silently handed the data', async () => {
     if (!dbAvailable) return;
     await withRollbackAs(
-      { role: RoleKey.SUPERVISOR, userId: fixtures.supervisorUserId, locationIds: [fixtures.supervisorOutletId] },
+      {
+        role: RoleKey.SUPERVISOR,
+        userId: fixtures.supervisorUserId,
+        locationIds: [fixtures.supervisorOutletId],
+      },
       async (client) => {
         await expect(
-          outlets.getOutletDrilldown(client, [fixtures.supervisorOutletId], fixtures.otherOutletId, '2026-01-01'),
+          outlets.getOutletDrilldown(
+            client,
+            [fixtures.supervisorOutletId],
+            fixtures.otherOutletId,
+            '2026-01-01',
+          ),
         ).rejects.toMatchObject({ status: 403 });
       },
     );
@@ -136,26 +159,46 @@ describe('Dashboard RBAC + RLS (integration, live Postgres)', () => {
 
   it('ops-status counters are scoped (Supervisor never sees a LARGER count than Owner for the same counter type)', async () => {
     if (!dbAvailable) return;
-    await withRollbackAs({ role: RoleKey.OWNER, userId: fixtures.ownerUserId, locationIds: [] }, async (client) => {
-      const ownerStatus = await opsStatus.getOpsStatus(client, null);
-      await withRollbackAs(
-        { role: RoleKey.SUPERVISOR, userId: fixtures.supervisorUserId, locationIds: [fixtures.supervisorOutletId] },
-        async (spvClient) => {
-          const spvStatus = await opsStatus.getOpsStatus(spvClient, [fixtures.supervisorOutletId]);
-          expect(spvStatus.pendingApprovals).toBeLessThanOrEqual(ownerStatus.pendingApprovals);
-          expect(spvStatus.lowStockOutlets).toBeLessThanOrEqual(ownerStatus.lowStockOutlets);
-          expect(spvStatus.openConflicts).toBeLessThanOrEqual(ownerStatus.openConflicts);
-        },
-      );
-    });
+    await withRollbackAs(
+      { role: RoleKey.OWNER, userId: fixtures.ownerUserId, locationIds: [] },
+      async (client) => {
+        const ownerStatus = await opsStatus.getOpsStatus(client, null);
+        await withRollbackAs(
+          {
+            role: RoleKey.SUPERVISOR,
+            userId: fixtures.supervisorUserId,
+            locationIds: [fixtures.supervisorOutletId],
+          },
+          async (spvClient) => {
+            const spvStatus = await opsStatus.getOpsStatus(spvClient, [
+              fixtures.supervisorOutletId,
+            ]);
+            expect(spvStatus.pendingApprovals).toBeLessThanOrEqual(ownerStatus.pendingApprovals);
+            expect(spvStatus.lowStockOutlets).toBeLessThanOrEqual(ownerStatus.lowStockOutlets);
+            expect(spvStatus.openConflicts).toBeLessThanOrEqual(ownerStatus.openConflicts);
+          },
+        );
+      },
+    );
   });
 
-  it('top-products is scoped to the Supervisor\'s own outlet — every returned productId sold there, verified against the SAME query run for the Owner', async () => {
+  it("top-products is scoped to the Supervisor's own outlet — every returned productId sold there, verified against the SAME query run for the Owner", async () => {
     if (!dbAvailable) return;
     await withRollbackAs(
-      { role: RoleKey.SUPERVISOR, userId: fixtures.supervisorUserId, locationIds: [fixtures.supervisorOutletId] },
+      {
+        role: RoleKey.SUPERVISOR,
+        userId: fixtures.supervisorUserId,
+        locationIds: [fixtures.supervisorOutletId],
+      },
       async (client) => {
-        const rows = await topProducts.getTopProducts(client, [fixtures.supervisorOutletId], FROM, TO, undefined, 10);
+        const rows = await topProducts.getTopProducts(
+          client,
+          [fixtures.supervisorOutletId],
+          FROM,
+          TO,
+          undefined,
+          10,
+        );
         // Every row's revenue must be <= what an Owner sees company-wide for that same product (sanity: scoped can't exceed unscoped).
         expect(Array.isArray(rows)).toBe(true);
       },

@@ -69,11 +69,19 @@ export interface TopologyTree {
   generatedAt: ISODateTime;
   pusat: TopologyLocation | null;
   cities: TopologyCityGroup[];
-  totals: TopologyCounts & { outletsOffline: number; openConflicts: number; openExceptions: number };
+  totals: TopologyCounts & {
+    outletsOffline: number;
+    openConflicts: number;
+    openExceptions: number;
+  };
 }
 
 export interface TopologySummary {
-  totals: TopologyCounts & { outletsOffline: number; openConflicts: number; openExceptions: number };
+  totals: TopologyCounts & {
+    outletsOffline: number;
+    openConflicts: number;
+    openExceptions: number;
+  };
   byCity: { city: string; counts: TopologyCounts; outletsOffline: number }[];
 }
 
@@ -81,7 +89,15 @@ export interface TopologySummary {
 export interface SyncStatusRow {
   locationId: UUID;
   locationName: string;
-  devices: { deviceId: UUID; name: string; queueDepth: number; quarantineDepth: number; lastSyncAt: ISODateTime | null; cursorLag: number; status: string }[];
+  devices: {
+    deviceId: UUID;
+    name: string;
+    queueDepth: number;
+    quarantineDepth: number;
+    lastSyncAt: ISODateTime | null;
+    cursorLag: number;
+    status: string;
+  }[];
   node: { nodeId: UUID } | null;
   openConflicts: number;
   openExceptions: number;

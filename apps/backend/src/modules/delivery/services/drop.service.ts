@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   ERR_PHOTO_REQUIRED,
@@ -39,7 +45,10 @@ import {
 } from '../queries';
 import { ArriveDropDto, DepartDropDto, FailDropDto, ReceiveDropDto } from '../dto/drop.dto';
 import { ColdChainService } from './cold-chain.service';
-import { REPLENISHMENT_FULFILLMENT_PORT, type ReplenishmentFulfillmentPort } from '../ports/replenishment-fulfillment.port';
+import {
+  REPLENISHMENT_FULFILLMENT_PORT,
+  type ReplenishmentFulfillmentPort,
+} from '../ports/replenishment-fulfillment.port';
 
 const TERMINAL_DROP_STATUSES = new Set(['completed', 'completed_discrepancy', 'failed']);
 
@@ -101,7 +110,11 @@ export interface ApplyReceiveParams {
 
 export type ApplyReceiveResult =
   | { applied: true; anyDiscrepancy: boolean; locationId: UUID }
-  | { applied: false; reason: 'not_found' | 'wrong_status' | 'duplicate_client_id'; currentStatus?: string };
+  | {
+      applied: false;
+      reason: 'not_found' | 'wrong_status' | 'duplicate_client_id';
+      currentStatus?: string;
+    };
 
 @Injectable()
 export class DropService {
@@ -110,7 +123,8 @@ export class DropService {
     private readonly stockLedger: StockLedgerService,
     private readonly eventBus: EventBus,
     private readonly coldChain: ColdChainService,
-    @Inject(REPLENISHMENT_FULFILLMENT_PORT) private readonly replenishment: ReplenishmentFulfillmentPort,
+    @Inject(REPLENISHMENT_FULFILLMENT_PORT)
+    private readonly replenishment: ReplenishmentFulfillmentPort,
   ) {}
 
   async getById(client: PoolClient, dropId: UUID): Promise<Drop> {
@@ -119,7 +133,11 @@ export class DropService {
     return this.toDto(client, row, lines);
   }
 
-  private async toDto(client: PoolClient, row: DropWithSjRow, lines: Awaited<ReturnType<typeof selectLinesForDrop>>): Promise<Drop> {
+  private async toDto(
+    client: PoolClient,
+    row: DropWithSjRow,
+    lines: Awaited<ReturnType<typeof selectLinesForDrop>>,
+  ): Promise<Drop> {
     const dto = mapDropBase(row, lines);
     if (row.signature_attachment_id) {
       dto.signatureUrl = row.signature_attachment_id; // raw attachment id — FE resolves via GET /api/attachments/:id/url (CONTRACTS §4.0)
@@ -134,26 +152,49 @@ export class DropService {
   // ══════════════════════════════════════════════════════════════════════
 
   /** `pending -> en_route`. Idempotent: a replay finds the row already past `pending` and returns `{applied:false}` rather than re-applying. */
-  async applyDepart(client: PoolClient, params: ApplyDepartParams, opts: { loggedAt?: string } = {}): Promise<ApplyDropResult> {
+  async applyDepart(
+    client: PoolClient,
+    params: ApplyDepartParams,
+    opts: { loggedAt?: string } = {},
+  ): Promise<ApplyDropResult> {
     const row = await selectDropByIdForUpdate(client, params.dropId);
     if (!row) return { applied: false, reason: 'not_found' };
-    if (row.status !== 'pending') return { applied: false, reason: 'wrong_status', currentStatus: row.status };
+    if (row.status !== 'pending')
+      return { applied: false, reason: 'wrong_status', currentStatus: row.status };
 
-    await client.query(`UPDATE sj_drops SET status = 'en_route', departed_at = $2 WHERE id = $1`, [params.dropId, params.at]);
+    await client.query(`UPDATE sj_drops SET status = 'en_route', departed_at = $2 WHERE id = $1`, [
+      params.dropId,
+      params.at,
+    ]);
 
     if (params.tempC) {
-      await this.logTempForDrop(client, row, 'depart', params.tempC, params.actorUserId, opts.loggedAt);
+      await this.logTempForDrop(
+        client,
+        row,
+        'depart',
+        params.tempC,
+        params.actorUserId,
+        opts.loggedAt,
+      );
     }
     return { applied: true };
   }
 
   /** `en_route -> arrived`. Idempotent, same shape as `applyDepart`. */
-  async applyArrive(client: PoolClient, params: ApplyArriveParams, opts: { loggedAt?: string } = {}): Promise<ApplyDropResult> {
+  async applyArrive(
+    client: PoolClient,
+    params: ApplyArriveParams,
+    opts: { loggedAt?: string } = {},
+  ): Promise<ApplyDropResult> {
     const row = await selectDropByIdForUpdate(client, params.dropId);
     if (!row) return { applied: false, reason: 'not_found' };
-    if (row.status !== 'en_route') return { applied: false, reason: 'wrong_status', currentStatus: row.status };
+    if (row.status !== 'en_route')
+      return { applied: false, reason: 'wrong_status', currentStatus: row.status };
 
-    await client.query(`UPDATE sj_drops SET status = 'arrived', arrived_at = $2 WHERE id = $1`, [params.dropId, params.at]);
+    await client.query(`UPDATE sj_drops SET status = 'arrived', arrived_at = $2 WHERE id = $1`, [
+      params.dropId,
+      params.at,
+    ]);
 
     if (params.sealCheck) {
       await client.query(
@@ -162,7 +203,14 @@ export class DropService {
       );
     }
 
-    await this.logTempForDrop(client, row, 'arrive', params.tempC, params.actorUserId, opts.loggedAt);
+    await this.logTempForDrop(
+      client,
+      row,
+      'arrive',
+      params.tempC,
+      params.actorUserId,
+      opts.loggedAt,
+    );
     return { applied: true };
   }
 
@@ -174,18 +222,27 @@ export class DropService {
    * path, 'fact' for a replayed offline sync fact, D-17a) — never decided in
    * here, so this method behaves identically regardless of origin.
    */
-  async applyReceive(client: PoolClient, params: ApplyReceiveParams, opts: { loggedAt?: string } = {}): Promise<ApplyReceiveResult> {
+  async applyReceive(
+    client: PoolClient,
+    params: ApplyReceiveParams,
+    opts: { loggedAt?: string } = {},
+  ): Promise<ApplyReceiveResult> {
     if (params.clientId) {
-      const dup = await client.query<{ id: string }>(`SELECT id FROM sj_drops WHERE id = $1 AND client_id = $2`, [params.dropId, params.clientId]);
+      const dup = await client.query<{ id: string }>(
+        `SELECT id FROM sj_drops WHERE id = $1 AND client_id = $2`,
+        [params.dropId, params.clientId],
+      );
       if (dup.rows[0]) return { applied: false, reason: 'duplicate_client_id' };
     }
 
     const row = await selectDropByIdForUpdate(client, params.dropId);
     if (!row) return { applied: false, reason: 'not_found' };
-    if (row.status !== 'arrived') return { applied: false, reason: 'wrong_status', currentStatus: row.status };
+    if (row.status !== 'arrived')
+      return { applied: false, reason: 'wrong_status', currentStatus: row.status };
 
     const lines = await selectLinesForDropForUpdate(client, params.dropId);
-    if (lines.length === 0) throw new Error(`sj_drops/${params.dropId} has no sj_lines — data integrity problem`);
+    if (lines.length === 0)
+      throw new Error(`sj_drops/${params.dropId} has no sj_lines — data integrity problem`);
     const linesByLineId = new Map(lines.map((l) => [l.id, l]));
 
     const movements: PostMovementInput[] = [];
@@ -196,13 +253,19 @@ export class DropService {
       const line = linesByLineId.get(lineInput.lineId);
       if (!line) {
         if (params.mode === 'strict') {
-          throw new BadRequestException({ code: ERR_VALIDATION, message: `Line ${lineInput.lineId} does not belong to drop ${params.dropId}` });
+          throw new BadRequestException({
+            code: ERR_VALIDATION,
+            message: `Line ${lineInput.lineId} does not belong to drop ${params.dropId}`,
+          });
         }
         continue; // fact mode: a stray line id from the device — skip that line, not the whole fact
       }
       if (isNegativeQty(lineInput.qtyReceived)) {
         if (params.mode === 'strict') {
-          throw new BadRequestException({ code: ERR_VALIDATION, message: `qtyReceived must be >= 0 (line ${lineInput.lineId})` });
+          throw new BadRequestException({
+            code: ERR_VALIDATION,
+            message: `qtyReceived must be >= 0 (line ${lineInput.lineId})`,
+          });
         }
         continue;
       }
@@ -218,13 +281,17 @@ export class DropService {
         }
       }
 
-      const areaRes = await client.query<{ type: string; name: string }>(`SELECT type, name FROM storage_areas WHERE id = $1 AND is_active = true`, [
-        lineInput.receivedStorageAreaId,
-      ]);
+      const areaRes = await client.query<{ type: string; name: string }>(
+        `SELECT type, name FROM storage_areas WHERE id = $1 AND is_active = true`,
+        [lineInput.receivedStorageAreaId],
+      );
       const area = areaRes.rows[0];
       if (!area) {
         if (params.mode === 'strict') {
-          throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Storage area ${lineInput.receivedStorageAreaId} not found or inactive` });
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Storage area ${lineInput.receivedStorageAreaId} not found or inactive`,
+          });
         }
         // fact mode: a missing area on a replayed fact still gets recorded on the line below (the goods
         // landed SOMEWHERE per the device's own record); only the STOCK posting for that line is skipped,
@@ -235,11 +302,19 @@ export class DropService {
 
       await client.query(
         `UPDATE sj_lines SET qty_received = $2, received_storage_area_id = $3, discrepancy_reason = $4 WHERE id = $1`,
-        [lineInput.lineId, lineInput.qtyReceived, lineInput.receivedStorageAreaId, lineInput.discrepancyReason ?? null],
+        [
+          lineInput.lineId,
+          lineInput.qtyReceived,
+          lineInput.receivedStorageAreaId,
+          lineInput.discrepancyReason ?? null,
+        ],
       );
 
       if (area && !isZeroQty(lineInput.qtyReceived)) {
-        const costRes = await client.query<{ avg_cost: string }>(`SELECT avg_cost FROM items WHERE id = $1`, [line.item_id]);
+        const costRes = await client.query<{ avg_cost: string }>(
+          `SELECT avg_cost FROM items WHERE id = $1`,
+          [line.item_id],
+        );
         const unitCost = costRes.rows[0]!.avg_cost;
         movements.push({
           locationId: row.location_id,
@@ -254,7 +329,10 @@ export class DropService {
           occurredAt: params.occurredAt,
         });
         if (discrepancy && compareQty(lineInput.qtyReceived, line.qty) < 0) {
-          shortfallMovements.push({ qtyDelta: (Number(line.qty) - Number(lineInput.qtyReceived)).toFixed(3), unitCost });
+          shortfallMovements.push({
+            qtyDelta: (Number(line.qty) - Number(lineInput.qtyReceived)).toFixed(3),
+            unitCost,
+          });
         }
       }
     }
@@ -272,14 +350,32 @@ export class DropService {
           SET status = $2, received_by = $3, received_at = $4, signature_attachment_id = $5, discrepancy_notes = $6,
               client_id = COALESCE(client_id, $7)
         WHERE id = $1`,
-      [params.dropId, nextStatus, params.actorUserId, params.occurredAt, params.signatureAttachmentId, params.discrepancyNotes ?? null, params.clientId ?? null],
+      [
+        params.dropId,
+        nextStatus,
+        params.actorUserId,
+        params.occurredAt,
+        params.signatureAttachmentId,
+        params.discrepancyNotes ?? null,
+        params.clientId ?? null,
+      ],
     );
 
     if (params.tempC) {
-      await this.logTempForDrop(client, row, 'arrive', params.tempC, params.actorUserId, opts.loggedAt);
+      await this.logTempForDrop(
+        client,
+        row,
+        'arrive',
+        params.tempC,
+        params.actorUserId,
+        opts.loggedAt,
+      );
     }
 
-    const total: Money = movements.length > 0 ? sumMoney(movements.map((m) => mulMoneyByQty(m.unitCost, m.qty))) : '0.00';
+    const total: Money =
+      movements.length > 0
+        ? sumMoney(movements.map((m) => mulMoneyByQty(m.unitCost, m.qty)))
+        : '0.00';
     await this.eventBus.publish('journal.action', {
       eventType: JournalEventType.OUTLET_GOODS_IN_FROM_WAREHOUSE,
       documentType: 'sj_drops',
@@ -289,7 +385,10 @@ export class DropService {
       context: {
         lineCount: movements.length,
         discrepancy: anyDiscrepancy,
-        shortfall: shortfallMovements.length > 0 ? sumMoney(shortfallMovements.map((s) => mulMoneyByQty(s.unitCost, s.qtyDelta))) : '0.00',
+        shortfall:
+          shortfallMovements.length > 0
+            ? sumMoney(shortfallMovements.map((s) => mulMoneyByQty(s.unitCost, s.qtyDelta)))
+            : '0.00',
       },
       occurredAt: params.occurredAt,
     });
@@ -297,7 +396,9 @@ export class DropService {
     if (row.replenishment_request_id) {
       const lineReceipts = params.lines
         .map((l) => ({ input: l, line: linesByLineId.get(l.lineId) }))
-        .filter((x): x is { input: ApplyReceiveLineInput; line: NonNullable<(typeof x)['line']> } => Boolean(x.line?.request_line_id))
+        .filter((x): x is { input: ApplyReceiveLineInput; line: NonNullable<(typeof x)['line']> } =>
+          Boolean(x.line?.request_line_id),
+        )
         .map((x) => ({ requestLineId: x.line.request_line_id!, qtyReceived: x.input.qtyReceived }));
       await this.replenishment.markReceived(
         client,
@@ -320,19 +421,30 @@ export class DropService {
   // directly and never these.
   // ══════════════════════════════════════════════════════════════════════
 
-  async depart(client: PoolClient, dropId: UUID, dto: DepartDropDto, actorUserId: UUID): Promise<Drop> {
+  async depart(
+    client: PoolClient,
+    dropId: UUID,
+    dto: DepartDropDto,
+    actorUserId: UUID,
+  ): Promise<Drop> {
     return withWrite(client, async () => {
       const current = await this.requireDrop(client, dropId);
       const sjHeader = (await selectSuratJalanHeader(client, current.sj_id))!;
       const at = dto.at ?? new Date().toISOString();
 
       if (sjHeader.shipment_type === 'frozen' && !dto.tempC) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `tempC is required departing a 'frozen' drop (D-14)` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `tempC is required departing a 'frozen' drop (D-14)`,
+        });
       }
 
       const result = await this.applyDepart(client, { dropId, at, tempC: dto.tempC, actorUserId });
       if (!result.applied) {
-        throw new ConflictException({ code: 'ERR_CONFLICT', message: `Drop ${dropId} must be 'pending' to depart (current: ${result.reason === 'wrong_status' ? result.currentStatus : 'not found'})` });
+        throw new ConflictException({
+          code: 'ERR_CONFLICT',
+          message: `Drop ${dropId} must be 'pending' to depart (current: ${result.reason === 'wrong_status' ? result.currentStatus : 'not found'})`,
+        });
       }
 
       await this.syncEmit.emit(client, {
@@ -348,22 +460,42 @@ export class DropService {
     });
   }
 
-  async arrive(client: PoolClient, dropId: UUID, dto: ArriveDropDto, actorUserId: UUID): Promise<Drop> {
+  async arrive(
+    client: PoolClient,
+    dropId: UUID,
+    dto: ArriveDropDto,
+    actorUserId: UUID,
+  ): Promise<Drop> {
     return withWrite(client, async () => {
       const current = await this.requireDrop(client, dropId);
       const sjHeader = (await selectSuratJalanHeader(client, current.sj_id))!;
       const at = dto.at ?? new Date().toISOString();
 
       if (sjHeader.shipment_type === 'frozen' && !dto.tempC) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `tempC is required arriving at a 'frozen' drop (D-14)` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `tempC is required arriving at a 'frozen' drop (D-14)`,
+        });
       }
       if (!dto.tempC) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `tempC is required arriving at a drop (D-14)` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `tempC is required arriving at a drop (D-14)`,
+        });
       }
 
-      const result = await this.applyArrive(client, { dropId, at, tempC: dto.tempC, sealCheck: dto.sealCheck, actorUserId });
+      const result = await this.applyArrive(client, {
+        dropId,
+        at,
+        tempC: dto.tempC,
+        sealCheck: dto.sealCheck,
+        actorUserId,
+      });
       if (!result.applied) {
-        throw new ConflictException({ code: 'ERR_CONFLICT', message: `Drop ${dropId} must be 'en_route' to arrive (current: ${result.reason === 'wrong_status' ? result.currentStatus : 'not found'})` });
+        throw new ConflictException({
+          code: 'ERR_CONFLICT',
+          message: `Drop ${dropId} must be 'en_route' to arrive (current: ${result.reason === 'wrong_status' ? result.currentStatus : 'not found'})`,
+        });
       }
 
       await this.syncEmit.emit(client, {
@@ -379,13 +511,25 @@ export class DropService {
     });
   }
 
-  async receive(client: PoolClient, dropId: UUID, dto: ReceiveDropDto, actorUserId: UUID, actorRole: RoleKey): Promise<Drop> {
+  async receive(
+    client: PoolClient,
+    dropId: UUID,
+    dto: ReceiveDropDto,
+    actorUserId: UUID,
+    actorRole: RoleKey,
+  ): Promise<Drop> {
     return withWrite(client, async () => {
       if (dto.photoAttachmentIds.length === 0) {
-        throw new BadRequestException({ code: ERR_PHOTO_REQUIRED, message: 'At least one receiving photo is wajib (FR-LOG-15)' });
+        throw new BadRequestException({
+          code: ERR_PHOTO_REQUIRED,
+          message: 'At least one receiving photo is wajib (FR-LOG-15)',
+        });
       }
       if (!dto.signatureAttachmentId) {
-        throw new BadRequestException({ code: ERR_SIGNATURE_REQUIRED, message: 'A receiving signature is required (D-14)' });
+        throw new BadRequestException({
+          code: ERR_SIGNATURE_REQUIRED,
+          message: 'A receiving signature is required (D-14)',
+        });
       }
       // Attachment existence/kind checks are REST-ONLY: an offline fact's binary may still be mid-upload
       // via the side-channel (SYNC-PROTOCOL §4.7 — "the event pushes immediately... never waits for the
@@ -405,8 +549,15 @@ export class DropService {
         mode: 'strict',
       });
       if (!result.applied) {
-        if (result.reason === 'not_found') throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Drop ${dropId} not found` });
-        throw new ConflictException({ code: 'ERR_CONFLICT', message: `Drop ${dropId} must be 'arrived' to receive (current: ${result.currentStatus})` });
+        if (result.reason === 'not_found')
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Drop ${dropId} not found`,
+          });
+        throw new ConflictException({
+          code: 'ERR_CONFLICT',
+          message: `Drop ${dropId} must be 'arrived' to receive (current: ${result.currentStatus})`,
+        });
       }
 
       await this.syncEmit.emit(client, {
@@ -450,9 +601,15 @@ export class DropService {
     return withWrite(client, async () => {
       const row = await this.requireDropForUpdate(client, dropId);
       if (TERMINAL_DROP_STATUSES.has(row.status)) {
-        throw new ConflictException({ code: 'ERR_CONFLICT', message: `Drop ${dropId} is already terminal (${row.status})` });
+        throw new ConflictException({
+          code: 'ERR_CONFLICT',
+          message: `Drop ${dropId} is already terminal (${row.status})`,
+        });
       }
-      await client.query(`UPDATE sj_drops SET status = 'failed', failure_reason = $2 WHERE id = $1`, [dropId, dto.reason]);
+      await client.query(
+        `UPDATE sj_drops SET status = 'failed', failure_reason = $2 WHERE id = $1`,
+        [dropId, dto.reason],
+      );
 
       await this.emitSjUpdated(client, row.sj_id, actorUserId);
       await this.checkAndCompleteSuratJalan(client, row.sj_id, actorUserId);
@@ -464,26 +621,44 @@ export class DropService {
 
   private async requireDrop(client: PoolClient, dropId: UUID): Promise<DropWithSjRow> {
     const row = await selectDropById(client, dropId);
-    if (!row) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Drop ${dropId} not found` });
+    if (!row)
+      throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Drop ${dropId} not found` });
     return row;
   }
 
   private async requireDropForUpdate(client: PoolClient, dropId: UUID): Promise<DropWithSjRow> {
     const row = await selectDropByIdForUpdate(client, dropId);
-    if (!row) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Drop ${dropId} not found` });
+    if (!row)
+      throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Drop ${dropId} not found` });
     return row;
   }
 
   private async shipmentTypeId(client: PoolClient, sjId: UUID): Promise<string> {
-    const res = await client.query<{ shipment_type_id: string }>(`SELECT shipment_type_id FROM surat_jalan WHERE id = $1`, [sjId]);
+    const res = await client.query<{ shipment_type_id: string }>(
+      `SELECT shipment_type_id FROM surat_jalan WHERE id = $1`,
+      [sjId],
+    );
     return res.rows[0]!.shipment_type_id;
   }
 
   /** Shared temp-log write for `applyDepart`/`applyArrive`/`applyReceive` — `loggedAt` (when supplied, always by the projector) is the event's defensible server-witnessed time, never a fresh `new Date()` (see `ColdChainService.logTemperature`'s doc comment). */
-  private async logTempForDrop(client: PoolClient, row: DropWithSjRow, stage: 'depart' | 'arrive', tempC: Temp, actorUserId: UUID, loggedAt?: string): Promise<void> {
+  private async logTempForDrop(
+    client: PoolClient,
+    row: DropWithSjRow,
+    stage: 'depart' | 'arrive',
+    tempC: Temp,
+    actorUserId: UUID,
+    loggedAt?: string,
+  ): Promise<void> {
     const sjHeader = (await selectSuratJalanHeader(client, row.sj_id))!;
-    const shipmentType = await this.coldChain.loadShipmentType(client, await this.shipmentTypeId(client, row.sj_id));
-    const recipients = await this.coldChain.resolveBreachRecipients(client, sjHeader.origin_location_id);
+    const shipmentType = await this.coldChain.loadShipmentType(
+      client,
+      await this.shipmentTypeId(client, row.sj_id),
+    );
+    const recipients = await this.coldChain.resolveBreachRecipients(
+      client,
+      sjHeader.origin_location_id,
+    );
     await this.coldChain.logTemperature(client, {
       sjId: row.sj_id,
       dropId: row.id,
@@ -500,13 +675,28 @@ export class DropService {
     });
   }
 
-  private async assertAttachments(client: PoolClient, ids: readonly UUID[], dropId: UUID, expectedKind: string): Promise<void> {
+  private async assertAttachments(
+    client: PoolClient,
+    ids: readonly UUID[],
+    dropId: UUID,
+    expectedKind: string,
+  ): Promise<void> {
     for (const id of ids) {
-      const res = await client.query<{ kind: string }>(`SELECT kind FROM attachments WHERE id = $1`, [id]);
+      const res = await client.query<{ kind: string }>(
+        `SELECT kind FROM attachments WHERE id = $1`,
+        [id],
+      );
       const row = res.rows[0];
-      if (!row) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Attachment ${id} not found — confirm the upload before receiving` });
+      if (!row)
+        throw new NotFoundException({
+          code: 'ERR_NOT_FOUND',
+          message: `Attachment ${id} not found — confirm the upload before receiving`,
+        });
       if (row.kind !== expectedKind) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `Attachment ${id} is kind '${row.kind}', expected '${expectedKind}' for drop ${dropId}` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `Attachment ${id} is kind '${row.kind}', expected '${expectedKind}' for drop ${dropId}`,
+        });
       }
     }
   }
@@ -522,8 +712,15 @@ export class DropService {
    * offline `sj_drops.received` fact (same post-receive completion check the
    * REST path runs, via `applyReceive` above).
    */
-  async checkAndCompleteSuratJalan(client: PoolClient, sjId: UUID, actorUserId: UUID): Promise<void> {
-    const dropsRes = await client.query<{ id: string; status: string }>(`SELECT id, status FROM sj_drops WHERE sj_id = $1`, [sjId]);
+  async checkAndCompleteSuratJalan(
+    client: PoolClient,
+    sjId: UUID,
+    actorUserId: UUID,
+  ): Promise<void> {
+    const dropsRes = await client.query<{ id: string; status: string }>(
+      `SELECT id, status FROM sj_drops WHERE sj_id = $1`,
+      [sjId],
+    );
     const allTerminal = dropsRes.rows.every((d) => TERMINAL_DROP_STATUSES.has(d.status));
     if (!allTerminal) return;
 
@@ -534,17 +731,27 @@ export class DropService {
       await this.reverseFailedDropStock(client, header.origin_location_id, drop.id, actorUserId);
     }
 
-    await client.query(`UPDATE surat_jalan SET status = 'completed', completed_at = NOW() WHERE id = $1`, [sjId]);
+    await client.query(
+      `UPDATE surat_jalan SET status = 'completed', completed_at = NOW() WHERE id = $1`,
+      [sjId],
+    );
     await this.emitSjUpdated(client, sjId, actorUserId, header);
 
-    const requestIds = new Set(dropsRes.rows.length > 0 ? await this.linkedRequestIds(client, sjId) : []);
+    const requestIds = new Set(
+      dropsRes.rows.length > 0 ? await this.linkedRequestIds(client, sjId) : [],
+    );
     for (const requestId of requestIds) {
       await this.replenishment.tryAutoComplete(client, requestId);
     }
   }
 
   /** Shared `surat_jalan.updated` emission (full snapshot, matching `issued`'s shape plus `status`/`dispatchedAt`/`completedAt`) — used by every SJ-aggregate-level change this service makes (a drop failing, or the SJ completing). */
-  private async emitSjUpdated(client: PoolClient, sjId: UUID, actorUserId: UUID, headerHint?: Awaited<ReturnType<typeof selectSuratJalanHeader>>): Promise<void> {
+  private async emitSjUpdated(
+    client: PoolClient,
+    sjId: UUID,
+    actorUserId: UUID,
+    headerHint?: Awaited<ReturnType<typeof selectSuratJalanHeader>>,
+  ): Promise<void> {
     const header = headerHint ?? (await selectSuratJalanHeader(client, sjId));
     if (!header) return;
     const full = await buildSuratJalanFull(client, header);
@@ -579,7 +786,12 @@ export class DropService {
           dropSeq: d.dropSeq,
           locationId: d.locationId,
           replenishmentRequestId: d.replenishmentRequestId,
-          lines: (rawLinesByDrop.get(d.id) ?? []).map((l) => ({ itemId: l.item_id, qty: l.qty, unitId: l.unit_id, requestLineId: l.request_line_id ?? undefined })),
+          lines: (rawLinesByDrop.get(d.id) ?? []).map((l) => ({
+            itemId: l.item_id,
+            qty: l.qty,
+            unitId: l.unit_id,
+            requestLineId: l.request_line_id ?? undefined,
+          })),
         })),
       },
     });
@@ -593,8 +805,18 @@ export class DropService {
     return res.rows.map((r) => r.replenishment_request_id);
   }
 
-  private async reverseFailedDropStock(client: PoolClient, originLocationId: UUID, dropId: UUID, actorUserId: UUID): Promise<void> {
-    const lines = await client.query<{ item_id: string; qty: string; storage_type: 'frozen' | 'chilled' | 'dry'; avg_cost: string }>(
+  private async reverseFailedDropStock(
+    client: PoolClient,
+    originLocationId: UUID,
+    dropId: UUID,
+    actorUserId: UUID,
+  ): Promise<void> {
+    const lines = await client.query<{
+      item_id: string;
+      qty: string;
+      storage_type: 'frozen' | 'chilled' | 'dry';
+      avg_cost: string;
+    }>(
       `SELECT sl.item_id, sl.qty, i.storage_type, i.avg_cost FROM sj_lines sl JOIN items i ON i.id = sl.item_id WHERE sl.drop_id = $1`,
       [dropId],
     );

@@ -60,8 +60,10 @@ export function PaymentPanel({
   const [saleId] = useState<string>(() => mintClientId());
 
   const amount = method === 'cash' ? cashReceived : summary.total;
-  const change = method === 'cash' && cashReceived ? calculateChange(cashReceived, summary.total) : ZERO_MONEY;
-  const insufficientCash = method === 'cash' && (!cashReceived || compareMoney(cashReceived, summary.total) < 0);
+  const change =
+    method === 'cash' && cashReceived ? calculateChange(cashReceived, summary.total) : ZERO_MONEY;
+  const insufficientCash =
+    method === 'cash' && (!cashReceived || compareMoney(cashReceived, summary.total) < 0);
   const canSubmit = summary.lines.length > 0 && !insufficientCash && !submitting;
 
   async function handleSubmit() {
@@ -74,21 +76,34 @@ export function PaymentPanel({
         shiftId: shift.shiftId,
         locationId,
         occurredAt,
-        lines: lines.map((l) => ({ productId: l.productId, qty: l.qty, unitPrice: l.unitPrice, discount: l.discount })),
+        lines: lines.map((l) => ({
+          productId: l.productId,
+          qty: l.qty,
+          unitPrice: l.unitPrice,
+          discount: l.discount,
+        })),
         payments: [{ method, amount, reference: reference || null }],
         discount: saleDiscount,
       };
 
       await runtime.commitSale({ saleId, data: saleData, actor });
 
-      recordSale({ total: summary.total, cashPortion: method === 'cash' ? summary.total : ZERO_MONEY });
+      recordSale({
+        total: summary.total,
+        cashPortion: method === 'cash' ? summary.total : ZERO_MONEY,
+      });
 
       const receiptData = {
         outletName: locationName,
         receiptNumber: saleId.slice(0, 8).toUpperCase(),
         kasirName: shift.kasirName,
         occurredAt,
-        lines: summary.lines.map((l, i) => ({ productName: lines[i]?.productName ?? l.productId, qty: l.qty, unitPrice: l.unitPrice, lineTotal: l.lineTotal })),
+        lines: summary.lines.map((l, i) => ({
+          productName: lines[i]?.productName ?? l.productId,
+          qty: l.qty,
+          unitPrice: l.unitPrice,
+          lineTotal: l.lineTotal,
+        })),
         subtotal: summary.subtotal,
         discount: summary.discount,
         total: summary.total,
@@ -99,14 +114,22 @@ export function PaymentPanel({
       };
       const printResult = await printReceipt(receiptData);
       if (!printResult.ok) {
-        toast({ title: t('pos.printUnavailable'), description: buildReceiptText(receiptData).slice(0, 120), variant: 'warning' });
+        toast({
+          title: t('pos.printUnavailable'),
+          description: buildReceiptText(receiptData).slice(0, 120),
+          variant: 'warning',
+        });
       }
 
       toast({ title: t('pos.saleCompletedTitle'), variant: 'success' });
       clearCart();
       onCompleted(saleId);
     } catch (err) {
-      toast({ title: t('pos.saleFailed'), description: err instanceof Error ? err.message : undefined, variant: 'danger' });
+      toast({
+        title: t('pos.saleFailed'),
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'danger',
+      });
     } finally {
       setSubmitting(false);
     }
@@ -123,7 +146,9 @@ export function PaymentPanel({
               type="button"
               onClick={() => setMethod(m)}
               className={`flex min-h-touch-lg flex-col items-center justify-center gap-1 rounded-lg border-2 p-3 text-sm font-medium transition-colors ${
-                method === m ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-border-strong text-text-secondary'
+                method === m
+                  ? 'border-brand-500 bg-brand-50 text-brand-700'
+                  : 'border-border-strong text-text-secondary'
               }`}
             >
               <Icon className="size-5" aria-hidden />
@@ -140,13 +165,17 @@ export function PaymentPanel({
       {method === 'bank_transfer' && (
         <p className="text-sm text-warning-700">{t('pos.transferPendingNote')}</p>
       )}
-      {method === 'qris' && (
-        <p className="text-sm text-text-muted">{t('pos.qrisSettleNote')}</p>
-      )}
+      {method === 'qris' && <p className="text-sm text-text-muted">{t('pos.qrisSettleNote')}</p>}
 
       {method === 'cash' ? (
         <>
-          <MoneyInput label={t('pos.cashReceived')} value={cashReceived} onChange={setCashReceived} size="touch" required />
+          <MoneyInput
+            label={t('pos.cashReceived')}
+            value={cashReceived}
+            onChange={setCashReceived}
+            size="touch"
+            required
+          />
           <div className="flex items-center justify-between text-lg font-semibold">
             <span>{t('pos.change')}</span>
             <span className="tabular-nums">{formatMoney(change)}</span>
@@ -156,7 +185,9 @@ export function PaymentPanel({
         <>
           <div className="flex items-center justify-between text-sm text-text-muted">
             <span>{t('pos.amountDue')}</span>
-            <span className="tabular-nums font-semibold text-text-primary">{formatMoney(summary.total)}</span>
+            <span className="tabular-nums font-semibold text-text-primary">
+              {formatMoney(summary.total)}
+            </span>
           </div>
           <Input
             label={t('pos.paymentReference')}
@@ -167,7 +198,14 @@ export function PaymentPanel({
         </>
       )}
 
-      <Button size="touch-lg" fullWidth leftIcon={<Printer className="size-5" />} loading={submitting} disabled={!canSubmit} onClick={handleSubmit}>
+      <Button
+        size="touch-lg"
+        fullWidth
+        leftIcon={<Printer className="size-5" />}
+        loading={submitting}
+        disabled={!canSubmit}
+        onClick={handleSubmit}
+      >
         {t('pos.completeSale')}
       </Button>
     </div>

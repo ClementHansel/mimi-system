@@ -32,13 +32,21 @@ export function DeviceDetailDrawer({
   const { t } = useI18n();
 
   return (
-    <Drawer open={!!device} onClose={onClose} title={device ? device.name : t('topology.device.detailTitle')} side="right" size="sm">
+    <Drawer
+      open={!!device}
+      onClose={onClose}
+      title={device ? device.name : t('topology.device.detailTitle')}
+      side="right"
+      size="sm"
+    >
       {device && (
         <dl className="flex flex-col gap-4 text-sm">
           <Row label={t('common.status')}>
             <StatusBadge domain="device" status={device.status} />
           </Row>
-          <Row label={t('topology.device.columnCategory')}>{t(`topology.device.category.${device.category}`)}</Row>
+          <Row label={t('topology.device.columnCategory')}>
+            {t(`topology.device.category.${device.category}`)}
+          </Row>
           <Row label={t('topology.device.lastSeen')}>{fmtDateTime(device.lastSeenAt)}</Row>
           <Row label={t('topology.device.appVersion')}>{device.appVersion ?? '—'}</Row>
           <Row label={t('topology.device.queueDepth')}>{device.queueDepth}</Row>
@@ -48,7 +56,9 @@ export function DeviceDetailDrawer({
               ? t('topology.device.pairedToNodeYes', { name: location.node.name })
               : t('topology.device.pairedToNodeNo')}
           </Row>
-          <p className="rounded-md bg-surface-sunken p-3 text-xs text-text-muted">{t('topology.device.storageNote')}</p>
+          <p className="rounded-md bg-surface-sunken p-3 text-xs text-text-muted">
+            {t('topology.device.storageNote')}
+          </p>
         </dl>
       )}
     </Drawer>

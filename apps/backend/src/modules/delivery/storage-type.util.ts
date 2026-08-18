@@ -22,7 +22,12 @@ export function requiredAreaTypeFor(itemStorageType: ItemStorageType): StorageAr
 }
 
 /** Throws `ERR_VALIDATION` (via `BadRequestException`) when the chosen area's type doesn't match the item's storage type. */
-export function assertAreaMatchesStorageType(itemStorageType: ItemStorageType, areaType: string, itemName: string, areaName: string): void {
+export function assertAreaMatchesStorageType(
+  itemStorageType: ItemStorageType,
+  areaType: string,
+  itemName: string,
+  areaName: string,
+): void {
   const required = requiredAreaTypeFor(itemStorageType);
   if (areaType !== required) {
     throw new BadRequestException({

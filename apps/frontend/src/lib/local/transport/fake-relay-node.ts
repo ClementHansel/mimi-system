@@ -10,7 +10,13 @@
  * which relay never happens and whatever it was holding is gone, exactly as
  * disk death would lose it.
  */
-import type { SyncHelloAck, SyncHelloRequest, SyncPullResult, SyncPushAck, SyncPushBatch } from '@mimi/sync-protocol';
+import type {
+  SyncHelloAck,
+  SyncHelloRequest,
+  SyncPullResult,
+  SyncPushAck,
+  SyncPushBatch,
+} from '@mimi/sync-protocol';
 import type { UUID } from '@mimi/shared';
 import type { HeartbeatAck, HeartbeatPayload, SyncHealth, SyncTransport } from './types';
 import type { FakeCloud } from './fake-cloud';
@@ -40,7 +46,12 @@ export class FakeRelayNode implements SyncTransport {
       serverTime: new Date().toISOString(),
       resumeCursor: req.pullCursor,
       confirmedThrough: {},
-      scope: { globalMaster: true, locationIds: req.locationIds, projectionRole: 'pos_device', excludeOrigin: req.subscriberId },
+      scope: {
+        globalMaster: true,
+        locationIds: req.locationIds,
+        projectionRole: 'pos_device',
+        excludeOrigin: req.subscriberId,
+      },
     };
   }
 
@@ -59,7 +70,8 @@ export class FakeRelayNode implements SyncTransport {
     // accepted (§4.3's two-level ack). Learned from whatever the node last relayed successfully; a
     // batch this node hasn't relayed yet reports whatever the cloud already had BEFORE this push.
     const confirmedThrough: Record<string, number> = {};
-    for (const e of batch.events) confirmedThrough[e.originDeviceId] = Number(this.cloud.confirmedThroughFor(e.originDeviceId));
+    for (const e of batch.events)
+      confirmedThrough[e.originDeviceId] = Number(this.cloud.confirmedThroughFor(e.originDeviceId));
 
     return { batchId: batch.batchId, acceptedThrough, confirmedThrough, rejected: [] };
   }

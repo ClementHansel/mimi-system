@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import {
@@ -20,7 +26,12 @@ import { ApprovalService } from '../../kernel/approvals/approvals.service';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { withWrite } from './db-tx';
-import type { ApproveWasteDto, CreateWasteDto, ListWasteQueryDto, RejectWasteDto } from './dto/waste.dto';
+import type {
+  ApproveWasteDto,
+  CreateWasteDto,
+  ListWasteQueryDto,
+  RejectWasteDto,
+} from './dto/waste.dto';
 import { WasteRepository, type WasteRecordRow } from './waste.repository';
 
 export interface ActorContext {
@@ -73,17 +84,30 @@ export class WasteService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
     const { rows, total } = await this.repo.listRecords(client, {
-      locationId: query.locationId, status: query.status, reason: query.reason, from: query.from, to: query.to, page, pageSize,
+      locationId: query.locationId,
+      status: query.status,
+      reason: query.reason,
+      from: query.from,
+      to: query.to,
+      page,
+      pageSize,
     });
     const result: WasteListRow[] = [];
     for (const row of rows) result.push(await this.toListRow(client, row));
     return { rows: result, total, page, pageSize };
   }
 
-  async create(client: PoolClient, actor: ActorContext, dto: CreateWasteDto): Promise<WasteListRow[]> {
+  async create(
+    client: PoolClient,
+    actor: ActorContext,
+    dto: CreateWasteDto,
+  ): Promise<WasteListRow[]> {
     this.assertLocationInScope(actor, dto.locationId);
     if (dto.photoAttachmentIds.length === 0) {
-      throw new BadRequestException({ code: ERR_PHOTO_REQUIRED, message: 'At least one photo is wajib for a waste report (FR-WST-01)' });
+      throw new BadRequestException({
+        code: ERR_PHOTO_REQUIRED,
+        message: 'At least one photo is wajib for a waste report (FR-WST-01)',
+      });
     }
 
     return withWrite(client, async () => {
@@ -92,20 +116,33 @@ export class WasteService {
       for (const item of dto.items) {
         const wasteNumber = await this.repo.nextWasteNumber(client);
         const id = await this.repo.insertRecord(client, {
-          wasteNumber, batchId, locationId: dto.locationId, storageAreaId: item.storageAreaId, itemId: item.itemId,
-          qty: item.qty as Qty, reason: item.reason, reasonDetail: item.reasonDetail ?? null, reportedBy: actor.userId,
+          wasteNumber,
+          batchId,
+          locationId: dto.locationId,
+          storageAreaId: item.storageAreaId,
+          itemId: item.itemId,
+          qty: item.qty as Qty,
+          reason: item.reason,
+          reasonDetail: item.reasonDetail ?? null,
+          reportedBy: actor.userId,
         });
         recordIds.push(id);
       }
 
       for (const attachmentId of dto.photoAttachmentIds) {
-        await client.query(`UPDATE attachments SET entity_type = 'waste_record', entity_id = $2 WHERE id = $1 AND entity_id IS NULL`, [attachmentId, recordIds[0]]);
+        await client.query(
+          `UPDATE attachments SET entity_type = 'waste_record', entity_id = $2 WHERE id = $1 AND entity_id IS NULL`,
+          [attachmentId, recordIds[0]],
+        );
       }
 
       // Submit one approval per record (kernel/approvals is keyed per-document); every record shares
       // this batch's single location, so `resolveDocumentContext` resolves identically for each.
       for (let i = 0; i < recordIds.length; i++) {
-        const value = mulMoneyByQty(await this.repo.itemAvgCost(client, dto.items[i]!.itemId), dto.items[i]!.qty as Qty);
+        const value = mulMoneyByQty(
+          await this.repo.itemAvgCost(client, dto.items[i]!.itemId),
+          dto.items[i]!.qty as Qty,
+        );
         const submitResult = await this.approvals.submit(client, {
           documentType: ApprovalDocumentType.WASTE,
           documentId: recordIds[i]!,
@@ -125,7 +162,13 @@ export class WasteService {
         data: {
           batchId,
           locationId: dto.locationId,
-          items: dto.items.map((it) => ({ storageAreaId: it.storageAreaId, itemId: it.itemId, qty: it.qty as Qty, reason: it.reason, reasonDetail: it.reasonDetail ?? undefined })),
+          items: dto.items.map((it) => ({
+            storageAreaId: it.storageAreaId,
+            itemId: it.itemId,
+            qty: it.qty as Qty,
+            reason: it.reason,
+            reasonDetail: it.reasonDetail ?? undefined,
+          })),
           photoAttachmentIds: dto.photoAttachmentIds,
         },
       });
@@ -135,13 +178,21 @@ export class WasteService {
     });
   }
 
-  async approve(client: PoolClient, actor: ActorContext, batchId: UUID, dto: ApproveWasteDto): Promise<WasteListRow[]> {
+  async approve(
+    client: PoolClient,
+    actor: ActorContext,
+    batchId: UUID,
+    dto: ApproveWasteDto,
+  ): Promise<WasteListRow[]> {
     const records = await this.requireBatch(client, batchId);
 
     return withWrite(client, async () => {
       for (const record of records) {
         if (record.status !== WasteStatus.PENDING) {
-          throw new ConflictException({ code: ERR_CONFLICT, message: `Waste record ${record.id} is '${record.status}', not 'pending'` });
+          throw new ConflictException({
+            code: ERR_CONFLICT,
+            message: `Waste record ${record.id} is '${record.status}', not 'pending'`,
+          });
         }
 
         const decision = await this.approvals.approve(client, {
@@ -161,19 +212,21 @@ export class WasteService {
 
         await this.ledger.post(
           client,
-          [{
-            locationId: record.location_id,
-            storageAreaId: record.storage_area_id,
-            itemId: record.item_id,
-            movementType: MovementType.WASTE_OUT,
-            qty: record.qty,
-            unitCost,
-            refType: 'waste_record',
-            refId: record.id,
-            actorId: actor.userId,
-            reason: record.reason_detail ?? record.reason,
-            occurredAt: approvedAt,
-          }],
+          [
+            {
+              locationId: record.location_id,
+              storageAreaId: record.storage_area_id,
+              itemId: record.item_id,
+              movementType: MovementType.WASTE_OUT,
+              qty: record.qty,
+              unitCost,
+              refType: 'waste_record',
+              refId: record.id,
+              actorId: actor.userId,
+              reason: record.reason_detail ?? record.reason,
+              occurredAt: approvedAt,
+            },
+          ],
           'fact',
         );
       }
@@ -192,13 +245,21 @@ export class WasteService {
     });
   }
 
-  async reject(client: PoolClient, actor: ActorContext, batchId: UUID, dto: RejectWasteDto): Promise<WasteListRow[]> {
+  async reject(
+    client: PoolClient,
+    actor: ActorContext,
+    batchId: UUID,
+    dto: RejectWasteDto,
+  ): Promise<WasteListRow[]> {
     const records = await this.requireBatch(client, batchId);
 
     return withWrite(client, async () => {
       for (const record of records) {
         if (record.status !== WasteStatus.PENDING) {
-          throw new ConflictException({ code: ERR_CONFLICT, message: `Waste record ${record.id} is '${record.status}', not 'pending'` });
+          throw new ConflictException({
+            code: ERR_CONFLICT,
+            message: `Waste record ${record.id} is '${record.status}', not 'pending'`,
+          });
         }
         await this.approvals.reject(client, {
           documentType: ApprovalDocumentType.WASTE,
@@ -227,19 +288,29 @@ export class WasteService {
 
   private async requireBatch(client: PoolClient, batchId: UUID): Promise<WasteRecordRow[]> {
     const records = await this.repo.findByBatch(client, batchId);
-    if (records.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Waste batch ${batchId} not found` });
+    if (records.length === 0)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Waste batch ${batchId} not found`,
+      });
     return records;
   }
 
   private assertLocationInScope(actor: ActorContext, locationId: UUID): void {
     if (actor.locationScope === null) return;
     if (!actor.locationScope.includes(locationId)) {
-      throw new ForbiddenException({ code: ERR_FORBIDDEN, message: `Role '${actor.roleKey}' is not assigned to location ${locationId}` });
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: `Role '${actor.roleKey}' is not assigned to location ${locationId}`,
+      });
     }
   }
 
   private async toListRow(client: PoolClient, row: WasteRecordRow): Promise<WasteListRow> {
-    const photos = await client.query<{ id: string }>(`SELECT id FROM attachments WHERE entity_type = 'waste_record' AND entity_id = $1`, [row.id]);
+    const photos = await client.query<{ id: string }>(
+      `SELECT id FROM attachments WHERE entity_type = 'waste_record' AND entity_id = $1`,
+      [row.id],
+    );
     return {
       id: row.id,
       wasteNumber: row.waste_number,

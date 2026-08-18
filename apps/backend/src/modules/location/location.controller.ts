@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { Audited, CurrentUser, RequirePermission } from '../../common/decorators';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
@@ -6,7 +18,11 @@ import { requireDbClient } from './request-db-client';
 import { LocationService } from './location.service';
 import { StorageAreaService } from './storage-area.service';
 import { CreateLocationDto, ListLocationsQueryDto, UpdateLocationDto } from './dto/location.dto';
-import { CreateStorageAreaDto, ListStorageAreasQueryDto, UpdateStorageAreaDto } from './dto/storage-area.dto';
+import {
+  CreateStorageAreaDto,
+  ListStorageAreasQueryDto,
+  UpdateStorageAreaDto,
+} from './dto/storage-area.dto';
 
 /** M03 `location` — CONTRACTS.md §4.3 (outlets, gudang pusat, storage areas D-15). */
 @Controller('locations')
@@ -38,7 +54,11 @@ export class LocationController {
   @RequirePermission('location.manage')
   @Audited({ entityType: 'location', action: 'location.manage' })
   @HttpCode(HttpStatus.CREATED)
-  create(@Req() req: Request, @Body() dto: CreateLocationDto, @CurrentUser() user: JwtAccessPayload) {
+  create(
+    @Req() req: Request,
+    @Body() dto: CreateLocationDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.locations.create(requireDbClient(req), dto, user.sub);
   }
 
@@ -63,7 +83,11 @@ export class LocationController {
 
   @Get(':id/storage-areas')
   @RequirePermission('location.read')
-  listStorageAreas(@Req() req: Request, @Param('id') id: string, @Query() query: ListStorageAreasQueryDto) {
+  listStorageAreas(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Query() query: ListStorageAreasQueryDto,
+  ) {
     return this.storageAreas.listForLocation(requireDbClient(req), id, query.active);
   }
 

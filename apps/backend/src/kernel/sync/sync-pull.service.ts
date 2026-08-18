@@ -7,7 +7,13 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { Pool } from 'pg';
 import type { UUID } from '@mimi/shared';
-import { wireEligibleEntities, type SyncEventEnvelope, type SyncHelloAck, type SyncPullResult, type SyncScope } from '@mimi/sync-protocol';
+import {
+  wireEligibleEntities,
+  type SyncEventEnvelope,
+  type SyncHelloAck,
+  type SyncPullResult,
+  type SyncScope,
+} from '@mimi/sync-protocol';
 import { DATABASE_POOL } from '../../common/database/database-pool.provider';
 import { SyncEventsRepository } from './sync-events.repository';
 import type { SyncEventRow } from './db-rows';
@@ -61,13 +67,22 @@ export class SyncPullService {
   }
 
   /** `_requestedOutboxDepth` is telemetry-only (mirrors the socket heartbeat's `outbox_depth`) — not yet consumed by this handshake; kept in the signature so callers match the wire shape (§4.2) even though nothing here reads it today. */
-  async hello(inputs: DeviceScopeInputs, requestedCursor: number, _requestedOutboxDepth: number): Promise<SyncHelloAck> {
+  async hello(
+    inputs: DeviceScopeInputs,
+    requestedCursor: number,
+    _requestedOutboxDepth: number,
+  ): Promise<SyncHelloAck> {
     return this.events.withTransaction(async (client) => {
       const stored = await this.events.getCursor(client, inputs.subscriberId);
       // Trust whichever is larger — the client's own claim can only ever ask to "not go backwards"; the
       // scope/location side of the handshake is what must never be client-trusted (§4.2), not this number.
       const resumeCursor = BigInt(requestedCursor) > stored ? BigInt(requestedCursor) : stored;
-      await this.events.upsertCursor(client, inputs.subscriberTier, inputs.subscriberId, resumeCursor);
+      await this.events.upsertCursor(
+        client,
+        inputs.subscriberTier,
+        inputs.subscriberId,
+        resumeCursor,
+      );
 
       // confirmed_through (§4.3): this subscriber's OWN origin high-water, so it can prune its outbox
       // immediately on reconnect even before pushing anything new. Only meaningful when the subscriber
@@ -110,7 +125,13 @@ export class SyncPullService {
             AND (location_id IS NULL OR location_id = ANY($4::uuid[]))
           ORDER BY server_seq ASC
           LIMIT $5`,
-        [cursor.toString(), scope.excludeOrigin, this.wireEntities, scope.locationIds, boundedLimit + 1],
+        [
+          cursor.toString(),
+          scope.excludeOrigin,
+          this.wireEntities,
+          scope.locationIds,
+          boundedLimit + 1,
+        ],
       );
 
       const hasMore = res.rows.length > boundedLimit;
@@ -122,8 +143,14 @@ export class SyncPullService {
   }
 
   /** Persists the downstream's cursor advance after it durably applied a page (§4.5: "atomically with its cursor advance" — that atomicity is the CALLER's transaction; this just records the position). */
-  async advanceCursor(subscriberType: 'device' | 'node', subscriberId: UUID, cursor: number): Promise<void> {
-    await withSystemContext(this.pool, (client) => this.events.upsertCursor(client, subscriberType, subscriberId, BigInt(cursor)));
+  async advanceCursor(
+    subscriberType: 'device' | 'node',
+    subscriberId: UUID,
+    cursor: number,
+  ): Promise<void> {
+    await withSystemContext(this.pool, (client) =>
+      this.events.upsertCursor(client, subscriberType, subscriberId, BigInt(cursor)),
+    );
   }
 
   /**
@@ -139,6 +166,8 @@ export class SyncPullService {
    * inside `pull()` above would.
    */
   async bootstrapStartingCursor(): Promise<number> {
-    return withSystemContext(this.pool, async (client) => Number(await this.events.getMaxServerSeq(client)));
+    return withSystemContext(this.pool, async (client) =>
+      Number(await this.events.getMaxServerSeq(client)),
+    );
   }
 }

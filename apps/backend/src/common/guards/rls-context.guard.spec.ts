@@ -69,15 +69,13 @@ describe('RlsContextGuard', () => {
 
     expect(result).toBe(true);
     expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
-    expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringContaining('set_config'),
-      ['user-1'],
-    );
+    expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('set_config'), [
+      'user-1',
+    ]);
     expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('set_config'), ['kasir']);
-    expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringContaining('set_config'),
-      ['loc-1,loc-2'],
-    );
+    expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('set_config'), [
+      'loc-1,loc-2',
+    ]);
     expect(request.dbClient).toBe(mockClient);
     expect(request.locationScope).toEqual(['loc-1', 'loc-2']);
   });
@@ -203,7 +201,9 @@ describe('RlsContextGuard', () => {
     // Observable-chain test) — invoke the documented rollback-then-release
     // contract directly so this test's signal stays on session isolation,
     // not on re-proving rxjs wiring already covered there.
-    await (interceptor as unknown as { release(r: RequestWithDbContext): Promise<void> }).release(requestA);
+    await (interceptor as unknown as { release(r: RequestWithDbContext): Promise<void> }).release(
+      requestA,
+    );
 
     expect(callLog).toContain('ROLLBACK');
     expect(callLog[callLog.length - 1]).toBe('RELEASE');

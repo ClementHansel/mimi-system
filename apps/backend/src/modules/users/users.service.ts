@@ -5,7 +5,12 @@
  * only gate here; RLS enforces it independently even if a route were ever
  * mis-annotated.
  */
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { hash as bcryptHash } from 'bcrypt';
 import type { PoolClient } from 'pg';
 import {
@@ -22,7 +27,14 @@ import {
 } from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { UsersRepository, type UsersListFilter } from './users.repository';
-import type { AssignLocationsDto, AssignRoleDto, CreateUserDto, ListUsersQueryDto, ResetPasswordDto, UpdateUserDto } from './users.dto';
+import type {
+  AssignLocationsDto,
+  AssignRoleDto,
+  CreateUserDto,
+  ListUsersQueryDto,
+  ResetPasswordDto,
+  UpdateUserDto,
+} from './users.dto';
 import { withWrite } from './db-tx';
 
 const PASSWORD_BCRYPT_ROUNDS = 10;
@@ -52,14 +64,25 @@ export class UsersService {
     return row;
   }
 
-  async create(dto: CreateUserDto, caller: { roleKey: string; sub: string }, client: PoolClient): Promise<UserRow> {
+  async create(
+    dto: CreateUserDto,
+    caller: { roleKey: string; sub: string },
+    client: PoolClient,
+  ): Promise<UserRow> {
     this.assertCanGrantRole(caller.roleKey, dto.roleKey);
 
     if (await this.repo.usernameTaken(client, dto.username)) {
-      throw new BadRequestException({ code: ERR_CONFLICT, message: `username '${dto.username}' is already taken` });
+      throw new BadRequestException({
+        code: ERR_CONFLICT,
+        message: `username '${dto.username}' is already taken`,
+      });
     }
     const role = await this.repo.findRoleByKey(client, dto.roleKey);
-    if (!role) throw new BadRequestException({ code: ERR_VALIDATION, message: `unknown role '${dto.roleKey}'` });
+    if (!role)
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `unknown role '${dto.roleKey}'`,
+      });
 
     return withWrite(client, async () => {
       const passwordHash = await bcryptHash(dto.password, PASSWORD_BCRYPT_ROUNDS);
@@ -89,7 +112,12 @@ export class UsersService {
     });
   }
 
-  async update(id: string, dto: UpdateUserDto, caller: { sub: string }, client: PoolClient): Promise<UserRow> {
+  async update(
+    id: string,
+    dto: UpdateUserDto,
+    caller: { sub: string },
+    client: PoolClient,
+  ): Promise<UserRow> {
     await this.assertExists(id, client);
     return withWrite(client, async () => {
       await this.repo.updateProfile(client, id, dto);
@@ -100,12 +128,21 @@ export class UsersService {
   }
 
   /** "cannot assign a role ranked ≥ caller's" (CONTRACTS.md §4.2) — `ROLE_RANK` (`@mimi/shared`), higher number = broader authority. */
-  async assignRole(id: string, dto: AssignRoleDto, caller: { roleKey: string; sub: string }, client: PoolClient): Promise<UserRow> {
+  async assignRole(
+    id: string,
+    dto: AssignRoleDto,
+    caller: { roleKey: string; sub: string },
+    client: PoolClient,
+  ): Promise<UserRow> {
     await this.assertExists(id, client);
     this.assertCanGrantRole(caller.roleKey, dto.roleKey);
 
     const role = await this.repo.findRoleByKey(client, dto.roleKey);
-    if (!role) throw new BadRequestException({ code: ERR_VALIDATION, message: `unknown role '${dto.roleKey}'` });
+    if (!role)
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `unknown role '${dto.roleKey}'`,
+      });
 
     return withWrite(client, async () => {
       await this.repo.updateRole(client, id, role.id);
@@ -115,7 +152,12 @@ export class UsersService {
     });
   }
 
-  async assignLocations(id: string, dto: AssignLocationsDto, caller: { sub: string }, client: PoolClient): Promise<UserRow> {
+  async assignLocations(
+    id: string,
+    dto: AssignLocationsDto,
+    caller: { sub: string },
+    client: PoolClient,
+  ): Promise<UserRow> {
     await this.assertExists(id, client);
     const before = new Set(await this.repo.currentLocationIds(client, id));
     const after = new Set(dto.locationIds);
@@ -150,7 +192,11 @@ export class UsersService {
     });
   }
 
-  async resetPassword(id: string, dto: ResetPasswordDto, client: PoolClient): Promise<{ ok: true }> {
+  async resetPassword(
+    id: string,
+    dto: ResetPasswordDto,
+    client: PoolClient,
+  ): Promise<{ ok: true }> {
     await this.assertExists(id, client);
     return withWrite(client, async () => {
       const passwordHash = await bcryptHash(dto.newPassword, PASSWORD_BCRYPT_ROUNDS);
@@ -162,7 +208,11 @@ export class UsersService {
     });
   }
 
-  async deactivate(id: string, caller: { sub: string }, client: PoolClient): Promise<{ id: string; deactivated: true }> {
+  async deactivate(
+    id: string,
+    caller: { sub: string },
+    client: PoolClient,
+  ): Promise<{ id: string; deactivated: true }> {
     await this.assertExists(id, client);
     return withWrite(client, async () => {
       const locationIds = await this.repo.currentLocationIds(client, id);
@@ -174,9 +224,15 @@ export class UsersService {
     });
   }
 
-  async listRoles(client: PoolClient): Promise<{ key: string; name: string; permissions: string[] }[]> {
+  async listRoles(
+    client: PoolClient,
+  ): Promise<{ key: string; name: string; permissions: string[] }[]> {
     const rows = await this.repo.listRoles(client);
-    return rows.map((r) => ({ key: r.key, name: r.name, permissions: permissionsForRole(r.key as RoleKey) }));
+    return rows.map((r) => ({
+      key: r.key,
+      name: r.name,
+      permissions: permissionsForRole(r.key as RoleKey),
+    }));
   }
 
   private assertCanGrantRole(callerRoleKey: string, targetRoleKey: string): void {

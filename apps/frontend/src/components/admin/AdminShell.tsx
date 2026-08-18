@@ -30,13 +30,34 @@ export function AdminShell() {
 
   const tabs = useMemo(
     () => [
-      { value: 'users', labelKey: 'admin.tabs.users', icon: Users, visible: can('user.read'), content: <UsersPanel /> },
       {
-        value: 'masterData', labelKey: 'admin.tabs.masterData', icon: Boxes,
-        visible: can(['item.manage', 'product.manage', 'location.manage', 'item.read']), content: <MasterDataPanel />,
+        value: 'users',
+        labelKey: 'admin.tabs.users',
+        icon: Users,
+        visible: can('user.read'),
+        content: <UsersPanel />,
       },
-      { value: 'audit', labelKey: 'admin.tabs.audit', icon: ScrollText, visible: can('audit.read'), content: <AuditPanel /> },
-      { value: 'settings', labelKey: 'admin.tabs.settings', icon: SettingsIcon, visible: can('settings.read'), content: <SettingsPanel /> },
+      {
+        value: 'masterData',
+        labelKey: 'admin.tabs.masterData',
+        icon: Boxes,
+        visible: can(['item.manage', 'product.manage', 'location.manage', 'item.read']),
+        content: <MasterDataPanel />,
+      },
+      {
+        value: 'audit',
+        labelKey: 'admin.tabs.audit',
+        icon: ScrollText,
+        visible: can('audit.read'),
+        content: <AuditPanel />,
+      },
+      {
+        value: 'settings',
+        labelKey: 'admin.tabs.settings',
+        icon: SettingsIcon,
+        visible: can('settings.read'),
+        content: <SettingsPanel />,
+      },
     ],
     [can],
   );

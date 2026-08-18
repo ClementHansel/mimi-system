@@ -30,7 +30,11 @@ export class PeriodsController {
   @Post(':id/calculate')
   @RequirePermission('payroll.run.calculate')
   @Audited({ module: 'payroll', entityType: 'payroll_runs', action: 'payroll.run.calculate' })
-  async calculate(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: CalculatePeriodDto) {
+  async calculate(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: CalculatePeriodDto,
+  ) {
     return this.runs.calculateForPeriod(req.dbClient!, req.user!.sub, id, dto.employeeIds);
   }
 }

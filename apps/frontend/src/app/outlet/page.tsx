@@ -29,22 +29,40 @@ export default function OutletPage() {
       <Tabs defaultValue="replenishment">
         <TabsList className="flex-wrap">
           <TabsTrigger value="replenishment">
-            <span className="inline-flex items-center gap-1.5"><ClipboardList className="size-4" aria-hidden />{t('outlet.tabs.replenishment')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <ClipboardList className="size-4" aria-hidden />
+              {t('outlet.tabs.replenishment')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="receiving">
-            <span className="inline-flex items-center gap-1.5"><Truck className="size-4" aria-hidden />{t('outlet.tabs.receiving')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Truck className="size-4" aria-hidden />
+              {t('outlet.tabs.receiving')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="stock">
-            <span className="inline-flex items-center gap-1.5"><Boxes className="size-4" aria-hidden />{t('outlet.tabs.stock')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Boxes className="size-4" aria-hidden />
+              {t('outlet.tabs.stock')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="opname">
-            <span className="inline-flex items-center gap-1.5"><ListChecks className="size-4" aria-hidden />{t('outlet.tabs.opname')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <ListChecks className="size-4" aria-hidden />
+              {t('outlet.tabs.opname')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="waste">
-            <span className="inline-flex items-center gap-1.5"><Trash2 className="size-4" aria-hidden />{t('outlet.tabs.waste')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Trash2 className="size-4" aria-hidden />
+              {t('outlet.tabs.waste')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="pettyCash">
-            <span className="inline-flex items-center gap-1.5"><Wallet className="size-4" aria-hidden />{t('outlet.tabs.pettyCash')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Wallet className="size-4" aria-hidden />
+              {t('outlet.tabs.pettyCash')}
+            </span>
           </TabsTrigger>
         </TabsList>
 

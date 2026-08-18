@@ -225,7 +225,11 @@ export class InventoryRepository {
         ORDER BY sa.sort_order, sa.name`,
       b.params,
     );
-    return res.rows.map((r) => ({ storageAreaId: r.storage_area_id, name: r.name, items: Number(r.items) }));
+    return res.rows.map((r) => ({
+      storageAreaId: r.storage_area_id,
+      name: r.name,
+      items: Number(r.items),
+    }));
   }
 
   // ── GET /movements ──────────────────────────────────────────────────────
@@ -338,7 +342,16 @@ export class InventoryRepository {
   async listLowStock(
     client: PoolClient,
     locationId: string | undefined,
-  ): Promise<{ locationId: UUID; itemId: UUID; itemName: string; qtyOnHand: Qty; minQty: Qty; suggestedQty: Qty | null }[]> {
+  ): Promise<
+    {
+      locationId: UUID;
+      itemId: UUID;
+      itemName: string;
+      qtyOnHand: Qty;
+      minQty: Qty;
+      suggestedQty: Qty | null;
+    }[]
+  > {
     const b = new ConditionBuilder();
     b.eq('msr.location_id', locationId);
     const res = await client.query<{
@@ -450,7 +463,8 @@ export class InventoryRepository {
         [locationId, rule.itemId, rule.minQty, rule.reorderQty ?? null, updatedBy],
       );
       const id = res.rows[0]?.id;
-      if (!id) throw new Error(`upsertMinStockRules: RETURNING id yielded no row for item ${rule.itemId}`);
+      if (!id)
+        throw new Error(`upsertMinStockRules: RETURNING id yielded no row for item ${rule.itemId}`);
       ids.push(id);
     }
 
@@ -486,7 +500,15 @@ export class InventoryRepository {
     client: PoolClient,
     locationId: string | undefined,
   ): Promise<
-    { locationId: UUID; itemId: UUID; itemName: string; qtyOnHand: Qty; minQty: Qty; reorderQty: Qty | null; qty14: Qty }[]
+    {
+      locationId: UUID;
+      itemId: UUID;
+      itemName: string;
+      qtyOnHand: Qty;
+      minQty: Qty;
+      reorderQty: Qty | null;
+      qty14: Qty;
+    }[]
   > {
     const b = new ConditionBuilder();
     b.eq('msr.location_id', locationId);
@@ -532,7 +554,10 @@ export class InventoryRepository {
   }
 
   // ── POST /area-transfer ─────────────────────────────────────────────────
-  async getStorageArea(client: PoolClient, id: string): Promise<{ id: string; locationId: string; isActive: boolean } | null> {
+  async getStorageArea(
+    client: PoolClient,
+    id: string,
+  ): Promise<{ id: string; locationId: string; isActive: boolean } | null> {
     const res = await client.query<{ id: string; location_id: string; is_active: boolean }>(
       `SELECT id, location_id, is_active FROM storage_areas WHERE id = $1`,
       [id],
@@ -542,7 +567,10 @@ export class InventoryRepository {
   }
 
   async getItemAvgCost(client: PoolClient, itemId: string): Promise<Money | null> {
-    const res = await client.query<{ avg_cost: string }>(`SELECT avg_cost FROM items WHERE id = $1`, [itemId]);
+    const res = await client.query<{ avg_cost: string }>(
+      `SELECT avg_cost FROM items WHERE id = $1`,
+      [itemId],
+    );
     return res.rows[0]?.avg_cost ?? null;
   }
 

@@ -1,4 +1,12 @@
-import { IsDateString, IsEmail, IsIn, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import {
+  IsDateString,
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { EmploymentStatus } from '@mimi/shared';
 

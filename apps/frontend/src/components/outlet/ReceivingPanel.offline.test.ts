@@ -23,7 +23,13 @@ function unreachableTransport(): SyncTransport {
   const fail = () => {
     throw new Error('network disabled — this transport must never be called by a local commit');
   };
-  return { health: fail, hello: fail, push: fail, pull: fail, heartbeat: fail } as unknown as SyncTransport;
+  return {
+    health: fail,
+    hello: fail,
+    push: fail,
+    pull: fail,
+    heartbeat: fail,
+  } as unknown as SyncTransport;
 }
 
 const noopConnectivity: ConnectivityReporter = {
@@ -54,7 +60,11 @@ describe('ReceiveDropForm submit path — offline queuing via commitDropReceived
 
     // Wajib evidence capture — local-only, no upload attempted here.
     const photoRef = await runtime.captureEvidence(photoBlob, 'image/jpeg', 'receiving_photo');
-    const signatureRef = await runtime.captureEvidence(signatureBlob, 'image/png', 'receiving_signature');
+    const signatureRef = await runtime.captureEvidence(
+      signatureBlob,
+      'image/png',
+      'receiving_signature',
+    );
     expect(photoRef.sha256).toBeTruthy();
     expect(signatureRef.sha256).toBeTruthy();
 
@@ -63,7 +73,13 @@ describe('ReceiveDropForm submit path — offline queuing via commitDropReceived
       dropId,
       {
         dropId,
-        lines: [{ lineId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890', qtyReceived: '10.000', receivedStorageAreaId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890' }],
+        lines: [
+          {
+            lineId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890',
+            qtyReceived: '10.000',
+            receivedStorageAreaId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          },
+        ],
         // Regression guard for B-12: this MUST be the ref's own `attachmentId`
         // (resolvable back to the captured blob), never a freshly minted id —
         // a minted id here would point at nothing and the FR-LOG-15 wajib-foto
@@ -85,7 +101,8 @@ describe('ReceiveDropForm submit path — offline queuing via commitDropReceived
     // reference resolves back to the exact blob that was captured — not just
     // that some UUID-shaped field is populated (W2-E's own test shape for
     // this, per the coordinator's note on B-12).
-    const queuedPhotoId = (result.envelope.payload.data as { photoAttachmentIds: string[] }).photoAttachmentIds[0]!;
+    const queuedPhotoId = (result.envelope.payload.data as { photoAttachmentIds: string[] })
+      .photoAttachmentIds[0]!;
     const resolved = await getAttachmentByAttachmentId(db, queuedPhotoId);
     expect(resolved).toBeDefined();
     expect(resolved?.sha256).toBe(photoRef.sha256);
@@ -101,13 +118,27 @@ describe('ReceiveDropForm submit path — offline queuing via commitDropReceived
     });
     await runtime.init();
 
-    const photoRef = await runtime.captureEvidence(new Blob(['x']), 'image/jpeg', 'receiving_photo');
-    const signatureRef = await runtime.captureEvidence(new Blob(['y']), 'image/png', 'receiving_signature');
+    const photoRef = await runtime.captureEvidence(
+      new Blob(['x']),
+      'image/jpeg',
+      'receiving_photo',
+    );
+    const signatureRef = await runtime.captureEvidence(
+      new Blob(['y']),
+      'image/png',
+      'receiving_signature',
+    );
 
     const dropId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567891';
     const payload = {
       dropId,
-      lines: [{ lineId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890', qtyReceived: '10.000', receivedStorageAreaId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890' }],
+      lines: [
+        {
+          lineId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          qtyReceived: '10.000',
+          receivedStorageAreaId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        },
+      ],
       photoAttachmentIds: [photoRef.attachmentId],
       signatureAttachmentId: signatureRef.attachmentId,
       clientId: crypto.randomUUID(),

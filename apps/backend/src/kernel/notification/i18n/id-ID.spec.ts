@@ -31,7 +31,10 @@ describe('renderNotificationText', () => {
 
   it('is Indonesian text only in this one module — not asserted directly, but every registry template has a matching i18n entry', () => {
     for (const key of Object.keys(NOTIFICATION_TEMPLATES)) {
-      expect(ID_ID_NOTIFICATION_TEXT[key], `missing i18n entry for template '${key}'`).toBeDefined();
+      expect(
+        ID_ID_NOTIFICATION_TEXT[key],
+        `missing i18n entry for template '${key}'`,
+      ).toBeDefined();
     }
   });
 });
@@ -42,9 +45,10 @@ describe('NOTIFICATION_TEMPLATES × id-ID consistency', () => {
       const text = ID_ID_NOTIFICATION_TEXT[template.key]!;
       const combined = text.title + text.body;
       for (const param of template.requiredParams) {
-        expect(combined, `template '${template.key}' declares required param '${param}' but never uses it`).toContain(
-          `{{${param}}}`,
-        );
+        expect(
+          combined,
+          `template '${template.key}' declares required param '${param}' but never uses it`,
+        ).toContain(`{{${param}}}`);
       }
     }
   });

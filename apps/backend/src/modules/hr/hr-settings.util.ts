@@ -20,8 +20,11 @@ import {
  * attendance check-in or a leave submission.
  */
 async function readSetting<T>(client: PoolClient, key: SettingsKey, fallback: T): Promise<T> {
-  const res = await client.query<{ value: unknown }>('SELECT value FROM settings WHERE key = $1', [key]);
-  if (res.rows.length === 0 || res.rows[0]!.value === null || res.rows[0]!.value === undefined) return fallback;
+  const res = await client.query<{ value: unknown }>('SELECT value FROM settings WHERE key = $1', [
+    key,
+  ]);
+  if (res.rows.length === 0 || res.rows[0]!.value === null || res.rows[0]!.value === undefined)
+    return fallback;
   return res.rows[0]!.value as T;
 }
 
@@ -29,12 +32,23 @@ export async function getLateGraceMinutes(client: PoolClient): Promise<number> {
   return readSetting<number>(client, 'hr.late_grace_minutes', DEFAULT_LATE_GRACE_MINUTES);
 }
 
-export async function getOvertimeSettings(client: PoolClient): Promise<{ ratePerHour: string; minMinutes: number }> {
-  return readSetting(client, 'hr.overtime', DEFAULT_OVERTIME_SETTINGS as { ratePerHour: string; minMinutes: number });
+export async function getOvertimeSettings(
+  client: PoolClient,
+): Promise<{ ratePerHour: string; minMinutes: number }> {
+  return readSetting(
+    client,
+    'hr.overtime',
+    DEFAULT_OVERTIME_SETTINGS as { ratePerHour: string; minMinutes: number },
+  );
 }
 
-export async function getLeaveQuotas(client: PoolClient): Promise<{ annual: number; marriage: number }> {
-  return readSetting(client, 'leave.quotas', { annual: ANNUAL_LEAVE_QUOTA_DAYS, marriage: MARRIAGE_LEAVE_QUOTA_DAYS });
+export async function getLeaveQuotas(
+  client: PoolClient,
+): Promise<{ annual: number; marriage: number }> {
+  return readSetting(client, 'leave.quotas', {
+    annual: ANNUAL_LEAVE_QUOTA_DAYS,
+    marriage: MARRIAGE_LEAVE_QUOTA_DAYS,
+  });
 }
 
 export async function getMaxOfflineWindowHours(client: PoolClient): Promise<number> {

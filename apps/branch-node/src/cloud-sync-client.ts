@@ -16,7 +16,14 @@
  * The message NAMES and wire shapes below are SYNC-PROTOCOL §4 verbatim.
  */
 import { io } from 'socket.io-client';
-import type { SyncEventEnvelope, SyncHelloAck, SyncHelloRequest, SyncPullResult, SyncPushAck, SyncPushBatch } from '@mimi/sync-protocol';
+import type {
+  SyncEventEnvelope,
+  SyncHelloAck,
+  SyncHelloRequest,
+  SyncPullResult,
+  SyncPushAck,
+  SyncPushBatch,
+} from '@mimi/sync-protocol';
 import type { MinimalSocket, SocketFactory } from './socket-like';
 import {
   eventFromWire,
@@ -59,7 +66,8 @@ export class CloudSyncClient {
 
   constructor(private options: CloudSyncClientOptions) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 10_000;
-    const factory = options.socketFactory ?? ((url, opts) => io(url, opts) as unknown as MinimalSocket);
+    const factory =
+      options.socketFactory ?? ((url, opts) => io(url, opts) as unknown as MinimalSocket);
     this.socket = factory(`${options.cloudUrl}/sync`, {
       auth: { token: options.nodeToken },
       reconnection: true,
@@ -67,7 +75,10 @@ export class CloudSyncClient {
     });
     this.socket.on('sync:deliver', (...args: unknown[]) => {
       const wire = args[0] as { events: unknown[]; nextCursor: number };
-      void this.options.onDeliver((wire.events as Record<string, unknown>[]).map(eventFromWire), wire.nextCursor);
+      void this.options.onDeliver(
+        (wire.events as Record<string, unknown>[]).map(eventFromWire),
+        wire.nextCursor,
+      );
     });
   }
 
@@ -78,7 +89,10 @@ export class CloudSyncClient {
   async waitUntilConnected(timeoutMs = this.requestTimeoutMs): Promise<void> {
     if (this.socket.connected) return;
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timed out connecting to cloud /sync')), timeoutMs);
+      const timer = setTimeout(
+        () => reject(new Error('timed out connecting to cloud /sync')),
+        timeoutMs,
+      );
       this.socket.once('connect', () => {
         clearTimeout(timer);
         resolve();
@@ -88,21 +102,33 @@ export class CloudSyncClient {
 
   /** §4.2 handshake — must be sent first; nothing else is valid before its ack. */
   async hello(request: SyncHelloRequest): Promise<SyncHelloAck> {
-    const ackPromise = waitForEvent<Record<string, unknown>>(this.socket, 'sync:hello:ack', this.requestTimeoutMs);
+    const ackPromise = waitForEvent<Record<string, unknown>>(
+      this.socket,
+      'sync:hello:ack',
+      this.requestTimeoutMs,
+    );
     this.socket.emit('sync:hello', helloToWire(request));
     return helloAckFromWire(await ackPromise);
   }
 
   /** §4.3 push — one outstanding batch at a time by construction (the relay loop awaits this before sending the next). */
   async push(batch: SyncPushBatch): Promise<SyncPushAck> {
-    const ackPromise = waitForEvent<Record<string, unknown>>(this.socket, 'sync:push:ack', this.requestTimeoutMs);
+    const ackPromise = waitForEvent<Record<string, unknown>>(
+      this.socket,
+      'sync:push:ack',
+      this.requestTimeoutMs,
+    );
     this.socket.emit('sync:push', pushBatchToWire(batch));
     return pushAckFromWire(await ackPromise);
   }
 
   /** §4.5 catch-up pull page. */
   async pullPage(cursor: number, limit: number): Promise<SyncPullResult> {
-    const resultPromise = waitForEvent<Record<string, unknown>>(this.socket, 'sync:pull:result', this.requestTimeoutMs);
+    const resultPromise = waitForEvent<Record<string, unknown>>(
+      this.socket,
+      'sync:pull:result',
+      this.requestTimeoutMs,
+    );
     this.socket.emit('sync:pull', { cursor, limit });
     return pullResultFromWire(await resultPromise);
   }

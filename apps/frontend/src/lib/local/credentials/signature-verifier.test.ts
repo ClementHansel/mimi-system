@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { noopSignatureVerifier, createNoopSignatureVerifier, type SignatureVerifier } from './signature-verifier';
+import {
+  noopSignatureVerifier,
+  createNoopSignatureVerifier,
+  type SignatureVerifier,
+} from './signature-verifier';
 import { cacheCredential, encodeOfflineCredentialToken } from './offline-credentials';
 import { createTestDatabase } from '../test-support/fixtures';
 import type { CachedCredentialRecord, OfflineCredentialClaims } from '../types';
@@ -57,22 +61,38 @@ describe('SignatureVerifier seam (v1 unsigned token, architect decision)', () =>
     const db = createTestDatabase();
     const claims = claimsFixture('cred-spy');
     const token = encodeOfflineCredentialToken(claims);
-    await cacheCredential(db, { credentialId: claims.credentialId, token, scopes: claims.scopes, expiresAt: claims.exp }, spyVerifier, 'the-public-key');
+    await cacheCredential(
+      db,
+      { credentialId: claims.credentialId, token, scopes: claims.scopes, expiresAt: claims.exp },
+      spyVerifier,
+      'the-public-key',
+    );
 
     expect(calls).toEqual([{ token, publicKey: 'the-public-key' }]);
   });
 
   it('a verifier that rejects prevents the credential from being cached at all (future-proofing: this is what a real verifier gates)', async () => {
-    const rejectingVerifier: SignatureVerifier = { async verify() { return false; } };
+    const rejectingVerifier: SignatureVerifier = {
+      async verify() {
+        return false;
+      },
+    };
     const db = createTestDatabase();
     const claims = claimsFixture('cred-rejected');
     const result = await cacheCredential(
       db,
-      { credentialId: claims.credentialId, token: encodeOfflineCredentialToken(claims), scopes: claims.scopes, expiresAt: claims.exp },
+      {
+        credentialId: claims.credentialId,
+        token: encodeOfflineCredentialToken(claims),
+        scopes: claims.scopes,
+        expiresAt: claims.exp,
+      },
       rejectingVerifier,
     );
 
     expect(result).toEqual({ cached: false });
-    expect(await db.store<CachedCredentialRecord>('credentials').get('cred-rejected')).toBeUndefined();
+    expect(
+      await db.store<CachedCredentialRecord>('credentials').get('cred-rejected'),
+    ).toBeUndefined();
   });
 });

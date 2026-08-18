@@ -99,7 +99,10 @@ const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 ];
 
 /** `5 menit lalu`, `2 jam lalu`, `baru saja` — for heartbeats, "last sync", notifications. */
-export function fmtRelative(value: string | Date | null | undefined, now: Date = new Date()): string {
+export function fmtRelative(
+  value: string | Date | null | undefined,
+  now: Date = new Date(),
+): string {
   const d = toDate(value);
   if (!d) return '—';
   const rtf = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' });

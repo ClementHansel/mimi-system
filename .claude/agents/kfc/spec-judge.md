@@ -92,7 +92,7 @@ def evaluate_documents(documents):
             'weaknesses': identify_weaknesses(doc)
         }
         scores.append(score)
-    
+
     return select_best_or_combine(scores)
 ```
 

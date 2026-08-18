@@ -8,7 +8,11 @@
  */
 import { hash as bcryptHash } from 'bcrypt';
 import { afterAll, describe, expect, it } from 'vitest';
-import { assertSystemContext, SYSTEM_CENTRAL_ROLE, withSystemContext } from '../../common/database/system-context';
+import {
+  assertSystemContext,
+  SYSTEM_CENTRAL_ROLE,
+  withSystemContext,
+} from '../../common/database/system-context';
 import { hashPin } from './pin-hash.util';
 import {
   assignUserToLocation,
@@ -79,14 +83,18 @@ describe('RLS regression — the exact failure mode this whole harness exists to
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE app_user');
       await client.query(`SELECT set_config('app.role', 'kasir', true)`);
-      await client.query(`SELECT set_config('app.user_id', '11111111-1111-1111-1111-111111111111', true)`);
+      await client.query(
+        `SELECT set_config('app.user_id', '11111111-1111-1111-1111-111111111111', true)`,
+      );
       await client.query('ROLLBACK');
 
       // Same physical connection, a later unrelated transaction — this is
       // every connection in this app after serving one authenticated request.
       await client.query('BEGIN');
       await expect(
-        assertSystemContext(client, { role: SYSTEM_CENTRAL_ROLE }).then(() => client.query('SELECT * FROM users LIMIT 1')),
+        assertSystemContext(client, { role: SYSTEM_CENTRAL_ROLE }).then(() =>
+          client.query('SELECT * FROM users LIMIT 1'),
+        ),
       ).resolves.toMatchObject({ rowCount: expect.any(Number) });
       const direct = await client.query('SELECT * FROM users LIMIT 1');
       expect(direct.rowCount).toBeGreaterThan(0);
@@ -95,7 +103,9 @@ describe('RLS regression — the exact failure mode this whole harness exists to
       // withSystemContext (a fresh connection from the pool — may or may not
       // be the same physical one, doesn't matter: the assertion is about the
       // helper's own correctness under this history, not connection identity).
-      const result = await withSystemContext(getAppPool(), { role: SYSTEM_CENTRAL_ROLE }, (c) => c.query('SELECT * FROM users LIMIT 1'));
+      const result = await withSystemContext(getAppPool(), { role: SYSTEM_CENTRAL_ROLE }, (c) =>
+        c.query('SELECT * FROM users LIMIT 1'),
+      );
       expect(result.rowCount).toBeGreaterThan(0);
     } finally {
       await client.query('ROLLBACK').catch(() => {});
@@ -107,11 +117,16 @@ describe('RLS regression — the exact failure mode this whole harness exists to
 describe('AuthService.login — live DB', () => {
   it('succeeds with the right password, issues tokens, and reports mustSetPin=true for a fresh user', async () => {
     const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
-    const userId = await insertTestUser({ username: `w301-login-${Date.now()}`, name: 'Test Login User', roleKey: 'kasir', passwordHash });
+    const userId = await insertTestUser({
+      username: `w301-login-${Date.now()}`,
+      name: 'Test Login User',
+      roleKey: 'kasir',
+      passwordHash,
+    });
     try {
       const service = buildAuthService(getAppPool());
       const res = await service.login(
-        { username: (await withUsername(userId)), password: TEST_PASSWORD },
+        { username: await withUsername(userId), password: TEST_PASSWORD },
         { ipAddress: '127.0.0.1', userAgent: 'vitest' },
       );
       expect(res.accessToken).toBeTruthy();
@@ -127,11 +142,21 @@ describe('AuthService.login — live DB', () => {
 
   it('rejects a wrong password with ERR_AUTH_INVALID_CREDENTIALS (401), without revealing which field was wrong', async () => {
     const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
-    const userId = await insertTestUser({ username: `w301-badpw-${Date.now()}`, name: 'Test Bad Password', roleKey: 'kasir', passwordHash });
+    const userId = await insertTestUser({
+      username: `w301-badpw-${Date.now()}`,
+      name: 'Test Bad Password',
+      roleKey: 'kasir',
+      passwordHash,
+    });
     try {
       const service = buildAuthService(getAppPool());
       const username = await withUsername(userId);
-      await expect(service.login({ username, password: 'wrong-password' }, { ipAddress: null, userAgent: null })).rejects.toMatchObject({
+      await expect(
+        service.login(
+          { username, password: 'wrong-password' },
+          { ipAddress: null, userAgent: null },
+        ),
+      ).rejects.toMatchObject({
         response: { code: 'ERR_AUTH_INVALID_CREDENTIALS' },
       });
     } finally {
@@ -142,7 +167,10 @@ describe('AuthService.login — live DB', () => {
   it('rejects an unknown username with the SAME error code as a wrong password (no username enumeration)', async () => {
     const service = buildAuthService(getAppPool());
     await expect(
-      service.login({ username: `no-such-user-${Date.now()}`, password: 'whatever' }, { ipAddress: null, userAgent: null }),
+      service.login(
+        { username: `no-such-user-${Date.now()}`, password: 'whatever' },
+        { ipAddress: null, userAgent: null },
+      ),
     ).rejects.toMatchObject({ response: { code: 'ERR_AUTH_INVALID_CREDENTIALS' } });
   });
 
@@ -200,10 +228,18 @@ describe('AuthService.login — live DB', () => {
 describe('AuthService.refresh — live DB, token rotation', () => {
   it('rotates the refresh token and rejects the OLD one on reuse', async () => {
     const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
-    const userId = await insertTestUser({ username: `w301-refresh-${Date.now()}`, name: 'Test Refresh User', roleKey: 'kasir', passwordHash });
+    const userId = await insertTestUser({
+      username: `w301-refresh-${Date.now()}`,
+      name: 'Test Refresh User',
+      roleKey: 'kasir',
+      passwordHash,
+    });
     try {
       const service = buildAuthService(getAppPool());
-      const login = await service.login({ username: await withUsername(userId), password: TEST_PASSWORD }, { ipAddress: null, userAgent: null });
+      const login = await service.login(
+        { username: await withUsername(userId), password: TEST_PASSWORD },
+        { ipAddress: null, userAgent: null },
+      );
 
       const rotated = await service.refresh({ refreshToken: login.refreshToken });
       expect(rotated.accessToken).toBeTruthy();
@@ -228,10 +264,18 @@ describe('AuthService.refresh — live DB, token rotation', () => {
 
   it('the normal (non-adversarial) chain: rotated token keeps working across two consecutive refreshes', async () => {
     const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
-    const userId = await insertTestUser({ username: `w301-refresh-chain-${Date.now()}`, name: 'Test Refresh Chain', roleKey: 'kasir', passwordHash });
+    const userId = await insertTestUser({
+      username: `w301-refresh-chain-${Date.now()}`,
+      name: 'Test Refresh Chain',
+      roleKey: 'kasir',
+      passwordHash,
+    });
     try {
       const service = buildAuthService(getAppPool());
-      const login = await service.login({ username: await withUsername(userId), password: TEST_PASSWORD }, { ipAddress: null, userAgent: null });
+      const login = await service.login(
+        { username: await withUsername(userId), password: TEST_PASSWORD },
+        { ipAddress: null, userAgent: null },
+      );
 
       const first = await service.refresh({ refreshToken: login.refreshToken });
       const second = await service.refresh({ refreshToken: first.refreshToken });
@@ -244,18 +288,30 @@ describe('AuthService.refresh — live DB, token rotation', () => {
 
   it('rejects a garbage refresh token', async () => {
     const service = buildAuthService(getAppPool());
-    await expect(service.refresh({ refreshToken: 'not-a-real-jwt' })).rejects.toMatchObject({ response: { code: 'ERR_AUTH_TOKEN_INVALID' } });
+    await expect(service.refresh({ refreshToken: 'not-a-real-jwt' })).rejects.toMatchObject({
+      response: { code: 'ERR_AUTH_TOKEN_INVALID' },
+    });
   });
 });
 
 describe('AuthService.verifyPin — live DB, cross-user read (FR-POS-03)', () => {
-  it('a kasir-initiated call verifying a DIFFERENT (supervisor) user\'s PIN succeeds when correct', async () => {
+  it("a kasir-initiated call verifying a DIFFERENT (supervisor) user's PIN succeeds when correct", async () => {
     const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
     const pinHash = await hashPin(TEST_PIN);
-    const supervisorId = await insertTestUser({ username: `w301-verifypin-${Date.now()}`, name: 'Test Verify Pin', roleKey: 'supervisor', passwordHash, pinHash });
+    const supervisorId = await insertTestUser({
+      username: `w301-verifypin-${Date.now()}`,
+      name: 'Test Verify Pin',
+      roleKey: 'supervisor',
+      passwordHash,
+      pinHash,
+    });
     try {
       const service = buildAuthService(getAppPool());
-      const res = await service.verifyPin({ userId: supervisorId, pin: TEST_PIN, context: 'pos_override' });
+      const res = await service.verifyPin({
+        userId: supervisorId,
+        pin: TEST_PIN,
+        context: 'pos_override',
+      });
       expect(res.ok).toBe(true);
       expect(res.verifierToken).toBeTruthy();
     } finally {
@@ -266,10 +322,18 @@ describe('AuthService.verifyPin — live DB, cross-user read (FR-POS-03)', () =>
   it('rejects the wrong PIN for that same cross-user case', async () => {
     const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
     const pinHash = await hashPin(TEST_PIN);
-    const supervisorId = await insertTestUser({ username: `w301-verifypin-bad-${Date.now()}`, name: 'Test Verify Pin Bad', roleKey: 'supervisor', passwordHash, pinHash });
+    const supervisorId = await insertTestUser({
+      username: `w301-verifypin-bad-${Date.now()}`,
+      name: 'Test Verify Pin Bad',
+      roleKey: 'supervisor',
+      passwordHash,
+      pinHash,
+    });
     try {
       const service = buildAuthService(getAppPool());
-      await expect(service.verifyPin({ userId: supervisorId, pin: '000000', context: 'pos_override' })).rejects.toMatchObject({
+      await expect(
+        service.verifyPin({ userId: supervisorId, pin: '000000', context: 'pos_override' }),
+      ).rejects.toMatchObject({
         response: { code: 'ERR_AUTH_PIN_INVALID' },
       });
     } finally {
@@ -280,6 +344,9 @@ describe('AuthService.verifyPin — live DB, cross-user read (FR-POS-03)', () =>
 
 /** Convenience: read back a test user's username from the owner pool (fixture-side lookup, not the code under test). */
 async function withUsername(userId: string): Promise<string> {
-  const res = await getOwnerPool().query<{ username: string }>('SELECT username FROM users WHERE id = $1', [userId]);
+  const res = await getOwnerPool().query<{ username: string }>(
+    'SELECT username FROM users WHERE id = $1',
+    [userId],
+  );
   return res.rows[0]!.username;
 }

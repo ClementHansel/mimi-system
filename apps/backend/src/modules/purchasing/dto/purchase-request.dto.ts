@@ -1,5 +1,15 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsDateString, IsInt, IsOptional, IsString, IsUUID, Matches, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 const QTY_RE = /^\d+(\.\d{1,3})?$/;
 const MONEY_RE = /^\d+(\.\d{1,2})?$/;

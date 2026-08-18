@@ -80,7 +80,12 @@ export class NotificationService {
 
       if (activeChannels.includes('email')) {
         if (contact.email) {
-          const sendResult = await this.email.send(contact.email, request.templateKey, text.title, text.body);
+          const sendResult = await this.email.send(
+            contact.email,
+            request.templateKey,
+            text.title,
+            text.body,
+          );
           result.email.push({ userId: contact.id, ...sendResult });
         } else {
           this.logger.debug(`Skipping email for user ${contact.id}: no email on file`);
@@ -89,7 +94,12 @@ export class NotificationService {
 
       if (activeChannels.includes('whatsapp')) {
         if (contact.phone) {
-          const sendResult = await this.whatsapp.send(contact.phone, request.templateKey, request.params, text.body);
+          const sendResult = await this.whatsapp.send(
+            contact.phone,
+            request.templateKey,
+            request.params,
+            text.body,
+          );
           result.whatsapp.push({ userId: contact.id, ...sendResult });
         } else {
           this.logger.debug(`Skipping WhatsApp for user ${contact.id}: no phone on file`);

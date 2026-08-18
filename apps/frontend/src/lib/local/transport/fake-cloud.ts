@@ -84,7 +84,12 @@ export class FakeCloud implements SyncTransport {
 
   async health(): Promise<SyncHealth> {
     if (!this.healthy) throw new Error('FakeCloud: unhealthy');
-    return { ok: true, protocolV: this.protocolV, serverTime: new Date().toISOString(), tier: 'cloud' };
+    return {
+      ok: true,
+      protocolV: this.protocolV,
+      serverTime: new Date().toISOString(),
+      tier: 'cloud',
+    };
   }
 
   async hello(_baseUrl: string, req: SyncHelloRequest): Promise<SyncHelloAck> {
@@ -113,20 +118,29 @@ export class FakeCloud implements SyncTransport {
     const acceptedThrough: Record<string, number> = {};
     const resendFrom: Record<string, number> = {};
 
-    const byOrigin = groupByOrigin(batch.events.map((e) => ({ ...e, originDeviceId: e.originDeviceId })));
+    const byOrigin = groupByOrigin(
+      batch.events.map((e) => ({ ...e, originDeviceId: e.originDeviceId })),
+    );
 
     for (const [originId, events] of byOrigin) {
       const sorted = sortByClientSeq(events);
 
       if (this.frozenOrigins.has(originId)) {
-        for (const e of sorted) rejected.push({ eventId: e.eventId, code: 'seq_conflict', detail: 'origin frozen (prior seq_conflict)' });
+        for (const e of sorted)
+          rejected.push({
+            eventId: e.eventId,
+            code: 'seq_conflict',
+            detail: 'origin frozen (prior seq_conflict)',
+          });
         acceptedThrough[originId] = Number(this.highWater.get(originId) ?? 0n);
         continue;
       }
 
       const currentHighWater = this.highWater.get(originId) ?? 0n;
       const knownEventIdAtSeq = (seq: bigint): UUID | undefined =>
-        this.events.find((e) => e.envelope.originDeviceId === originId && e.envelope.clientSeq === seq)?.envelope.eventId;
+        this.events.find(
+          (e) => e.envelope.originDeviceId === originId && e.envelope.clientSeq === seq,
+        )?.envelope.eventId;
 
       const result = processOriginBatch(sorted, currentHighWater, knownEventIdAtSeq);
 
@@ -139,11 +153,16 @@ export class FakeCloud implements SyncTransport {
           rejectCode: reject,
         };
         this.events.push(stored);
-        if (reject) rejected.push({ eventId: e.eventId, code: reject, detail: `rejected: ${reject}` });
+        if (reject)
+          rejected.push({ eventId: e.eventId, code: reject, detail: `rejected: ${reject}` });
       }
 
       for (const parked of result.parked) {
-        this.events.push({ envelope: parked, serverSeq: this.nextServerSeq++, applyStatus: 'pending_dependency' });
+        this.events.push({
+          envelope: parked,
+          serverSeq: this.nextServerSeq++,
+          applyStatus: 'pending_dependency',
+        });
       }
 
       for (const conflict of result.seqConflicts) {
@@ -171,7 +190,9 @@ export class FakeCloud implements SyncTransport {
 
   async pull(_baseUrl: string, cursor: number, limit: number): Promise<SyncPullResult> {
     if (!this.healthy) throw new Error('FakeCloud: unhealthy');
-    const applied = this.events.filter((e) => e.applyStatus === 'applied' && e.serverSeq > cursor).sort((a, b) => a.serverSeq - b.serverSeq);
+    const applied = this.events
+      .filter((e) => e.applyStatus === 'applied' && e.serverSeq > cursor)
+      .sort((a, b) => a.serverSeq - b.serverSeq);
     const page = applied.slice(0, limit);
     const nextCursor = page.length > 0 ? page[page.length - 1]!.serverSeq : cursor;
     return {

@@ -9,14 +9,23 @@ import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
 import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.service';
 import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
-import { closeTestPool, fetchOneUserId, getAppPool, resetSettingValue, withRollback } from '../auth/test-support/live-db';
+import {
+  closeTestPool,
+  fetchOneUserId,
+  getAppPool,
+  resetSettingValue,
+  withRollback,
+} from '../auth/test-support/live-db';
 import { SettingsRepository } from './settings.repository';
 import { SettingsService } from './settings.service';
 
 function buildService(): SettingsService {
   const pool = getAppPool();
   const events = new SyncEventsRepository(pool);
-  const syncEmit = new SyncEmitService(events, new ConflictDetectorService(events, new SyncConflictsRepository()));
+  const syncEmit = new SyncEmitService(
+    events,
+    new ConflictDetectorService(events, new SyncConflictsRepository()),
+  );
   return new SettingsService(new SettingsRepository(), syncEmit);
 }
 
@@ -66,7 +75,9 @@ describe('SettingsService — generic get/set', () => {
 
   it('404s on an unknown key', async () => {
     await withRollback(async (client) => {
-      await expect(buildService().getOne('not.a.real.key', client)).rejects.toMatchObject({ response: { code: 'ERR_NOT_FOUND' } });
+      await expect(buildService().getOne('not.a.real.key', client)).rejects.toMatchObject({
+        response: { code: 'ERR_NOT_FOUND' },
+      });
     });
   });
 
@@ -81,11 +92,18 @@ describe('SettingsService — generic get/set', () => {
   it('rejects a malformed value against its declared schema (ERR_VALIDATION)', async () => {
     await withRollback(async (client) => {
       const service = buildService();
-      await expect(service.putOne('hr.late_grace_minutes', { value: 'not-a-number' }, CALLER, client)).rejects.toMatchObject({
+      await expect(
+        service.putOne('hr.late_grace_minutes', { value: 'not-a-number' }, CALLER, client),
+      ).rejects.toMatchObject({
         response: { code: 'ERR_VALIDATION' },
       });
       await expect(
-        service.putOne('coldchain.frozen', { value: { minC: '-25.0' /* missing maxC */ } }, CALLER, client),
+        service.putOne(
+          'coldchain.frozen',
+          { value: { minC: '-25.0' /* missing maxC */ } },
+          CALLER,
+          client,
+        ),
       ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
     });
   });
@@ -93,7 +111,9 @@ describe('SettingsService — generic get/set', () => {
   it('THE D-18 GATE: raw PUT on payroll.statutory is always ERR_USE_WIZARD, regardless of value shape', async () => {
     await withRollback(async (client) => {
       const service = buildService();
-      await expect(service.putOne('payroll.statutory', { value: { enabled: true } }, CALLER, client)).rejects.toMatchObject({
+      await expect(
+        service.putOne('payroll.statutory', { value: { enabled: true } }, CALLER, client),
+      ).rejects.toMatchObject({
         response: { code: 'ERR_USE_WIZARD' },
       });
     });
@@ -109,13 +129,22 @@ describe('SettingsService — approval chains', () => {
     });
   });
 
-  it('rejects changing step 1\'s fixed approver role', async () => {
+  it("rejects changing step 1's fixed approver role", async () => {
     await withRollback(async (client) => {
       const service = buildService();
       await expect(
         service.putApprovalChain(
           'void_refund',
-          { steps: [{ stepNo: 1, approverRole: 'manager' as never, minAmount: undefined, maxAmount: undefined }] },
+          {
+            steps: [
+              {
+                stepNo: 1,
+                approverRole: 'manager' as never,
+                minAmount: undefined,
+                maxAmount: undefined,
+              },
+            ],
+          },
           client,
         ),
       ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
@@ -130,8 +159,18 @@ describe('SettingsService — approval chains', () => {
           'void_refund',
           {
             steps: [
-              { stepNo: 1, approverRole: 'supervisor' as never, minAmount: undefined, maxAmount: undefined },
-              { stepNo: 3, approverRole: 'manager' as never, minAmount: '200000.00', maxAmount: undefined },
+              {
+                stepNo: 1,
+                approverRole: 'supervisor' as never,
+                minAmount: undefined,
+                maxAmount: undefined,
+              },
+              {
+                stepNo: 3,
+                approverRole: 'manager' as never,
+                minAmount: '200000.00',
+                maxAmount: undefined,
+              },
             ],
           },
           client,
@@ -157,8 +196,18 @@ describe('SettingsService — approval chains', () => {
           'void_refund',
           {
             steps: [
-              { stepNo: 1, approverRole: 'supervisor' as never, minAmount: undefined, maxAmount: undefined },
-              { stepNo: 2, approverRole: 'manager' as never, minAmount: '250000.00', maxAmount: undefined },
+              {
+                stepNo: 1,
+                approverRole: 'supervisor' as never,
+                minAmount: undefined,
+                maxAmount: undefined,
+              },
+              {
+                stepNo: 2,
+                approverRole: 'manager' as never,
+                minAmount: '250000.00',
+                maxAmount: undefined,
+              },
             ],
           },
           client,
@@ -171,8 +220,18 @@ describe('SettingsService — approval chains', () => {
           'void_refund',
           {
             steps: [
-              { stepNo: 1, approverRole: 'supervisor' as never, minAmount: undefined, maxAmount: undefined },
-              { stepNo: 2, approverRole: 'manager' as never, minAmount: '200000.00', maxAmount: undefined },
+              {
+                stepNo: 1,
+                approverRole: 'supervisor' as never,
+                minAmount: undefined,
+                maxAmount: undefined,
+              },
+              {
+                stepNo: 2,
+                approverRole: 'manager' as never,
+                minAmount: '200000.00',
+                maxAmount: undefined,
+              },
             ],
           },
           client,
@@ -184,7 +243,20 @@ describe('SettingsService — approval chains', () => {
   it('rejects an unknown document type', async () => {
     await withRollback(async (client) => {
       await expect(
-        buildService().putApprovalChain('not_a_real_document_type', { steps: [{ stepNo: 1, approverRole: 'owner' as never, minAmount: undefined, maxAmount: undefined }] }, client),
+        buildService().putApprovalChain(
+          'not_a_real_document_type',
+          {
+            steps: [
+              {
+                stepNo: 1,
+                approverRole: 'owner' as never,
+                minAmount: undefined,
+                maxAmount: undefined,
+              },
+            ],
+          },
+          client,
+        ),
       ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
     });
   });
@@ -205,10 +277,20 @@ describe('SettingsService — D-23 per-document-type approval modes', () => {
   // verifying read are therefore two SEPARATE connections, exactly the shape
   // `stock-opname`'s regression suite established. Since this genuinely commits a shared
   // `approval.mode` settings row, it's restored in `finally` (SETTINGS-LEAK).
-  it('PUT persists a single document type\'s mode, self-seeding the settings row, and leaves every other type untouched — verified via a SEPARATE connection', async () => {
+  it("PUT persists a single document type's mode, self-seeding the settings row, and leaves every other type untouched — verified via a SEPARATE connection", async () => {
     try {
-      const updated = await withRollback((client) => buildService().putApprovalMode(ApprovalDocumentType.VOID_REFUND, { mode: ApprovalMode.OFF }, CALLER, client));
-      expect(updated).toEqual({ documentType: ApprovalDocumentType.VOID_REFUND, mode: ApprovalMode.OFF });
+      const updated = await withRollback((client) =>
+        buildService().putApprovalMode(
+          ApprovalDocumentType.VOID_REFUND,
+          { mode: ApprovalMode.OFF },
+          CALLER,
+          client,
+        ),
+      );
+      expect(updated).toEqual({
+        documentType: ApprovalDocumentType.VOID_REFUND,
+        mode: ApprovalMode.OFF,
+      });
 
       const modes = await withRollback((client) => buildService().getApprovalModes(client));
       const voidRefund = modes.find((m) => m.documentType === ApprovalDocumentType.VOID_REFUND);
@@ -216,34 +298,64 @@ describe('SettingsService — D-23 per-document-type approval modes', () => {
       expect(voidRefund?.mode).toBe(ApprovalMode.OFF);
       expect(waste?.mode).toBe(ApprovalMode.MANUAL); // untouched by the void_refund-only write
     } finally {
-      await withRollback((client) => buildService().putApprovalMode(ApprovalDocumentType.VOID_REFUND, { mode: ApprovalMode.MANUAL }, CALLER, client));
+      await withRollback((client) =>
+        buildService().putApprovalMode(
+          ApprovalDocumentType.VOID_REFUND,
+          { mode: ApprovalMode.MANUAL },
+          CALLER,
+          client,
+        ),
+      );
     }
   });
 
   it('a mode change is itself auditable data: the settings row records who changed it and when — read back on a SEPARATE connection', async () => {
     try {
-      await withRollback((client) => buildService().putApprovalMode(ApprovalDocumentType.PAYROLL_RUN, { mode: ApprovalMode.WHATSAPP }, CALLER, client));
+      await withRollback((client) =>
+        buildService().putApprovalMode(
+          ApprovalDocumentType.PAYROLL_RUN,
+          { mode: ApprovalMode.WHATSAPP },
+          CALLER,
+          client,
+        ),
+      );
       const row = await withRollback((client) =>
-        client.query<{ updated_by: string; updated_at: Date }>(`SELECT updated_by, updated_at FROM settings WHERE key = 'approval.mode'`),
+        client.query<{ updated_by: string; updated_at: Date }>(
+          `SELECT updated_by, updated_at FROM settings WHERE key = 'approval.mode'`,
+        ),
       );
       expect(row.rows[0]?.updated_by).toBe(CALLER.sub);
       expect(row.rows[0]?.updated_at).toBeInstanceOf(Date);
     } finally {
-      await withRollback((client) => buildService().putApprovalMode(ApprovalDocumentType.PAYROLL_RUN, { mode: ApprovalMode.MANUAL }, CALLER, client));
+      await withRollback((client) =>
+        buildService().putApprovalMode(
+          ApprovalDocumentType.PAYROLL_RUN,
+          { mode: ApprovalMode.MANUAL },
+          CALLER,
+          client,
+        ),
+      );
     }
   });
 
   it('rejects an unknown document type (ERR_VALIDATION)', async () => {
     await withRollback(async (client) => {
       await expect(
-        buildService().putApprovalMode('not_a_real_document_type', { mode: ApprovalMode.OFF }, CALLER, client),
+        buildService().putApprovalMode(
+          'not_a_real_document_type',
+          { mode: ApprovalMode.OFF },
+          CALLER,
+          client,
+        ),
       ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
     });
   });
 
   it('is unreachable through the generic PUT /api/settings/:key route (no bypass of the dedicated Owner-only gate)', async () => {
     await withRollback(async (client) => {
-      await expect(buildService().putOne('approval.mode', { value: { void_refund: 'off' } }, CALLER, client)).rejects.toMatchObject({
+      await expect(
+        buildService().putOne('approval.mode', { value: { void_refund: 'off' } }, CALLER, client),
+      ).rejects.toMatchObject({
         response: { code: 'ERR_NOT_FOUND' },
       });
     });
@@ -261,10 +373,14 @@ describe('SettingsService — D-23 per-document-type approval modes', () => {
 describe('write-then-read-back across SEPARATE connections (each simulating one real HTTP request)', () => {
   it('putOne persists past its own request — a later GET (new connection) sees the new value', async () => {
     try {
-      const updated = await withRollback((client) => buildService().putOne('hr.late_grace_minutes', { value: 7 }, CALLER, client));
+      const updated = await withRollback((client) =>
+        buildService().putOne('hr.late_grace_minutes', { value: 7 }, CALLER, client),
+      );
       expect(updated.value).toBe(7);
 
-      const reread = await withRollback((client) => buildService().getOne('hr.late_grace_minutes', client));
+      const reread = await withRollback((client) =>
+        buildService().getOne('hr.late_grace_minutes', client),
+      );
       expect(reread.value).toBe(7);
     } finally {
       await resetSettingValue('hr.late_grace_minutes', 5);

@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
 import {
@@ -33,9 +39,17 @@ import {
   selectSuratJalanHeaderForUpdate,
   type SuratJalanHeaderRow,
 } from '../queries';
-import { CreateSuratJalanDto, ListSuratJalanQueryDto, LoadSuratJalanDto, UpdateSuratJalanDto } from '../dto/surat-jalan.dto';
+import {
+  CreateSuratJalanDto,
+  ListSuratJalanQueryDto,
+  LoadSuratJalanDto,
+  UpdateSuratJalanDto,
+} from '../dto/surat-jalan.dto';
 import { ColdChainService } from './cold-chain.service';
-import { REPLENISHMENT_FULFILLMENT_PORT, type ReplenishmentFulfillmentPort } from '../ports/replenishment-fulfillment.port';
+import {
+  REPLENISHMENT_FULFILLMENT_PORT,
+  type ReplenishmentFulfillmentPort,
+} from '../ports/replenishment-fulfillment.port';
 
 /** SJ's own status state machine (CONTRACTS.md §4.10) — `surat_jalan` has no `ApprovalDocumentType` entry (APR-04 is a plain RBAC gate, not a chain, per CONTRACTS §3 footer), so this tiny table lives here rather than in `@mimi/shared`. */
 const SJ_TRANSITIONS: Record<string, string[]> = {
@@ -52,7 +66,8 @@ export class SuratJalanService {
     private readonly stockLedger: StockLedgerService,
     private readonly eventBus: EventBus,
     private readonly coldChain: ColdChainService,
-    @Inject(REPLENISHMENT_FULFILLMENT_PORT) private readonly replenishment: ReplenishmentFulfillmentPort,
+    @Inject(REPLENISHMENT_FULFILLMENT_PORT)
+    private readonly replenishment: ReplenishmentFulfillmentPort,
   ) {}
 
   // ── reads ──────────────────────────────────────────────────────────────
@@ -68,7 +83,11 @@ export class SuratJalanService {
     };
     if (query.status) push('sj.status = $$', query.status);
     if (query.date) push('sj.planned_date = $$::date', query.date);
-    if (query.locationId) push('(sj.origin_location_id = $$ OR EXISTS (SELECT 1 FROM sj_drops d WHERE d.sj_id = sj.id AND d.location_id = $$))', query.locationId);
+    if (query.locationId)
+      push(
+        '(sj.origin_location_id = $$ OR EXISTS (SELECT 1 FROM sj_drops d WHERE d.sj_id = sj.id AND d.location_id = $$))',
+        query.locationId,
+      );
     if (query.driverId) push('sj.driver_id = $$', query.driverId);
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -98,7 +117,10 @@ export class SuratJalanService {
 
   /** `GET /api/delivery/my-jobs` — the calling driver's assigned SJs, full detail (F13 pre-departure cache). */
   async myJobs(client: PoolClient, driverUserId: UUID, date?: string): Promise<SuratJalan[]> {
-    const driverRes = await client.query<{ id: string }>(`SELECT id FROM drivers WHERE user_id = $1 AND is_active = true`, [driverUserId]);
+    const driverRes = await client.query<{ id: string }>(
+      `SELECT id FROM drivers WHERE user_id = $1 AND is_active = true`,
+      [driverUserId],
+    );
     const driverId = driverRes.rows[0]?.id;
     if (!driverId) return [];
     const params: unknown[] = [driverId];
@@ -121,7 +143,11 @@ export class SuratJalanService {
 
   // ── create / edit ────────────────────────────────────────────────────
 
-  async create(client: PoolClient, dto: CreateSuratJalanDto, actorUserId: UUID): Promise<SuratJalan> {
+  async create(
+    client: PoolClient,
+    dto: CreateSuratJalanDto,
+    actorUserId: UUID,
+  ): Promise<SuratJalan> {
     return withWrite(client, async () => {
       const originLocationId = await this.requireWarehouseLocationId(client);
 
@@ -130,7 +156,11 @@ export class SuratJalanService {
         [dto.vehicleId],
       );
       const vehicle = vehicleRes.rows[0];
-      if (!vehicle) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Vehicle ${dto.vehicleId} not found or inactive` });
+      if (!vehicle)
+        throw new NotFoundException({
+          code: 'ERR_NOT_FOUND',
+          message: `Vehicle ${dto.vehicleId} not found or inactive`,
+        });
       if (dto.shipmentType === 'frozen' && !vehicle.has_freezer) {
         throw new BadRequestException({
           code: ERR_VALIDATION,
@@ -138,17 +168,37 @@ export class SuratJalanService {
         });
       }
 
-      const driverRes = await client.query<{ id: string }>(`SELECT id FROM drivers WHERE id = $1 AND is_active = true`, [dto.driverId]);
-      if (!driverRes.rows[0]) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Driver ${dto.driverId} not found or inactive` });
+      const driverRes = await client.query<{ id: string }>(
+        `SELECT id FROM drivers WHERE id = $1 AND is_active = true`,
+        [dto.driverId],
+      );
+      if (!driverRes.rows[0])
+        throw new NotFoundException({
+          code: 'ERR_NOT_FOUND',
+          message: `Driver ${dto.driverId} not found or inactive`,
+        });
 
-      const shipmentTypeRes = await client.query<{ id: string }>(`SELECT id FROM shipment_types WHERE key = $1`, [dto.shipmentType]);
+      const shipmentTypeRes = await client.query<{ id: string }>(
+        `SELECT id FROM shipment_types WHERE key = $1`,
+        [dto.shipmentType],
+      );
       const shipmentTypeId = shipmentTypeRes.rows[0]?.id;
-      if (!shipmentTypeId) throw new Error(`shipment_types row for key '${dto.shipmentType}' is missing — seed data problem`);
+      if (!shipmentTypeId)
+        throw new Error(
+          `shipment_types row for key '${dto.shipmentType}' is missing — seed data problem`,
+        );
 
       await this.assertLinesMatchShipmentType(client, dto.drops, dto.shipmentType);
       for (const drop of dto.drops) {
-        const locRes = await client.query<{ id: string }>(`SELECT id FROM locations WHERE id = $1 AND is_active = true`, [drop.locationId]);
-        if (!locRes.rows[0]) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Location ${drop.locationId} not found or inactive` });
+        const locRes = await client.query<{ id: string }>(
+          `SELECT id FROM locations WHERE id = $1 AND is_active = true`,
+          [drop.locationId],
+        );
+        if (!locRes.rows[0])
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Location ${drop.locationId} not found or inactive`,
+          });
       }
 
       const sjNumber = await this.nextDocNumber(client, 'SJ');
@@ -165,7 +215,17 @@ export class SuratJalanService {
       await client.query(
         `INSERT INTO surat_jalan (id, sj_number, origin_location_id, shipment_type_id, driver_id, vehicle_id, planned_date, created_by, notes)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [sjId, sjNumber, originLocationId, shipmentTypeId, dto.driverId, dto.vehicleId, dto.plannedDate, actorUserId, dto.notes ?? null],
+        [
+          sjId,
+          sjNumber,
+          originLocationId,
+          shipmentTypeId,
+          dto.driverId,
+          dto.vehicleId,
+          dto.plannedDate,
+          actorUserId,
+          dto.notes ?? null,
+        ],
       );
 
       const dropPayloads: unknown[] = [];
@@ -190,7 +250,12 @@ export class SuratJalanService {
           dropSeq,
           locationId: drop.locationId,
           replenishmentRequestId: drop.replenishmentRequestId ?? null,
-          lines: drop.lines.map((l) => ({ itemId: l.itemId, qty: l.qty, unitId: l.unitId, requestLineId: l.requestLineId })),
+          lines: drop.lines.map((l) => ({
+            itemId: l.itemId,
+            qty: l.qty,
+            unitId: l.unitId,
+            requestLineId: l.requestLineId,
+          })),
         });
         dropSeq += 1;
       }
@@ -217,23 +282,48 @@ export class SuratJalanService {
     });
   }
 
-  async update(client: PoolClient, id: UUID, dto: UpdateSuratJalanDto, actorUserId: UUID): Promise<SuratJalan> {
+  async update(
+    client: PoolClient,
+    id: UUID,
+    dto: UpdateSuratJalanDto,
+    actorUserId: UUID,
+  ): Promise<SuratJalan> {
     return withWrite(client, async () => {
       const header = await this.requireHeaderForUpdate(client, id);
       if (header.status !== 'draft' && header.status !== 'ready') {
-        throw new ConflictException({ code: 'ERR_CONFLICT', message: `Surat Jalan can only be edited while draft/ready (current: ${header.status})` });
+        throw new ConflictException({
+          code: 'ERR_CONFLICT',
+          message: `Surat Jalan can only be edited while draft/ready (current: ${header.status})`,
+        });
       }
 
       if (dto.vehicleId) {
-        const vehicleRes = await client.query<{ has_freezer: boolean }>(`SELECT has_freezer FROM vehicles WHERE id = $1 AND is_active = true`, [dto.vehicleId]);
-        if (!vehicleRes.rows[0]) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Vehicle ${dto.vehicleId} not found or inactive` });
+        const vehicleRes = await client.query<{ has_freezer: boolean }>(
+          `SELECT has_freezer FROM vehicles WHERE id = $1 AND is_active = true`,
+          [dto.vehicleId],
+        );
+        if (!vehicleRes.rows[0])
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Vehicle ${dto.vehicleId} not found or inactive`,
+          });
         if (header.shipment_type === 'frozen' && !vehicleRes.rows[0].has_freezer) {
-          throw new BadRequestException({ code: ERR_VALIDATION, message: `Vehicle ${dto.vehicleId} has no freezer — required for a 'frozen' Surat Jalan` });
+          throw new BadRequestException({
+            code: ERR_VALIDATION,
+            message: `Vehicle ${dto.vehicleId} has no freezer — required for a 'frozen' Surat Jalan`,
+          });
         }
       }
       if (dto.driverId) {
-        const driverRes = await client.query(`SELECT id FROM drivers WHERE id = $1 AND is_active = true`, [dto.driverId]);
-        if (!driverRes.rows[0]) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Driver ${dto.driverId} not found or inactive` });
+        const driverRes = await client.query(
+          `SELECT id FROM drivers WHERE id = $1 AND is_active = true`,
+          [dto.driverId],
+        );
+        if (!driverRes.rows[0])
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Driver ${dto.driverId} not found or inactive`,
+          });
       }
 
       const sets: string[] = [];
@@ -248,7 +338,10 @@ export class SuratJalanService {
       if (dto.notes !== undefined) set('notes', dto.notes);
       if (sets.length > 0) {
         params.push(id);
-        await client.query(`UPDATE surat_jalan SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+        await client.query(
+          `UPDATE surat_jalan SET ${sets.join(', ')} WHERE id = $${params.length}`,
+          params,
+        );
       }
 
       if (dto.drops) {
@@ -293,7 +386,12 @@ export class SuratJalanService {
       for (const requestId of requestIds) {
         // `delivery.sj.create` (this endpoint's permission) is KEPALA_GUDANG-only per the RBAC matrix —
         // the same role `transition()`'s 'process' rule allows (CONTRACTS.md §5.1 row 7).
-        await this.replenishment.markProcessing(client, requestId, actorUserId, RoleKey.KEPALA_GUDANG);
+        await this.replenishment.markProcessing(
+          client,
+          requestId,
+          actorUserId,
+          RoleKey.KEPALA_GUDANG,
+        );
       }
 
       await this.emitUpdated(client, id, actorUserId, header);
@@ -301,26 +399,38 @@ export class SuratJalanService {
     });
   }
 
-  async load(client: PoolClient, id: UUID, dto: LoadSuratJalanDto, actorUserId: UUID): Promise<SuratJalan> {
+  async load(
+    client: PoolClient,
+    id: UUID,
+    dto: LoadSuratJalanDto,
+    actorUserId: UUID,
+  ): Promise<SuratJalan> {
     return withWrite(client, async () => {
       const header = await this.assertTransition(client, id, 'load');
       const shipmentType = await this.coldChain.loadShipmentType(
         client,
-        (await client.query<{ shipment_type_id: string }>(`SELECT shipment_type_id FROM surat_jalan WHERE id = $1`, [id])).rows[0]!.shipment_type_id,
+        (
+          await client.query<{ shipment_type_id: string }>(
+            `SELECT shipment_type_id FROM surat_jalan WHERE id = $1`,
+            [id],
+          )
+        ).rows[0]!.shipment_type_id,
       );
 
       if (shipmentType.requires_temperature_log && !dto.tempC) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `tempC is required at load for a '${shipmentType.key}' shipment (D-14)` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `tempC is required at load for a '${shipmentType.key}' shipment (D-14)`,
+        });
       }
 
       await client.query(`UPDATE surat_jalan SET status = 'loading' WHERE id = $1`, [id]);
 
       for (const seal of dto.seals) {
-        await client.query(`INSERT INTO sj_seals (sj_id, drop_id, seal_number, status, checked_by, checked_at) VALUES ($1, NULL, $2, 'applied', $3, NOW())`, [
-          id,
-          seal.sealNumber,
-          actorUserId,
-        ]);
+        await client.query(
+          `INSERT INTO sj_seals (sj_id, drop_id, seal_number, status, checked_by, checked_at) VALUES ($1, NULL, $2, 'applied', $3, NOW())`,
+          [id, seal.sealNumber, actorUserId],
+        );
       }
       await this.syncEmit.emit(client, {
         entity: 'sj_seals',
@@ -332,7 +442,10 @@ export class SuratJalanService {
       });
 
       if (dto.tempC) {
-        const recipients = await this.coldChain.resolveBreachRecipients(client, header.origin_location_id);
+        const recipients = await this.coldChain.resolveBreachRecipients(
+          client,
+          header.origin_location_id,
+        );
         await this.coldChain.logTemperature(client, {
           sjId: id,
           dropId: null,
@@ -375,7 +488,10 @@ export class SuratJalanService {
         [id],
       );
       if (lineRows.rows.length === 0) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: 'Cannot dispatch a Surat Jalan with no lines' });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: 'Cannot dispatch a Surat Jalan with no lines',
+        });
       }
 
       const areaCache = new Map<string, string>();
@@ -388,7 +504,11 @@ export class SuratJalanService {
           [header.origin_location_id, required],
         );
         const areaId = areaRes.rows[0]?.id;
-        if (!areaId) throw new BadRequestException({ code: ERR_VALIDATION, message: `Warehouse has no active '${required}' storage area configured (D-15)` });
+        if (!areaId)
+          throw new BadRequestException({
+            code: ERR_VALIDATION,
+            message: `Warehouse has no active '${required}' storage area configured (D-15)`,
+          });
         areaCache.set(required, areaId);
         return areaId;
       };
@@ -411,7 +531,10 @@ export class SuratJalanService {
       }
       await this.stockLedger.post(client, movements, 'strict');
 
-      await client.query(`UPDATE surat_jalan SET status = 'in_transit', dispatched_at = NOW() WHERE id = $1`, [id]);
+      await client.query(
+        `UPDATE surat_jalan SET status = 'in_transit', dispatched_at = NOW() WHERE id = $1`,
+        [id],
+      );
 
       const total: Money = sumMoney(movements.map((m) => mulMoneyByQty(m.unitCost, m.qty)));
       await this.eventBus.publish('journal.action', {
@@ -428,7 +551,10 @@ export class SuratJalanService {
       const requestIds = await this.linkedRequestIds(client, id);
       for (const l of lineRows.rows) {
         if (!l.request_line_id) continue;
-        const dropRequest = await client.query<{ replenishment_request_id: string | null }>(`SELECT replenishment_request_id FROM sj_drops WHERE id = $1`, [l.drop_id]);
+        const dropRequest = await client.query<{ replenishment_request_id: string | null }>(
+          `SELECT replenishment_request_id FROM sj_drops WHERE id = $1`,
+          [l.drop_id],
+        );
         const requestId = dropRequest.rows[0]?.replenishment_request_id;
         if (!requestId) continue;
         const list = shipmentsByRequest.get(requestId) ?? [];
@@ -436,7 +562,13 @@ export class SuratJalanService {
         shipmentsByRequest.set(requestId, list);
       }
       for (const requestId of requestIds) {
-        await this.replenishment.markShipped(client, requestId, shipmentsByRequest.get(requestId) ?? [], actorUserId, RoleKey.KEPALA_GUDANG);
+        await this.replenishment.markShipped(
+          client,
+          requestId,
+          shipmentsByRequest.get(requestId) ?? [],
+          actorUserId,
+          RoleKey.KEPALA_GUDANG,
+        );
       }
 
       await this.emitUpdated(client, id, actorUserId, header);
@@ -444,7 +576,12 @@ export class SuratJalanService {
     });
   }
 
-  async cancel(client: PoolClient, id: UUID, reason: string, actorUserId: UUID): Promise<SuratJalan> {
+  async cancel(
+    client: PoolClient,
+    id: UUID,
+    reason: string,
+    actorUserId: UUID,
+  ): Promise<SuratJalan> {
     return withWrite(client, async () => {
       await this.assertTransition(client, id, 'cancel');
       await client.query(`UPDATE surat_jalan SET status = 'cancelled' WHERE id = $1`, [id]);
@@ -463,25 +600,42 @@ export class SuratJalanService {
   // ── internals ─────────────────────────────────────────────────────────
 
   private async requireWarehouseLocationId(client: PoolClient): Promise<UUID> {
-    const res = await client.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' AND is_active = true ORDER BY created_at ASC LIMIT 1`);
+    const res = await client.query<{ id: string }>(
+      `SELECT id FROM locations WHERE type = 'warehouse' AND is_active = true ORDER BY created_at ASC LIMIT 1`,
+    );
     const id = res.rows[0]?.id;
-    if (!id) throw new Error('No active warehouse location seeded — cannot issue a Surat Jalan (D-14: single central gudang pusat)');
+    if (!id)
+      throw new Error(
+        'No active warehouse location seeded — cannot issue a Surat Jalan (D-14: single central gudang pusat)',
+      );
     return id;
   }
 
   private async requireHeader(client: PoolClient, id: UUID): Promise<SuratJalanHeaderRow> {
     const header = await selectSuratJalanHeader(client, id);
-    if (!header) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Surat Jalan ${id} not found` });
+    if (!header)
+      throw new NotFoundException({
+        code: 'ERR_NOT_FOUND',
+        message: `Surat Jalan ${id} not found`,
+      });
     return header;
   }
 
   private async requireHeaderForUpdate(client: PoolClient, id: UUID): Promise<SuratJalanHeaderRow> {
     const header = await selectSuratJalanHeaderForUpdate(client, id);
-    if (!header) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Surat Jalan ${id} not found` });
+    if (!header)
+      throw new NotFoundException({
+        code: 'ERR_NOT_FOUND',
+        message: `Surat Jalan ${id} not found`,
+      });
     return header;
   }
 
-  private async assertTransition(client: PoolClient, id: UUID, action: keyof typeof SJ_TRANSITIONS): Promise<SuratJalanHeaderRow> {
+  private async assertTransition(
+    client: PoolClient,
+    id: UUID,
+    action: keyof typeof SJ_TRANSITIONS,
+  ): Promise<SuratJalanHeaderRow> {
     const header = await this.requireHeaderForUpdate(client, id);
     const allowed = SJ_TRANSITIONS[action]!;
     if (!allowed.includes(header.status)) {
@@ -501,7 +655,12 @@ export class SuratJalanService {
     return res.rows.map((r) => r.replenishment_request_id);
   }
 
-  private async emitUpdated(client: PoolClient, id: UUID, actorUserId: UUID, headerHint?: SuratJalanHeaderRow): Promise<void> {
+  private async emitUpdated(
+    client: PoolClient,
+    id: UUID,
+    actorUserId: UUID,
+    headerHint?: SuratJalanHeaderRow,
+  ): Promise<void> {
     const header = headerHint ?? (await this.requireHeader(client, id));
     const full = await this.getById(client, id);
     // `DropLine` (the shared response DTO) carries `unitCode` for display, not the raw `unit_id` the wire
@@ -535,7 +694,12 @@ export class SuratJalanService {
           dropSeq: d.dropSeq,
           locationId: d.locationId,
           replenishmentRequestId: d.replenishmentRequestId,
-          lines: (rawLinesByDrop.get(d.id) ?? []).map((l) => ({ itemId: l.item_id, qty: l.qty, unitId: l.unit_id, requestLineId: l.request_line_id ?? undefined })),
+          lines: (rawLinesByDrop.get(d.id) ?? []).map((l) => ({
+            itemId: l.item_id,
+            qty: l.qty,
+            unitId: l.unit_id,
+            requestLineId: l.request_line_id ?? undefined,
+          })),
         })),
       },
     });
@@ -547,14 +711,28 @@ export class SuratJalanService {
     shipmentType: 'frozen' | 'dry',
   ): Promise<void> {
     for (const drop of drops) {
-      if (drop.lines.length === 0) throw new BadRequestException({ code: ERR_VALIDATION, message: 'Every drop needs at least one line' });
+      if (drop.lines.length === 0)
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: 'Every drop needs at least one line',
+        });
       for (const line of drop.lines) {
         if (isZeroQty(line.qty) || isNegativeQty(line.qty)) {
-          throw new BadRequestException({ code: ERR_VALIDATION, message: `qty must be > 0 (item ${line.itemId})` });
+          throw new BadRequestException({
+            code: ERR_VALIDATION,
+            message: `qty must be > 0 (item ${line.itemId})`,
+          });
         }
-        const itemRes = await client.query<{ storage_type: string; name: string }>(`SELECT storage_type, name FROM items WHERE id = $1`, [line.itemId]);
+        const itemRes = await client.query<{ storage_type: string; name: string }>(
+          `SELECT storage_type, name FROM items WHERE id = $1`,
+          [line.itemId],
+        );
         const item = itemRes.rows[0];
-        if (!item) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Item ${line.itemId} not found` });
+        if (!item)
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Item ${line.itemId} not found`,
+          });
         // 'frozen' (the cold-chain truck) carries frozen AND chilled goods — Indonesia's cold truck always
         // has a chiller (owner decision, 2026-08-17); 'dry' (the ambient truck) carries dry goods only. Two
         // truck types, still never mixed with each other (FR-LOG-02) — the split just isn't 1:1 with

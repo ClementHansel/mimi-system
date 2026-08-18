@@ -34,7 +34,13 @@
  * template is registered anywhwere in this codebase to send it through) —
  * an honest gap for whoever owns that registry, not silently invented here.
  */
-import { Inject, Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+} from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
 import type { UUID } from '@mimi/shared';
 import { DATABASE_POOL } from '../../common/database/database-pool.provider';
@@ -75,9 +81,13 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
   onApplicationBootstrap(): void {
     // Fire once immediately (a freshly-booted backend shouldn't wait 30s for its first sweep), then
     // on the interval. Errors are caught and logged per-tick — one bad tick must never kill the loop.
-    void this.runSweep().catch((err) => this.logger.error(`initial sweep failed: ${(err as Error).message}`));
+    void this.runSweep().catch((err) =>
+      this.logger.error(`initial sweep failed: ${(err as Error).message}`),
+    );
     this.timer = setInterval(() => {
-      void this.runSweep().catch((err) => this.logger.error(`sweep tick failed: ${(err as Error).message}`));
+      void this.runSweep().catch((err) =>
+        this.logger.error(`sweep tick failed: ${(err as Error).message}`),
+      );
     }, SWEEP_INTERVAL_MS);
   }
 
@@ -101,7 +111,10 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
 
     // offline first (more time has elapsed — a row past the offline cutoff is also past the stale
     // one, and must land on 'offline', not get caught by the stale branch below).
-    const toOffline = await this.devices.findDevicesPastThreshold(client, offlineCutoff, ['online', 'stale']);
+    const toOffline = await this.devices.findDevicesPastThreshold(client, offlineCutoff, [
+      'online',
+      'stale',
+    ]);
     for (const row of toOffline) {
       await this.devices.setDeviceStatus(client, row.id, 'offline');
       await this.recordDeviceTransition(client, row.id, row.location_id, 'offline');
@@ -116,16 +129,27 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
     }
   }
 
-  private async recordDeviceTransition(client: PoolClient, deviceId: UUID, locationId: UUID, status: 'stale' | 'offline'): Promise<void> {
+  private async recordDeviceTransition(
+    client: PoolClient,
+    deviceId: UUID,
+    locationId: UUID,
+    status: 'stale' | 'offline',
+  ): Promise<void> {
     await this.devices.insertDeviceEvent(client, { deviceId, locationId, type: status });
-    await this.syncEmit.emit(client, {
-      entity: 'device_events',
-      op: status === 'offline' ? 'went_offline' : 'stale',
-      entityId: deviceId,
-      locationId,
-      actorUserId: CLOUD_ORIGIN_ACTOR,
-      data: {},
-    }).catch((err: Error) => this.logger.warn(`sync-emit for device ${deviceId} transition failed (non-fatal): ${err.message}`));
+    await this.syncEmit
+      .emit(client, {
+        entity: 'device_events',
+        op: status === 'offline' ? 'went_offline' : 'stale',
+        entityId: deviceId,
+        locationId,
+        actorUserId: CLOUD_ORIGIN_ACTOR,
+        data: {},
+      })
+      .catch((err: Error) =>
+        this.logger.warn(
+          `sync-emit for device ${deviceId} transition failed (non-fatal): ${err.message}`,
+        ),
+      );
     this.topologyGateway.emitUpdate({ locationId, deviceId, status });
   }
 
@@ -156,16 +180,27 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
     }
   }
 
-  private async recordNodeTransition(client: PoolClient, nodeId: UUID, locationId: UUID, status: 'stale' | 'offline'): Promise<void> {
+  private async recordNodeTransition(
+    client: PoolClient,
+    nodeId: UUID,
+    locationId: UUID,
+    status: 'stale' | 'offline',
+  ): Promise<void> {
     await this.devices.insertDeviceEvent(client, { nodeId, locationId, type: status });
-    await this.syncEmit.emit(client, {
-      entity: 'device_events',
-      op: status === 'offline' ? 'went_offline' : 'stale',
-      entityId: nodeId,
-      locationId,
-      actorUserId: CLOUD_ORIGIN_ACTOR,
-      data: {},
-    }).catch((err: Error) => this.logger.warn(`sync-emit for node ${nodeId} transition failed (non-fatal): ${err.message}`));
+    await this.syncEmit
+      .emit(client, {
+        entity: 'device_events',
+        op: status === 'offline' ? 'went_offline' : 'stale',
+        entityId: nodeId,
+        locationId,
+        actorUserId: CLOUD_ORIGIN_ACTOR,
+        data: {},
+      })
+      .catch((err: Error) =>
+        this.logger.warn(
+          `sync-emit for node ${nodeId} transition failed (non-fatal): ${err.message}`,
+        ),
+      );
     this.topologyGateway.emitUpdate({ locationId, nodeId, status });
   }
 
@@ -196,7 +231,9 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
       if (activeRows.length === 0) continue; // no hardware ever registered at this outlet — nothing to alert on
 
       const allOffline = activeRows.every((r) => r.status === 'offline');
-      const lastSeenTimes = activeRows.map((r) => (r.last_seen_at ? new Date(r.last_seen_at).getTime() : 0));
+      const lastSeenTimes = activeRows.map((r) =>
+        r.last_seen_at ? new Date(r.last_seen_at).getTime() : 0,
+      );
       const mostRecentSeenAt = Math.max(...lastSeenTimes);
       const darkForMs = now.getTime() - mostRecentSeenAt;
 
@@ -209,34 +246,57 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
       const currentlyMarkedOffline = lastEdgeRes.rows[0]?.type === 'outlet_offline';
 
       if (allOffline && darkForMs > OUTLET_OFFLINE_AFTER_MS && !currentlyMarkedOffline) {
-        await this.devices.insertDeviceEvent(client, { locationId: outlet.id, type: 'outlet_offline', detail: { darkForMs } });
-        await this.syncEmit.emit(client, {
-          entity: 'device_events',
-          op: 'outlet_offline',
-          entityId: outlet.id,
+        await this.devices.insertDeviceEvent(client, {
           locationId: outlet.id,
-          actorUserId: CLOUD_ORIGIN_ACTOR,
-          data: {},
-        }).catch((err: Error) => this.logger.warn(`sync-emit for outlet ${outlet.id} offline failed (non-fatal): ${err.message}`));
+          type: 'outlet_offline',
+          detail: { darkForMs },
+        });
+        await this.syncEmit
+          .emit(client, {
+            entity: 'device_events',
+            op: 'outlet_offline',
+            entityId: outlet.id,
+            locationId: outlet.id,
+            actorUserId: CLOUD_ORIGIN_ACTOR,
+            data: {},
+          })
+          .catch((err: Error) =>
+            this.logger.warn(
+              `sync-emit for outlet ${outlet.id} offline failed (non-fatal): ${err.message}`,
+            ),
+          );
         this.topologyGateway.emitUpdate({ locationId: outlet.id, status: 'offline' });
         await this.notifyOutletOffline(client, outlet, mostRecentSeenAt);
       } else if (!allOffline && currentlyMarkedOffline) {
-        await this.devices.insertDeviceEvent(client, { locationId: outlet.id, type: 'outlet_online' });
-        await this.syncEmit.emit(client, {
-          entity: 'device_events',
-          op: 'outlet_online',
-          entityId: outlet.id,
+        await this.devices.insertDeviceEvent(client, {
           locationId: outlet.id,
-          actorUserId: CLOUD_ORIGIN_ACTOR,
-          data: {},
-        }).catch((err: Error) => this.logger.warn(`sync-emit for outlet ${outlet.id} online failed (non-fatal): ${err.message}`));
+          type: 'outlet_online',
+        });
+        await this.syncEmit
+          .emit(client, {
+            entity: 'device_events',
+            op: 'outlet_online',
+            entityId: outlet.id,
+            locationId: outlet.id,
+            actorUserId: CLOUD_ORIGIN_ACTOR,
+            data: {},
+          })
+          .catch((err: Error) =>
+            this.logger.warn(
+              `sync-emit for outlet ${outlet.id} online failed (non-fatal): ${err.message}`,
+            ),
+          );
         this.topologyGateway.emitUpdate({ locationId: outlet.id, status: 'online' });
         // No `outlet_online` notification template exists (see file header) — device_events + topology:update only.
       }
     }
   }
 
-  private async notifyOutletOffline(client: PoolClient, outlet: { id: UUID; name: string }, mostRecentSeenAt: number): Promise<void> {
+  private async notifyOutletOffline(
+    client: PoolClient,
+    outlet: { id: UUID; name: string },
+    mostRecentSeenAt: number,
+  ): Promise<void> {
     const recipients = await client.query<{ id: UUID }>(
       `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key IN ('owner','manager') AND u.is_active`,
     );
@@ -244,7 +304,10 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
     await this.notifications.notify({
       templateKey: 'outlet_offline',
       userIds: recipients.rows.map((r) => r.id),
-      params: { locationName: outlet.name, lastSeenAt: mostRecentSeenAt > 0 ? new Date(mostRecentSeenAt).toISOString() : 'unknown' },
+      params: {
+        locationName: outlet.name,
+        lastSeenAt: mostRecentSeenAt > 0 ? new Date(mostRecentSeenAt).toISOString() : 'unknown',
+      },
       locationId: outlet.id,
     });
   }

@@ -15,7 +15,12 @@
  *    the retry path immediately rather than retried forever),
  *  - exponential backoff on transport failure (`retryBackoffMs`, §4.3).
  */
-import { assembleBatches, retryBackoffMs, type SyncEventEnvelope, type SyncPushBatch } from '@mimi/sync-protocol';
+import {
+  assembleBatches,
+  retryBackoffMs,
+  type SyncEventEnvelope,
+  type SyncPushBatch,
+} from '@mimi/sync-protocol';
 import type { LocalDatabase } from '../store/local-database';
 import type { OutboxRecord, PushAckState, QuarantineRecord } from '../types';
 import type { SyncTransport } from '../transport/types';
@@ -42,11 +47,23 @@ export async function drainOutboxOnce(
 ): Promise<DrainResult> {
   const rows = await db.store<OutboxRecord>('outbox').getAll();
   if (rows.length === 0) {
-    return { batchesSent: 0, eventsPushed: 0, eventsConfirmed: 0, eventsQuarantined: 0, transportFailed: false };
+    return {
+      batchesSent: 0,
+      eventsPushed: 0,
+      eventsConfirmed: 0,
+      eventsQuarantined: 0,
+      transportFailed: false,
+    };
   }
 
   const byEventId = new Map<string, OutboxRecord>(rows.map((r) => [r.eventId, r]));
-  const sorted = [...rows].sort((a, b) => (a.envelope.clientSeq < b.envelope.clientSeq ? -1 : a.envelope.clientSeq > b.envelope.clientSeq ? 1 : 0));
+  const sorted = [...rows].sort((a, b) =>
+    a.envelope.clientSeq < b.envelope.clientSeq
+      ? -1
+      : a.envelope.clientSeq > b.envelope.clientSeq
+        ? 1
+        : 0,
+  );
   const batches = assembleBatches(
     sorted.map((r) => r.envelope),
     (e) => JSON.stringify(e, bigintSafeReplacer).length,
@@ -60,7 +77,11 @@ export async function drainOutboxOnce(
   let resendFrom: Record<string, number> | undefined;
 
   for (const events of batches) {
-    const batch: SyncPushBatch = { batchId: mintEventId(random), sentAt: new Date().toISOString(), events };
+    const batch: SyncPushBatch = {
+      batchId: mintEventId(random),
+      sentAt: new Date().toISOString(),
+      events,
+    };
 
     let ack;
     try {
@@ -72,10 +93,21 @@ export async function drainOutboxOnce(
         for (const e of events) {
           const row = byEventId.get(e.eventId);
           if (!row) continue;
-          await store.put({ ...row, attempt: row.attempt + 1, lastAttemptAt: new Date().toISOString(), lastError: 'transport_failure' });
+          await store.put({
+            ...row,
+            attempt: row.attempt + 1,
+            lastAttemptAt: new Date().toISOString(),
+            lastError: 'transport_failure',
+          });
         }
       });
-      return { batchesSent, eventsPushed: 0, eventsConfirmed, eventsQuarantined, transportFailed: true };
+      return {
+        batchesSent,
+        eventsPushed: 0,
+        eventsConfirmed,
+        eventsQuarantined,
+        transportFailed: true,
+      };
     }
 
     batchesSent += 1;
@@ -106,7 +138,11 @@ export async function drainOutboxOnce(
       const confirmedThrough = BigInt(ack.confirmedThrough[events[0]!.originDeviceId] ?? 0);
       const acceptedThrough = BigInt(ack.acceptedThrough[events[0]!.originDeviceId] ?? 0);
 
-      await ackStore.put({ id: 'self', acceptedThrough: acceptedThrough.toString(), confirmedThrough: confirmedThrough.toString() });
+      await ackStore.put({
+        id: 'self',
+        acceptedThrough: acceptedThrough.toString(),
+        confirmedThrough: confirmedThrough.toString(),
+      });
 
       for (const e of events) {
         if (rejectedIds.has(e.eventId)) continue;
@@ -115,7 +151,12 @@ export async function drainOutboxOnce(
           eventsConfirmed += 1;
         } else if (e.clientSeq <= acceptedThrough) {
           const row = byEventId.get(e.eventId);
-          if (row) await outboxStore.put({ ...row, status: 'accepted', lastAttemptAt: new Date().toISOString() });
+          if (row)
+            await outboxStore.put({
+              ...row,
+              status: 'accepted',
+              lastAttemptAt: new Date().toISOString(),
+            });
         }
       }
     });

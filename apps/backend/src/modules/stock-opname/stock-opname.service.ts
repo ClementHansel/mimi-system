@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   absQty,
@@ -34,7 +40,11 @@ import type { ListOpnameQueryDto } from './dto/list-opname.query';
 import type { RejectOpnameDto } from './dto/reject-opname.dto';
 import type { ResolveOpnameLineDto } from './dto/resolve-line.dto';
 import type { UpsertOpnameLinesDto } from './dto/upsert-lines.dto';
-import { StockOpnameRepository, type OpnameHeaderRow, type OpnameLineRow } from './stock-opname.repository';
+import {
+  StockOpnameRepository,
+  type OpnameHeaderRow,
+  type OpnameLineRow,
+} from './stock-opname.repository';
 import { withWrite } from './db-tx';
 
 export interface ActorContext {
@@ -102,19 +112,31 @@ export class StockOpnameService {
     const lineRows = await this.repo.findLines(client, id);
     const disputedKeys = await this.disputedLineKeys(client, id);
     const summary = await this.repo.lineSummary(client, id);
-    const opname = this.toOpname(header, summary.lineCount, summary.totalVarianceValue, disputedKeys.size);
+    const opname = this.toOpname(
+      header,
+      summary.lineCount,
+      summary.totalVarianceValue,
+      disputedKeys.size,
+    );
     return { ...opname, lines: lineRows.map((r) => this.toOpnameLine(r, disputedKeys)) };
   }
 
   // ── FR-SO-01: create (targets a location, optionally one storage area — D-15) ──
 
-  async create(client: PoolClient, actor: ActorContext, dto: CreateOpnameDto): Promise<Opname & { lines: OpnameLine[] }> {
+  async create(
+    client: PoolClient,
+    actor: ActorContext,
+    dto: CreateOpnameDto,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     this.assertLocationInScope(actor, dto.locationId);
 
     if (dto.storageAreaId) {
       const areaLocationId = await this.storageAreaLocationId(client, dto.storageAreaId);
       if (areaLocationId !== dto.locationId) {
-        throw new BadRequestException({ code: ERR_VALIDATION, message: `storageAreaId ${dto.storageAreaId} does not belong to locationId ${dto.locationId}` });
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message: `storageAreaId ${dto.storageAreaId} does not belong to locationId ${dto.locationId}`,
+        });
       }
     }
 
@@ -150,33 +172,63 @@ export class StockOpnameService {
 
   // ── FR-SO-02: per-storage-area counts, variance + mandatory reason ──────────
 
-  async upsertLines(client: PoolClient, actor: ActorContext, opnameId: UUID, dto: UpsertOpnameLinesDto): Promise<OpnameLine[]> {
+  async upsertLines(
+    client: PoolClient,
+    actor: ActorContext,
+    opnameId: UUID,
+    dto: UpsertOpnameLinesDto,
+  ): Promise<OpnameLine[]> {
     const header = await this.requireHeader(client, opnameId);
     this.assertLocationInScope(actor, header.location_id);
 
     if (header.status !== OpnameStatus.COUNTING) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Opname ${opnameId} is '${header.status}', not 'counting' — lines can only be recorded while counting` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Opname ${opnameId} is '${header.status}', not 'counting' — lines can only be recorded while counting`,
+      });
     }
 
     const storageAreaId = dto.lines[0]!.storageAreaId;
     if (dto.lines.some((l) => l.storageAreaId !== storageAreaId)) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'A single PUT /lines batch must target exactly one storage area (CONTRACTS.md §4.8)' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message:
+          'A single PUT /lines batch must target exactly one storage area (CONTRACTS.md §4.8)',
+      });
     }
     if (header.storage_area_id && header.storage_area_id !== storageAreaId) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Opname ${opnameId} is scoped to storage area ${header.storage_area_id}` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Opname ${opnameId} is scoped to storage area ${header.storage_area_id}`,
+      });
     }
 
     const areaLocationId = await this.storageAreaLocationId(client, storageAreaId);
     if (areaLocationId !== header.location_id) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `storageAreaId ${storageAreaId} does not belong to opname ${opnameId}'s location` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `storageAreaId ${storageAreaId} does not belong to opname ${opnameId}'s location`,
+      });
     }
 
     return withWrite(client, async () => {
       const eventLines: AreaCountedLine[] = [];
       const lineIds: UUID[] = [];
       for (const line of dto.lines) {
-        const existing = await this.repo.findLineByKey(client, opnameId, line.storageAreaId, line.itemId);
-        const systemQty = existing?.system_qty ?? (await this.repo.currentSystemQty(client, header.location_id, line.storageAreaId, line.itemId));
+        const existing = await this.repo.findLineByKey(
+          client,
+          opnameId,
+          line.storageAreaId,
+          line.itemId,
+        );
+        const systemQty =
+          existing?.system_qty ??
+          (await this.repo.currentSystemQty(
+            client,
+            header.location_id,
+            line.storageAreaId,
+            line.itemId,
+          ));
         const diffQty = subQty(line.countedQty, systemQty);
         const lineId = await this.repo.upsertLine(client, {
           opnameId,
@@ -188,7 +240,12 @@ export class StockOpnameService {
           varianceReason: line.varianceReason ?? null,
         });
         lineIds.push(lineId);
-        eventLines.push({ itemId: line.itemId, systemQty, countedQty: line.countedQty, varianceReason: line.varianceReason ?? null });
+        eventLines.push({
+          itemId: line.itemId,
+          systemQty,
+          countedQty: line.countedQty,
+          varianceReason: line.varianceReason ?? null,
+        });
       }
 
       await this.sync.emit(client, {
@@ -211,40 +268,83 @@ export class StockOpnameService {
   }
 
   /** Resolves a C1 double-count dispute (SYNC-PROTOCOL §5.2) — `opname.approve` (an approver adjudicates, not the counter). */
-  async resolveLine(client: PoolClient, actor: ActorContext, opnameId: UUID, lineId: UUID, dto: ResolveOpnameLineDto): Promise<OpnameLine> {
+  async resolveLine(
+    client: PoolClient,
+    actor: ActorContext,
+    opnameId: UUID,
+    lineId: UUID,
+    dto: ResolveOpnameLineDto,
+  ): Promise<OpnameLine> {
     const header = await this.requireHeader(client, opnameId);
     const line = await this.repo.findLineById(client, opnameId, lineId);
-    if (!line) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Opname line ${lineId} not found on opname ${opnameId}` });
+    if (!line)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Opname line ${lineId} not found on opname ${opnameId}`,
+      });
 
-    const openConflicts = await this.conflicts.findOpen(client, { kind: 'double_count', entity: 'stock_opname', entityId: opnameId });
+    const openConflicts = await this.conflicts.findOpen(client, {
+      kind: 'double_count',
+      entity: 'stock_opname',
+      entityId: opnameId,
+    });
     const conflict = openConflicts.find((c) => {
       const detail = (c.detail ?? {}) as Record<string, unknown>;
       return detail.itemId === line.item_id && detail.storageAreaId === line.storage_area_id;
     });
     if (!conflict) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `No open double-count dispute for opname line ${lineId}` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `No open double-count dispute for opname line ${lineId}`,
+      });
     }
-    if (dto.chosenEventId !== conflict.winner_event_id && dto.chosenEventId !== conflict.loser_event_id) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `chosenEventId must be one of the two conflicting events (${conflict.winner_event_id}, ${conflict.loser_event_id})` });
+    if (
+      dto.chosenEventId !== conflict.winner_event_id &&
+      dto.chosenEventId !== conflict.loser_event_id
+    ) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `chosenEventId must be one of the two conflicting events (${conflict.winner_event_id}, ${conflict.loser_event_id})`,
+      });
     }
 
     const chosenEvent = await this.events.findByEventId(client, dto.chosenEventId);
-    if (!chosenEvent || chosenEvent.entity !== 'stock_opname' || chosenEvent.entity_id !== opnameId || chosenEvent.op !== 'area_counted') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `chosenEventId ${dto.chosenEventId} is not a valid stock_opname.area_counted event for this opname` });
+    if (
+      !chosenEvent ||
+      chosenEvent.entity !== 'stock_opname' ||
+      chosenEvent.entity_id !== opnameId ||
+      chosenEvent.op !== 'area_counted'
+    ) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `chosenEventId ${dto.chosenEventId} is not a valid stock_opname.area_counted event for this opname`,
+      });
     }
-    const payloadData = (chosenEvent.payload as { data?: unknown } | undefined)?.data as { lines?: unknown } | undefined;
-    const chosenLines = Array.isArray(payloadData?.lines) ? (payloadData!.lines as Record<string, unknown>[]) : [];
+    const payloadData = (chosenEvent.payload as { data?: unknown } | undefined)?.data as
+      { lines?: unknown } | undefined;
+    const chosenLines = Array.isArray(payloadData?.lines)
+      ? (payloadData!.lines as Record<string, unknown>[])
+      : [];
     const chosenLine = chosenLines.find((l) => l.itemId === line.item_id);
     if (!chosenLine || typeof chosenLine.countedQty !== 'string') {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `chosenEventId ${dto.chosenEventId}'s payload has no line for item ${line.item_id}` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `chosenEventId ${dto.chosenEventId}'s payload has no line for item ${line.item_id}`,
+      });
     }
 
     const countedQty = chosenLine.countedQty as Qty;
     const diffQty = subQty(countedQty, line.system_qty);
-    const varianceReason = (typeof chosenLine.varianceReason === 'string' ? chosenLine.varianceReason : null) ?? (isZeroQty(diffQty) ? null : dto.reason);
+    const varianceReason =
+      (typeof chosenLine.varianceReason === 'string' ? chosenLine.varianceReason : null) ??
+      (isZeroQty(diffQty) ? null : dto.reason);
 
     return withWrite(client, async () => {
-      await this.repo.updateLineForResolution(client, lineId, { countedQty, diffQty, varianceReason });
+      await this.repo.updateLineForResolution(client, lineId, {
+        countedQty,
+        diffQty,
+        varianceReason,
+      });
 
       const resolutionEvent = await this.sync.emit(client, {
         entity: SyncEntity.STOCK_OPNAME,
@@ -252,9 +352,19 @@ export class StockOpnameService {
         entityId: opnameId,
         locationId: header.location_id,
         actorUserId: actor.userId,
-        data: { opnameId, storageAreaId: line.storage_area_id, lines: [{ itemId: line.item_id, systemQty: line.system_qty, countedQty, varianceReason }] },
+        data: {
+          opnameId,
+          storageAreaId: line.storage_area_id,
+          lines: [{ itemId: line.item_id, systemQty: line.system_qty, countedQty, varianceReason }],
+        },
       });
-      await this.conflicts.resolve(client, conflict.id, actor.userId, dto.reason, resolutionEvent.eventId);
+      await this.conflicts.resolve(
+        client,
+        conflict.id,
+        actor.userId,
+        dto.reason,
+        resolutionEvent.eventId,
+      );
 
       const disputedKeys = await this.disputedLineKeys(client, opnameId);
       const updated = await this.repo.findLineById(client, opnameId, lineId);
@@ -264,27 +374,47 @@ export class StockOpnameService {
 
   // ── FR-SO-02: submit (reason-on-variance + no open disputes gate) ──────────
 
-  async submit(client: PoolClient, actor: ActorContext, opnameId: UUID): Promise<Opname & { lines: OpnameLine[] }> {
+  async submit(
+    client: PoolClient,
+    actor: ActorContext,
+    opnameId: UUID,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     const header = await this.requireHeader(client, opnameId);
     this.assertLocationInScope(actor, header.location_id);
 
     if (header.status !== OpnameStatus.COUNTING) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Opname ${opnameId} is '${header.status}', not 'counting'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Opname ${opnameId} is '${header.status}', not 'counting'`,
+      });
     }
 
-    const openDisputes = await this.conflicts.findOpen(client, { kind: 'double_count', entity: 'stock_opname', entityId: opnameId });
+    const openDisputes = await this.conflicts.findOpen(client, {
+      kind: 'double_count',
+      entity: 'stock_opname',
+      entityId: opnameId,
+    });
     if (openDisputes.length > 0) {
-      throw new BadRequestException({ code: ERR_DISPUTES_OPEN, message: `Opname ${opnameId} has ${openDisputes.length} open double-count dispute(s) — resolve via /lines/:lineId/resolve first` });
+      throw new BadRequestException({
+        code: ERR_DISPUTES_OPEN,
+        message: `Opname ${opnameId} has ${openDisputes.length} open double-count dispute(s) — resolve via /lines/:lineId/resolve first`,
+      });
     }
 
     const missingReasons = await this.repo.countLinesMissingReason(client, opnameId);
     if (missingReasons > 0) {
-      throw new BadRequestException({ code: ERR_VARIANCE_REASON_REQUIRED, message: `${missingReasons} line(s) have a non-zero variance but no varianceReason` });
+      throw new BadRequestException({
+        code: ERR_VARIANCE_REASON_REQUIRED,
+        message: `${missingReasons} line(s) have a non-zero variance but no varianceReason`,
+      });
     }
 
     const summary = await this.repo.lineSummary(client, opnameId);
     if (summary.lineCount === 0) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Opname ${opnameId} has no counted lines` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Opname ${opnameId} has no counted lines`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -314,11 +444,19 @@ export class StockOpnameService {
 
   // ── FR-SO-03/04: approve (posts stock_adjustments through the ledger) ──────
 
-  async approve(client: PoolClient, actor: ActorContext, opnameId: UUID, dto: ApproveOpnameDto): Promise<Opname & { lines: OpnameLine[] }> {
+  async approve(
+    client: PoolClient,
+    actor: ActorContext,
+    opnameId: UUID,
+    dto: ApproveOpnameDto,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     const header = await this.requireHeader(client, opnameId);
 
     if (header.status !== OpnameStatus.SUBMITTED) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Opname ${opnameId} is '${header.status}', not 'submitted'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Opname ${opnameId} is '${header.status}', not 'submitted'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -343,7 +481,11 @@ export class StockOpnameService {
       }
 
       const approvedAt = new Date().toISOString();
-      await this.repo.finalizeDecision(client, opnameId, { status: decision.nextState, approvedBy: actor.userId, approvedAt });
+      await this.repo.finalizeDecision(client, opnameId, {
+        status: decision.nextState,
+        approvedBy: actor.userId,
+        approvedAt,
+      });
       await this.postAdjustments(client, actor, opnameId, header, approvedAt);
 
       await this.sync.emit(client, {
@@ -359,11 +501,19 @@ export class StockOpnameService {
     });
   }
 
-  async reject(client: PoolClient, actor: ActorContext, opnameId: UUID, dto: RejectOpnameDto): Promise<Opname & { lines: OpnameLine[] }> {
+  async reject(
+    client: PoolClient,
+    actor: ActorContext,
+    opnameId: UUID,
+    dto: RejectOpnameDto,
+  ): Promise<Opname & { lines: OpnameLine[] }> {
     const header = await this.requireHeader(client, opnameId);
 
     if (header.status !== OpnameStatus.SUBMITTED) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Opname ${opnameId} is '${header.status}', not 'submitted'` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Opname ${opnameId} is '${header.status}', not 'submitted'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -376,7 +526,11 @@ export class StockOpnameService {
         reason: dto.reason,
       });
 
-      await this.repo.finalizeDecision(client, opnameId, { status: decision.nextState, approvedBy: null, approvedAt: null });
+      await this.repo.finalizeDecision(client, opnameId, {
+        status: decision.nextState,
+        approvedBy: null,
+        approvedAt: null,
+      });
 
       await this.sync.emit(client, {
         entity: SyncEntity.STOCK_OPNAME,
@@ -391,12 +545,19 @@ export class StockOpnameService {
     });
   }
 
-  async cancel(client: PoolClient, actor: ActorContext, opnameId: UUID): Promise<{ id: UUID; status: string }> {
+  async cancel(
+    client: PoolClient,
+    actor: ActorContext,
+    opnameId: UUID,
+  ): Promise<{ id: UUID; status: string }> {
     const header = await this.requireHeader(client, opnameId);
     this.assertLocationInScope(actor, header.location_id);
 
     if (header.status !== OpnameStatus.DRAFT && header.status !== OpnameStatus.COUNTING) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Opname ${opnameId} is '${header.status}' — only draft/counting opnames can be cancelled` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Opname ${opnameId} is '${header.status}' — only draft/counting opnames can be cancelled`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -416,7 +577,13 @@ export class StockOpnameService {
 
   // ── internals ────────────────────────────────────────────────────────────
 
-  private async postAdjustments(client: PoolClient, actor: ActorContext, opnameId: UUID, header: OpnameHeaderRow, approvedAt: string): Promise<void> {
+  private async postAdjustments(
+    client: PoolClient,
+    actor: ActorContext,
+    opnameId: UUID,
+    header: OpnameHeaderRow,
+    approvedAt: string,
+  ): Promise<void> {
     const lines = await this.repo.findLines(client, opnameId);
     let index = 0;
     for (const line of lines) {
@@ -437,8 +604,11 @@ export class StockOpnameService {
         approvedBy: actor.userId,
       });
 
-      const direction: 'shortage' | 'overage' = isNegativeQty(line.diff_qty) ? 'shortage' : 'overage';
-      const movementType = direction === 'shortage' ? MovementType.ADJUSTMENT_OUT : MovementType.ADJUSTMENT_IN;
+      const direction: 'shortage' | 'overage' = isNegativeQty(line.diff_qty)
+        ? 'shortage'
+        : 'overage';
+      const movementType =
+        direction === 'shortage' ? MovementType.ADJUSTMENT_OUT : MovementType.ADJUSTMENT_IN;
       const qty = absQty(line.diff_qty);
 
       // D-17a: adjustment is the one movement type legitimately allowed to
@@ -488,24 +658,38 @@ export class StockOpnameService {
 
   private async requireHeader(client: PoolClient, id: UUID): Promise<OpnameHeaderRow> {
     const header = await this.repo.findHeader(client, id);
-    if (!header) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Stock opname ${id} not found` });
+    if (!header)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Stock opname ${id} not found` });
     return header;
   }
 
-  private async storageAreaLocationId(client: PoolClient, storageAreaId: UUID): Promise<UUID | undefined> {
-    const res = await client.query<{ location_id: UUID }>(`SELECT location_id FROM storage_areas WHERE id = $1`, [storageAreaId]);
+  private async storageAreaLocationId(
+    client: PoolClient,
+    storageAreaId: UUID,
+  ): Promise<UUID | undefined> {
+    const res = await client.query<{ location_id: UUID }>(
+      `SELECT location_id FROM storage_areas WHERE id = $1`,
+      [storageAreaId],
+    );
     return res.rows[0]?.location_id;
   }
 
   private assertLocationInScope(actor: ActorContext, locationId: UUID): void {
     if (actor.locationScope === null) return; // central role — unrestricted
     if (!actor.locationScope.includes(locationId)) {
-      throw new ForbiddenException({ code: ERR_FORBIDDEN, message: `Role '${actor.roleKey}' is not assigned to location ${locationId}` });
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: `Role '${actor.roleKey}' is not assigned to location ${locationId}`,
+      });
     }
   }
 
   private async disputedLineKeys(client: PoolClient, opnameId: UUID): Promise<Set<string>> {
-    const openConflicts = await this.conflicts.findOpen(client, { kind: 'double_count', entity: 'stock_opname', entityId: opnameId });
+    const openConflicts = await this.conflicts.findOpen(client, {
+      kind: 'double_count',
+      entity: 'stock_opname',
+      entityId: opnameId,
+    });
     const keys = new Set<string>();
     for (const c of openConflicts) {
       const detail = (c.detail ?? {}) as Record<string, unknown>;
@@ -520,7 +704,12 @@ export class StockOpnameService {
     return (await this.disputedLineKeys(client, opnameId)).size;
   }
 
-  private toOpname(row: OpnameHeaderRow, lineCount: number, totalVarianceValue: Money, disputedCount: number): Opname {
+  private toOpname(
+    row: OpnameHeaderRow,
+    lineCount: number,
+    totalVarianceValue: Money,
+    disputedCount: number,
+  ): Opname {
     return {
       id: row.id,
       opnameNumber: row.opname_number,

@@ -48,7 +48,8 @@ import type { SyncEventRow } from './db-rows';
 
 const MAX_PAYLOAD_BYTES = 256 * 1024;
 
-export type IngestRejectCode = 'authority_violation' | 'malformed' | 'seq_conflict' | 'payload_version_unsupported';
+export type IngestRejectCode =
+  'authority_violation' | 'malformed' | 'seq_conflict' | 'payload_version_unsupported';
 
 export interface AuthorityVerdict {
   ok: boolean;
@@ -136,7 +137,11 @@ export class SyncIngestService {
    */
   checkAuthority(event: SyncEventEnvelope, registeredLocationId: UUID): AuthorityVerdict {
     if (event.originTier !== SyncOriginType.DEVICE && event.originTier !== SyncOriginType.NODE) {
-      return { ok: false, code: 'malformed', detail: `a push cannot claim origin_tier '${event.originTier}'` };
+      return {
+        ok: false,
+        code: 'malformed',
+        detail: `a push cannot claim origin_tier '${event.originTier}'`,
+      };
     }
 
     const meta = AUTHORITY[event.entity];
@@ -158,8 +163,14 @@ export class SyncIngestService {
       };
     }
 
-    const knownOp = meta.ops.includes(event.op) || (meta.pushExceptionOps?.includes(event.op) ?? false);
-    if (!knownOp) return { ok: false, code: 'malformed', detail: `unknown op '${event.op}' for entity '${event.entity}'` };
+    const knownOp =
+      meta.ops.includes(event.op) || (meta.pushExceptionOps?.includes(event.op) ?? false);
+    if (!knownOp)
+      return {
+        ok: false,
+        code: 'malformed',
+        detail: `unknown op '${event.op}' for entity '${event.entity}'`,
+      };
 
     if (typeof event.payload?.v !== 'number' || event.payload.v < 1) {
       return { ok: false, code: 'malformed', detail: 'payload.v must be a positive integer' };
@@ -169,7 +180,11 @@ export class SyncIngestService {
     }
     const payloadBytes = Buffer.byteLength(JSON.stringify(event.payload), 'utf8');
     if (payloadBytes > MAX_PAYLOAD_BYTES) {
-      return { ok: false, code: 'malformed', detail: `payload exceeds ${MAX_PAYLOAD_BYTES} bytes (${payloadBytes})` };
+      return {
+        ok: false,
+        code: 'malformed',
+        detail: `payload exceeds ${MAX_PAYLOAD_BYTES} bytes (${payloadBytes})`,
+      };
     }
 
     // §2.3 structural validation against W1-B's payload schema registry (`@mimi/sync-protocol/schema`).
@@ -182,7 +197,11 @@ export class SyncIngestService {
       const validation = validatePayloadData(event.entity, event.op, event.payload.data);
       if (!validation.ok) {
         const issues = validation.issues.map((i) => `${i.path}: ${i.message}`).join('; ');
-        return { ok: false, code: 'malformed', detail: `payload.data failed schema validation: ${issues}` };
+        return {
+          ok: false,
+          code: 'malformed',
+          detail: `payload.data failed schema validation: ${issues}`,
+        };
       }
     }
 
@@ -226,7 +245,12 @@ export class SyncIngestService {
     if (existing && existing.apply_status !== 'pending_dependency') {
       // Already durably decided (applied/quarantined/superseded) — idempotent no-op,
       // and deliberately skip re-running conflict detection (would fabricate duplicates on replay).
-      return existing.reject_code ? { eventId: event.eventId, rejected: { code: existing.reject_code, detail: existing.reject_detail ?? '' } } : { eventId: event.eventId };
+      return existing.reject_code
+        ? {
+            eventId: event.eventId,
+            rejected: { code: existing.reject_code, detail: existing.reject_detail ?? '' },
+          }
+        : { eventId: event.eventId };
     }
 
     const verdict = this.checkAuthority(event, registeredLocationId);
@@ -236,7 +260,10 @@ export class SyncIngestService {
       if (!verdict.ok) {
         await this.events.markQuarantined(client, event.eventId, verdict.code!, verdict.detail!);
         await this.conflictDetector.recordPoison(client, event, verdict.code!, verdict.detail!);
-        return { eventId: event.eventId, rejected: { code: verdict.code!, detail: verdict.detail! } };
+        return {
+          eventId: event.eventId,
+          rejected: { code: verdict.code!, detail: verdict.detail! },
+        };
       }
       await this.events.markApplied(client, event.eventId);
       await this.runApplyHooks(client, event);
@@ -256,7 +283,12 @@ export class SyncIngestService {
       return { eventId: event.eventId, rejected: { code: verdict.code!, detail: verdict.detail! } };
     }
 
-    await this.events.insertEvent(client, { event, applyStatus: 'applied', batchId, appliedAt: new Date().toISOString() });
+    await this.events.insertEvent(client, {
+      event,
+      applyStatus: 'applied',
+      batchId,
+      appliedAt: new Date().toISOString(),
+    });
     await this.runApplyHooks(client, event);
     return { eventId: event.eventId };
   }
@@ -267,13 +299,22 @@ export class SyncIngestService {
    * require the closing batch to re-include every previously-parked
    * event_id — robust to partial resends, §4.4/T-03).
    */
-  private async sweepPendingDependency(client: PoolClient, originDeviceId: UUID, registeredLocationId: UUID): Promise<bigint> {
+  private async sweepPendingDependency(
+    client: PoolClient,
+    originDeviceId: UUID,
+    registeredLocationId: UUID,
+  ): Promise<bigint> {
     let highWater = await this.events.getHighWater(client, originDeviceId);
     for (;;) {
       const parked = await this.events.loadPendingDependency(client, originDeviceId);
       const next = parked.find((r) => BigInt(r.client_seq) === highWater + 1n);
       if (!next) break;
-      await this.applyOrRejectEvent(client, envelopeFromRow(next), registeredLocationId, next.batch_id);
+      await this.applyOrRejectEvent(
+        client,
+        envelopeFromRow(next),
+        registeredLocationId,
+        next.batch_id,
+      );
       highWater += 1n;
     }
     return highWater;
@@ -302,7 +343,11 @@ export class SyncIngestService {
       const registeredLocationId = await resolveLocation(originDeviceId);
       if (!registeredLocationId) {
         for (const e of originEvents) {
-          rejected.push({ eventId: e.eventId, code: 'authority_violation', detail: 'unknown or unregistered origin device' });
+          rejected.push({
+            eventId: e.eventId,
+            code: 'authority_violation',
+            detail: 'unknown or unregistered origin device',
+          });
         }
         continue;
       }
@@ -329,10 +374,16 @@ export class SyncIngestService {
 
         if (await this.events.isOriginFrozen(client, originDeviceId)) {
           for (const e of sorted) {
-            rejected.push({ eventId: e.eventId, code: 'seq_conflict', detail: 'origin frozen pending support review (§4.4)' });
+            rejected.push({
+              eventId: e.eventId,
+              code: 'seq_conflict',
+              detail: 'origin frozen pending support review (§4.4)',
+            });
           }
           const hw = await this.events.getHighWater(client, originDeviceId);
-          await this.events.completeBatch(client, batchRowId, 'failed', { reason: 'origin frozen' });
+          await this.events.completeBatch(client, batchRowId, 'failed', {
+            reason: 'origin frozen',
+          });
           return { highWater: hw, gapAt: undefined as bigint | undefined };
         }
 
@@ -348,17 +399,40 @@ export class SyncIngestService {
           // colliding event's content survives only inside `sync_conflicts.detail` — there is no row for
           // it to occupy, and none should exist.
           const existingEventId = seqIndex.get(conflictsWithSeq);
-          await this.conflictDetector.recordSeqConflict(client, incoming, existingEventId, registeredLocationId);
-          rejected.push({ eventId: incoming.eventId, code: 'seq_conflict', detail: 'client_seq collision with a different event_id — event not stored' });
+          await this.conflictDetector.recordSeqConflict(
+            client,
+            incoming,
+            existingEventId,
+            registeredLocationId,
+          );
+          rejected.push({
+            eventId: incoming.eventId,
+            code: 'seq_conflict',
+            detail: 'client_seq collision with a different event_id — event not stored',
+          });
         }
 
         for (const event of result.applied) {
-          const outcome = await this.applyOrRejectEvent(client, event, registeredLocationId, batchRowId);
-          if (outcome.rejected) rejected.push({ eventId: outcome.eventId, code: outcome.rejected.code, detail: outcome.rejected.detail });
+          const outcome = await this.applyOrRejectEvent(
+            client,
+            event,
+            registeredLocationId,
+            batchRowId,
+          );
+          if (outcome.rejected)
+            rejected.push({
+              eventId: outcome.eventId,
+              code: outcome.rejected.code,
+              detail: outcome.rejected.detail,
+            });
         }
 
         for (const event of result.parked) {
-          await this.events.insertEvent(client, { event, applyStatus: 'pending_dependency', batchId: batchRowId });
+          await this.events.insertEvent(client, {
+            event,
+            applyStatus: 'pending_dependency',
+            batchId: batchRowId,
+          });
         }
 
         const finalHighWater =
@@ -366,10 +440,15 @@ export class SyncIngestService {
             ? await this.sweepPendingDependency(client, originDeviceId, registeredLocationId)
             : result.newHighWater;
 
-        await this.events.completeBatch(client, batchRowId, result.gapAt === undefined ? 'applied' : 'partial', {
-          acceptedThrough: Number(finalHighWater),
-          resendFrom: result.gapAt === undefined ? undefined : Number(result.gapAt),
-        });
+        await this.events.completeBatch(
+          client,
+          batchRowId,
+          result.gapAt === undefined ? 'applied' : 'partial',
+          {
+            acceptedThrough: Number(finalHighWater),
+            resendFrom: result.gapAt === undefined ? undefined : Number(result.gapAt),
+          },
+        );
 
         return { highWater: finalHighWater, gapAt: result.gapAt };
       });

@@ -45,6 +45,10 @@ export interface LocalDatabase {
    * exactly "the tab died mid-write" (T-08), and the assertion is that
    * either everything `fn` wrote exists, or none of it does.
    */
-  runTransaction<R>(storeNames: readonly string[], mode: 'readonly' | 'readwrite', fn: (tx: TxHandle) => Promise<R>): Promise<R>;
+  runTransaction<R>(
+    storeNames: readonly string[],
+    mode: 'readonly' | 'readwrite',
+    fn: (tx: TxHandle) => Promise<R>,
+  ): Promise<R>;
   close(): void;
 }

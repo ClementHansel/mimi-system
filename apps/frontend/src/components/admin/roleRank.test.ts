@@ -21,8 +21,13 @@ describe('roleRank / assignableRoles', () => {
   it('a Manager can assign every role below Manager', () => {
     const options = assignableRoles(RoleKey.MANAGER);
     expect(options).toEqual([
-      RoleKey.FINANCE, RoleKey.KEPALA_GUDANG, RoleKey.SUPERVISOR,
-      RoleKey.LEADER_OUTLET, RoleKey.KASIR, RoleKey.HR_ADMIN, RoleKey.DRIVER,
+      RoleKey.FINANCE,
+      RoleKey.KEPALA_GUDANG,
+      RoleKey.SUPERVISOR,
+      RoleKey.LEADER_OUTLET,
+      RoleKey.KASIR,
+      RoleKey.HR_ADMIN,
+      RoleKey.DRIVER,
     ]);
   });
 

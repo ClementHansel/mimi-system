@@ -102,11 +102,16 @@ export class SyncGateway {
     const device = await this.registry.findDeviceByTokenHash(tokenHash);
     if (device) {
       if (device.status === 'retired' || device.status === 'unpaired') {
-        socket.emit('sync:hello:ack', { ok: false, error: 'unknown or inactive device credential' });
+        socket.emit('sync:hello:ack', {
+          ok: false,
+          error: 'unknown or inactive device credential',
+        });
         socket.disconnect(true);
         return;
       }
-      (socket.data as { deviceId?: string; locationId?: string; tier?: 'device' | 'node' }).deviceId = device.id;
+      (
+        socket.data as { deviceId?: string; locationId?: string; tier?: 'device' | 'node' }
+      ).deviceId = device.id;
       (socket.data as { locationId?: string }).locationId = device.location_id;
       (socket.data as { tier?: 'device' | 'node' }).tier = 'device';
       return;
@@ -120,7 +125,8 @@ export class SyncGateway {
       socket.disconnect(true);
       return;
     }
-    (socket.data as { deviceId?: string; locationId?: string; tier?: 'device' | 'node' }).deviceId = node.id;
+    (socket.data as { deviceId?: string; locationId?: string; tier?: 'device' | 'node' }).deviceId =
+      node.id;
     (socket.data as { locationId?: string }).locationId = node.locationId;
     (socket.data as { tier?: 'device' | 'node' }).tier = 'node';
   }
@@ -164,7 +170,8 @@ export class SyncGateway {
     const deviceId = (socket.data as { deviceId?: string }).deviceId;
     const locationId = (socket.data as { locationId?: string }).locationId;
     const tier = (socket.data as { tier?: 'device' | 'node' }).tier ?? 'device';
-    if (!deviceId || !locationId) return { batchId: wireBody.batchId, acceptedThrough: {}, confirmedThrough: {}, rejected: [] };
+    if (!deviceId || !locationId)
+      return { batchId: wireBody.batchId, acceptedThrough: {}, confirmedThrough: {}, rejected: [] };
 
     const body = decodeWireBatch(wireBody); // client_seq: wire decimal string -> internal bigint (wire-codec.ts)
 
@@ -177,12 +184,18 @@ export class SyncGateway {
           batchId: body.batchId,
           acceptedThrough: {},
           confirmedThrough: {},
-          rejected: body.events.map((e) => ({ eventId: e.eventId, code: 'malformed', detail: 'foreign origin_device_id in a device-direct batch' })),
+          rejected: body.events.map((e) => ({
+            eventId: e.eventId,
+            code: 'malformed',
+            detail: 'foreign origin_device_id in a device-direct batch',
+          })),
         };
         socket.emit('sync:push:ack', ack);
         return ack;
       }
-      const ack = await this.ingest.ingestBatch(body, async (originDeviceId) => (originDeviceId === deviceId ? locationId : undefined));
+      const ack = await this.ingest.ingestBatch(body, async (originDeviceId) =>
+        originDeviceId === deviceId ? locationId : undefined,
+      );
       socket.emit('sync:push:ack', ack);
       this.fanOutNewEvents(socket.id);
       return ack;
@@ -193,17 +206,26 @@ export class SyncGateway {
     // `originDeviceId`, resolved against the `devices` registry and confirmed to actually belong to
     // THIS node — never by trusting the node's own `locationId` for a device it doesn't relay for.
     const nodeId = deviceId;
-    const ack = await this.ingest.ingestBatch(body, (originDeviceId) => this.registry.findDeviceLocationForNode(originDeviceId, nodeId));
+    const ack = await this.ingest.ingestBatch(body, (originDeviceId) =>
+      this.registry.findDeviceLocationForNode(originDeviceId, nodeId),
+    );
     socket.emit('sync:push:ack', ack);
     this.fanOutNewEvents(socket.id);
     return ack;
   }
 
   @SubscribeMessage('sync:pull')
-  async onPull(@ConnectedSocket() socket: Socket, @MessageBody() body: { cursor: number; limit?: number }) {
+  async onPull(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: { cursor: number; limit?: number },
+  ) {
     const sub = this.subscribers.get(socket.id);
     if (!sub) return { events: [], nextCursor: body.cursor, hasMore: false };
-    const result = await this.pull.pull(sub.scope, body.cursor, Math.min(body.limit ?? MAX_PULL_LIMIT, MAX_PULL_LIMIT));
+    const result = await this.pull.pull(
+      sub.scope,
+      body.cursor,
+      Math.min(body.limit ?? MAX_PULL_LIMIT, MAX_PULL_LIMIT),
+    );
     sub.cursor = result.nextCursor;
     await this.pull.advanceCursor('device', sub.deviceId, result.nextCursor);
     const wireResult = encodePullResult(result); // client_seq: internal bigint -> wire decimal string (wire-codec.ts)
@@ -212,7 +234,10 @@ export class SyncGateway {
   }
 
   @SubscribeMessage('sync:heartbeat')
-  async onHeartbeat(@ConnectedSocket() socket: Socket, @MessageBody() body: { outboxDepth?: number }) {
+  async onHeartbeat(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: { outboxDepth?: number },
+  ) {
     const sub = this.subscribers.get(socket.id);
     if (!sub) return { ok: true, serverTime: new Date().toISOString() };
     const highWater = await withSystemContext(this.pool, async (client) => {
@@ -225,7 +250,10 @@ export class SyncGateway {
 
   /** R2 (§5.5) — this engine's own wire extension of §4.6's `sync.balance_checksum` telemetry, see file header. */
   @SubscribeMessage('sync:checksum')
-  async onChecksum(@ConnectedSocket() socket: Socket, @MessageBody() body: { areaHashes: Record<string, string> }) {
+  async onChecksum(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: { areaHashes: Record<string, string> },
+  ) {
     const sub = this.subscribers.get(socket.id);
     if (!sub) return { ok: false };
     const result = await this.reconciliation.runR2(sub.locationId, sub.deviceId, body.areaHashes);
@@ -240,9 +268,10 @@ export class SyncGateway {
         if (page.events.length === 0) return;
         sub.cursor = page.nextCursor;
         const wirePage = encodePullResult(page); // client_seq: internal bigint -> wire decimal string (wire-codec.ts)
-        this.server.to(socketId).emit('sync:deliver', { events: wirePage.events, nextCursor: wirePage.nextCursor });
+        this.server
+          .to(socketId)
+          .emit('sync:deliver', { events: wirePage.events, nextCursor: wirePage.nextCursor });
       });
     }
   }
-
 }

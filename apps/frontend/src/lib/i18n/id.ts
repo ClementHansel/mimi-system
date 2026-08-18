@@ -68,8 +68,10 @@ export const id = {
     // (no fabricated logo/colours/claims). Kept in `auth` alongside the rest
     // of the login screen's strings rather than a new top-level namespace.
     brandHeadline: 'Ayam Geprek & Fried Chicken, Renyah di Setiap Outlet',
-    brandTagline: 'Satu sistem untuk kasir, gudang pusat, dan dapur — dari Samarinda sampai Balikpapan.',
-    brandOutlets: 'Samarinda: Loa Janan · Lambung · Bung Tomo — Balikpapan: Gunung Guntur · Sepinggan · Karang Rejo',
+    brandTagline:
+      'Satu sistem untuk kasir, gudang pusat, dan dapur — dari Samarinda sampai Balikpapan.',
+    brandOutlets:
+      'Samarinda: Loa Janan · Lambung · Bung Tomo — Balikpapan: Gunung Guntur · Sepinggan · Karang Rejo',
     brandHours: 'Buka 09.00–22.00 WITA (Senin–Jumat), 09.00–23.00 WITA (Sabtu–Minggu)',
     brandFooter: '© {{year}} Mimi Chicken · @mimichicken.official',
   },
@@ -112,14 +114,16 @@ export const id = {
     emptyDescription: 'Hubungi admin untuk memberikan akses sesuai peran Anda.',
     workspace: {
       dasbor: {
-        description: 'Dasbor, gudang pusat, pengiriman, pembelian, keuangan, SDM, aset, dan administrasi.',
+        description:
+          'Dasbor, gudang pusat, pengiriman, pembelian, keuangan, SDM, aset, dan administrasi.',
       },
       kasir: {
         description: 'Layani pesanan, terima pembayaran, dan kelola shift serta kas kecil.',
       },
       dokumentasi: {
         title: 'Dokumentasi',
-        description: 'Panduan penggunaan langkah demi langkah — baca online atau unduh sebagai PDF.',
+        description:
+          'Panduan penggunaan langkah demi langkah — baca online atau unduh sebagai PDF.',
       },
     },
   },
@@ -131,7 +135,8 @@ export const id = {
   docs: {
     kicker: 'Dokumentasi',
     title: 'Panduan Pengguna',
-    subtitle: 'Panduan langkah demi langkah untuk setiap peran — baca online, atau unduh sebagai PDF.',
+    subtitle:
+      'Panduan langkah demi langkah untuk setiap peran — baca online, atau unduh sebagai PDF.',
     emptyTitle: 'Belum ada manual untuk peran Anda',
     emptyDescription: 'Hubungi admin bila menurut Anda seharusnya ada manual yang bisa diakses.',
     minutesRead: '{{minutes}} menit baca',
@@ -144,7 +149,8 @@ export const id = {
     notFoundTitle: 'Manual tidak ditemukan',
     notFoundDescription: 'Halaman ini tidak ada. Kembali ke daftar manual.',
     deniedTitle: 'Manual ini bukan untuk peran Anda',
-    deniedDescription: 'Manual ini ditujukan untuk peran lain. Hubungi admin bila Anda merasa ini keliru.',
+    deniedDescription:
+      'Manual ini ditujukan untuk peran lain. Hubungi admin bila Anda merasa ini keliru.',
     printKicker: 'Mimi Chicken OS · Manual Pengguna',
     printAudience: 'Untuk: {{audience}}',
     printFootline: 'Sistem operasional untuk gudang pusat dan jaringan outlet.',
@@ -154,7 +160,8 @@ export const id = {
   // POS (F02) — cashier tablet, offline-first (CONTRACTS §4.13, SYNC-PROTOCOL §8 rows 1-3/16-17).
   pos: {
     noLocation: 'Outlet belum ditentukan',
-    notCrossVisible: 'Transaksi belum terlihat di tablet lain — akan muncul setelah tersambung kembali.',
+    notCrossVisible:
+      'Transaksi belum terlihat di tablet lain — akan muncul setelah tersambung kembali.',
 
     // F-POS-2 — standalone POS top bar (`PosTopBar`/`app/pos/layout.tsx`):
     // the compact "Cabang: X" under the brand mark, and the two reasons
@@ -166,13 +173,15 @@ export const id = {
     branchReasonChosen: 'Berdasarkan outlet yang Anda pilih saat masuk.',
 
     chooseOutletTitle: 'Pilih Outlet',
-    chooseOutletDescription: 'Akun Anda tidak terikat ke satu outlet. Pilih outlet yang ingin Anda layani.',
+    chooseOutletDescription:
+      'Akun Anda tidak terikat ke satu outlet. Pilih outlet yang ingin Anda layani.',
     chooseOutletSubmit: 'Lanjutkan',
     changeOutlet: 'Ganti Outlet',
     outletLoadFailedTitle: 'Gagal memuat daftar outlet',
     outletLoadFailedDescription: 'Periksa koneksi internet Anda, lalu coba lagi.',
     runtimeLoadFailedTitle: 'Gagal menyiapkan perangkat kasir',
-    runtimeLoadFailedDescription: 'Terjadi kendala saat menyiapkan penyimpanan lokal perangkat ini. Coba lagi atau muat ulang halaman.',
+    runtimeLoadFailedDescription:
+      'Terjadi kendala saat menyiapkan penyimpanan lokal perangkat ini. Coba lagi atau muat ulang halaman.',
 
     openShiftTitle: 'Buka Kasir',
     openShiftDescription: 'Masukkan jumlah modal awal kas sebelum mulai melayani transaksi.',
@@ -187,7 +196,8 @@ export const id = {
     localCashEstimate: 'Perkiraan Kas (lokal)',
     salesCount: 'Jumlah Transaksi',
     closingCashCounted: 'Uang Tunai Dihitung',
-    localVarianceNote: 'Selisih dari perkiraan lokal: {{amount}}. Angka final dihitung ulang oleh sistem pusat saat tersinkron.',
+    localVarianceNote:
+      'Selisih dari perkiraan lokal: {{amount}}. Angka final dihitung ulang oleh sistem pusat saat tersinkron.',
     closeShiftSubmit: 'Tutup Kasir',
     closeShiftFinalNote: 'Laporan shift final setelah tersinkron ke pusat.',
     shiftClosedTitle: 'Kasir ditutup',
@@ -198,7 +208,8 @@ export const id = {
     // accumulated in `shift-store.ts` (`recordSale`/`recordVoid`), just
     // surfaced permanently instead of only inside `ShiftCloseModal`.
     shiftPanelTitle: 'Ringkasan Shift',
-    shiftPanelDescription: 'Ringkasan berjalan sejak kasir dibuka. Angka final dihitung ulang oleh sistem pusat saat tersinkron.',
+    shiftPanelDescription:
+      'Ringkasan berjalan sejak kasir dibuka. Angka final dihitung ulang oleh sistem pusat saat tersinkron.',
     shiftKasirLabel: 'Kasir',
     shiftOpenedAtLabel: 'Dibuka Pukul',
     grossSalesLabel: 'Total Penjualan (lokal)',
@@ -208,8 +219,10 @@ export const id = {
     tabOnlineOrder: 'GoFood/ShopeeFood',
     tabShift: 'Shift',
     catalogEmptyTitle: 'Katalog produk belum tersedia',
-    catalogEmptyDescription: 'Sambungkan perangkat ke internet minimal sekali untuk mengunduh katalog produk.',
-    catalogOfflineNote: 'Menampilkan katalog tersimpan terakhir — belum berhasil memuat data terbaru.',
+    catalogEmptyDescription:
+      'Sambungkan perangkat ke internet minimal sekali untuk mengunduh katalog produk.',
+    catalogOfflineNote:
+      'Menampilkan katalog tersimpan terakhir — belum berhasil memuat data terbaru.',
     categoryFilter: 'Filter kategori',
     goToPayment: 'Lanjut ke Pembayaran',
     voidLastSale: 'Void Transaksi Terakhir',
@@ -241,7 +254,8 @@ export const id = {
 
     voidRefundTitle: 'Void / Refund',
     voidRefundOnlineDescription: 'Memerlukan otorisasi supervisor melalui sistem pusat.',
-    voidRefundOfflineDescription: 'Tidak ada koneksi — otorisasi menggunakan kredensial supervisor tersimpan di perangkat ini (sementara, akan diverifikasi ulang saat tersinkron).',
+    voidRefundOfflineDescription:
+      'Tidak ada koneksi — otorisasi menggunakan kredensial supervisor tersimpan di perangkat ini (sementara, akan diverifikasi ulang saat tersinkron).',
     voidSubmit: 'Ajukan',
     voidOfflineBadge: 'Otorisasi Offline — Sementara',
     voidType: 'Jenis',
@@ -384,8 +398,10 @@ export const id = {
     tierLan: 'Mode LAN (Node Cabang)',
     tierIsolated: 'Offline — Tidak Ada Koneksi',
     onlineDesc: 'Semua data tersinkron dengan pusat.',
-    lanDesc: 'Terhubung ke node cabang. Keputusan pusat (persetujuan gudang, verifikasi pembayaran) menunggu koneksi ke server.',
-    isolatedDesc: 'Perangkat ini bekerja sendiri. Transaksi tersimpan lokal dan akan tersinkron otomatis saat koneksi kembali.',
+    lanDesc:
+      'Terhubung ke node cabang. Keputusan pusat (persetujuan gudang, verifikasi pembayaran) menunggu koneksi ke server.',
+    isolatedDesc:
+      'Perangkat ini bekerja sendiri. Transaksi tersimpan lokal dan akan tersinkron otomatis saat koneksi kembali.',
     queuedCount: '{{count}} transaksi menunggu sinkronisasi',
     lastSync: 'Sinkron terakhir {{when}}',
     neverSynced: 'Belum pernah tersinkron',
@@ -491,8 +507,10 @@ export const id = {
     unknownType: 'Jenis dokumen tidak dikenali',
     notFound: 'Persetujuan tidak ditemukan',
     approveUnsupported: {
-      voidRefund: 'Persetujuan void/refund memerlukan verifikasi PIN dan dilakukan dari modul Kasir (POS), bukan dari layar ini. Penolakan tetap dapat dilakukan di sini.',
-      paymentVerification: 'Keputusan Owner untuk pembayaran ini menyatu dengan aksi "Bayar" pada modul Keuangan, bukan aksi terpisah di sini. Penolakan tetap dapat dilakukan di sini.',
+      voidRefund:
+        'Persetujuan void/refund memerlukan verifikasi PIN dan dilakukan dari modul Kasir (POS), bukan dari layar ini. Penolakan tetap dapat dilakukan di sini.',
+      paymentVerification:
+        'Keputusan Owner untuk pembayaran ini menyatu dengan aksi "Bayar" pada modul Keuangan, bukan aksi terpisah di sini. Penolakan tetap dapat dilakukan di sini.',
     },
   },
 
@@ -506,93 +524,194 @@ export const id = {
   // needs different Indonesian wording depending on the document type.
   status: {
     replenishment: {
-      draft: 'Draft', submitted: 'Diajukan', awaiting_approval: 'Menunggu Persetujuan',
-      approved: 'Disetujui', rejected: 'Ditolak', processing: 'Diproses',
-      shipped: 'Dikirim', received: 'Diterima', completed: 'Selesai',
+      draft: 'Draft',
+      submitted: 'Diajukan',
+      awaiting_approval: 'Menunggu Persetujuan',
+      approved: 'Disetujui',
+      rejected: 'Ditolak',
+      processing: 'Diproses',
+      shipped: 'Dikirim',
+      received: 'Diterima',
+      completed: 'Selesai',
     },
     suratJalan: {
-      draft: 'Draft', ready: 'Siap Kirim', loading: 'Memuat Barang',
-      in_transit: 'Dalam Perjalanan', completed: 'Selesai', cancelled: 'Dibatalkan',
+      draft: 'Draft',
+      ready: 'Siap Kirim',
+      loading: 'Memuat Barang',
+      in_transit: 'Dalam Perjalanan',
+      completed: 'Selesai',
+      cancelled: 'Dibatalkan',
     },
     drop: {
-      pending: 'Menunggu', en_route: 'Dalam Perjalanan', arrived: 'Tiba di Lokasi',
-      completed: 'Selesai', completed_discrepancy: 'Selesai (Ada Selisih)', failed: 'Gagal',
+      pending: 'Menunggu',
+      en_route: 'Dalam Perjalanan',
+      arrived: 'Tiba di Lokasi',
+      completed: 'Selesai',
+      completed_discrepancy: 'Selesai (Ada Selisih)',
+      failed: 'Gagal',
     },
     opname: {
-      draft: 'Draft', counting: 'Sedang Menghitung', submitted: 'Diajukan',
-      approved: 'Disetujui', rejected: 'Ditolak', adjusted: 'Sudah Disesuaikan', cancelled: 'Dibatalkan',
+      draft: 'Draft',
+      counting: 'Sedang Menghitung',
+      submitted: 'Diajukan',
+      approved: 'Disetujui',
+      rejected: 'Ditolak',
+      adjusted: 'Sudah Disesuaikan',
+      cancelled: 'Dibatalkan',
     },
     waste: { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' },
     return: {
-      draft: 'Draft', submitted: 'Diajukan', approved: 'Disetujui', rejected: 'Ditolak',
-      in_transit: 'Dalam Perjalanan', received: 'Diterima', completed: 'Selesai', cancelled: 'Dibatalkan',
+      draft: 'Draft',
+      submitted: 'Diajukan',
+      approved: 'Disetujui',
+      rejected: 'Ditolak',
+      in_transit: 'Dalam Perjalanan',
+      received: 'Diterima',
+      completed: 'Selesai',
+      cancelled: 'Dibatalkan',
     },
     purchaseRequest: {
-      draft: 'Draft', submitted: 'Diajukan', approved: 'Disetujui',
-      rejected: 'Ditolak', converted: 'Dikonversi ke PO', cancelled: 'Dibatalkan',
+      draft: 'Draft',
+      submitted: 'Diajukan',
+      approved: 'Disetujui',
+      rejected: 'Ditolak',
+      converted: 'Dikonversi ke PO',
+      cancelled: 'Dibatalkan',
     },
     purchaseOrder: {
-      draft: 'Draft', pending_approval: 'Menunggu Persetujuan', approved: 'Disetujui', issued: 'Diterbitkan',
-      partially_received: 'Diterima Sebagian', received: 'Diterima', closed: 'Ditutup', cancelled: 'Dibatalkan',
+      draft: 'Draft',
+      pending_approval: 'Menunggu Persetujuan',
+      approved: 'Disetujui',
+      issued: 'Diterbitkan',
+      partially_received: 'Diterima Sebagian',
+      received: 'Diterima',
+      closed: 'Ditutup',
+      cancelled: 'Dibatalkan',
     },
     pettyCash: { pending: 'Menunggu Verifikasi', verified: 'Terverifikasi', rejected: 'Ditolak' },
     shift: { open: 'Berjalan', closed: 'Ditutup' },
     sale: { completed: 'Selesai', voided: 'Dibatalkan (Void)', refunded: 'Refund' },
-    payment: { pending: 'Belum Terverifikasi', verified: 'Terverifikasi', paid: 'Dibayar', rejected: 'Ditolak' },
+    payment: {
+      pending: 'Belum Terverifikasi',
+      verified: 'Terverifikasi',
+      paid: 'Dibayar',
+      rejected: 'Ditolak',
+    },
     voidRefund: { pending: 'Menunggu Persetujuan', approved: 'Disetujui', rejected: 'Ditolak' },
     onlineOrder: { completed: 'Selesai', cancelled: 'Dibatalkan' },
     settlement: { pending: 'Menunggu Pencairan', settled: 'Sudah Cair' },
-    approval: { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak', cancelled: 'Dibatalkan' },
-    approvalStep: { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak', skipped: 'Dilewati' },
-    employment: { active: 'Aktif', probation: 'Masa Percobaan', resigned: 'Mengundurkan Diri', terminated: 'Diberhentikan' },
+    approval: {
+      pending: 'Menunggu',
+      approved: 'Disetujui',
+      rejected: 'Ditolak',
+      cancelled: 'Dibatalkan',
+    },
+    approvalStep: {
+      pending: 'Menunggu',
+      approved: 'Disetujui',
+      rejected: 'Ditolak',
+      skipped: 'Dilewati',
+    },
+    employment: {
+      active: 'Aktif',
+      probation: 'Masa Percobaan',
+      resigned: 'Mengundurkan Diri',
+      terminated: 'Diberhentikan',
+    },
     attendance: {
-      present: 'Hadir', late: 'Terlambat', absent: 'Alpha', sick: 'Sakit',
-      permission: 'Izin', leave: 'Cuti', holiday: 'Libur Nasional', off: 'Libur Kerja',
+      present: 'Hadir',
+      late: 'Terlambat',
+      absent: 'Alpha',
+      sick: 'Sakit',
+      permission: 'Izin',
+      leave: 'Cuti',
+      holiday: 'Libur Nasional',
+      off: 'Libur Kerja',
     },
-    leave: { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak', cancelled: 'Dibatalkan' },
+    leave: {
+      pending: 'Menunggu',
+      approved: 'Disetujui',
+      rejected: 'Ditolak',
+      cancelled: 'Dibatalkan',
+    },
     payrollRun: {
-      draft: 'Draft', calculated: 'Sudah Dihitung', pending_approval: 'Menunggu Persetujuan',
-      approved: 'Disetujui', paid: 'Sudah Dibayar', cancelled: 'Dibatalkan',
+      draft: 'Draft',
+      calculated: 'Sudah Dihitung',
+      pending_approval: 'Menunggu Persetujuan',
+      approved: 'Disetujui',
+      paid: 'Sudah Dibayar',
+      cancelled: 'Dibatalkan',
     },
-    loan: { pending: 'Menunggu', active: 'Berjalan', paid_off: 'Lunas', written_off: 'Dihapusbukukan', rejected: 'Ditolak' },
-    asset: { active: 'Aktif', in_maintenance: 'Dalam Perbaikan', retired: 'Tidak Dipakai', lost: 'Hilang' },
+    loan: {
+      pending: 'Menunggu',
+      active: 'Berjalan',
+      paid_off: 'Lunas',
+      written_off: 'Dihapusbukukan',
+      rejected: 'Ditolak',
+    },
+    asset: {
+      active: 'Aktif',
+      in_maintenance: 'Dalam Perbaikan',
+      retired: 'Tidak Dipakai',
+      lost: 'Hilang',
+    },
     maintenanceJob: {
-      scheduled: 'Terjadwal', due: 'Jatuh Tempo', in_progress: 'Dikerjakan',
-      done: 'Selesai', verified: 'Terverifikasi', skipped: 'Dilewati',
+      scheduled: 'Terjadwal',
+      due: 'Jatuh Tempo',
+      in_progress: 'Dikerjakan',
+      done: 'Selesai',
+      verified: 'Terverifikasi',
+      skipped: 'Dilewati',
     },
     fiscalPeriod: { open: 'Terbuka', closed: 'Ditutup', locked: 'Terkunci' },
     journalEntry: { posted: 'Terposting', reversed: 'Dibalik (Reversal)' },
-    device: { online: 'Online', stale: 'Tidak Merespons', offline: 'Offline', unpaired: 'Belum Terhubung', retired: 'Nonaktif' },
+    device: {
+      online: 'Online',
+      stale: 'Tidak Merespons',
+      offline: 'Offline',
+      unpaired: 'Belum Terhubung',
+      retired: 'Nonaktif',
+    },
     topologyOutlet: { online: 'Online', degraded: 'Sebagian Bermasalah', offline: 'Offline' },
-    reverification: { verified: 'Terverifikasi', failed: 'Gagal Verifikasi', unprovable: 'Tidak Dapat Dibuktikan' },
+    reverification: {
+      verified: 'Terverifikasi',
+      failed: 'Gagal Verifikasi',
+      unprovable: 'Tidak Dapat Dibuktikan',
+    },
     offlineAuthOutcome: {
-      pending_verification: 'Menunggu Verifikasi', verified: 'Terverifikasi',
-      failed: 'Gagal', unprovable: 'Tidak Dapat Dibuktikan',
+      pending_verification: 'Menunggu Verifikasi',
+      verified: 'Terverifikasi',
+      failed: 'Gagal',
+      unprovable: 'Tidak Dapat Dibuktikan',
     },
   },
 
   placeholder: {
     pos: {
       title: 'Kasir (POS)',
-      description: 'Layar kasir tablet, offline-first: transaksi, shift, pembayaran QRIS/tunai, void/refund.',
+      description:
+        'Layar kasir tablet, offline-first: transaksi, shift, pembayaran QRIS/tunai, void/refund.',
       owner: 'Dibangun oleh W4-06 (senior-fe) pada Wave 4.',
       coverage: 'Cakupan: FR-POS-01..07',
     },
     dashboard: {
       title: 'Dasbor',
-      description: 'KPI pemilik/manajer: pendapatan, profit, produk terlaris, KPI pegawai, drill-down realtime.',
+      description:
+        'KPI pemilik/manajer: pendapatan, profit, produk terlaris, KPI pegawai, drill-down realtime.',
       owner: 'Dibangun oleh W5-01 pada Wave 5.',
       coverage: 'Cakupan: FR-DASH-01..04',
     },
     outlet: {
       title: 'Outlet',
-      description: 'Permintaan barang, terima barang + foto, stok per area, stock opname, waste/retur, kas kecil.',
+      description:
+        'Permintaan barang, terima barang + foto, stok per area, stock opname, waste/retur, kas kecil.',
       owner: 'Dibangun oleh W4-07 (senior-fe) pada Wave 4.',
       coverage: 'Cakupan: FR-LOG-06..21, FR-SO-01..04, FR-WST-01..04',
     },
     warehouse: {
       title: 'Gudang Pusat',
-      description: 'Stok gudang, antrean persetujuan, picking, pembuatan Surat Jalan, penerimaan, retur ke supplier.',
+      description:
+        'Stok gudang, antrean persetujuan, picking, pembuatan Surat Jalan, penerimaan, retur ke supplier.',
       owner: 'Dibangun oleh W4-08 (medior) pada Wave 4.',
       coverage: 'Cakupan: FR-LOG-01..05, FR-LOG-14..21',
     },
@@ -604,7 +723,8 @@ export const id = {
     },
     finance: {
       title: 'Keuangan',
-      description: 'Antrean verifikasi pembayaran, jurnal, bagan akun, neraca saldo, laba rugi, ekspor laporan.',
+      description:
+        'Antrean verifikasi pembayaran, jurnal, bagan akun, neraca saldo, laba rugi, ekspor laporan.',
       owner: 'Dibangun oleh W5-02 pada Wave 5.',
       coverage: 'Cakupan: FR-ACCT-01..04, JGUD-01..07, JOUT-01..09',
     },
@@ -628,19 +748,22 @@ export const id = {
     },
     me: {
       title: 'Akun Saya',
-      description: 'Absen GPS + selfie, slip gaji, pengajuan cuti — untuk semua pegawai, dari ponsel.',
+      description:
+        'Absen GPS + selfie, slip gaji, pengajuan cuti — untuk semua pegawai, dari ponsel.',
       owner: 'Dibangun oleh W4-10 (medior) pada Wave 4.',
       coverage: 'Cakupan: FR-HR-01/02, POUT-01..09',
     },
     topology: {
       title: 'Topologi Perangkat',
-      description: 'Pohon perangkat live: Pusat → Kota → Outlet → Node → Perangkat, status heartbeat, kesehatan sinkronisasi per outlet, antrean konflik.',
+      description:
+        'Pohon perangkat live: Pusat → Kota → Outlet → Node → Perangkat, status heartbeat, kesehatan sinkronisasi per outlet, antrean konflik.',
       owner: 'Dibangun oleh W5-03 pada Wave 5.',
       coverage: 'Cakupan: D-13, SYNC-PROTOCOL §7',
     },
     driver: {
       title: 'Pengiriman (Driver)',
-      description: 'Surat jalan hari ini, checklist multi-drop, suhu + segel, foto serah terima, tanda tangan — offline-first.',
+      description:
+        'Surat jalan hari ini, checklist multi-drop, suhu + segel, foto serah terima, tanda tangan — offline-first.',
       owner: 'Dibangun oleh W4-09 (senior-fe) pada Wave 4.',
       coverage: 'Cakupan: FR-LOG-01..05, FR-LOG-14..16',
     },
@@ -714,7 +837,8 @@ export const id = {
       createButton: 'Catat Pembayaran',
       empty: 'Belum ada pembayaran yang perlu diverifikasi.',
       createTitle: 'Catat Pembayaran Baru',
-      createDescription: 'Untuk pembayaran manual/lain-lain (THR, insentif, biaya lain) yang tidak berasal dari dokumen lain.',
+      createDescription:
+        'Untuk pembayaran manual/lain-lain (THR, insentif, biaya lain) yang tidak berasal dari dokumen lain.',
       createSuccess: 'Pembayaran berhasil dicatat.',
       refType: 'Jenis Referensi',
       payeeType: 'Jenis Penerima',
@@ -929,7 +1053,8 @@ export const id = {
       createTitle: 'Purchase Order Baru',
       createSuccess: 'Purchase order berhasil dibuat.',
       empty: 'Belum ada purchase order.',
-      priceHiddenNotice: 'Anda tidak memiliki akses melihat/mengisi harga beli supplier. Hubungi Manager/Finance/Kepala Gudang untuk membuat PO dengan harga.',
+      priceHiddenNotice:
+        'Anda tidak memiliki akses melihat/mengisi harga beli supplier. Hubungi Manager/Finance/Kepala Gudang untuk membuat PO dengan harga.',
       supplier: 'Supplier',
       location: 'Lokasi',
       fromPr: 'Dari Permintaan Pembelian (opsional)',
@@ -1030,7 +1155,8 @@ export const id = {
       newPassword: 'Kata Sandi Baru',
       deactivate: 'Nonaktifkan',
       deactivateTitle: 'Nonaktifkan Pengguna?',
-      deactivateDescription: 'Pengguna {{name}} tidak akan bisa masuk lagi. Sesi dan kredensial offline akan dicabut.',
+      deactivateDescription:
+        'Pengguna {{name}} tidak akan bisa masuk lagi. Sesi dan kredensial offline akan dicabut.',
       createSuccess: 'Pengguna berhasil dibuat.',
       updateSuccess: 'Data pengguna berhasil diperbarui.',
       roleUpdateSuccess: 'Peran berhasil diperbarui.',
@@ -1160,7 +1286,8 @@ export const id = {
     },
     audit: {
       title: 'Jejak Audit',
-      description: 'Siapa mengubah apa, sebelum dan sesudah, kapan, dan mengapa — kontrol anti-kecurangan (FR-AUDIT-01/02).',
+      description:
+        'Siapa mengubah apa, sebelum dan sesudah, kapan, dan mengapa — kontrol anti-kecurangan (FR-AUDIT-01/02).',
       filterEntityType: 'Jenis Entitas',
       filterEntityId: 'ID Entitas',
       filterUser: 'Pengguna',
@@ -1184,7 +1311,8 @@ export const id = {
     },
     settings: {
       title: 'Pengaturan',
-      description: 'Parameter sistem: profil perusahaan, ambang persetujuan, dan mode payroll statutori.',
+      description:
+        'Parameter sistem: profil perusahaan, ambang persetujuan, dan mode payroll statutori.',
       tabGeneral: 'Umum',
       tabPayroll: 'Payroll Statutori',
       columnKey: 'Kunci',
@@ -1215,7 +1343,8 @@ export const id = {
           pph21_article17_brackets: 'Tarif Pasal 17 belum diatur',
           employee_tax_profiles: 'Profil pajak pegawai belum lengkap',
         },
-        configureHint: 'Tarif BPJS, tabel PPh21, dan profil pajak pegawai dikonfigurasi di modul SDM & Payroll.',
+        configureHint:
+          'Tarif BPJS, tabel PPh21, dan profil pajak pegawai dikonfigurasi di modul SDM & Payroll.',
         enableButton: 'Aktifkan Mode Statutori',
         disableButton: 'Nonaktifkan',
         confirmEnableTitle: 'Aktifkan Mode Payroll Statutori?',
@@ -1377,7 +1506,8 @@ export const id = {
       empty: 'Tidak ada permintaan yang menunggu persetujuan gudang',
       pendingTitle: 'Menunggu Persetujuan Gudang',
       approvedTitle: 'Disetujui — Siap Diproses',
-      approvedHint: 'Mulai pemrosesan untuk menandai pengambilan barang sudah dimulai, sebelum Surat Jalan dibuat.',
+      approvedHint:
+        'Mulai pemrosesan untuk menandai pengambilan barang sudah dimulai, sebelum Surat Jalan dibuat.',
       approvedEmpty: 'Tidak ada permintaan yang disetujui dan menunggu diproses',
       process: 'Mulai Pemrosesan',
       processed: 'Permintaan mulai diproses',
@@ -1391,7 +1521,8 @@ export const id = {
       shipmentType: 'Tipe Pengiriman',
       frozen: 'Beku/Dingin',
       dry: 'Kering (Sembako)',
-      mixWarning: 'Barang beku/dingin dan kering tidak boleh digabung dalam satu Surat Jalan — pilih tipe pengiriman dulu, hanya barang yang cocok yang bisa disertakan.',
+      mixWarning:
+        'Barang beku/dingin dan kering tidak boleh digabung dalam satu Surat Jalan — pilih tipe pengiriman dulu, hanya barang yang cocok yang bisa disertakan.',
       pickRequests: 'Pilih Permintaan yang Disetujui',
       noApprovedRequests: 'Belum ada permintaan yang disetujui dan siap dikirim',
       noCompatibleLines: 'Tidak ada barang yang cocok dengan tipe pengiriman ini',
@@ -1400,7 +1531,8 @@ export const id = {
       dropSeq: 'Drop {{seq}}',
       driver: 'Driver',
       vehicle: 'Kendaraan',
-      vehicleNeedsFreezer: 'Kendaraan ini tidak punya freezer — tidak bisa untuk pengiriman beku/dingin',
+      vehicleNeedsFreezer:
+        'Kendaraan ini tidak punya freezer — tidak bisa untuk pengiriman beku/dingin',
       plannedDate: 'Tanggal Rencana Kirim',
       dropsCount: 'Jumlah Drop',
       markReady: 'Tandai Siap Kirim',
@@ -1484,7 +1616,8 @@ export const id = {
     },
     outbound: {
       movedTitle: 'Sekarang di /delivery',
-      movedDescription: 'Pembuatan dan pengelolaan Surat Jalan (multi-drop, driver, kendaraan, rantai dingin) sudah pindah ke layar Pengiriman.',
+      movedDescription:
+        'Pembuatan dan pengelolaan Surat Jalan (multi-drop, driver, kendaraan, rantai dingin) sudah pindah ke layar Pengiriman.',
       openDelivery: 'Buka Layar Pengiriman',
       staged: 'Siap Dikirim',
       inTransit: 'Dalam Perjalanan',
@@ -1507,16 +1640,20 @@ export const id = {
     // Route planning (gudang) + live tracking — migration 221.
     route: {
       title: 'Rute & Petunjuk Pengiriman',
-      subtitle: 'Atur urutan pemberhentian dan tulis petunjuk untuk setiap lokasi. Driver mengikuti urutan ini.',
+      subtitle:
+        'Atur urutan pemberhentian dan tulis petunjuk untuk setiap lokasi. Driver mengikuti urutan ini.',
       save: 'Simpan Rute',
       saved: 'Rute tersimpan',
       saveError: 'Gagal menyimpan rute',
-      locked: 'Urutan rute terkunci — Surat Jalan sudah dimuat atau dalam perjalanan. Petunjuk per lokasi masih dapat diubah lewat detail drop.',
+      locked:
+        'Urutan rute terkunci — Surat Jalan sudah dimuat atau dalam perjalanan. Petunjuk per lokasi masih dapat diubah lewat detail drop.',
       moveUp: 'Naikkan urutan',
       moveDown: 'Turunkan urutan',
       instructionsLabel: 'Petunjuk untuk driver',
-      instructionsPlaceholder: 'Contoh: masuk lewat gang samping, telepon Pak Andi sebelum sampai, bongkar di pintu belakang',
-      noCoords: 'Lokasi belum punya koordinat — driver hanya dapat alamat teks dan truk tidak muncul di peta',
+      instructionsPlaceholder:
+        'Contoh: masuk lewat gang samping, telepon Pak Andi sebelum sampai, bongkar di pintu belakang',
+      noCoords:
+        'Lokasi belum punya koordinat — driver hanya dapat alamat teks dan truk tidak muncul di peta',
       hasCoords: 'Koordinat tersedia — navigasi & peta aktif',
     },
     live: {
@@ -1545,7 +1682,8 @@ export const id = {
     columnStatus: 'Status',
     truckChiller: 'Truk Chiller (Beku + Dingin)',
     truckDry: 'Truk Kering (Dry)',
-    truckSplitNotice: 'Barang beku/dingin selalu satu truk chiller; barang kering selalu truk terpisah — tidak boleh digabung (aturan gudang, FR-LOG-02).',
+    truckSplitNotice:
+      'Barang beku/dingin selalu satu truk chiller; barang kering selalu truk terpisah — tidak boleh digabung (aturan gudang, FR-LOG-02).',
     createdSuccess: 'Surat Jalan berhasil dibuat',
     detail: {
       title: 'Detail Surat Jalan',
@@ -1635,7 +1773,8 @@ export const id = {
       geofenceOk: 'Dalam Radius',
       geofenceOut: 'Luar Radius',
       timeSuspect: 'Jam Diragukan',
-      timeSuspectHint: 'Jam pada perangkat ini tidak dapat dipastikan akurat saat absen dicatat — tinjau dan koreksi jika perlu sebelum masuk payroll.',
+      timeSuspectHint:
+        'Jam pada perangkat ini tidak dapat dipastikan akurat saat absen dicatat — tinjau dan koreksi jika perlu sebelum masuk payroll.',
       noSuspectRows: 'Tidak ada baris yang perlu ditinjau.',
       correctTitle: 'Koreksi Absensi — {{name}}',
       correctionReason: 'Alasan Koreksi',
@@ -1698,7 +1837,8 @@ export const id = {
       saveVintage: 'Simpan Vintage',
       saveSuccess: 'Tarif berhasil disimpan.',
       effectiveFrom: 'Berlaku Sejak',
-      effectiveDuplicate: 'Tanggal ini sudah punya tarif — pilih tanggal lain atau ubah baris yang ada.',
+      effectiveDuplicate:
+        'Tanggal ini sudah punya tarif — pilih tanggal lain atau ubah baris yang ada.',
       effectiveBeforeLatest: 'Tanggal ini sebelum tarif terbaru yang sudah ada — periksa kembali.',
       noVintages: 'Belum ada tarif yang diatur.',
       window: 'Periode Berlaku',
@@ -1734,7 +1874,8 @@ export const id = {
       ptkpTitle: 'Tabel PTKP',
       ptkpDescription: 'Penghasilan Tidak Kena Pajak per status, menentukan kategori TER.',
       article17Title: 'Tarif Pasal 17',
-      article17Description: 'Lapisan tarif progresif tahunan untuk perhitungan ulang PPh21 Desember.',
+      article17Description:
+        'Lapisan tarif progresif tahunan untuk perhitungan ulang PPh21 Desember.',
     },
   },
 
@@ -1761,10 +1902,13 @@ export const id = {
       checkOutButton: 'Absen Pulang',
       checkInSuccess: 'Absen masuk berhasil.',
       checkOutSuccess: 'Absen pulang berhasil.',
-      submitFailed: 'Absen gagal disimpan — periksa foto selfie dan lokasi GPS Anda, lalu coba lagi.',
+      submitFailed:
+        'Absen gagal disimpan — periksa foto selfie dan lokasi GPS Anda, lalu coba lagi.',
       queuedLocally: 'Tersimpan di perangkat — akan tersinkron otomatis saat koneksi tersedia',
-      offlineGeofenceHint: 'Data lokasi outlet belum dimuat (offline) — jarak akan dihitung ulang setelah tersambung.',
-      queuesOfflineHint: 'Absen tetap tersimpan meski tanpa koneksi internet, dan akan tersinkron otomatis.',
+      offlineGeofenceHint:
+        'Data lokasi outlet belum dimuat (offline) — jarak akan dihitung ulang setelah tersambung.',
+      queuesOfflineHint:
+        'Absen tetap tersimpan meski tanpa koneksi internet, dan akan tersinkron otomatis.',
       doneToday: 'Absensi hari ini sudah lengkap.',
       inAt: 'Masuk {{time}}',
       outAt: 'Pulang {{time}}',
@@ -1826,7 +1970,8 @@ export const id = {
       active: 'Lokasi sedang dibagikan',
       activeHint: 'Posisi truk dikirim ke gudang selama perjalanan ini.',
       denied: 'Izin lokasi ditolak — gudang tidak bisa melacak truk ini',
-      deniedHint: 'Aktifkan izin lokasi di pengaturan browser agar gudang dapat memantau pengiriman.',
+      deniedHint:
+        'Aktifkan izin lokasi di pengaturan browser agar gudang dapat memantau pengiriman.',
       unsupported: 'Perangkat ini tidak mendukung pelacakan lokasi',
       queued: '{{count}} posisi menunggu dikirim',
     },
@@ -2107,10 +2252,12 @@ export const id = {
       pairedToNode: 'Terhubung ke Node',
       pairedToNodeYes: 'Ya — melalui {{name}}',
       pairedToNodeNo: 'Tidak — langsung ke cloud',
-      storageNote: 'Data penyimpanan belum tersedia dari perangkat (placeholder backend) — tidak ditampilkan agar tidak menyesatkan.',
+      storageNote:
+        'Data penyimpanan belum tersedia dari perangkat (placeholder backend) — tidak ditampilkan agar tidak menyesatkan.',
       empty: 'Belum ada perangkat terdaftar di outlet ini.',
     },
-    quietNote: 'Outlet yang tutup wajar terlihat offline — perangkat tunggal yang offline tidak selalu berarti gangguan. Peringatan hanya berlaku saat seluruh outlet gelap.',
+    quietNote:
+      'Outlet yang tutup wajar terlihat offline — perangkat tunggal yang offline tidak selalu berarti gangguan. Peringatan hanya berlaku saat seluruh outlet gelap.',
     sync: {
       title: 'Kesehatan Sinkronisasi per Outlet',
       columnLocation: 'Lokasi',

@@ -60,7 +60,15 @@ interface NodeHeartbeatBody {
 interface DiscoveryReportBody {
   nodeId: UUID;
   scannedAt: string;
-  devices: { ipAddress: string; macAddress: string | null; source: string; vendor: string | null; model: string | null; suggestedCategory: string | null; suggestedName: string | null }[];
+  devices: {
+    ipAddress: string;
+    macAddress: string | null;
+    source: string;
+    vendor: string | null;
+    model: string | null;
+    suggestedCategory: string | null;
+    suggestedName: string | null;
+  }[];
 }
 
 interface CommandAckBody {
@@ -104,7 +112,9 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
       socket.disconnect(true);
       return;
     }
-    const node = await withSystemContext(this.pool, (client) => this.nodes.findByTokenHash(client, hashDeviceToken(token)));
+    const node = await withSystemContext(this.pool, (client) =>
+      this.nodes.findByTokenHash(client, hashDeviceToken(token)),
+    );
     if (!node || node.status === 'retired' || node.status === 'unpaired') {
       socket.disconnect(true);
       return;
@@ -115,7 +125,11 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.lastKnownVersion.set(node.id, node.version ?? '');
 
     await withSystemContext(this.pool, (client) =>
-      this.deviceRegistry.insertDeviceEvent(client, { nodeId: node.id, locationId: node.location_id, type: 'online' }),
+      this.deviceRegistry.insertDeviceEvent(client, {
+        nodeId: node.id,
+        locationId: node.location_id,
+        type: 'online',
+      }),
     );
   }
 
@@ -126,7 +140,10 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /** §7.2/§7.3 — every 30s. Updates `branch_nodes` bookkeeping and raises `version_changed`/`clock_skew` device_events exactly as CONTRACTS.md's heartbeat-ingest paragraph specifies; the staleness SWEEP (device-registry) is what actually flips `online/stale/offline`, this handler only proves liveness `last_seen_at`. */
   @SubscribeMessage('node:heartbeat')
-  async onHeartbeat(@ConnectedSocket() socket: Socket, @MessageBody() body: NodeHeartbeatBody): Promise<void> {
+  async onHeartbeat(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: NodeHeartbeatBody,
+  ): Promise<void> {
     const nodeId = (socket.data as { nodeId?: UUID }).nodeId;
     const locationId = (socket.data as { locationId?: UUID }).locationId;
     if (!nodeId || !locationId) return;
@@ -138,34 +155,66 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const before = await this.nodes.findById(client, nodeId);
       const wasDown = before && before.status !== 'online';
 
-      await this.nodes.recordHeartbeat(client, nodeId, { version: body.version, relayQueueDepth: body.relayQueueDepth });
+      await this.nodes.recordHeartbeat(client, nodeId, {
+        version: body.version,
+        relayQueueDepth: body.relayQueueDepth,
+      });
 
       if (wasDown && before) {
         await this.deviceRegistry.insertDeviceEvent(client, { nodeId, locationId, type: 'online' });
         await this.syncEmit
-          .emit(client, { entity: 'device_events', op: 'went_online', entityId: nodeId, locationId, actorUserId: CLOUD_ORIGIN_ACTOR, data: {} })
+          .emit(client, {
+            entity: 'device_events',
+            op: 'went_online',
+            entityId: nodeId,
+            locationId,
+            actorUserId: CLOUD_ORIGIN_ACTOR,
+            data: {},
+          })
           .catch(() => undefined);
         this.topologyGateway.emitUpdate({ locationId, nodeId, status: 'online' });
       }
 
       const previousVersion = this.lastKnownVersion.get(nodeId);
-      if (previousVersion !== undefined && previousVersion !== '' && previousVersion !== body.version) {
-        await this.deviceRegistry.insertDeviceEvent(client, { nodeId, locationId, type: 'version_changed', detail: { from: previousVersion, to: body.version } });
+      if (
+        previousVersion !== undefined &&
+        previousVersion !== '' &&
+        previousVersion !== body.version
+      ) {
+        await this.deviceRegistry.insertDeviceEvent(client, {
+          nodeId,
+          locationId,
+          type: 'version_changed',
+          detail: { from: previousVersion, to: body.version },
+        });
       }
       this.lastKnownVersion.set(nodeId, body.version);
 
       if (Math.abs(body.clockOffsetMs ?? 0) > CLOCK_SKEW_THRESHOLD_MS) {
-        await this.deviceRegistry.insertDeviceEvent(client, { nodeId, locationId, type: 'clock_skew', detail: { offsetMs: body.clockOffsetMs } });
+        await this.deviceRegistry.insertDeviceEvent(client, {
+          nodeId,
+          locationId,
+          type: 'clock_skew',
+          detail: { offsetMs: body.clockOffsetMs },
+        });
       }
       if ((body.relayQueueDepth ?? 0) > QUEUE_ALERT_THRESHOLD) {
-        await this.deviceRegistry.insertDeviceEvent(client, { nodeId, locationId, type: 'queue_alert', detail: { queueDepth: body.relayQueueDepth } });
+        await this.deviceRegistry.insertDeviceEvent(client, {
+          nodeId,
+          locationId,
+          type: 'queue_alert',
+          detail: { queueDepth: body.relayQueueDepth },
+        });
       }
     });
   }
 
   /** §4.22 discovery ingest (D-13) — one upsert per reported device; `discovered_devices` never applies through the generic sync pipeline (no projector exists for it, and CONTRACTS' own `GET/.../discovered-devices` endpoints are plain queryable rows) — see the registry.ts schema-resolution note in the W3-10 report for why. */
   @SubscribeMessage('discovery:report')
-  async onDiscoveryReport(@ConnectedSocket() socket: Socket, @MessageBody() body: DiscoveryReportBody): Promise<void> {
+  async onDiscoveryReport(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: DiscoveryReportBody,
+  ): Promise<void> {
     const nodeId = (socket.data as { nodeId?: UUID }).nodeId;
     if (!nodeId) return;
 
@@ -186,17 +235,24 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /** `POST /api/nodes/:id/command`'s ack — recorded as a `device_events` row against the node for F12 visibility/history (W5-07 turns these into real remote actions; this skeleton — matching `apps/branch-node/src/relay.ts`'s own "no-op ack" stance — only needs to observe the acknowledgement). */
   @SubscribeMessage('command:ack')
-  async onCommandAck(@ConnectedSocket() socket: Socket, @MessageBody() body: CommandAckBody): Promise<void> {
+  async onCommandAck(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: CommandAckBody,
+  ): Promise<void> {
     const nodeId = (socket.data as { nodeId?: UUID }).nodeId;
     const locationId = (socket.data as { locationId?: UUID }).locationId;
     if (!nodeId || !locationId) return;
-    this.logger.debug(`command ${body.commandId} on node ${nodeId}: ${body.status}${body.detail ? ` (${body.detail})` : ''}`);
+    this.logger.debug(
+      `command ${body.commandId} on node ${nodeId}: ${body.status}${body.detail ? ` (${body.detail})` : ''}`,
+    );
   }
 
   /** `POST /api/nodes/:id/command {type:'log_pull'}`'s response stream — accepted and logged; a durable store for retrieved logs is W7-02/W5-07 territory (a log VIEWER surface is out of this ticket's scope), not silently dropped either way. */
   @SubscribeMessage('logs:chunk')
   onLogsChunk(@MessageBody() body: LogsChunkBody): void {
-    this.logger.debug(`log chunk ${body.seq}${body.done ? ' (final)' : ''} for command ${body.commandId}: ${body.lines.length} line(s)`);
+    this.logger.debug(
+      `log chunk ${body.seq}${body.done ? ' (final)' : ''} for command ${body.commandId}: ${body.lines.length} line(s)`,
+    );
   }
 
   // ── cloud -> node pushes (CONTRACTS §1.12 branch_nodes pull ops) ──────
@@ -205,14 +261,20 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.nodeSockets.has(nodeId);
   }
 
-  sendCommand(nodeId: UUID, command: { commandId: UUID; type: string; params?: Record<string, unknown> }): boolean {
+  sendCommand(
+    nodeId: UUID,
+    command: { commandId: UUID; type: string; params?: Record<string, unknown> },
+  ): boolean {
     const socketId = this.nodeSockets.get(nodeId);
     if (!socketId) return false;
     this.server.to(socketId).emit('command', command);
     return true;
   }
 
-  sendCertRotated(nodeId: UUID, lanCert: { dnsName: string; pem: string; keyPem: string; expiresAt: string }): boolean {
+  sendCertRotated(
+    nodeId: UUID,
+    lanCert: { dnsName: string; pem: string; keyPem: string; expiresAt: string },
+  ): boolean {
     const socketId = this.nodeSockets.get(nodeId);
     if (!socketId) return false;
     this.server.to(socketId).emit('cert_rotated', { lanCert });

@@ -78,15 +78,24 @@ describe('payment_verifications RLS — kepala_gudang fulfilment SELECT carve-ou
   });
 
   afterAll(async () => {
-    await ownerPool.query(`DELETE FROM payment_verifications WHERE id IN ($1, $2)`, [poLinkedPvId, pettyCashLinkedPvId]);
+    await ownerPool.query(`DELETE FROM payment_verifications WHERE id IN ($1, $2)`, [
+      poLinkedPvId,
+      pettyCashLinkedPvId,
+    ]);
     await ownerPool.query(`DELETE FROM purchase_orders WHERE id = $1`, [poId]);
     await ownerPool.end();
     await closePool();
   });
 
   it('kepala_gudang can now SELECT the payment_verifications row attached to a PO within its own location scope', async () => {
-    const status = await withRollbackAs({ role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] }, (client) =>
-      client.query<{ status: string }>(`SELECT status FROM payment_verifications WHERE id = $1`, [poLinkedPvId]).then((r) => r.rows[0]?.status ?? null),
+    const status = await withRollbackAs(
+      { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] },
+      (client) =>
+        client
+          .query<{ status: string }>(`SELECT status FROM payment_verifications WHERE id = $1`, [
+            poLinkedPvId,
+          ])
+          .then((r) => r.rows[0]?.status ?? null),
     );
     // Before migration 220 this was `null` (0 rows visible) — this is the documented reported bug,
     // reproduced live against a dropped copy of the policy before writing this test.
@@ -94,47 +103,65 @@ describe('payment_verifications RLS — kepala_gudang fulfilment SELECT carve-ou
   });
 
   it('reproduces the exact bug shape: the LEFT JOIN paymentStatus pattern from PurchaseOrderRepository no longer reads null under kepala_gudang', async () => {
-    const row = await withRollbackAs({ role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] }, (client) =>
-      client
-        .query<{ payment_status: string | null }>(
-          `SELECT pv.status AS payment_status FROM purchase_orders po LEFT JOIN payment_verifications pv ON pv.id = $2 WHERE po.id = $1`,
-          [poId, poLinkedPvId],
-        )
-        .then((r) => r.rows[0]?.payment_status ?? null),
+    const row = await withRollbackAs(
+      { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] },
+      (client) =>
+        client
+          .query<{ payment_status: string | null }>(
+            `SELECT pv.status AS payment_status FROM purchase_orders po LEFT JOIN payment_verifications pv ON pv.id = $2 WHERE po.id = $1`,
+            [poId, poLinkedPvId],
+          )
+          .then((r) => r.rows[0]?.payment_status ?? null),
     );
     expect(row).toBe('pending');
   });
 
   it('does NOT widen visibility to non-purchase_order payment_verifications rows at the same location (ref_type scoping)', async () => {
-    const status = await withRollbackAs({ role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] }, (client) =>
-      client.query<{ status: string }>(`SELECT status FROM payment_verifications WHERE id = $1`, [pettyCashLinkedPvId]).then((r) => r.rows[0]?.status ?? null),
+    const status = await withRollbackAs(
+      { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] },
+      (client) =>
+        client
+          .query<{ status: string }>(`SELECT status FROM payment_verifications WHERE id = $1`, [
+            pettyCashLinkedPvId,
+          ])
+          .then((r) => r.rows[0]?.status ?? null),
     );
     expect(status).toBeNull();
   });
 
   it('OVER-WIDENING GATE: kasir (never in scope for this table, before or after) still sees 0 payment_verifications rows total', async () => {
     const kasirUserId = fx.usersByRole[RoleKey.KASIR];
-    const count = await withRollbackAs({ role: 'kasir', userId: kasirUserId, locationIds: [] }, (client) =>
-      client.query<{ n: string }>(`SELECT count(*)::text AS n FROM payment_verifications`).then((r) => Number(r.rows[0]!.n)),
+    const count = await withRollbackAs(
+      { role: 'kasir', userId: kasirUserId, locationIds: [] },
+      (client) =>
+        client
+          .query<{ n: string }>(`SELECT count(*)::text AS n FROM payment_verifications`)
+          .then((r) => Number(r.rows[0]!.n)),
     );
     expect(count).toBe(0);
   });
 
   it('OVER-WIDENING GATE: kepala_gudang still CANNOT INSERT a payment_verifications row directly (write path untouched)', async () => {
     await expect(
-      withRollbackAs({ role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] }, (client) =>
-        client.query(
-          `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, status, submitted_by, location_id)
+      withRollbackAs(
+        { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] },
+        (client) =>
+          client.query(
+            `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, status, submitted_by, location_id)
            VALUES ('PV/DBPVRLS/HACK', 'purchase_order', $1, 'supplier', $2, 999, 'pending', $3, $4)`,
-          [poId, fx.supplierId, fx.kepalaGudangUserId, fx.warehouseId],
-        ),
+            [poId, fx.supplierId, fx.kepalaGudangUserId, fx.warehouseId],
+          ),
       ),
     ).rejects.toThrow(/row-level security policy/i);
   });
 
   it('OVER-WIDENING GATE: kepala_gudang still CANNOT UPDATE a payment_verifications row it can now see (rowCount 0, no actual change)', async () => {
-    const result = await withRollbackAs({ role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] }, (client) =>
-      client.query(`UPDATE payment_verifications SET status = 'verified' WHERE id = $1`, [poLinkedPvId]),
+    const result = await withRollbackAs(
+      { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] },
+      (client) =>
+        client.query(`UPDATE payment_verifications SET status = 'verified' WHERE id = $1`, [
+          poLinkedPvId,
+        ]),
     );
     // The new policy is `FOR SELECT` only, so it contributes nothing to UPDATE's own row-visibility
     // check — only 095's untouched `FOR ALL` policy governs UPDATE, which still excludes
@@ -143,20 +170,30 @@ describe('payment_verifications RLS — kepala_gudang fulfilment SELECT carve-ou
     // improvement when it's actually a different-shaped regression.
     expect(result.rowCount).toBe(0);
 
-    const stillPending = await ownerPool.query<{ status: string }>(`SELECT status FROM payment_verifications WHERE id = $1`, [poLinkedPvId]);
+    const stillPending = await ownerPool.query<{ status: string }>(
+      `SELECT status FROM payment_verifications WHERE id = $1`,
+      [poLinkedPvId],
+    );
     expect(stillPending.rows[0]!.status).toBe('pending');
   });
 
   it('OVER-WIDENING GATE: kepala_gudang still CANNOT DELETE a payment_verifications row it can now see (rowCount 0)', async () => {
-    const result = await withRollbackAs({ role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] }, (client) =>
-      client.query(`DELETE FROM payment_verifications WHERE id = $1`, [poLinkedPvId]),
+    const result = await withRollbackAs(
+      { role: 'kepala_gudang', userId: fx.kepalaGudangUserId, locationIds: [fx.warehouseId] },
+      (client) => client.query(`DELETE FROM payment_verifications WHERE id = $1`, [poLinkedPvId]),
     );
     expect(result.rowCount).toBe(0);
   });
 
   it('owner (already in scope pre-fix) still sees the row unchanged', async () => {
-    const status = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) =>
-      client.query<{ status: string }>(`SELECT status FROM payment_verifications WHERE id = $1`, [poLinkedPvId]).then((r) => r.rows[0]?.status ?? null),
+    const status = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) =>
+        client
+          .query<{ status: string }>(`SELECT status FROM payment_verifications WHERE id = $1`, [
+            poLinkedPvId,
+          ])
+          .then((r) => r.rows[0]?.status ?? null),
     );
     expect(status).toBe('pending');
   });

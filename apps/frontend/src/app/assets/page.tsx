@@ -23,13 +23,22 @@ export default function AssetsPage() {
       <Tabs defaultValue="register">
         <TabsList className="flex-wrap">
           <TabsTrigger value="register">
-            <span className="inline-flex items-center gap-1.5"><Boxes className="size-4" aria-hidden />{t('assets.tabs.register')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Boxes className="size-4" aria-hidden />
+              {t('assets.tabs.register')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="due">
-            <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-4" aria-hidden />{t('assets.tabs.due')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarClock className="size-4" aria-hidden />
+              {t('assets.tabs.due')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="jobs">
-            <span className="inline-flex items-center gap-1.5"><Wrench className="size-4" aria-hidden />{t('assets.tabs.jobs')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Wrench className="size-4" aria-hidden />
+              {t('assets.tabs.jobs')}
+            </span>
           </TabsTrigger>
         </TabsList>
 

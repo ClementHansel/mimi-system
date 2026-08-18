@@ -91,13 +91,19 @@ export class PosShiftService {
       params.push(deviceId);
       where += ` AND s.device_id = $${params.length}`;
     }
-    const res = await client.query<RawShiftRow>(`${SHIFT_SELECT} WHERE ${where} ORDER BY s.opened_at DESC LIMIT 1`, params);
+    const res = await client.query<RawShiftRow>(
+      `${SHIFT_SELECT} WHERE ${where} ORDER BY s.opened_at DESC LIMIT 1`,
+      params,
+    );
     if (!res.rows[0]) return null;
     return (await this.hydrateShifts([res.rows[0]]))[0]!;
   }
 
   async open(client: PoolClient, openedByUserId: UUID, input: OpenShiftInput): Promise<Shift> {
-    const existing = await client.query<{ id: UUID }>(`SELECT id FROM pos_shifts WHERE client_id = $1`, [input.clientId]);
+    const existing = await client.query<{ id: UUID }>(
+      `SELECT id FROM pos_shifts WHERE client_id = $1`,
+      [input.clientId],
+    );
     if (existing.rows[0]) return this.mustGetById(client, existing.rows[0].id);
 
     // Interactive-only: a laptop-style single-kasir workflow refuses a second concurrent shift for
@@ -110,7 +116,10 @@ export class PosShiftService {
       input.deviceId ? [input.locationId, input.deviceId] : [input.locationId],
     );
     if (openAlready.rows[0]) {
-      throw new ConflictException({ code: ERR_CONFLICT, message: 'A shift is already open for this location/device' });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: 'A shift is already open for this location/device',
+      });
     }
 
     return this.applyShiftOpened(client, { ...input, openedByUserId });
@@ -134,15 +143,28 @@ export class PosShiftService {
         `INSERT INTO pos_shifts (id, shift_number, location_id, device_id, opened_by, opened_at, opening_cash, client_id)
          VALUES ($1,$2,$3,$4,$5,COALESCE($6,NOW()),$7,$8)
          ON CONFLICT (id) DO NOTHING`,
-        [shiftId, shiftNumber, input.locationId, input.deviceId ?? null, input.openedByUserId, input.openedAt ?? null, input.openingCash, input.clientId],
+        [
+          shiftId,
+          shiftNumber,
+          input.locationId,
+          input.deviceId ?? null,
+          input.openedByUserId,
+          input.openedAt ?? null,
+          input.openingCash,
+          input.clientId,
+        ],
       );
     };
 
     if (input.shiftNumber) {
       await insertOne(input.shiftNumber);
     } else {
-      const location = await client.query<{ code: string }>(`SELECT code FROM locations WHERE id = $1`, [input.locationId]);
-      if (!location.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Location not found' });
+      const location = await client.query<{ code: string }>(
+        `SELECT code FROM locations WHERE id = $1`,
+        [input.locationId],
+      );
+      if (!location.rows[0])
+        throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Location not found' });
       const deviceCode = await this.resolveDeviceCode(client, input.deviceId);
       await allocateShiftNumber(client, location.rows[0].code, deviceCode, insertOne);
     }
@@ -157,16 +179,31 @@ export class PosShiftService {
    * state + report rather than throwing, so a projector replaying the same fact (or a REST retry)
    * is a safe no-op, not a spurious error.
    */
-  async close(client: PoolClient, shiftId: UUID, closedByUserId: UUID, input: CloseShiftInput): Promise<{ shift: Shift; report: ShiftReport }> {
-    const shiftRes = await client.query<{ id: UUID; location_id: UUID; status: ShiftStatus; opening_cash: Money }>(
-      `SELECT id, location_id, status, opening_cash FROM pos_shifts WHERE id = $1 FOR UPDATE`,
-      [shiftId],
-    );
+  async close(
+    client: PoolClient,
+    shiftId: UUID,
+    closedByUserId: UUID,
+    input: CloseShiftInput,
+  ): Promise<{ shift: Shift; report: ShiftReport }> {
+    const shiftRes = await client.query<{
+      id: UUID;
+      location_id: UUID;
+      status: ShiftStatus;
+      opening_cash: Money;
+    }>(`SELECT id, location_id, status, opening_cash FROM pos_shifts WHERE id = $1 FOR UPDATE`, [
+      shiftId,
+    ]);
     const shift = shiftRes.rows[0];
     if (!shift) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Shift not found' });
     if (shift.status !== 'open') {
-      const cvp = await client.query<{ id: UUID }>(`SELECT id FROM cash_variance_proposals WHERE shift_id = $1`, [shiftId]);
-      return { shift: await this.mustGetById(client, shiftId), report: await this.buildReport(client, shiftId, cvp.rows[0]?.id ?? null) };
+      const cvp = await client.query<{ id: UUID }>(
+        `SELECT id FROM cash_variance_proposals WHERE shift_id = $1`,
+        [shiftId],
+      );
+      return {
+        shift: await this.mustGetById(client, shiftId),
+        report: await this.buildReport(client, shiftId, cvp.rows[0]?.id ?? null),
+      };
     }
 
     // R7-equivalent recompute (SYNC-PROTOCOL §5.5 R7), read from the REAL domain tables this
@@ -193,7 +230,10 @@ export class PosShiftService {
       [shiftId],
     );
 
-    const expectedCash = subMoney(addMoney(shift.opening_cash, cashSalesRes.rows[0]!.total), cashRefundsRes.rows[0]!.total);
+    const expectedCash = subMoney(
+      addMoney(shift.opening_cash, cashSalesRes.rows[0]!.total),
+      cashRefundsRes.rows[0]!.total,
+    );
     const cashVariance = subMoney(input.closingCashCounted, expectedCash);
 
     await client.query(
@@ -201,7 +241,15 @@ export class PosShiftService {
           SET status = 'closed', closed_by = $2, closed_at = COALESCE($3, NOW()),
               closing_cash_counted = $4, expected_cash = $5, cash_variance = $6, notes = $7
         WHERE id = $1`,
-      [shiftId, closedByUserId, input.closedAt ?? null, input.closingCashCounted, expectedCash, cashVariance, input.notes ?? null],
+      [
+        shiftId,
+        closedByUserId,
+        input.closedAt ?? null,
+        input.closingCashCounted,
+        expectedCash,
+        cashVariance,
+        input.notes ?? null,
+      ],
     );
 
     let cashVarianceProposalId: UUID | null = null;
@@ -212,7 +260,13 @@ export class PosShiftService {
       const shortfall = subMoney(expectedCash, input.closingCashCounted);
       const threshold = DEFAULT_CASH_VARIANCE_PROPOSE_ABOVE; // settings['pos.cash_variance_propose_above'] — read via M20 once that surface exists; this is its documented default (0.00 = always propose).
       if (compareMoney(shortfall, threshold) > 0 || compareMoney(threshold, ZERO_MONEY) === 0) {
-        cashVarianceProposalId = await this.createCashVarianceProposal(client, shiftId, shift.location_id, closedByUserId, shortfall);
+        cashVarianceProposalId = await this.createCashVarianceProposal(
+          client,
+          shiftId,
+          shift.location_id,
+          closedByUserId,
+          shortfall,
+        );
       }
     }
 
@@ -222,7 +276,13 @@ export class PosShiftService {
 
   async list(
     client: PoolClient,
-    query: { locationId?: UUID; date?: string; status?: ShiftStatus; page: number; pageSize: number },
+    query: {
+      locationId?: UUID;
+      date?: string;
+      status?: ShiftStatus;
+      page: number;
+      pageSize: number;
+    },
   ): Promise<Paginated<Shift>> {
     const params: unknown[] = [];
     let where = '1=1';
@@ -239,7 +299,10 @@ export class PosShiftService {
       where += ` AND s.status = $${params.length}`;
     }
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM pos_shifts s WHERE ${where}`, params);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM pos_shifts s WHERE ${where}`,
+      params,
+    );
     const total = Number.parseInt(countRes.rows[0]?.count ?? '0', 10);
 
     const offset = (query.page - 1) * query.pageSize;
@@ -249,18 +312,30 @@ export class PosShiftService {
       params,
     );
 
-    return { rows: await this.hydrateShifts(res.rows), total, page: query.page, pageSize: query.pageSize };
+    return {
+      rows: await this.hydrateShifts(res.rows),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   }
 
   async getReport(client: PoolClient, shiftId: UUID): Promise<ShiftReport> {
     await this.mustGetById(client, shiftId);
-    const cvp = await client.query<{ id: UUID }>(`SELECT id FROM cash_variance_proposals WHERE shift_id = $1`, [shiftId]);
+    const cvp = await client.query<{ id: UUID }>(
+      `SELECT id FROM cash_variance_proposals WHERE shift_id = $1`,
+      [shiftId],
+    );
     return this.buildReport(client, shiftId, cvp.rows[0]?.id ?? null);
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
 
-  private async buildReport(client: PoolClient, shiftId: UUID, cashVarianceProposalId: UUID | null): Promise<ShiftReport> {
+  private async buildReport(
+    client: PoolClient,
+    shiftId: UUID,
+    cashVarianceProposalId: UUID | null,
+  ): Promise<ShiftReport> {
     const byMethodRes = await client.query<{ method: PaymentMethod; amount: Money; count: string }>(
       `SELECT sp.method, COALESCE(SUM(sp.amount), '0.00') AS amount, COUNT(*)::int AS count
          FROM sale_payments sp
@@ -286,15 +361,29 @@ export class PosShiftService {
     );
 
     return {
-      byMethod: byMethodRes.rows.map((r) => ({ method: r.method, amount: r.amount, count: Number(r.count) })),
+      byMethod: byMethodRes.rows.map((r) => ({
+        method: r.method,
+        amount: r.amount,
+        count: Number(r.count),
+      })),
       voids: Number(voidsRes.rows[0]?.count ?? 0),
       voidAmount: voidsRes.rows[0]?.amount ?? ZERO_MONEY,
-      onlineOrders: onlineRes.rows.map((r) => ({ platform: r.platform, count: Number(r.count), net: r.net })),
+      onlineOrders: onlineRes.rows.map((r) => ({
+        platform: r.platform,
+        count: Number(r.count),
+        net: r.net,
+      })),
       cashVarianceProposalId,
     };
   }
 
-  private async createCashVarianceProposal(client: PoolClient, shiftId: UUID, locationId: UUID, kasirUserId: UUID, amount: Money): Promise<UUID> {
+  private async createCashVarianceProposal(
+    client: PoolClient,
+    shiftId: UUID,
+    locationId: UUID,
+    kasirUserId: UUID,
+    amount: Money,
+  ): Promise<UUID> {
     const inserted = await client.query<{ id: UUID }>(
       `INSERT INTO cash_variance_proposals (shift_id, location_id, kasir_user_id, amount, status)
        VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
@@ -309,7 +398,10 @@ export class PosShiftService {
       amount,
       locationId,
     });
-    await client.query(`UPDATE cash_variance_proposals SET approval_id = $2 WHERE id = $1`, [proposalId, submission.approvalId]);
+    await client.query(`UPDATE cash_variance_proposals SET approval_id = $2 WHERE id = $1`, [
+      proposalId,
+      submission.approvalId,
+    ]);
 
     // `users`/`user_locations` RLS (migration 009) is `app_is_central() OR app_is_self(...)` — the
     // closing Kasir's own RLS context cannot see a supervisor's row on `client`. See
@@ -339,7 +431,9 @@ export class PosShiftService {
           locationId,
         });
       } catch (err) {
-        this.logger.error(`Failed to notify supervisors of cash-variance proposal ${proposalId}: ${err instanceof Error ? err.message : String(err)}`);
+        this.logger.error(
+          `Failed to notify supervisors of cash-variance proposal ${proposalId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -348,22 +442,33 @@ export class PosShiftService {
 
   private async resolveDeviceCode(client: PoolClient, deviceId: UUID | undefined): Promise<string> {
     if (!deviceId) return 'WEB';
-    const res = await client.query<{ name: string }>(`SELECT name FROM devices WHERE id = $1`, [deviceId]);
+    const res = await client.query<{ name: string }>(`SELECT name FROM devices WHERE id = $1`, [
+      deviceId,
+    ]);
     const name = res.rows[0]?.name;
     if (!name) return 'WEB';
-    const sanitized = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+    const sanitized = name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 10);
     return sanitized || 'WEB';
   }
 
   private async mustGetById(client: PoolClient, id: UUID): Promise<Shift> {
     const res = await client.query<RawShiftRow>(`${SHIFT_SELECT} WHERE s.id = $1`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Shift not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Shift not found' });
     return (await this.hydrateShifts([res.rows[0]]))[0]!;
   }
 
   /** Batch-resolves `opened_by_name` via the central-context helper (`resolveUserNames`) — see `SHIFT_SELECT`'s comment for why this can't be a plain `JOIN users` under the caller's own RLS. */
   private async hydrateShifts(rows: readonly RawShiftRow[]): Promise<Shift[]> {
-    const names = await resolveUserNames(this.pool, rows.map((r) => r.opened_by));
-    return rows.map((r) => mapShift({ ...r, opened_by_name: names.get(r.opened_by) ?? r.opened_by }));
+    const names = await resolveUserNames(
+      this.pool,
+      rows.map((r) => r.opened_by),
+    );
+    return rows.map((r) =>
+      mapShift({ ...r, opened_by_name: names.get(r.opened_by) ?? r.opened_by }),
+    );
   }
 }

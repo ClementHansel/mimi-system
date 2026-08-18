@@ -20,8 +20,17 @@
 import { api } from '@/lib/api';
 import type { Paginated } from '@/lib/shared-types';
 import type {
-  Balance, StorageArea, Item, Opname, OpnameDetail, Replenishment, SuratJalan,
-  PettyCash, SupplierDirectoryEntry, WasteRecord, ReturnDoc,
+  Balance,
+  StorageArea,
+  Item,
+  Opname,
+  OpnameDetail,
+  Replenishment,
+  SuratJalan,
+  PettyCash,
+  SupplierDirectoryEntry,
+  WasteRecord,
+  ReturnDoc,
 } from './types';
 
 // ── inventory (§4.7) ─────────────────────────────────────────────────────────
@@ -129,7 +138,14 @@ export function createPettyCash(body: {
   locationId: string;
   purchaseDate: string;
   storeName: string;
-  lines: { description: string; itemId?: string; storageAreaId?: string; qty?: string; amount: string; expenseCategory: string }[];
+  lines: {
+    description: string;
+    itemId?: string;
+    storageAreaId?: string;
+    qty?: string;
+    amount: string;
+    expenseCategory: string;
+  }[];
   paymentProofAttachmentId: string;
   goodsPhotoAttachmentId: string;
 }) {
@@ -152,7 +168,13 @@ export function listWaste(locationId: string, status?: string) {
 
 export function createWaste(body: {
   locationId: string;
-  items: { storageAreaId: string; itemId: string; qty: string; reason: string; reasonDetail?: string }[];
+  items: {
+    storageAreaId: string;
+    itemId: string;
+    qty: string;
+    reason: string;
+    reasonDetail?: string;
+  }[];
   photoAttachmentIds: string[];
 }) {
   return api.post('/waste', body);
@@ -168,7 +190,13 @@ export function createReturn(body: {
   direction: string;
   fromLocationId: string;
   toLocationId?: string;
-  lines: { itemId: string; storageAreaId: string; qty: string; condition: string; reason: string }[];
+  lines: {
+    itemId: string;
+    storageAreaId: string;
+    qty: string;
+    condition: string;
+    reason: string;
+  }[];
   photoAttachmentIds: string[];
 }) {
   return api.post<ReturnDoc>('/returns', body);

@@ -64,7 +64,13 @@ export interface FiscalPeriod {
 }
 
 export function toFiscalPeriod(row: FiscalPeriodRow): FiscalPeriod {
-  return { id: row.id, periodCode: row.period_code, startDate: formatDateOnly(row.start_date), endDate: formatDateOnly(row.end_date), status: row.status };
+  return {
+    id: row.id,
+    periodCode: row.period_code,
+    startDate: formatDateOnly(row.start_date),
+    endDate: formatDateOnly(row.end_date),
+    status: row.status,
+  };
 }
 
 export interface JournalEntryRow {
@@ -151,9 +157,12 @@ export const PV_KIND_MARKER = {
   EMPLOYEE_LOAN_DISBURSEMENT: '#kind:employee_loan_disbursement',
 } as const;
 
-export function extractPvKind(notes: string | null): 'petty_cash_topup' | 'employee_loan_disbursement' | null {
+export function extractPvKind(
+  notes: string | null,
+): 'petty_cash_topup' | 'employee_loan_disbursement' | null {
   if (!notes) return null;
   if (notes.includes(PV_KIND_MARKER.PETTY_CASH_TOPUP)) return 'petty_cash_topup';
-  if (notes.includes(PV_KIND_MARKER.EMPLOYEE_LOAN_DISBURSEMENT)) return 'employee_loan_disbursement';
+  if (notes.includes(PV_KIND_MARKER.EMPLOYEE_LOAN_DISBURSEMENT))
+    return 'employee_loan_disbursement';
   return null;
 }

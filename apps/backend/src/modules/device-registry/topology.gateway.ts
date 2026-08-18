@@ -45,7 +45,8 @@ export class TopologyGateway implements OnGatewayConnection {
   constructor(private readonly tokens: TokenService) {}
 
   handleConnection(client: Socket): void {
-    const token = (client.handshake.auth?.token as string | undefined) ?? this.extractBearer(client);
+    const token =
+      (client.handshake.auth?.token as string | undefined) ?? this.extractBearer(client);
     if (!token) {
       client.disconnect(true);
       return;
@@ -72,7 +73,9 @@ export class TopologyGateway implements OnGatewayConnection {
     try {
       this.server?.to(ROOM).emit('topology:update', payload);
     } catch (err) {
-      this.logger.warn(`Failed to broadcast topology:update: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(
+        `Failed to broadcast topology:update: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
@@ -85,7 +88,9 @@ export class TopologyGateway implements OnGatewayConnection {
     try {
       this.server?.to(ROOM).emit('topology:sync', payload);
     } catch (err) {
-      this.logger.warn(`Failed to broadcast topology:sync: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(
+        `Failed to broadcast topology:sync: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 }

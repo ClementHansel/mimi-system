@@ -1,6 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { ERR_NOT_FOUND, SyncEntity, compareMoney, type Money, type Paginated, type UUID } from '@mimi/shared';
+import {
+  ERR_NOT_FOUND,
+  SyncEntity,
+  compareMoney,
+  type Money,
+  type Paginated,
+  type UUID,
+} from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { EventBus } from '../../kernel/events/event-bus.service';
 import { StorageService } from '../../kernel/storage/storage.service';
@@ -78,7 +85,12 @@ export class ProductService {
     }
   }
 
-  private async map(client: PoolClient, row: ProductRow, user: JwtAccessPayload, locationScope: string[] | null): Promise<Product> {
+  private async map(
+    client: PoolClient,
+    row: ProductRow,
+    user: JwtAccessPayload,
+    locationScope: string[] | null,
+  ): Promise<Product> {
     return {
       id: row.id,
       code: row.code,
@@ -117,7 +129,10 @@ export class ProductService {
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const countRes = await client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM products p ${whereSql}`, params);
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM products p ${whereSql}`,
+      params,
+    );
     const total = parseInt(countRes.rows[0]!.count, 10);
 
     params.push(pageSize, (page - 1) * pageSize);
@@ -126,7 +141,9 @@ export class ProductService {
       params,
     );
 
-    const rows = await Promise.all(rowsRes.rows.map((r) => this.map(client, r, user, locationScope)));
+    const rows = await Promise.all(
+      rowsRes.rows.map((r) => this.map(client, r, user, locationScope)),
+    );
     return { rows, total, page, pageSize };
   }
 
@@ -139,11 +156,17 @@ export class ProductService {
 
   private async getRawById(client: PoolClient, id: string): Promise<ProductRow> {
     const res = await client.query<ProductRow>(`${this.baseSelect} WHERE p.id = $1`, [id]);
-    if (!res.rows[0]) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Product not found' });
+    if (!res.rows[0])
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Product not found' });
     return res.rows[0];
   }
 
-  async getById(client: PoolClient, id: string, user: JwtAccessPayload, locationScope: string[] | null): Promise<Product> {
+  async getById(
+    client: PoolClient,
+    id: string,
+    user: JwtAccessPayload,
+    locationScope: string[] | null,
+  ): Promise<Product> {
     return this.map(client, await this.getRawById(client, id), user, locationScope);
   }
 
@@ -159,7 +182,14 @@ export class ProductService {
         `INSERT INTO products (code, name, category, price, photo_attachment_id, sort_order)
          VALUES ($1,$2,$3,$4,$5, COALESCE($6,0))
          RETURNING id`,
-        [dto.code, dto.name, dto.category, dto.price, dto.photoAttachmentId ?? null, dto.sortOrder ?? null],
+        [
+          dto.code,
+          dto.name,
+          dto.category,
+          dto.price,
+          dto.photoAttachmentId ?? null,
+          dto.sortOrder ?? null,
+        ],
       );
       const id = res.rows[0]!.id;
       const product = await this.getById(client, id, user, locationScope);
@@ -201,7 +231,10 @@ export class ProductService {
 
       if (sets.length > 0) {
         params.push(id);
-        await client.query(`UPDATE products SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+        await client.query(
+          `UPDATE products SET ${sets.join(', ')} WHERE id = $${params.length}`,
+          params,
+        );
       }
 
       const product = await this.getById(client, id, user, locationScope);
@@ -228,10 +261,15 @@ export class ProductService {
     });
   }
 
-  async deactivate(client: PoolClient, id: string, actorUserId: string): Promise<{ id: string; deactivated: true }> {
+  async deactivate(
+    client: PoolClient,
+    id: string,
+    actorUserId: string,
+  ): Promise<{ id: string; deactivated: true }> {
     return withWrite(client, async () => {
       const res = await client.query(`UPDATE products SET is_active = false WHERE id = $1`, [id]);
-      if (res.rowCount === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Product not found' });
+      if (res.rowCount === 0)
+        throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Product not found' });
       await this.sync.emit(client, {
         entity: SyncEntity.PRODUCTS,
         op: 'deactivated',

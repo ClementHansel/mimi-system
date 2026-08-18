@@ -53,14 +53,28 @@ export class GoodsReceiptService {
     private readonly syncEmit: SyncEmitService,
   ) {}
 
-  async create(client: PoolClient, dto: CreateGoodsReceiptDto, actorUserId: UUID): Promise<GoodsReceiptDto> {
+  async create(
+    client: PoolClient,
+    dto: CreateGoodsReceiptDto,
+    actorUserId: UUID,
+  ): Promise<GoodsReceiptDto> {
     return withWrite(client, async () => {
       if (dto.photoAttachmentIds.length === 0) {
-        throw new BadRequestException({ code: ERR_PHOTO_REQUIRED, message: 'At least one photo is wajib for a goods receipt' });
+        throw new BadRequestException({
+          code: ERR_PHOTO_REQUIRED,
+          message: 'At least one photo is wajib for a goods receipt',
+        });
       }
 
-      const locRes = await client.query<{ id: string }>(`SELECT id FROM locations WHERE id = $1 AND is_active = true`, [dto.locationId]);
-      if (!locRes.rows[0]) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Location ${dto.locationId} not found or inactive` });
+      const locRes = await client.query<{ id: string }>(
+        `SELECT id FROM locations WHERE id = $1 AND is_active = true`,
+        [dto.locationId],
+      );
+      if (!locRes.rows[0])
+        throw new NotFoundException({
+          code: 'ERR_NOT_FOUND',
+          message: `Location ${dto.locationId} not found or inactive`,
+        });
 
       const period = businessDateOf(new Date().toISOString()).slice(0, 7).replace('-', '');
       const numRes = await client.query<{ last_number: number }>(
@@ -75,7 +89,14 @@ export class GoodsReceiptService {
         `INSERT INTO goods_receipts (receipt_number, receipt_type, location_id, ref_id, received_by, notes)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id, received_at`,
-        [receiptNumber, dto.receiptType, dto.locationId, dto.refId ?? null, actorUserId, dto.notes ?? null],
+        [
+          receiptNumber,
+          dto.receiptType,
+          dto.locationId,
+          dto.refId ?? null,
+          actorUserId,
+          dto.notes ?? null,
+        ],
       );
       const receiptId = receiptRes.rows[0]!.id;
 
@@ -83,29 +104,54 @@ export class GoodsReceiptService {
       const linesOut: GoodsReceiptDto['lines'] = [];
       for (const line of dto.lines) {
         if (isNegativeQty(line.qtyReceived) || isNegativeQty(line.qtyExpected)) {
-          throw new BadRequestException({ code: ERR_VALIDATION, message: `Quantities must be >= 0 (item ${line.itemId})` });
+          throw new BadRequestException({
+            code: ERR_VALIDATION,
+            message: `Quantities must be >= 0 (item ${line.itemId})`,
+          });
         }
         const discrepancy = compareQty(line.qtyReceived, line.qtyExpected) !== 0;
         if (discrepancy && !line.discrepancyReason?.trim()) {
-          throw new BadRequestException({ code: ERR_VARIANCE_REASON_REQUIRED, message: `discrepancyReason is required for item ${line.itemId} (dikirim vs diterima differ)` });
+          throw new BadRequestException({
+            code: ERR_VARIANCE_REASON_REQUIRED,
+            message: `discrepancyReason is required for item ${line.itemId} (dikirim vs diterima differ)`,
+          });
         }
 
-        const itemRes = await client.query<{ name: string; storage_type: 'frozen' | 'chilled' | 'dry'; avg_cost: string }>(
-          `SELECT name, storage_type, avg_cost FROM items WHERE id = $1`,
-          [line.itemId],
-        );
+        const itemRes = await client.query<{
+          name: string;
+          storage_type: 'frozen' | 'chilled' | 'dry';
+          avg_cost: string;
+        }>(`SELECT name, storage_type, avg_cost FROM items WHERE id = $1`, [line.itemId]);
         const item = itemRes.rows[0];
-        if (!item) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Item ${line.itemId} not found` });
+        if (!item)
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Item ${line.itemId} not found`,
+          });
 
-        const areaRes = await client.query<{ type: string; name: string }>(`SELECT type, name FROM storage_areas WHERE id = $1 AND is_active = true`, [line.storageAreaId]);
+        const areaRes = await client.query<{ type: string; name: string }>(
+          `SELECT type, name FROM storage_areas WHERE id = $1 AND is_active = true`,
+          [line.storageAreaId],
+        );
         const area = areaRes.rows[0];
-        if (!area) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Storage area ${line.storageAreaId} not found or inactive` });
+        if (!area)
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Storage area ${line.storageAreaId} not found or inactive`,
+          });
         assertAreaMatchesStorageType(item.storage_type, area.type, item.name, area.name);
 
         await client.query(
           `INSERT INTO goods_receipt_lines (receipt_id, item_id, storage_area_id, qty_expected, qty_received, discrepancy_reason)
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [receiptId, line.itemId, line.storageAreaId, line.qtyExpected, line.qtyReceived, line.discrepancyReason ?? null],
+          [
+            receiptId,
+            line.itemId,
+            line.storageAreaId,
+            line.qtyExpected,
+            line.qtyReceived,
+            line.discrepancyReason ?? null,
+          ],
         );
 
         if (!isNegativeQty(line.qtyReceived) && Number(line.qtyReceived) > 0) {
@@ -137,7 +183,10 @@ export class GoodsReceiptService {
       }
 
       for (const attachmentId of dto.photoAttachmentIds) {
-        await client.query(`UPDATE attachments SET entity_type = 'goods_receipt', entity_id = $2 WHERE id = $1 AND entity_id IS NULL`, [attachmentId, receiptId]);
+        await client.query(
+          `UPDATE attachments SET entity_type = 'goods_receipt', entity_id = $2 WHERE id = $1 AND entity_id IS NULL`,
+          [attachmentId, receiptId],
+        );
       }
 
       await this.syncEmit.emit(client, {
@@ -149,7 +198,12 @@ export class GoodsReceiptService {
         data: {
           id: receiptId,
           locationId: dto.locationId,
-          lines: dto.lines.map((l) => ({ itemId: l.itemId, qty: l.qtyReceived, storageAreaId: l.storageAreaId, unitCost: '0.00' })),
+          lines: dto.lines.map((l) => ({
+            itemId: l.itemId,
+            qty: l.qtyReceived,
+            storageAreaId: l.storageAreaId,
+            unitCost: '0.00',
+          })),
           photoAttachmentIds: dto.photoAttachmentIds,
           notes: dto.notes,
         },

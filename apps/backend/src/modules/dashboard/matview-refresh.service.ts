@@ -1,11 +1,22 @@
-import { Inject, Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnApplicationShutdown,
+} from '@nestjs/common';
 import type { Pool } from 'pg';
 import { DATABASE_POOL } from '../../common/database/database-pool.provider';
 import { DashboardGateway } from './dashboard.gateway';
 
 export const REFRESH_INTERVAL_MS = 5 * 60_000; // "every 5 min" per migration 100's own header comment.
 
-const MATVIEWS = ['mv_sales_daily', 'mv_item_usage_daily', 'mv_employee_kpi_daily', 'mv_delivery_recap_daily'] as const;
+const MATVIEWS = [
+  'mv_sales_daily',
+  'mv_item_usage_daily',
+  'mv_employee_kpi_daily',
+  'mv_delivery_recap_daily',
+] as const;
 
 /**
  * The scheduler `database/migrations/100_reporting_matviews.sql`'s header
@@ -64,9 +75,13 @@ export class MatviewRefreshService implements OnApplicationBootstrap, OnApplicat
   ) {}
 
   onApplicationBootstrap(): void {
-    void this.refreshAll().catch((err) => this.logger.error(`initial matview refresh failed: ${(err as Error).message}`));
+    void this.refreshAll().catch((err) =>
+      this.logger.error(`initial matview refresh failed: ${(err as Error).message}`),
+    );
     this.timer = setInterval(() => {
-      void this.refreshAll().catch((err) => this.logger.error(`matview refresh tick failed: ${(err as Error).message}`));
+      void this.refreshAll().catch((err) =>
+        this.logger.error(`matview refresh tick failed: ${(err as Error).message}`),
+      );
     }, REFRESH_INTERVAL_MS);
   }
 

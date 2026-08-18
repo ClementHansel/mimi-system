@@ -23,7 +23,15 @@ export interface RadioGroupProps {
 }
 
 export function RadioGroup({
-  label, error, options, value, onValueChange, name, orientation = 'vertical', disabled, className,
+  label,
+  error,
+  options,
+  value,
+  onValueChange,
+  name,
+  orientation = 'vertical',
+  disabled,
+  className,
 }: RadioGroupProps) {
   const autoName = useId();
   const groupName = name ?? autoName;
@@ -31,7 +39,9 @@ export function RadioGroup({
   return (
     <div className={cn('flex flex-col gap-2', className)} role="radiogroup" aria-label={label}>
       {label && <span className="text-sm font-medium text-text-primary">{label}</span>}
-      <div className={cn('flex gap-3', orientation === 'vertical' ? 'flex-col' : 'flex-row flex-wrap')}>
+      <div
+        className={cn('flex gap-3', orientation === 'vertical' ? 'flex-col' : 'flex-row flex-wrap')}
+      >
         {options.map((opt) => {
           const optId = `${groupName}-${opt.value}`;
           const isDisabled = disabled || opt.disabled;
@@ -39,7 +49,10 @@ export function RadioGroup({
             <label
               key={opt.value}
               htmlFor={optId}
-              className={cn('flex cursor-pointer items-start gap-2.5', isDisabled && 'cursor-not-allowed opacity-60')}
+              className={cn(
+                'flex cursor-pointer items-start gap-2.5',
+                isDisabled && 'cursor-not-allowed opacity-60',
+              )}
             >
               <span className="relative mt-0.5 flex-none">
                 <input
@@ -65,7 +78,9 @@ export function RadioGroup({
               </span>
               <span className="flex flex-col">
                 <span className="text-sm font-medium text-text-primary">{opt.label}</span>
-                {opt.description && <span className="text-sm text-text-muted">{opt.description}</span>}
+                {opt.description && (
+                  <span className="text-sm text-text-muted">{opt.description}</span>
+                )}
               </span>
             </label>
           );

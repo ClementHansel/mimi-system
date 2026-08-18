@@ -52,17 +52,29 @@ export function TopologyTreePanel() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="success" size="sm">{t('topology.totals.devicesOnline', { count: tree.totals.online })}</Badge>
-          <Badge variant="warning" size="sm">{t('topology.totals.devicesStale', { count: tree.totals.stale })}</Badge>
-          <Badge variant="neutral" size="sm">{t('topology.totals.devicesOffline', { count: tree.totals.offline })}</Badge>
+          <Badge variant="success" size="sm">
+            {t('topology.totals.devicesOnline', { count: tree.totals.online })}
+          </Badge>
+          <Badge variant="warning" size="sm">
+            {t('topology.totals.devicesStale', { count: tree.totals.stale })}
+          </Badge>
+          <Badge variant="neutral" size="sm">
+            {t('topology.totals.devicesOffline', { count: tree.totals.offline })}
+          </Badge>
           {tree.totals.outletsOffline > 0 && (
-            <Badge variant="danger" size="sm">{t('topology.totals.outletsOffline', { count: tree.totals.outletsOffline })}</Badge>
+            <Badge variant="danger" size="sm">
+              {t('topology.totals.outletsOffline', { count: tree.totals.outletsOffline })}
+            </Badge>
           )}
           {tree.totals.openConflicts > 0 && (
-            <Badge variant="danger" size="sm">{t('topology.totals.openConflicts', { count: tree.totals.openConflicts })}</Badge>
+            <Badge variant="danger" size="sm">
+              {t('topology.totals.openConflicts', { count: tree.totals.openConflicts })}
+            </Badge>
           )}
           {tree.totals.openExceptions > 0 && (
-            <Badge variant="warning" size="sm">{t('topology.totals.openExceptions', { count: tree.totals.openExceptions })}</Badge>
+            <Badge variant="warning" size="sm">
+              {t('topology.totals.openExceptions', { count: tree.totals.openExceptions })}
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-3 text-xs text-text-muted">
@@ -90,7 +102,9 @@ export function TopologyTreePanel() {
         <section key={cityGroup.city} className="flex flex-col gap-3">
           <h2 className="flex flex-wrap items-center gap-2 font-display text-lg font-semibold text-text-primary">
             {cityGroup.city}
-            <Badge variant="neutral" size="sm">{t('topology.city.outletCount', { count: cityGroup.outlets.length })}</Badge>
+            <Badge variant="neutral" size="sm">
+              {t('topology.city.outletCount', { count: cityGroup.outlets.length })}
+            </Badge>
           </h2>
           <div className="flex flex-col gap-3">
             {sortOutletsBySeverity(cityGroup.outlets).map((loc) => (

@@ -21,12 +21,19 @@ export function SlipGajiPanel() {
 
   useEffect(() => {
     setLoading(true);
-    getMySlips(year).then(setSlips).finally(() => setLoading(false));
+    getMySlips(year)
+      .then(setSlips)
+      .finally(() => setLoading(false));
   }, [year]);
 
   return (
     <div className="flex flex-col gap-4">
-      <Select value={year} onValueChange={setYear} options={YEARS.map((y) => ({ value: y, label: y }))} wrapperClassName="w-32" />
+      <Select
+        value={year}
+        onValueChange={setYear}
+        options={YEARS.map((y) => ({ value: y, label: y }))}
+        wrapperClassName="w-32"
+      />
 
       {loading ? (
         <div className="h-24 animate-pulse rounded-md bg-surface-sunken" />
@@ -44,26 +51,57 @@ export function SlipGajiPanel() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-text-primary">{slip.periodCode}</span>
-                    <span className="text-lg font-semibold tabular-nums text-success-700">{formatMoney(slip.net)}</span>
+                    <span className="text-lg font-semibold tabular-nums text-success-700">
+                      {formatMoney(slip.net)}
+                    </span>
                   </div>
-                  <p className="text-sm text-text-muted">{t('me.slip.grossDeductions', { gross: formatMoney(slip.gross), deductions: formatMoney(slip.deductions) })}</p>
+                  <p className="text-sm text-text-muted">
+                    {t('me.slip.grossDeductions', {
+                      gross: formatMoney(slip.gross),
+                      deductions: formatMoney(slip.deductions),
+                    })}
+                  </p>
 
                   {isOpen && (
                     <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
                       {slip.lines.map((line, i) => (
                         <div key={i} className="flex items-center justify-between text-sm">
-                          <span className={line.type === 'employer_cost' ? 'text-text-muted' : 'text-text-secondary'}>
+                          <span
+                            className={
+                              line.type === 'employer_cost'
+                                ? 'text-text-muted'
+                                : 'text-text-secondary'
+                            }
+                          >
                             {line.componentName}
-                            {line.isStatutory && <span className="ml-1 text-xs text-info-600">({t('me.slip.statutory')})</span>}
+                            {line.isStatutory && (
+                              <span className="ml-1 text-xs text-info-600">
+                                ({t('me.slip.statutory')})
+                              </span>
+                            )}
                           </span>
-                          <span className={`tabular-nums ${line.type === 'deduction' ? 'text-danger-600' : 'text-text-primary'}`}>
-                            {line.type === 'deduction' ? '-' : ''}{formatMoney(line.amount)}
+                          <span
+                            className={`tabular-nums ${line.type === 'deduction' ? 'text-danger-600' : 'text-text-primary'}`}
+                          >
+                            {line.type === 'deduction' ? '-' : ''}
+                            {formatMoney(line.amount)}
                           </span>
                         </div>
                       ))}
                       {slip.slipPdfUrl && (
-                        <a href={slip.slipPdfUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-                          <Button variant="outline" size="sm" leftIcon={<Download className="size-4" />} fullWidth className="mt-2">
+                        <a
+                          href={slip.slipPdfUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            leftIcon={<Download className="size-4" />}
+                            fullWidth
+                            className="mt-2"
+                          >
                             {t('me.slip.downloadPdf')}
                           </Button>
                         </a>

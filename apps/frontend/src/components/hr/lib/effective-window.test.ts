@@ -40,8 +40,16 @@ describe('windowState', () => {
 
 describe('sortByEffectiveFromDesc', () => {
   it('orders newest-first regardless of input order', () => {
-    const rows = [row('2024-01-01', '2024-12-31'), row('2026-01-01', null), row('2025-01-01', '2025-12-31')];
-    expect(sortByEffectiveFromDesc(rows).map((r) => r.effectiveFrom)).toEqual(['2026-01-01', '2025-01-01', '2024-01-01']);
+    const rows = [
+      row('2024-01-01', '2024-12-31'),
+      row('2026-01-01', null),
+      row('2025-01-01', '2025-12-31'),
+    ];
+    expect(sortByEffectiveFromDesc(rows).map((r) => r.effectiveFrom)).toEqual([
+      '2026-01-01',
+      '2025-01-01',
+      '2024-01-01',
+    ]);
   });
 });
 

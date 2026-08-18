@@ -6,7 +6,11 @@ import { RequestWithDbContext } from '../guards/rls-context.guard';
 
 function makeContext(request: RequestWithDbContext): ExecutionContext {
   return {
-    switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}), getNext: () => ({}) }),
+    switchToHttp: () => ({
+      getRequest: () => request,
+      getResponse: () => ({}),
+      getNext: () => ({}),
+    }),
     getHandler: () => ({}),
     getClass: () => ({}),
   } as unknown as ExecutionContext;
@@ -34,7 +38,9 @@ describe('RlsCleanupInterceptor', () => {
     const boom = new Error('boom');
     const next: CallHandler = { handle: () => throwError(() => boom) };
 
-    await expect(lastValueFrom(interceptor.intercept(makeContext(request), next))).rejects.toThrow('boom');
+    await expect(lastValueFrom(interceptor.intercept(makeContext(request), next))).rejects.toThrow(
+      'boom',
+    );
     expect(client.query).toHaveBeenCalledWith('ROLLBACK');
     expect(client.release).toHaveBeenCalled();
   });
@@ -76,7 +82,10 @@ describe('RlsCleanupInterceptor', () => {
     it('throws (outside production) when a mutating success response never committed a real write', async () => {
       process.env.NODE_ENV = 'test';
       const client = {
-        query: vi.fn().mockResolvedValueOnce({ rows: [{ xid: '12345' }] }).mockResolvedValue(undefined),
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ xid: '12345' }] })
+          .mockResolvedValue(undefined),
         release: vi.fn(),
       };
       const request: RequestWithDbContext & { method: string; originalUrl: string } = {
@@ -87,9 +96,13 @@ describe('RlsCleanupInterceptor', () => {
       const interceptor = new RlsCleanupInterceptor();
       const next: CallHandler = { handle: () => of({ id: 'opn-1' }) };
 
-      await expect(lastValueFrom(interceptor.intercept(makeContext(request), next))).rejects.toThrow(/never committed/);
+      await expect(
+        lastValueFrom(interceptor.intercept(makeContext(request), next)),
+      ).rejects.toThrow(/never committed/);
       // Still cleans up: the diagnostic query, then ROLLBACK, then release — never left hanging.
-      expect(client.query).toHaveBeenCalledWith(expect.stringContaining('pg_current_xact_id_if_assigned'));
+      expect(client.query).toHaveBeenCalledWith(
+        expect.stringContaining('pg_current_xact_id_if_assigned'),
+      );
       expect(client.query).toHaveBeenCalledWith('ROLLBACK');
       expect(client.release).toHaveBeenCalled();
     });
@@ -97,7 +110,10 @@ describe('RlsCleanupInterceptor', () => {
     it('only warns, never throws, in production', async () => {
       process.env.NODE_ENV = 'production';
       const client = {
-        query: vi.fn().mockResolvedValueOnce({ rows: [{ xid: '999' }] }).mockResolvedValue(undefined),
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ xid: '999' }] })
+          .mockResolvedValue(undefined),
         release: vi.fn(),
       };
       const request: RequestWithDbContext & { method: string; originalUrl: string } = {
@@ -133,7 +149,10 @@ describe('RlsCleanupInterceptor', () => {
     it('does not warn or throw for a mutating success response whose client never wrote anything (xid null)', async () => {
       process.env.NODE_ENV = 'test';
       const client = {
-        query: vi.fn().mockResolvedValueOnce({ rows: [{ xid: null }] }).mockResolvedValue(undefined),
+        query: vi
+          .fn()
+          .mockResolvedValueOnce({ rows: [{ xid: null }] })
+          .mockResolvedValue(undefined),
         release: vi.fn(),
       };
       const request: RequestWithDbContext & { method: string; originalUrl: string } = {
@@ -160,7 +179,9 @@ describe('RlsCleanupInterceptor', () => {
       const boom = new Error('validation failed');
       const next: CallHandler = { handle: () => throwError(() => boom) };
 
-      await expect(lastValueFrom(interceptor.intercept(makeContext(request), next))).rejects.toThrow('validation failed');
+      await expect(
+        lastValueFrom(interceptor.intercept(makeContext(request), next)),
+      ).rejects.toThrow('validation failed');
       // Only ROLLBACK — the diagnostic query is success-path only (an error means nothing should have committed anyway).
       expect(client.query).toHaveBeenCalledTimes(1);
       expect(client.query).toHaveBeenCalledWith('ROLLBACK');

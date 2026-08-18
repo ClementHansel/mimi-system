@@ -34,8 +34,18 @@ const SIZE_CLASSES: Record<NonNullable<QtyInputProps['size']>, string> = {
 };
 
 export function QtyInput({
-  label, error, hint, value, onChange, unitCode, placeholder = '0',
-  required, disabled, size = 'md', id, wrapperClassName,
+  label,
+  error,
+  hint,
+  value,
+  onChange,
+  unitCode,
+  placeholder = '0',
+  required,
+  disabled,
+  size = 'md',
+  id,
+  wrapperClassName,
 }: QtyInputProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
@@ -82,7 +92,9 @@ export function QtyInput({
           )}
         />
         {unitCode && (
-          <span className="pointer-events-none absolute right-3 text-sm text-text-muted">{unitCode}</span>
+          <span className="pointer-events-none absolute right-3 text-sm text-text-muted">
+            {unitCode}
+          </span>
         )}
       </div>
       {error ? (

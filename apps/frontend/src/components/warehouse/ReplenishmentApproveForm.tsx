@@ -3,7 +3,15 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, PenSquare } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Button, Card, CardContent, QtyInput, Textarea, Checkbox, ApprovalTimeline } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  QtyInput,
+  Textarea,
+  Checkbox,
+  ApprovalTimeline,
+} from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import type { Replenishment } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
@@ -40,10 +48,20 @@ export interface ReplenishmentApproveFormProps {
  * reason — a silently reduced order is exactly the thing FR-LOG-13 exists to
  * prevent, so there is no path to approve an amendment without one.
  */
-export function ReplenishmentApproveForm({ replenishment, submitting, onApprove, onReject }: ReplenishmentApproveFormProps) {
+export function ReplenishmentApproveForm({
+  replenishment,
+  submitting,
+  onApprove,
+  onReject,
+}: ReplenishmentApproveFormProps) {
   const { t } = useI18n();
   const [drafts, setDrafts] = useState<Record<string, LineDraft>>(() =>
-    Object.fromEntries(replenishment.lines.map((l) => [l.id, { amend: false, qtyApproved: l.qtyRequested, reason: '' }])),
+    Object.fromEntries(
+      replenishment.lines.map((l) => [
+        l.id,
+        { amend: false, qtyApproved: l.qtyRequested, reason: '' },
+      ]),
+    ),
   );
   const [note, setNote] = useState('');
   const [rejecting, setRejecting] = useState(false);
@@ -91,13 +109,19 @@ export function ReplenishmentApproveForm({ replenishment, submitting, onApprove,
             return (
               <tr key={l.id} className="border-b border-border align-top last:border-0">
                 <td className="px-3 py-2.5 font-medium text-text-primary">{l.itemName}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(l.qtyRequested, l.unitCode)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {formatQty(l.qtyRequested, l.unitCode)}
+                </td>
                 <td className="px-3 py-2.5">
                   <Checkbox
                     label={t('warehouse.approvalQueue.amendThisLine')}
                     checked={d.amend}
                     onCheckedChange={(checked) =>
-                      updateLine(l.id, { amend: checked, qtyApproved: checked ? d.qtyApproved : l.qtyRequested, reason: checked ? d.reason : '' })
+                      updateLine(l.id, {
+                        amend: checked,
+                        qtyApproved: checked ? d.qtyApproved : l.qtyRequested,
+                        reason: checked ? d.reason : '',
+                      })
                     }
                     disabled={submitting}
                   />
@@ -112,7 +136,9 @@ export function ReplenishmentApproveForm({ replenishment, submitting, onApprove,
                       disabled={submitting}
                     />
                   ) : (
-                    <span className="block text-right tabular-nums">{formatQty(l.qtyRequested, l.unitCode)}</span>
+                    <span className="block text-right tabular-nums">
+                      {formatQty(l.qtyRequested, l.unitCode)}
+                    </span>
                   )}
                 </td>
                 <td className="px-3 py-2.5">
@@ -147,7 +173,12 @@ export function ReplenishmentApproveForm({ replenishment, submitting, onApprove,
 
       {replenishment.approval && <ApprovalTimeline steps={replenishment.approval.steps} />}
 
-      <Textarea label={t('warehouse.approvalQueue.note')} value={note} onChange={(e) => setNote(e.target.value)} disabled={submitting} />
+      <Textarea
+        label={t('warehouse.approvalQueue.note')}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        disabled={submitting}
+      />
 
       {rejecting && (
         <Textarea
@@ -162,7 +193,12 @@ export function ReplenishmentApproveForm({ replenishment, submitting, onApprove,
 
       <div className="flex flex-wrap justify-end gap-2">
         {!rejecting ? (
-          <Button type="button" variant="outline" onClick={() => setRejecting(true)} disabled={submitting}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setRejecting(true)}
+            disabled={submitting}
+          >
             {t('warehouse.approvalQueue.reject')}
           </Button>
         ) : (

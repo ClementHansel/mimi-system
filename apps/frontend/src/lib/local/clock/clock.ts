@@ -85,7 +85,11 @@ export function isOffsetSuspect(offsetMs: number): boolean {
  * device-side once the device has synced (for local display/UX only; the
  * device is never the authority on this flag).
  */
-export function isTimeSuspectAtApply(occurredAtIso: ISODateTime, relayReceivedAtIso: ISODateTime, offsetMs: number): boolean {
+export function isTimeSuspectAtApply(
+  occurredAtIso: ISODateTime,
+  relayReceivedAtIso: ISODateTime,
+  offsetMs: number,
+): boolean {
   if (isOffsetSuspect(offsetMs)) return true;
   const occurredAt = new Date(occurredAtIso).getTime();
   const relayReceivedAt = new Date(relayReceivedAtIso).getTime();
@@ -129,7 +133,8 @@ export function evaluateExpiryProvability(
   expiresAtIso: ISODateTime,
 ): ExpiryProvability {
   const exp = new Date(expiresAtIso).getTime();
-  if (relayReceivedAtIso !== null && new Date(relayReceivedAtIso).getTime() <= exp) return 'provable_valid';
+  if (relayReceivedAtIso !== null && new Date(relayReceivedAtIso).getTime() <= exp)
+    return 'provable_valid';
   if (new Date(occurredAtIso).getTime() <= exp) return 'unprovable';
   return 'expired';
 }

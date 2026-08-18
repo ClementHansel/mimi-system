@@ -52,7 +52,11 @@ export function validateJournalEntry(entry: JournalEntryInput): JournalValidatio
 
   for (const line of entry.lines) {
     if (isNegativeMoney(line.debit) || isNegativeMoney(line.credit)) {
-      return { ok: false, code: ERR_VALIDATION, message: `Line on ${line.accountCode} has a negative amount` };
+      return {
+        ok: false,
+        code: ERR_VALIDATION,
+        message: `Line on ${line.accountCode} has a negative amount`,
+      };
     }
     const debitSet = !isZeroMoney(line.debit);
     const creditSet = !isZeroMoney(line.credit);

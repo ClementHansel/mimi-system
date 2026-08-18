@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   ApprovalDocumentType,
@@ -145,7 +150,12 @@ export class RunsService {
 
   // ── calculate ──────────────────────────────────────────────────────────
 
-  async calculateForPeriod(client: PoolClient, actorUserId: UUID, periodId: UUID, employeeIds?: UUID[]): Promise<PayrollRunApi> {
+  async calculateForPeriod(
+    client: PoolClient,
+    actorUserId: UUID,
+    periodId: UUID,
+    employeeIds?: UUID[],
+  ): Promise<PayrollRunApi> {
     const period = await this.periods.requirePeriod(client, periodId);
 
     const activeRun = await client.query<{ id: UUID }>(
@@ -173,7 +183,11 @@ export class RunsService {
 
     return withWrite(client, async () => {
       const runSeq = await this.nextRunSeq(client, period.periodCode);
-      const runNumber = formatCloudDocNumber(DocumentPrefix.PAYROLL_RUN, period.periodCode.replace('-', ''), runSeq);
+      const runNumber = formatCloudDocNumber(
+        DocumentPrefix.PAYROLL_RUN,
+        period.periodCode.replace('-', ''),
+        runSeq,
+      );
 
       const runRes = await client.query<{ id: UUID }>(
         `INSERT INTO payroll_runs (period_id, run_seq, run_number, status, statutory_mode, calculated_by, calculated_at)
@@ -193,7 +207,10 @@ export class RunsService {
   async recalculate(client: PoolClient, actorUserId: UUID, runId: UUID): Promise<PayrollRunApi> {
     const run = await this.requireRunRow(client, runId);
     if (run.status !== 'calculated') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Run ${run.runNumber} must be in 'calculated' status to recalculate (currently '${run.status}')` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Run ${run.runNumber} must be in 'calculated' status to recalculate (currently '${run.status}')`,
+      });
     }
     const period = await this.periods.requirePeriod(client, run.periodId);
 
@@ -209,22 +226,50 @@ export class RunsService {
       const overriddenEmployeeIds = new Set(overriddenRes.rows.map((r) => r.employee_id));
 
       // Drop every non-overridden line — manual overrides survive a recalculate (CONTRACTS §4.15).
-      await client.query('DELETE FROM payroll_lines WHERE run_id = $1 AND manual_override = false', [runId]);
+      await client.query(
+        'DELETE FROM payroll_lines WHERE run_id = $1 AND manual_override = false',
+        [runId],
+      );
 
-      const employees = await this.loadEmployees(client, employeeIdsRes.rows.map((r) => r.employee_id));
-      await this.computeAndPersistLines(client, runId, period, employees, run.statutoryMode, overriddenEmployeeIds);
+      const employees = await this.loadEmployees(
+        client,
+        employeeIdsRes.rows.map((r) => r.employee_id),
+      );
+      await this.computeAndPersistLines(
+        client,
+        runId,
+        period,
+        employees,
+        run.statutoryMode,
+        overriddenEmployeeIds,
+      );
 
-      await client.query(`UPDATE payroll_runs SET calculated_by = $2, calculated_at = NOW() WHERE id = $1`, [runId, actorUserId]);
+      await client.query(
+        `UPDATE payroll_runs SET calculated_by = $2, calculated_at = NOW() WHERE id = $1`,
+        [runId, actorUserId],
+      );
       return this.getRunDetail(client, runId);
     });
   }
 
-  async overrideLine(client: PoolClient, runId: UUID, lineId: UUID, dto: OverrideLineDto): Promise<PayslipLineApi> {
+  async overrideLine(
+    client: PoolClient,
+    runId: UUID,
+    lineId: UUID,
+    dto: OverrideLineDto,
+  ): Promise<PayslipLineApi> {
     const run = await this.requireRunRow(client, runId);
     if (run.status !== 'calculated') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Lines can only be edited while the run is 'calculated' (currently '${run.status}')` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Lines can only be edited while the run is 'calculated' (currently '${run.status}')`,
+      });
     }
-    if (!dto.overrideReason?.trim()) throw new BadRequestException({ code: ERR_VALIDATION, message: 'overrideReason is required' });
+    if (!dto.overrideReason?.trim())
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'overrideReason is required',
+      });
 
     return withWrite(client, async () => {
       const res = await client.query<Record<string, any>>(
@@ -233,7 +278,11 @@ export class RunsService {
          RETURNING *`,
         [lineId, runId, dto.amount, dto.overrideReason],
       );
-      if (res.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Payroll line not found on this run' });
+      if (res.rows.length === 0)
+        throw new NotFoundException({
+          code: ERR_NOT_FOUND,
+          message: 'Payroll line not found on this run',
+        });
 
       await this.recomputeRunTotals(client, runId);
       return this.toLineApi(client, res.rows[0]!);
@@ -245,7 +294,10 @@ export class RunsService {
   async submit(client: PoolClient, actorUserId: UUID, runId: UUID): Promise<PayrollRunApi> {
     const run = await this.requireRunRow(client, runId);
     if (run.status !== 'calculated') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Run must be 'calculated' to submit (currently '${run.status}')` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Run must be 'calculated' to submit (currently '${run.status}')`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -257,15 +309,27 @@ export class RunsService {
         locationId: null,
       });
 
-      await client.query(`UPDATE payroll_runs SET status = 'pending_approval', approval_id = $2 WHERE id = $1`, [runId, submitResult.approvalId]);
+      await client.query(
+        `UPDATE payroll_runs SET status = 'pending_approval', approval_id = $2 WHERE id = $1`,
+        [runId, submitResult.approvalId],
+      );
       return this.getRunDetail(client, runId);
     });
   }
 
-  async approve(client: PoolClient, actorUserId: UUID, actorRole: string, runId: UUID, note: string | undefined): Promise<PayrollRunApi> {
+  async approve(
+    client: PoolClient,
+    actorUserId: UUID,
+    actorRole: string,
+    runId: UUID,
+    note: string | undefined,
+  ): Promise<PayrollRunApi> {
     const run = await this.requireRunRow(client, runId);
     if (run.status !== 'pending_approval') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Run must be 'pending_approval' to approve (currently '${run.status}')` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Run must be 'pending_approval' to approve (currently '${run.status}')`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -282,7 +346,10 @@ export class RunsService {
       // step (Finance, before Owner) must leave `payroll_runs.status` at 'pending_approval'; the kernel's
       // own `approval_steps` bookkeeping already recorded this actor's decision.
       if (result.currentStep === null && result.approvalState === 'approved') {
-        await client.query(`UPDATE payroll_runs SET status = $2, approved_by = $3, approved_at = NOW() WHERE id = $1`, [runId, result.nextState, actorUserId]);
+        await client.query(
+          `UPDATE payroll_runs SET status = $2, approved_by = $3, approved_at = NOW() WHERE id = $1`,
+          [runId, result.nextState, actorUserId],
+        );
         await this.finalizeApprovedRun(client, runId, actorUserId);
       }
 
@@ -290,11 +357,21 @@ export class RunsService {
     });
   }
 
-  async reject(client: PoolClient, actorUserId: UUID, actorRole: string, runId: UUID, reason: string): Promise<PayrollRunApi> {
-    if (!reason?.trim()) throw new BadRequestException({ code: ERR_VALIDATION, message: 'reason is required' });
+  async reject(
+    client: PoolClient,
+    actorUserId: UUID,
+    actorRole: string,
+    runId: UUID,
+    reason: string,
+  ): Promise<PayrollRunApi> {
+    if (!reason?.trim())
+      throw new BadRequestException({ code: ERR_VALIDATION, message: 'reason is required' });
     const run = await this.requireRunRow(client, runId);
     if (run.status !== 'pending_approval') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Run must be 'pending_approval' to reject (currently '${run.status}')` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Run must be 'pending_approval' to reject (currently '${run.status}')`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -307,28 +384,51 @@ export class RunsService {
         reason,
       });
 
-      await client.query(`UPDATE payroll_runs SET status = $2 WHERE id = $1`, [runId, result.nextState]);
+      await client.query(`UPDATE payroll_runs SET status = $2 WHERE id = $1`, [
+        runId,
+        result.nextState,
+      ]);
       return this.getRunDetail(client, runId);
     });
   }
 
-  async markPaid(client: PoolClient, _actorUserId: UUID, runId: UUID, paymentVerificationId: UUID): Promise<PayrollRunApi> {
+  async markPaid(
+    client: PoolClient,
+    _actorUserId: UUID,
+    runId: UUID,
+    paymentVerificationId: UUID,
+  ): Promise<PayrollRunApi> {
     const run = await this.requireRunRow(client, runId);
     if (run.status !== 'approved') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Run must be 'approved' to mark paid (currently '${run.status}')` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Run must be 'approved' to mark paid (currently '${run.status}')`,
+      });
     }
 
-    const pvRes = await client.query<{ status: string }>('SELECT status FROM payment_verifications WHERE id = $1 AND ref_id = $2', [paymentVerificationId, runId]);
-    if (pvRes.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Payment verification not found for this run' });
+    const pvRes = await client.query<{ status: string }>(
+      'SELECT status FROM payment_verifications WHERE id = $1 AND ref_id = $2',
+      [paymentVerificationId, runId],
+    );
+    if (pvRes.rows.length === 0)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: 'Payment verification not found for this run',
+      });
     if (pvRes.rows[0]!.status !== 'paid') {
       // M17 `accounting` (the payment-verification queue's verify/pay endpoints) is still a stub at
       // the time this module was built — there is currently no way to legitimately drive a PV to
       // 'paid' through the real flow. Documented as a seam in this agent's report, not papered over.
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'The referenced payment verification is not yet paid' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'The referenced payment verification is not yet paid',
+      });
     }
 
     return withWrite(client, async () => {
-      await client.query(`UPDATE payroll_runs SET status = 'paid', paid_at = NOW() WHERE id = $1`, [runId]);
+      await client.query(`UPDATE payroll_runs SET status = 'paid', paid_at = NOW() WHERE id = $1`, [
+        runId,
+      ]);
 
       await this.events.publish('journal.action', {
         eventType: JournalSystemEventType.PAYROLL_PAYMENT,
@@ -344,13 +444,25 @@ export class RunsService {
     });
   }
 
-  async sendSlips(client: PoolClient, runId: UUID, channels: ('email' | 'whatsapp')[]): Promise<{ queued: number; skippedNoContact: number }> {
+  async sendSlips(
+    client: PoolClient,
+    runId: UUID,
+    channels: ('email' | 'whatsapp')[],
+  ): Promise<{ queued: number; skippedNoContact: number }> {
     const run = await this.requireRunRow(client, runId);
     if (run.status !== 'approved' && run.status !== 'paid') {
-      throw new ConflictException({ code: ERR_CONFLICT, message: `Slips can only be sent for an approved/paid run (currently '${run.status}')` });
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Slips can only be sent for an approved/paid run (currently '${run.status}')`,
+      });
     }
 
-    const res = await client.query<{ employee_id: UUID; user_id: UUID | null; name: string; net: string }>(
+    const res = await client.query<{
+      employee_id: UUID;
+      user_id: UUID | null;
+      name: string;
+      net: string;
+    }>(
       `SELECT e.id AS employee_id, e.user_id, e.name,
               COALESCE((SELECT SUM(pl.amount) FROM payroll_lines pl
                          JOIN salary_components sc ON sc.id = pl.component_id
@@ -386,7 +498,9 @@ export class RunsService {
   }
 
   async mySlips(client: PoolClient, userId: UUID, year?: string): Promise<PayslipApi[]> {
-    const empRes = await client.query<{ id: UUID }>('SELECT id FROM employees WHERE user_id = $1', [userId]);
+    const empRes = await client.query<{ id: UUID }>('SELECT id FROM employees WHERE user_id = $1', [
+      userId,
+    ]);
     if (empRes.rows.length === 0) return [];
     const employeeId = empRes.rows[0]!.id;
 
@@ -415,9 +529,15 @@ export class RunsService {
 
   // ── reads ────────────────────────────────────────────────────────────────
 
-  async getRunDetail(client: PoolClient, runId: UUID): Promise<PayrollRunApi & { employees: PayslipApi[] }> {
+  async getRunDetail(
+    client: PoolClient,
+    runId: UUID,
+  ): Promise<PayrollRunApi & { employees: PayslipApi[] }> {
     const run = await this.toRunApi(client, await this.requireRunRow(client, runId));
-    const employeeIds = await client.query<{ employee_id: UUID }>('SELECT DISTINCT employee_id FROM payroll_lines WHERE run_id = $1', [runId]);
+    const employeeIds = await client.query<{ employee_id: UUID }>(
+      'SELECT DISTINCT employee_id FROM payroll_lines WHERE run_id = $1',
+      [runId],
+    );
     const employees: PayslipApi[] = [];
     for (const row of employeeIds.rows) {
       employees.push(await this.buildPayslip(client, runId, row.employee_id));
@@ -442,13 +562,25 @@ export class RunsService {
     for (const employee of employees) {
       if (skipEmployeeIds.has(employee.id)) continue;
 
-      const base = await this.buildBaseInputs(client, employee, period, daysInMonth, shortfallShares.get(employee.id) ?? []);
+      const base = await this.buildBaseInputs(
+        client,
+        employee,
+        period,
+        daysInMonth,
+        shortfallShares.get(employee.id) ?? [],
+      );
       let statutoryInputs: StatutoryCalculationInputs | undefined;
       if (statutoryEnabled) {
         // Statutory PPh21/BPJS bases itself on the period's GROSS earnings, not just the flat base
         // salary — derive it from the same pure base calculation `calculatePayroll` below runs anyway.
         const monthlyGross = calculateBasePayslip(base).gross;
-        statutoryInputs = await this.statutory.buildCalculationInputs(client, employee.id, employee.baseSalary, monthlyGross, period.endDate);
+        statutoryInputs = await this.statutory.buildCalculationInputs(
+          client,
+          employee.id,
+          employee.baseSalary,
+          monthlyGross,
+          period.endDate,
+        );
       }
 
       const result = calculatePayroll(base, statutoryEnabled, statutoryInputs);
@@ -502,9 +634,17 @@ export class RunsService {
       [employee.id, year],
     );
 
-    const componentAmounts = await this.loadEmployeeComponentAmounts(client, employee.id, period.endDate);
+    const componentAmounts = await this.loadEmployeeComponentAmounts(
+      client,
+      employee.id,
+      period.endDate,
+    );
 
-    const loansRes = await client.query<{ id: UUID; outstanding: Money; monthly_installment: Money }>(
+    const loansRes = await client.query<{
+      id: UUID;
+      outstanding: Money;
+      monthly_installment: Money;
+    }>(
       `SELECT id, outstanding, monthly_installment FROM employee_loans WHERE employee_id = $1 AND status = 'active' AND outstanding::numeric > 0`,
       [employee.id],
     );
@@ -531,17 +671,27 @@ export class RunsService {
       sickPaid: deductionRates.sickPaid,
       permissionPaid: deductionRates.permissionPaid,
       perLateMinuteRate: deductionRates.perLateMinute as Money,
-      attendanceAllowanceAmount: componentAmounts.get(PayrollComponentCode.ATTENDANCE_ALLOWANCE) ?? ZERO_MONEY,
-      leave: { daysTakenThisYear: Number(leaveRes.rows[0]?.total ?? 0), quotaDays: quotas.annual + quotas.marriage },
+      attendanceAllowanceAmount:
+        componentAmounts.get(PayrollComponentCode.ATTENDANCE_ALLOWANCE) ?? ZERO_MONEY,
+      leave: {
+        daysTakenThisYear: Number(leaveRes.rows[0]?.total ?? 0),
+        quotaDays: quotas.annual + quotas.marriage,
+      },
       tenureTiers: DEFAULT_TENURE_TIERS,
-      performanceIncentiveAmount: componentAmounts.get(PayrollComponentCode.PERFORMANCE_INCENTIVE) ?? null,
-      positionAllowanceAmount: componentAmounts.get(PayrollComponentCode.POSITION_ALLOWANCE) ?? null,
+      performanceIncentiveAmount:
+        componentAmounts.get(PayrollComponentCode.PERFORMANCE_INCENTIVE) ?? null,
+      positionAllowanceAmount:
+        componentAmounts.get(PayrollComponentCode.POSITION_ALLOWANCE) ?? null,
       otherEarningAmounts: (() => {
         const v = componentAmounts.get(PayrollComponentCode.OTHER_EARNING);
         return v ? [v] : [];
       })(),
       stockShortfallShares,
-      loans: loansRes.rows.map((r) => ({ loanId: r.id, outstanding: r.outstanding, monthlyInstallment: r.monthly_installment })),
+      loans: loansRes.rows.map((r) => ({
+        loanId: r.id,
+        outstanding: r.outstanding,
+        monthlyInstallment: r.monthly_installment,
+      })),
       cashVarianceAmounts: cvRes.rows.map((r) => r.amount),
       otherDeductionAmounts: (() => {
         const v = componentAmounts.get(PayrollComponentCode.OTHER_DEDUCTION);
@@ -569,7 +719,12 @@ export class RunsService {
 
     const employeeIds = new Set(employees.map((e) => e.id));
 
-    const adjRes = await client.query<{ location_id: UUID; adj_date: string; qty_delta: string; unit_cost: string }>(
+    const adjRes = await client.query<{
+      location_id: UUID;
+      adj_date: string;
+      qty_delta: string;
+      unit_cost: string;
+    }>(
       `SELECT location_id, COALESCE(applied_at, created_at)::date AS adj_date, qty_delta, unit_cost
          FROM stock_adjustments
         WHERE source = 'opname' AND approved_by IS NOT NULL AND qty_delta < 0
@@ -598,8 +753,16 @@ export class RunsService {
     return shares;
   }
 
-  private async loadEmployeeComponentAmounts(client: PoolClient, employeeId: UUID, asOfDate: string): Promise<Map<PayrollComponentCode, Money>> {
-    const res = await client.query<{ code: PayrollComponentCode; amount: Money | null; default_amount: Money | null }>(
+  private async loadEmployeeComponentAmounts(
+    client: PoolClient,
+    employeeId: UUID,
+    asOfDate: string,
+  ): Promise<Map<PayrollComponentCode, Money>> {
+    const res = await client.query<{
+      code: PayrollComponentCode;
+      amount: Money | null;
+      default_amount: Money | null;
+    }>(
       `SELECT sc.code, esc.amount, sc.default_amount
          FROM employee_salary_components esc
          JOIN salary_components sc ON sc.id = esc.component_id
@@ -611,7 +774,10 @@ export class RunsService {
       map.set(r.code, (r.amount ?? r.default_amount ?? ZERO_MONEY) as Money);
     }
     // Components with no per-employee row at all still fall back to their own default_amount.
-    const defaultsRes = await client.query<{ code: PayrollComponentCode; default_amount: Money | null }>(
+    const defaultsRes = await client.query<{
+      code: PayrollComponentCode;
+      default_amount: Money | null;
+    }>(
       `SELECT code, default_amount FROM salary_components
         WHERE code IN ($1,$2,$3,$4) AND is_active = true`,
       [
@@ -628,7 +794,9 @@ export class RunsService {
   }
 
   private async loadComponentIds(client: PoolClient): Promise<Map<string, UUID>> {
-    const res = await client.query<{ id: UUID; code: string }>('SELECT id, code FROM salary_components WHERE is_active = true');
+    const res = await client.query<{ id: UUID; code: string }>(
+      'SELECT id, code FROM salary_components WHERE is_active = true',
+    );
     return new Map(res.rows.map((r) => [r.code, r.id]));
   }
 
@@ -686,12 +854,19 @@ export class RunsService {
     const gross = Number(r.gross).toFixed(2) as Money;
     const deductions = Number(r.deductions).toFixed(2) as Money;
     const net = Math.max(0, Number(gross) - Number(deductions)).toFixed(2) as Money;
-    await client.query('UPDATE payroll_runs SET total_gross = $2, total_deductions = $3, total_net = $4 WHERE id = $1', [runId, gross, deductions, net]);
+    await client.query(
+      'UPDATE payroll_runs SET total_gross = $2, total_deductions = $3, total_net = $4 WHERE id = $1',
+      [runId, gross, deductions, net],
+    );
   }
 
   // ── finalization side-effects (approve) ───────────────────────────────────
 
-  private async finalizeApprovedRun(client: PoolClient, runId: UUID, actorUserId: UUID): Promise<void> {
+  private async finalizeApprovedRun(
+    client: PoolClient,
+    runId: UUID,
+    actorUserId: UUID,
+  ): Promise<void> {
     const run = await this.requireRunRow(client, runId);
 
     // POUT-06: apply this run's loan installment lines as real `employee_loan_payments`, decrementing
@@ -706,7 +881,11 @@ export class RunsService {
       [runId, PayrollComponentCode.DEDUCTION_LOAN_INSTALLMENT],
     );
     for (const row of loanLinesRes.rows) {
-      const loansRes = await client.query<{ id: UUID; outstanding: Money; monthly_installment: Money }>(
+      const loansRes = await client.query<{
+        id: UUID;
+        outstanding: Money;
+        monthly_installment: Money;
+      }>(
         `SELECT id, outstanding, monthly_installment FROM employee_loans WHERE employee_id = $1 AND status = 'active' AND outstanding::numeric > 0`,
         [row.employee_id],
       );
@@ -748,7 +927,10 @@ export class RunsService {
        VALUES ($1,'payroll_run',$2,'other',$3,$4,$5) RETURNING id`,
       [pvNumber, runId, run.totalNet, actorUserId, `Payroll run ${run.runNumber}`],
     );
-    await client.query('UPDATE payroll_runs SET payment_verification_id = $2 WHERE id = $1', [runId, pvRes.rows[0]!.id]);
+    await client.query('UPDATE payroll_runs SET payment_verification_id = $2 WHERE id = $1', [
+      runId,
+      pvRes.rows[0]!.id,
+    ]);
 
     // GL seam — see class header. Only publishes; nothing subscribes until M17 lands.
     await this.events.publish('journal.action', {
@@ -757,7 +939,12 @@ export class RunsService {
       documentId: runId,
       locationId: null,
       amount: run.totalGross,
-      context: { runNumber: run.runNumber, statutoryMode: run.statutoryMode, totalDeductions: run.totalDeductions, totalNet: run.totalNet },
+      context: {
+        runNumber: run.runNumber,
+        statutoryMode: run.statutoryMode,
+        totalDeductions: run.totalDeductions,
+        totalNet: run.totalNet,
+      },
       occurredAt: new Date().toISOString(),
     });
 
@@ -782,8 +969,18 @@ export class RunsService {
     client: PoolClient,
     runId: UUID,
   ): Promise<{
-    id: UUID; runNumber: string; periodId: UUID; periodCode: string; status: string; statutoryMode: boolean;
-    totalGross: Money; totalDeductions: Money; totalNet: Money; calculatedAt: string | null; approvalId: UUID | null; paidAt: string | null;
+    id: UUID;
+    runNumber: string;
+    periodId: UUID;
+    periodCode: string;
+    status: string;
+    statutoryMode: boolean;
+    totalGross: Money;
+    totalDeductions: Money;
+    totalNet: Money;
+    calculatedAt: string | null;
+    approvalId: UUID | null;
+    paidAt: string | null;
   }> {
     const res = await client.query<Record<string, any>>(
       `SELECT r.*, p.period_code
@@ -791,7 +988,8 @@ export class RunsService {
         WHERE r.id = $1`,
       [runId],
     );
-    if (res.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Payroll run not found' });
+    if (res.rows.length === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Payroll run not found' });
     const r = res.rows[0]!;
     return {
       id: r.id,
@@ -809,8 +1007,14 @@ export class RunsService {
     } as any;
   }
 
-  private async toRunApi(client: PoolClient, run: Awaited<ReturnType<RunsService['requireRunRow']>>): Promise<PayrollRunApi> {
-    const countRes = await client.query<{ count: string }>('SELECT COUNT(DISTINCT employee_id) AS count FROM payroll_lines WHERE run_id = $1', [run.id]);
+  private async toRunApi(
+    client: PoolClient,
+    run: Awaited<ReturnType<RunsService['requireRunRow']>>,
+  ): Promise<PayrollRunApi> {
+    const countRes = await client.query<{ count: string }>(
+      'SELECT COUNT(DISTINCT employee_id) AS count FROM payroll_lines WHERE run_id = $1',
+      [run.id],
+    );
     const employerCostRes = await client.query<{ total: string }>(
       `SELECT COALESCE(SUM(pl.amount), 0)::numeric(18,2) AS total FROM payroll_lines pl JOIN salary_components sc ON sc.id = pl.component_id
         WHERE pl.run_id = $1 AND sc.type = 'employer_cost'`,
@@ -820,7 +1024,11 @@ export class RunsService {
     let approval: ApprovalDetail | null = null;
     if (run.approvalId) {
       try {
-        const detail = await this.approvals.getDetail(client, ApprovalDocumentType.PAYROLL_RUN, run.id);
+        const detail = await this.approvals.getDetail(
+          client,
+          ApprovalDocumentType.PAYROLL_RUN,
+          run.id,
+        );
         approval = {
           approvalId: detail.approvalId,
           state: detail.state,
@@ -858,7 +1066,11 @@ export class RunsService {
     };
   }
 
-  private async buildPayslip(client: PoolClient, runId: UUID, employeeId: UUID): Promise<PayslipApi> {
+  private async buildPayslip(
+    client: PoolClient,
+    runId: UUID,
+    employeeId: UUID,
+  ): Promise<PayslipApi> {
     const run = await this.requireRunRow(client, runId);
     const empRes = await client.query<{ name: string; position: string; location_name: string }>(
       `SELECT e.name, COALESCE(em.position, e.position) AS position, l.name AS location_name
@@ -880,13 +1092,20 @@ export class RunsService {
     const lines = linesRes.rows.map((r) => this.mapLineRow(r));
     const gross = sumMoney(lines.filter((l) => l.type === 'earning').map((l) => l.amount));
     const deductions = sumMoney(lines.filter((l) => l.type === 'deduction').map((l) => l.amount));
-    const employerCost = sumMoney(lines.filter((l) => l.type === 'employer_cost').map((l) => l.amount));
+    const employerCost = sumMoney(
+      lines.filter((l) => l.type === 'employer_cost').map((l) => l.amount),
+    );
     const net = clampMoneyToZero(subMoney(gross, deductions));
 
     return {
       runId,
       periodCode: run.periodCode,
-      employee: { id: employeeId, name: emp.name, position: emp.position, locationName: emp.location_name },
+      employee: {
+        id: employeeId,
+        name: emp.name,
+        position: emp.position,
+        locationName: emp.location_name,
+      },
       lines,
       gross,
       deductions,
@@ -912,11 +1131,21 @@ export class RunsService {
   }
 
   private async toLineApi(client: PoolClient, r: Record<string, any>): Promise<PayslipLineApi> {
-    const scRes = await client.query<{ code: string; name: string; type: string; is_statutory: boolean }>(
-      'SELECT code, name, type, is_statutory FROM salary_components WHERE id = $1',
-      [r.component_id],
-    );
+    const scRes = await client.query<{
+      code: string;
+      name: string;
+      type: string;
+      is_statutory: boolean;
+    }>('SELECT code, name, type, is_statutory FROM salary_components WHERE id = $1', [
+      r.component_id,
+    ]);
     const sc = scRes.rows[0]!;
-    return this.mapLineRow({ ...r, code: sc.code, component_name: sc.name, type: sc.type, is_statutory: sc.is_statutory });
+    return this.mapLineRow({
+      ...r,
+      code: sc.code,
+      component_name: sc.name,
+      type: sc.type,
+      is_statutory: sc.is_statutory,
+    });
   }
 }

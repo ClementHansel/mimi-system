@@ -45,7 +45,14 @@ import { LeaveSyncProjector } from './sync/leave-sync-projector.service';
 @Module({
   imports: [ApprovalsModule, StorageModule, SyncEngineModule],
   controllers: [EmployeesController, ShiftsController, AttendanceController, LeavesController],
-  providers: [EmployeesService, ShiftsService, AttendanceService, LeavesService, AttendanceSyncProjector, LeaveSyncProjector],
+  providers: [
+    EmployeesService,
+    ShiftsService,
+    AttendanceService,
+    LeavesService,
+    AttendanceSyncProjector,
+    LeaveSyncProjector,
+  ],
 })
 export class HrModule implements OnModuleInit {
   constructor(

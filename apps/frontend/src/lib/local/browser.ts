@@ -39,7 +39,12 @@ export async function getBrowserLocalRuntime(): Promise<LocalRuntime> {
   if (identity?.nodeLanUrl) candidates.push({ kind: 'node', baseUrl: identity.nodeLanUrl });
   if (identity?.cloudUrl) candidates.push({ kind: 'cloud', baseUrl: identity.cloudUrl });
 
-  const runtime = createLocalRuntime({ db, transport, candidates, connectivity: connectivityReporter });
+  const runtime = createLocalRuntime({
+    db,
+    transport,
+    candidates,
+    connectivity: connectivityReporter,
+  });
   await runtime.init();
   singleton = runtime;
   return runtime;

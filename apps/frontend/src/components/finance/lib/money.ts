@@ -31,7 +31,10 @@ function fromCents(cents: bigint): Money {
 
 /** Sums a list of `Money` strings (blank/undefined treated as zero). */
 export function sumMoney(values: (Money | null | undefined)[]): Money {
-  const total = values.reduce<bigint>((acc, v) => acc + (v && v.trim() !== '' ? toCents(v) : 0n), 0n);
+  const total = values.reduce<bigint>(
+    (acc, v) => acc + (v && v.trim() !== '' ? toCents(v) : 0n),
+    0n,
+  );
   return fromCents(total);
 }
 

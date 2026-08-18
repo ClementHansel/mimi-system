@@ -12,13 +12,20 @@
 import { Injectable } from '@nestjs/common';
 import type { Money, UUID } from '@mimi/shared';
 import type { DbClient } from './sync-events.repository';
-import type { OfflineAuthorizationRow, OfflineAuthOutcomeRow, OfflineAuthVerdictRow, OfflineCredentialRow } from './db-rows';
+import type {
+  OfflineAuthorizationRow,
+  OfflineAuthOutcomeRow,
+  OfflineAuthVerdictRow,
+  OfflineCredentialRow,
+} from './db-rows';
 
 /** Every method here takes its own `client: DbClient` — no pool of its own (§5.1: detection/re-verification always runs inside the caller's transaction, e.g. `sync-ingest.service.ts`'s apply-time hook). */
 @Injectable()
 export class OfflineCredentialsRepository {
-
-  async findCredential(client: DbClient, credentialId: UUID): Promise<OfflineCredentialRow | undefined> {
+  async findCredential(
+    client: DbClient,
+    credentialId: UUID,
+  ): Promise<OfflineCredentialRow | undefined> {
     const res = await client.query<OfflineCredentialRow>(
       `SELECT * FROM offline_credentials WHERE credential_id = $1`,
       [credentialId],
@@ -27,7 +34,11 @@ export class OfflineCredentialsRepository {
   }
 
   /** Count of prior USES of this credential strictly before `beforeCreatedAt` — §7.4 check 8 volume cap. */
-  async countPriorUses(client: DbClient, credentialId: UUID, beforeCreatedAt: string): Promise<number> {
+  async countPriorUses(
+    client: DbClient,
+    credentialId: UUID,
+    beforeCreatedAt: string,
+  ): Promise<number> {
     const res = await client.query<{ n: string }>(
       `SELECT COUNT(*)::text AS n FROM offline_authorizations WHERE credential_id = $1 AND created_at < $2`,
       [credentialId, beforeCreatedAt],
@@ -64,15 +75,31 @@ export class OfflineCredentialsRepository {
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),$15,$16)
        RETURNING *`,
       [
-        row.credentialId, row.approvalEventId, row.userId, row.deviceId, row.locationId, row.documentType,
-        row.documentId, row.action, row.amount, row.bindingHmac, row.pinAttemptsBeforeSuccess,
-        row.selfieAttachmentId, row.grantedAt, row.relayReceivedAt, row.outcome, row.failureReason,
+        row.credentialId,
+        row.approvalEventId,
+        row.userId,
+        row.deviceId,
+        row.locationId,
+        row.documentType,
+        row.documentId,
+        row.action,
+        row.amount,
+        row.bindingHmac,
+        row.pinAttemptsBeforeSuccess,
+        row.selfieAttachmentId,
+        row.grantedAt,
+        row.relayReceivedAt,
+        row.outcome,
+        row.failureReason,
       ],
     );
     return res.rows[0]!;
   }
 
-  async findByApprovalEvent(client: DbClient, approvalEventId: UUID): Promise<OfflineAuthorizationRow | undefined> {
+  async findByApprovalEvent(
+    client: DbClient,
+    approvalEventId: UUID,
+  ): Promise<OfflineAuthorizationRow | undefined> {
     const res = await client.query<OfflineAuthorizationRow>(
       `SELECT * FROM offline_authorizations WHERE approval_event_id = $1`,
       [approvalEventId],
@@ -112,7 +139,10 @@ export class OfflineCredentialsRepository {
   }
 
   async userIsActive(client: DbClient, userId: UUID): Promise<boolean> {
-    const res = await client.query<{ is_active: boolean }>(`SELECT is_active FROM users WHERE id = $1`, [userId]);
+    const res = await client.query<{ is_active: boolean }>(
+      `SELECT is_active FROM users WHERE id = $1`,
+      [userId],
+    );
     return res.rows[0]?.is_active ?? false;
   }
 }

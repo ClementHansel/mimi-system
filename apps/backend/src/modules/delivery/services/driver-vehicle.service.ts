@@ -3,7 +3,12 @@ import type { PoolClient } from 'pg';
 import type { UUID } from '@mimi/shared';
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import { withWrite } from '../db-tx';
-import { CreateDriverDto, CreateVehicleDto, UpdateDriverDto, UpdateVehicleDto } from '../dto/driver-vehicle.dto';
+import {
+  CreateDriverDto,
+  CreateVehicleDto,
+  UpdateDriverDto,
+  UpdateVehicleDto,
+} from '../dto/driver-vehicle.dto';
 
 export interface DriverDto {
   id: UUID;
@@ -54,11 +59,21 @@ export class DriverVehicleService {
     return res.rows.map(mapDriver);
   }
 
-  async createDriver(client: PoolClient, dto: CreateDriverDto, actorUserId: UUID): Promise<DriverDto> {
+  async createDriver(
+    client: PoolClient,
+    dto: CreateDriverDto,
+    actorUserId: UUID,
+  ): Promise<DriverDto> {
     return withWrite(client, async () => {
       const res = await client.query(
         `INSERT INTO drivers (employee_id, user_id, name, phone, license_number) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [dto.employeeId ?? null, dto.userId ?? null, dto.name, dto.phone ?? null, dto.licenseNumber ?? null],
+        [
+          dto.employeeId ?? null,
+          dto.userId ?? null,
+          dto.name,
+          dto.phone ?? null,
+          dto.licenseNumber ?? null,
+        ],
       );
       const driver = mapDriver(res.rows[0]);
       await this.syncEmit.emit(client, {
@@ -73,7 +88,12 @@ export class DriverVehicleService {
     });
   }
 
-  async updateDriver(client: PoolClient, id: UUID, dto: UpdateDriverDto, actorUserId: UUID): Promise<DriverDto> {
+  async updateDriver(
+    client: PoolClient,
+    id: UUID,
+    dto: UpdateDriverDto,
+    actorUserId: UUID,
+  ): Promise<DriverDto> {
     return withWrite(client, async () => {
       const sets: string[] = [];
       const params: unknown[] = [];
@@ -90,14 +110,26 @@ export class DriverVehicleService {
 
       if (sets.length > 0) {
         params.push(id);
-        const res = await client.query(`UPDATE drivers SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`, params);
-        if (res.rows.length === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Driver ${id} not found` });
+        const res = await client.query(
+          `UPDATE drivers SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+          params,
+        );
+        if (res.rows.length === 0)
+          throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Driver ${id} not found` });
       }
 
       const fresh = await client.query(`SELECT * FROM drivers WHERE id = $1`, [id]);
-      if (fresh.rows.length === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Driver ${id} not found` });
+      if (fresh.rows.length === 0)
+        throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Driver ${id} not found` });
       const driver = mapDriver(fresh.rows[0]);
-      await this.syncEmit.emit(client, { entity: 'drivers', op: 'updated', entityId: id, locationId: null, actorUserId, data: driver });
+      await this.syncEmit.emit(client, {
+        entity: 'drivers',
+        op: 'updated',
+        entityId: id,
+        locationId: null,
+        actorUserId,
+        data: driver,
+      });
       return driver;
     });
   }
@@ -108,19 +140,41 @@ export class DriverVehicleService {
     return res.rows.map(mapVehicle);
   }
 
-  async createVehicle(client: PoolClient, dto: CreateVehicleDto, actorUserId: UUID): Promise<VehicleDto> {
+  async createVehicle(
+    client: PoolClient,
+    dto: CreateVehicleDto,
+    actorUserId: UUID,
+  ): Promise<VehicleDto> {
     return withWrite(client, async () => {
       const res = await client.query(
         `INSERT INTO vehicles (plate_number, type, brand, model, has_freezer) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [dto.plateNumber, dto.type ?? 'van', dto.brand ?? null, dto.model ?? null, dto.hasFreezer ?? false],
+        [
+          dto.plateNumber,
+          dto.type ?? 'van',
+          dto.brand ?? null,
+          dto.model ?? null,
+          dto.hasFreezer ?? false,
+        ],
       );
       const vehicle = mapVehicle(res.rows[0]);
-      await this.syncEmit.emit(client, { entity: 'vehicles', op: 'created', entityId: vehicle.id, locationId: null, actorUserId, data: vehicle });
+      await this.syncEmit.emit(client, {
+        entity: 'vehicles',
+        op: 'created',
+        entityId: vehicle.id,
+        locationId: null,
+        actorUserId,
+        data: vehicle,
+      });
       return vehicle;
     });
   }
 
-  async updateVehicle(client: PoolClient, id: UUID, dto: UpdateVehicleDto, actorUserId: UUID): Promise<VehicleDto> {
+  async updateVehicle(
+    client: PoolClient,
+    id: UUID,
+    dto: UpdateVehicleDto,
+    actorUserId: UUID,
+  ): Promise<VehicleDto> {
     return withWrite(client, async () => {
       const sets: string[] = [];
       const params: unknown[] = [];
@@ -137,14 +191,29 @@ export class DriverVehicleService {
 
       if (sets.length > 0) {
         params.push(id);
-        const res = await client.query(`UPDATE vehicles SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`, params);
-        if (res.rows.length === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Vehicle ${id} not found` });
+        const res = await client.query(
+          `UPDATE vehicles SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+          params,
+        );
+        if (res.rows.length === 0)
+          throw new NotFoundException({
+            code: 'ERR_NOT_FOUND',
+            message: `Vehicle ${id} not found`,
+          });
       }
 
       const fresh = await client.query(`SELECT * FROM vehicles WHERE id = $1`, [id]);
-      if (fresh.rows.length === 0) throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Vehicle ${id} not found` });
+      if (fresh.rows.length === 0)
+        throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Vehicle ${id} not found` });
       const vehicle = mapVehicle(fresh.rows[0]);
-      await this.syncEmit.emit(client, { entity: 'vehicles', op: 'updated', entityId: id, locationId: null, actorUserId, data: vehicle });
+      await this.syncEmit.emit(client, {
+        entity: 'vehicles',
+        op: 'updated',
+        entityId: id,
+        locationId: null,
+        actorUserId,
+        data: vehicle,
+      });
       return vehicle;
     });
   }

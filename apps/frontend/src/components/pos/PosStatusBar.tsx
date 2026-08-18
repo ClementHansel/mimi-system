@@ -52,7 +52,9 @@ export function PosStatusBar({
           <Store className="size-4 text-text-muted" aria-hidden />
           {locationName ?? t('pos.noLocation')}
         </span>
-        {locationName && <span className="text-xs font-normal text-text-muted">{t(reasonKey)}</span>}
+        {locationName && (
+          <span className="text-xs font-normal text-text-muted">{t(reasonKey)}</span>
+        )}
         {onChangeLocation && (
           <Button variant="ghost" size="sm" onClick={onChangeLocation}>
             {t('pos.changeOutlet')}
@@ -60,7 +62,9 @@ export function PosStatusBar({
         )}
       </span>
       <div className="flex items-center gap-3">
-        {tier !== 'online' && <span className="text-xs text-warning-700">{t('pos.notCrossVisible')}</span>}
+        {tier !== 'online' && (
+          <span className="text-xs text-warning-700">{t('pos.notCrossVisible')}</span>
+        )}
         <SyncStatusPill />
       </div>
     </div>

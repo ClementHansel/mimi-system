@@ -20,7 +20,10 @@ import { JwtRefreshPayload } from '../jwt/jwt-payload.interface';
 export class JwtRefreshGuard extends AuthGuard('jwt-refresh') {
   handleRequest<TUser = JwtRefreshPayload>(err: unknown, user: TUser | false): TUser {
     if (err || !user) {
-      throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Invalid or expired refresh token' });
+      throw new UnauthorizedException({
+        code: ERR_AUTH_TOKEN_INVALID,
+        message: 'Invalid or expired refresh token',
+      });
     }
     return user;
   }

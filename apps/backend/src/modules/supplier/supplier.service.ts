@@ -199,10 +199,9 @@ export class SupplierService {
    * Get a single supplier by ID (full shape).
    */
   async getById(client: PoolClient, id: UUID): Promise<Supplier> {
-    const res = await client.query<Record<string, any>>(
-      'SELECT * FROM suppliers WHERE id = $1',
-      [id],
-    );
+    const res = await client.query<Record<string, any>>('SELECT * FROM suppliers WHERE id = $1', [
+      id,
+    ]);
     if (res.rows.length === 0) {
       throw new NotFoundException('Supplier not found');
     }
@@ -255,7 +254,12 @@ export class SupplierService {
   /**
    * Update a supplier.
    */
-  async update(client: PoolClient, id: UUID, dto: UpdateSupplierDto, userId: UUID): Promise<Supplier> {
+  async update(
+    client: PoolClient,
+    id: UUID,
+    dto: UpdateSupplierDto,
+    userId: UUID,
+  ): Promise<Supplier> {
     const sets: string[] = [];
     const params: unknown[] = [];
 
@@ -308,7 +312,11 @@ export class SupplierService {
   /**
    * Soft-delete (deactivate) a supplier.
    */
-  async deactivate(client: PoolClient, id: UUID, userId: UUID): Promise<{ id: UUID; deactivated: true }> {
+  async deactivate(
+    client: PoolClient,
+    id: UUID,
+    userId: UUID,
+  ): Promise<{ id: UUID; deactivated: true }> {
     return withWrite(client, async () => {
       const res = await client.query<{ id: UUID }>(
         `UPDATE suppliers SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id`,
@@ -400,14 +408,21 @@ export class SupplierService {
         data: { supplierId, itemId, currentPrice: dto.currentPrice },
       });
 
-      return this.getItems(client, supplierId).then((items) => items.find((i) => i.itemId === itemId)!);
+      return this.getItems(client, supplierId).then((items) =>
+        items.find((i) => i.itemId === itemId)!,
+      );
     });
   }
 
   /**
    * Delete a supplier item.
    */
-  async deleteItem(client: PoolClient, supplierId: UUID, itemId: UUID, userId: UUID): Promise<{ ok: true }> {
+  async deleteItem(
+    client: PoolClient,
+    supplierId: UUID,
+    itemId: UUID,
+    userId: UUID,
+  ): Promise<{ ok: true }> {
     return withWrite(client, async () => {
       const res = await client.query<{ id: UUID }>(
         `DELETE FROM supplier_items WHERE supplier_id = $1 AND item_id = $2 RETURNING id`,

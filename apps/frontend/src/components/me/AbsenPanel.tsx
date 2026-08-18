@@ -4,7 +4,17 @@ import { useEffect, useState } from 'react';
 import { MapPin, LogIn, LogOut } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
-import { Button, Card, CardHeader, CardTitle, CardContent, PhotoCapture, Badge, StatusBadge, EmptyState } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  PhotoCapture,
+  Badge,
+  StatusBadge,
+  EmptyState,
+} from '@/components/ui';
 import { useSessionStore } from '@/stores/session-store';
 import { fmtTime, toDateInput } from '@/lib/dates';
 import { evaluateGeofence } from '@/components/hr/lib/geofence';
@@ -85,7 +95,12 @@ export function AbsenPanel() {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => setCoords({ lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6), accuracy: Math.round(pos.coords.accuracy) }),
+      (pos) =>
+        setCoords({
+          lat: pos.coords.latitude.toFixed(6),
+          lng: pos.coords.longitude.toFixed(6),
+          accuracy: Math.round(pos.coords.accuracy),
+        }),
       () => setGeoError(t('me.absen.geoDenied')),
       { enableHighAccuracy: true, timeout: 15000 },
     );
@@ -93,9 +108,16 @@ export function AbsenPanel() {
 
   useEffect(requestLocation, []);
 
-  const geofence = coords && locationGeo
-    ? evaluateGeofence(coords.lat, coords.lng, locationGeo.latitude, locationGeo.longitude, locationGeo.geofenceRadiusM)
-    : null;
+  const geofence =
+    coords && locationGeo
+      ? evaluateGeofence(
+          coords.lat,
+          coords.lng,
+          locationGeo.latitude,
+          locationGeo.longitude,
+          locationGeo.geofenceRadiusM,
+        )
+      : null;
 
   // Merge the online read with this device's own optimistic record — a
   // check-in queued offline (not yet synced, so absent from `serverToday`)
@@ -133,7 +155,10 @@ export function AbsenPanel() {
       }
 
       setSelfie(null);
-      toast({ title: t(mode === 'in' ? 'me.absen.checkInSuccess' : 'me.absen.checkOutSuccess'), variant: 'success' });
+      toast({
+        title: t(mode === 'in' ? 'me.absen.checkInSuccess' : 'me.absen.checkOutSuccess'),
+        variant: 'success',
+      });
     } catch {
       toast({ title: t('me.absen.submitFailed'), variant: 'danger' });
     } finally {
@@ -159,12 +184,24 @@ export function AbsenPanel() {
               {(serverToday || localToday) && (
                 <div className="flex flex-wrap items-center gap-2">
                   {serverToday && <StatusBadge domain="attendance" status={serverToday.status} />}
-                  {!serverToday && localToday?.checkedInAt && <Badge variant="info" size="sm">{t('me.absen.queuedLocally')}</Badge>}
+                  {!serverToday && localToday?.checkedInAt && (
+                    <Badge variant="info" size="sm">
+                      {t('me.absen.queuedLocally')}
+                    </Badge>
+                  )}
                   {(serverToday?.checkInAt ?? localToday?.checkedInAt) && (
-                    <span className="text-sm text-text-secondary">{t('me.absen.inAt', { time: fmtTime(serverToday?.checkInAt ?? localToday?.checkedInAt ?? null) })}</span>
+                    <span className="text-sm text-text-secondary">
+                      {t('me.absen.inAt', {
+                        time: fmtTime(serverToday?.checkInAt ?? localToday?.checkedInAt ?? null),
+                      })}
+                    </span>
                   )}
                   {(serverToday?.checkOutAt ?? localToday?.checkedOutAt) && (
-                    <span className="text-sm text-text-secondary">{t('me.absen.outAt', { time: fmtTime(serverToday?.checkOutAt ?? localToday?.checkedOutAt ?? null) })}</span>
+                    <span className="text-sm text-text-secondary">
+                      {t('me.absen.outAt', {
+                        time: fmtTime(serverToday?.checkOutAt ?? localToday?.checkedOutAt ?? null),
+                      })}
+                    </span>
                   )}
                 </div>
               )}
@@ -177,22 +214,42 @@ export function AbsenPanel() {
                     <MapPin className="mt-0.5 size-4 flex-none text-text-muted" aria-hidden />
                     <div className="flex flex-col gap-1">
                       {geoError && <span className="text-danger-600">{geoError}</span>}
-                      {!geoError && !coords && <span className="text-text-muted">{t('me.absen.gettingLocation')}</span>}
+                      {!geoError && !coords && (
+                        <span className="text-text-muted">{t('me.absen.gettingLocation')}</span>
+                      )}
                       {geofence && (
                         <>
                           <span className="font-medium text-text-primary">
                             {geofence.distanceM === null
                               ? t('me.absen.distanceUnknown')
-                              : t('me.absen.distanceValue', { distance: geofence.distanceM, radius: geofence.radiusM })}
+                              : t('me.absen.distanceValue', {
+                                  distance: geofence.distanceM,
+                                  radius: geofence.radiusM,
+                                })}
                           </span>
-                          <Badge variant={geofence.withinRadius ? 'success' : 'danger'} size="sm" className="w-fit">
-                            {geofence.withinRadius ? t('me.absen.withinRadius') : t('me.absen.outsideRadius')}
+                          <Badge
+                            variant={geofence.withinRadius ? 'success' : 'danger'}
+                            size="sm"
+                            className="w-fit"
+                          >
+                            {geofence.withinRadius
+                              ? t('me.absen.withinRadius')
+                              : t('me.absen.outsideRadius')}
                           </Badge>
                         </>
                       )}
-                      {!coords && !locationGeo && <span className="text-xs text-text-muted">{t('me.absen.offlineGeofenceHint')}</span>}
+                      {!coords && !locationGeo && (
+                        <span className="text-xs text-text-muted">
+                          {t('me.absen.offlineGeofenceHint')}
+                        </span>
+                      )}
                       {coords && (
-                        <Button size="sm" variant="ghost" onClick={requestLocation} className="w-fit">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={requestLocation}
+                          className="w-fit"
+                        >
                           {t('me.absen.refreshLocation')}
                         </Button>
                       )}
@@ -211,14 +268,18 @@ export function AbsenPanel() {
                   <Button
                     size="touch-lg"
                     fullWidth
-                    leftIcon={mode === 'in' ? <LogIn className="size-5" /> : <LogOut className="size-5" />}
+                    leftIcon={
+                      mode === 'in' ? <LogIn className="size-5" /> : <LogOut className="size-5" />
+                    }
                     loading={busy}
                     disabled={!coords || !selfie || !runtime || !actor}
                     onClick={submit}
                   >
                     {t(mode === 'in' ? 'me.absen.checkInButton' : 'me.absen.checkOutButton')}
                   </Button>
-                  <p className="text-center text-xs text-text-muted">{t('me.absen.queuesOfflineHint')}</p>
+                  <p className="text-center text-xs text-text-muted">
+                    {t('me.absen.queuesOfflineHint')}
+                  </p>
                 </>
               )}
             </>

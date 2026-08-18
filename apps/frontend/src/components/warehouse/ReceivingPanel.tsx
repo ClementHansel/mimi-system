@@ -2,12 +2,28 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { Modal, DataTable, StatusBadge, PhotoCapture, Select, QtyInput, Textarea, toast, Button, EmptyState } from '@/components/ui';
+import {
+  Modal,
+  DataTable,
+  StatusBadge,
+  PhotoCapture,
+  Select,
+  QtyInput,
+  Textarea,
+  toast,
+  Button,
+  EmptyState,
+} from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatMoney, formatQty } from '@/lib/formatters';
 import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
-import { getStorageAreas, listPurchaseOrders, getPurchaseOrder, receivePurchaseOrder } from './lib/warehouse-api';
+import {
+  getStorageAreas,
+  listPurchaseOrders,
+  getPurchaseOrder,
+  receivePurchaseOrder,
+} from './lib/warehouse-api';
 import { uploadAttachment } from './lib/attachments';
 import type { PurchaseOrder, PurchaseOrderListRow, StorageArea } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
@@ -64,22 +80,35 @@ export function ReceivingPanel() {
       Object.fromEntries(
         full.lines
           .filter((l) => l.qtyReceived !== l.qtyOrdered)
-          .map((l) => [l.id, { poLineId: l.id, qtyReceived: null, storageAreaId: '', conditionNotes: '' }]),
+          .map((l) => [
+            l.id,
+            { poLineId: l.id, qtyReceived: null, storageAreaId: '', conditionNotes: '' },
+          ]),
       ),
     );
     setPhoto(null);
     setNotes('');
   }
 
-  const draftLines = useMemo(() => (active ? active.lines.filter((l) => lines[l.id]) : []), [active, lines]);
+  const draftLines = useMemo(
+    () => (active ? active.lines.filter((l) => lines[l.id]) : []),
+    [active, lines],
+  );
   const canSubmit =
-    !!photo && draftLines.length > 0 && draftLines.every((l) => lines[l.id]!.qtyReceived !== null && lines[l.id]!.storageAreaId !== '');
+    !!photo &&
+    draftLines.length > 0 &&
+    draftLines.every((l) => lines[l.id]!.qtyReceived !== null && lines[l.id]!.storageAreaId !== '');
 
   async function submit() {
     if (!active || !photo || !canSubmit) return;
     setSubmitting(true);
     try {
-      const photoAttachmentId = await uploadAttachment({ file: photo, fileName: photo.name, mimeType: photo.type || 'image/jpeg', kind: 'po_receipt_photo' });
+      const photoAttachmentId = await uploadAttachment({
+        file: photo,
+        fileName: photo.name,
+        mimeType: photo.type || 'image/jpeg',
+        kind: 'po_receipt_photo',
+      });
       await receivePurchaseOrder(active.id, {
         lines: draftLines.map((l) => ({
           poLineId: l.id,
@@ -103,8 +132,17 @@ export function ReceivingPanel() {
   const columns: DataTableColumn<PurchaseOrderListRow>[] = [
     { key: 'poNumber', header: t('warehouse.receiving.poNumber') },
     { key: 'supplierName', header: t('warehouse.receiving.supplier') },
-    { key: 'total', header: t('warehouse.receiving.total'), align: 'right', render: (r) => formatMoney(r.total) },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="purchaseOrder" status={r.status} /> },
+    {
+      key: 'total',
+      header: t('warehouse.receiving.total'),
+      align: 'right',
+      render: (r) => formatMoney(r.total),
+    },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="purchaseOrder" status={r.status} />,
+    },
   ];
 
   const areaOptions = areas.map((a) => ({ value: a.id, label: a.name }));
@@ -113,7 +151,9 @@ export function ReceivingPanel() {
     <div className="flex flex-col gap-4">
       {error && (
         <div className="flex items-center justify-end">
-          <Button variant="outline" size="sm" onClick={reload}>{t('common.retry')}</Button>
+          <Button variant="outline" size="sm" onClick={reload}>
+            {t('common.retry')}
+          </Button>
         </div>
       )}
       <DataTable
@@ -126,7 +166,12 @@ export function ReceivingPanel() {
         emptyDescription={t('warehouse.receiving.empty')}
       />
 
-      <Modal open={!!active} onClose={() => setActive(null)} title={active?.poNumber ?? ''} size="xl">
+      <Modal
+        open={!!active}
+        onClose={() => setActive(null)}
+        title={active?.poNumber ?? ''}
+        size="xl"
+      >
         {active && (
           <div className="flex flex-col gap-4">
             {active.lines.length === 0 && <EmptyState title={t('table.empty')} size="sm" />}
@@ -135,7 +180,9 @@ export function ReceivingPanel() {
                 <tr className="border-b border-border bg-surface-sunken text-left text-text-secondary">
                   <th className="px-3 py-2">{t('outlet.replenishment.item')}</th>
                   <th className="px-3 py-2 text-right">{t('warehouse.receiving.qtyOrdered')}</th>
-                  <th className="px-3 py-2 text-right">{t('warehouse.receiving.qtyAlreadyReceived')}</th>
+                  <th className="px-3 py-2 text-right">
+                    {t('warehouse.receiving.qtyAlreadyReceived')}
+                  </th>
                   <th className="px-3 py-2">{t('warehouse.receiving.qtyReceivedNow')}</th>
                   <th className="px-3 py-2">{t('outlet.receiving.storageArea')}</th>
                   <th className="px-3 py-2">{t('warehouse.receiving.conditionNotes')}</th>
@@ -148,15 +195,24 @@ export function ReceivingPanel() {
                   return (
                     <tr key={l.id} className="border-b border-border align-top last:border-0">
                       <td className="px-3 py-2.5 font-medium text-text-primary">{l.itemName}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(l.qtyOrdered, l.unitCode)}</td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(l.qtyReceived, l.unitCode)}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {formatQty(l.qtyOrdered, l.unitCode)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {formatQty(l.qtyReceived, l.unitCode)}
+                      </td>
                       <td className="px-3 py-2.5">
                         {done ? (
                           <span className="text-text-muted">—</span>
                         ) : (
                           <QtyInput
                             value={draft?.qtyReceived ?? null}
-                            onChange={(v) => setLines((prev) => ({ ...prev, [l.id]: { ...prev[l.id]!, qtyReceived: v } }))}
+                            onChange={(v) =>
+                              setLines((prev) => ({
+                                ...prev,
+                                [l.id]: { ...prev[l.id]!, qtyReceived: v },
+                              }))
+                            }
                             unitCode={l.unitCode}
                             size="touch"
                             wrapperClassName="w-32"
@@ -168,7 +224,12 @@ export function ReceivingPanel() {
                         {!done && (
                           <Select
                             value={draft?.storageAreaId ?? ''}
-                            onValueChange={(v) => setLines((prev) => ({ ...prev, [l.id]: { ...prev[l.id]!, storageAreaId: v } }))}
+                            onValueChange={(v) =>
+                              setLines((prev) => ({
+                                ...prev,
+                                [l.id]: { ...prev[l.id]!, storageAreaId: v },
+                              }))
+                            }
                             options={areaOptions}
                             placeholder={t('common.selectPlaceholder')}
                             size="touch"
@@ -182,7 +243,12 @@ export function ReceivingPanel() {
                           <Textarea
                             rows={1}
                             value={draft?.conditionNotes ?? ''}
-                            onChange={(e) => setLines((prev) => ({ ...prev, [l.id]: { ...prev[l.id]!, conditionNotes: e.target.value } }))}
+                            onChange={(e) =>
+                              setLines((prev) => ({
+                                ...prev,
+                                [l.id]: { ...prev[l.id]!, conditionNotes: e.target.value },
+                              }))
+                            }
                             wrapperClassName="w-48"
                             disabled={submitting}
                           />
@@ -202,11 +268,20 @@ export function ReceivingPanel() {
               required
               disabled={submitting}
             />
-            <Textarea label={t('common.notes')} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={submitting} />
+            <Textarea
+              label={t('common.notes')}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              disabled={submitting}
+            />
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setActive(null)}>{t('common.cancel')}</Button>
-              <Button loading={submitting} disabled={!canSubmit} onClick={submit}>{t('common.submit')}</Button>
+              <Button variant="outline" onClick={() => setActive(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button loading={submitting} disabled={!canSubmit} onClick={submit}>
+                {t('common.submit')}
+              </Button>
             </div>
           </div>
         )}

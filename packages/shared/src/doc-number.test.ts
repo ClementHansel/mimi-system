@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { formatCloudDocNumber, parseCloudDocNumber, formatDeviceDocNumber, formatShiftNumber } from './doc-number';
+import {
+  formatCloudDocNumber,
+  parseCloudDocNumber,
+  formatDeviceDocNumber,
+  formatShiftNumber,
+} from './doc-number';
 
 describe('cloud document numbers', () => {
   it('formats per CONTRACTS.md §0 example', () => {

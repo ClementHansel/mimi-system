@@ -43,7 +43,8 @@ export interface RedeemedPairingToken {
 function randomDisplayCode(): string {
   const bytes = randomBytes(12);
   let out = '';
-  for (let i = 0; i < 12; i++) out += DISPLAY_CODE_ALPHABET[bytes[i]! % DISPLAY_CODE_ALPHABET.length];
+  for (let i = 0; i < 12; i++)
+    out += DISPLAY_CODE_ALPHABET[bytes[i]! % DISPLAY_CODE_ALPHABET.length];
   return out;
 }
 
@@ -52,7 +53,12 @@ export class PairingTokensService {
   /** Mint — runs on the caller's OWN RLS transaction (`req.dbClient`); `pairing_tokens` carries no RLS policy (API-gated), so any authenticated actor holding the right permission key may write it for a location within their scope (enforced by the controller, not this service). */
   async mint(
     client: PoolClient,
-    params: { targetType: `${PairingTargetType}`; locationId: UUID; createdBy: UUID; suggestedCategory?: string | null },
+    params: {
+      targetType: `${PairingTargetType}`;
+      locationId: UUID;
+      createdBy: UUID;
+      suggestedCategory?: string | null;
+    },
   ): Promise<MintedPairingToken> {
     const token = randomBytes(24).toString('hex');
     const displayCode = randomDisplayCode();
@@ -61,7 +67,15 @@ export class PairingTokensService {
     const res = await client.query<{ id: UUID }>(
       `INSERT INTO pairing_tokens (token_hash, display_code, target_type, location_id, suggested_category, created_by, expires_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [hashDeviceToken(token), displayCode, params.targetType, params.locationId, params.suggestedCategory ?? null, params.createdBy, expiresAt],
+      [
+        hashDeviceToken(token),
+        displayCode,
+        params.targetType,
+        params.locationId,
+        params.suggestedCategory ?? null,
+        params.createdBy,
+        expiresAt,
+      ],
     );
 
     return {
@@ -84,8 +98,18 @@ export class PairingTokensService {
    * "invalid or expired token" — never leaks WHICH reason to a public,
    * unauthenticated caller).
    */
-  async redeem(client: PoolClient, token: string, targetType: `${PairingTargetType}`): Promise<RedeemedPairingToken | undefined> {
-    const res = await client.query<{ id: UUID; location_id: UUID; target_type: string; suggested_category: string | null; created_by: UUID }>(
+  async redeem(
+    client: PoolClient,
+    token: string,
+    targetType: `${PairingTargetType}`,
+  ): Promise<RedeemedPairingToken | undefined> {
+    const res = await client.query<{
+      id: UUID;
+      location_id: UUID;
+      target_type: string;
+      suggested_category: string | null;
+      created_by: UUID;
+    }>(
       `UPDATE pairing_tokens
           SET used_at = NOW()
         WHERE token_hash = $1 AND target_type = $2
@@ -106,6 +130,9 @@ export class PairingTokensService {
 
   /** Cosmetic traceability only (`used_by_ref` -> the `devices`/`branch_nodes` row this token became) — never gates anything; `redeem`'s `used_at` claim already is the security boundary. */
   async recordUsedBy(client: PoolClient, tokenId: UUID, usedByRef: UUID): Promise<void> {
-    await client.query(`UPDATE pairing_tokens SET used_by_ref = $2 WHERE id = $1`, [tokenId, usedByRef]);
+    await client.query(`UPDATE pairing_tokens SET used_by_ref = $2 WHERE id = $1`, [
+      tokenId,
+      usedByRef,
+    ]);
   }
 }

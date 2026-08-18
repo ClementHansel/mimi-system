@@ -43,7 +43,9 @@ async function bootstrap() {
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
-      exceptionFactory: (errors: Array<{ property: string; constraints?: Record<string, string> }>) =>
+      exceptionFactory: (
+        errors: Array<{ property: string; constraints?: Record<string, string> }>,
+      ) =>
         new BadRequestException({
           code: 'ERR_VALIDATION',
           message: 'Validation failed',

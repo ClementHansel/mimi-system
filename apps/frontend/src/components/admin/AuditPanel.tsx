@@ -30,12 +30,28 @@ export function AuditPanel() {
   const [detail, setDetail] = useState<AuditRow | null>(null);
 
   const { data, loading, error } = useApiList<AuditRow>('/audit', {
-    entityType, entityId, userId, module, from: range.from ?? undefined, to: range.to ?? undefined, page, pageSize,
+    entityType,
+    entityId,
+    userId,
+    module,
+    from: range.from ?? undefined,
+    to: range.to ?? undefined,
+    page,
+    pageSize,
   });
 
   const columns: DataTableColumn<AuditRow>[] = [
-    { key: 'occurredAt', header: t('admin.audit.columnWhen'), sortable: true, render: (r) => fmtDateTime(r.occurredAt) },
-    { key: 'userName', header: t('admin.audit.columnUser'), render: (r) => `${r.userName ?? '—'} (${roleLabel(r.roleKey)})` },
+    {
+      key: 'occurredAt',
+      header: t('admin.audit.columnWhen'),
+      sortable: true,
+      render: (r) => fmtDateTime(r.occurredAt),
+    },
+    {
+      key: 'userName',
+      header: t('admin.audit.columnUser'),
+      render: (r) => `${r.userName ?? '—'} (${roleLabel(r.roleKey)})`,
+    },
     { key: 'module', header: t('admin.audit.columnModule') },
     { key: 'action', header: t('admin.audit.columnAction') },
     {
@@ -50,41 +66,105 @@ export function AuditPanel() {
       // column is populated just because the happy-path row has it.
       render: (r) => (r.entityId ? `${r.entityType} · ${r.entityId.slice(0, 8)}` : r.entityType),
     },
-    { key: 'reason', header: t('admin.audit.columnReason'), render: (r) => r.reason ?? t('admin.audit.noReason') },
     {
-      key: 'offlineAuthorized', header: t('admin.audit.columnOffline'),
-      render: (r) => r.offlineAuthorized ? <Badge variant="warning" size="sm">{t('admin.audit.offlineAuthorized')}</Badge> : null,
+      key: 'reason',
+      header: t('admin.audit.columnReason'),
+      render: (r) => r.reason ?? t('admin.audit.noReason'),
+    },
+    {
+      key: 'offlineAuthorized',
+      header: t('admin.audit.columnOffline'),
+      render: (r) =>
+        r.offlineAuthorized ? (
+          <Badge variant="warning" size="sm">
+            {t('admin.audit.offlineAuthorized')}
+          </Badge>
+        ) : null,
     },
   ];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-2">
-        <Input label={t('admin.audit.filterEntityType')} value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }} wrapperClassName="w-40" />
-        <Input label={t('admin.audit.filterEntityId')} value={entityId} onChange={(e) => { setEntityId(e.target.value); setPage(1); }} wrapperClassName="w-48" />
-        <Input label={t('admin.audit.filterUser')} value={userId} onChange={(e) => { setUserId(e.target.value); setPage(1); }} wrapperClassName="w-40" />
-        <Input label={t('admin.audit.filterModule')} value={module} onChange={(e) => { setModule(e.target.value); setPage(1); }} wrapperClassName="w-40" />
-        <DateRangePicker value={range} onChange={(v) => { setRange(v); setPage(1); }} />
+        <Input
+          label={t('admin.audit.filterEntityType')}
+          value={entityType}
+          onChange={(e) => {
+            setEntityType(e.target.value);
+            setPage(1);
+          }}
+          wrapperClassName="w-40"
+        />
+        <Input
+          label={t('admin.audit.filterEntityId')}
+          value={entityId}
+          onChange={(e) => {
+            setEntityId(e.target.value);
+            setPage(1);
+          }}
+          wrapperClassName="w-48"
+        />
+        <Input
+          label={t('admin.audit.filterUser')}
+          value={userId}
+          onChange={(e) => {
+            setUserId(e.target.value);
+            setPage(1);
+          }}
+          wrapperClassName="w-40"
+        />
+        <Input
+          label={t('admin.audit.filterModule')}
+          value={module}
+          onChange={(e) => {
+            setModule(e.target.value);
+            setPage(1);
+          }}
+          wrapperClassName="w-40"
+        />
+        <DateRangePicker
+          value={range}
+          onChange={(v) => {
+            setRange(v);
+            setPage(1);
+          }}
+        />
       </div>
       <DataTable
-        columns={columns} data={data} keyField={(r) => r.id} loading={loading} error={error}
+        columns={columns}
+        data={data}
+        keyField={(r) => r.id}
+        loading={loading}
+        error={error}
         emptyDescription={t('admin.audit.empty')}
         onRowClick={(r) => setDetail(r)}
-        onPageChange={setPage} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
       />
       {detail && (
         <Modal open onClose={() => setDetail(null)} title={t('admin.audit.detailTitle')} size="xl">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <h4 className="mb-1 text-sm font-semibold text-text-primary">{t('admin.audit.before')}</h4>
+              <h4 className="mb-1 text-sm font-semibold text-text-primary">
+                {t('admin.audit.before')}
+              </h4>
               <pre className="max-h-96 overflow-auto rounded-md bg-surface-sunken p-3 text-xs">
-                {detail.beforeValue ? JSON.stringify(detail.beforeValue, null, 2) : t('admin.audit.noValue')}
+                {detail.beforeValue
+                  ? JSON.stringify(detail.beforeValue, null, 2)
+                  : t('admin.audit.noValue')}
               </pre>
             </div>
             <div>
-              <h4 className="mb-1 text-sm font-semibold text-text-primary">{t('admin.audit.after')}</h4>
+              <h4 className="mb-1 text-sm font-semibold text-text-primary">
+                {t('admin.audit.after')}
+              </h4>
               <pre className="max-h-96 overflow-auto rounded-md bg-surface-sunken p-3 text-xs">
-                {detail.afterValue ? JSON.stringify(detail.afterValue, null, 2) : t('admin.audit.noValue')}
+                {detail.afterValue
+                  ? JSON.stringify(detail.afterValue, null, 2)
+                  : t('admin.audit.noValue')}
               </pre>
             </div>
           </div>

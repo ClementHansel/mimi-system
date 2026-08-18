@@ -30,7 +30,12 @@ describe('TokenService', () => {
 
   it('rejects an access token when verified against the refresh secret (families never cross)', () => {
     const service = new TokenService(config);
-    const accessToken = service.signAccessToken({ sub: 'user-1', username: 'x', roleKey: 'kasir', locationIds: [] });
+    const accessToken = service.signAccessToken({
+      sub: 'user-1',
+      username: 'x',
+      roleKey: 'kasir',
+      locationIds: [],
+    });
     expect(() => service.verifyRefreshToken(accessToken)).toThrow();
   });
 });

@@ -12,8 +12,14 @@ import { useSessionStore } from '@/stores/session-store';
 function setUser(permissions: string[], roleKey = 'kasir') {
   useSessionStore.setState({
     user: {
-      id: 'u1', username: roleKey, name: 'Test User', roleKey,
-      permissions, locations: [], employeeId: null, mustSetPin: false,
+      id: 'u1',
+      username: roleKey,
+      name: 'Test User',
+      roleKey,
+      permissions,
+      locations: [],
+      employeeId: null,
+      mustSetPin: false,
     },
   });
 }
@@ -47,10 +53,16 @@ describe('DocsIndexPage — role-based filtering', () => {
     setUser(
       [
         'pos.catalog.read',
-        'replenishment.create', 'opname.create', 'waste.create', 'pettycash.create',
-        'replenishment.approve.warehouse', 'delivery.read', 'purchasing.read',
+        'replenishment.create',
+        'opname.create',
+        'waste.create',
+        'pettycash.create',
+        'replenishment.approve.warehouse',
+        'delivery.read',
+        'purchasing.read',
         'delivery.drop.execute',
-        'payment.read', 'accounting.journal.read',
+        'payment.read',
+        'accounting.journal.read',
         'dashboard.view',
       ],
       'owner',

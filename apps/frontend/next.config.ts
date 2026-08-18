@@ -40,9 +40,7 @@ const nextConfig: NextConfig = {
     // An explicit BACKEND_ORIGIN always wins over both.
     const backend =
       process.env.BACKEND_ORIGIN ||
-      (process.env.NODE_ENV === 'production'
-        ? 'http://backend:4000'
-        : 'http://localhost:4000');
+      (process.env.NODE_ENV === 'production' ? 'http://backend:4000' : 'http://localhost:4000');
     return [
       { source: '/api/:path*', destination: `${backend}/api/:path*` },
       { source: '/socket.io/:path*', destination: `${backend}/socket.io/:path*` },

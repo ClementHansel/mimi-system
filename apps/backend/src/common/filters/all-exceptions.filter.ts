@@ -42,7 +42,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const shape = this.toErrorShape(exception);
 
     if (shape.statusCode >= 500) {
-      this.logger.error(`${request.method} ${request.originalUrl ?? request.url} → ${shape.statusCode}`, exception instanceof Error ? exception.stack : exception);
+      this.logger.error(
+        `${request.method} ${request.originalUrl ?? request.url} → ${shape.statusCode}`,
+        exception instanceof Error ? exception.stack : exception,
+      );
     }
 
     response.status(shape.statusCode).json(shape);
@@ -60,11 +63,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       if (typeof body === 'object' && body !== null) {
         const b = body as Record<string, unknown>;
         const rawMessage = b.message;
-        const message = typeof rawMessage === 'string'
-          ? rawMessage
-          : Array.isArray(rawMessage)
-            ? rawMessage.join('; ')
-            : exception.message;
+        const message =
+          typeof rawMessage === 'string'
+            ? rawMessage
+            : Array.isArray(rawMessage)
+              ? rawMessage.join('; ')
+              : exception.message;
         const details = b.details ?? (Array.isArray(rawMessage) ? rawMessage : undefined);
         return {
           statusCode,

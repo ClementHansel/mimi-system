@@ -104,14 +104,20 @@ export function usePosLocation(): PosLocationState {
 
   const single = assigned.length === 1 ? assigned[0] : undefined;
   if (single) {
-    return { status: 'ready', location: { id: single.id, name: single.name }, canChange: false, change: () => {} };
+    return {
+      status: 'ready',
+      location: { id: single.id, name: single.name },
+      canChange: false,
+      change: () => {},
+    };
   }
 
   if (needsFetch && fetchError) {
     return { status: 'error', retry: () => setAttempt((a) => a + 1) };
   }
 
-  const options = assigned.length > 1 ? assigned.map((l) => ({ id: l.id, name: l.name })) : fetchedOutlets;
+  const options =
+    assigned.length > 1 ? assigned.map((l) => ({ id: l.id, name: l.name })) : fetchedOutlets;
   if (!options) {
     return { status: 'loading' };
   }

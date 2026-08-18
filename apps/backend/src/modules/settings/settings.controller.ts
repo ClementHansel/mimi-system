@@ -4,7 +4,12 @@ import { Audited, CurrentUser, RequirePermission } from '../../common/decorators
 import type { RequestWithDbContext } from '../../common/guards/rls-context.guard';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import { ApprovalChainRes, ApprovalModeRes, SettingRes, SettingsService } from './settings.service';
-import { ListSettingsQueryDto, PutApprovalChainDto, PutApprovalModeDto, PutSettingDto } from './settings.dto';
+import {
+  ListSettingsQueryDto,
+  PutApprovalChainDto,
+  PutApprovalModeDto,
+  PutSettingDto,
+} from './settings.dto';
 
 @Controller('settings')
 export class SettingsController {
@@ -12,7 +17,10 @@ export class SettingsController {
 
   @Get()
   @RequirePermission('settings.read')
-  list(@Query() query: ListSettingsQueryDto, @Req() req: RequestWithDbContext): Promise<SettingRes[]> {
+  list(
+    @Query() query: ListSettingsQueryDto,
+    @Req() req: RequestWithDbContext,
+  ): Promise<SettingRes[]> {
     return this.service.list(query.prefix, req.dbClient!);
   }
 

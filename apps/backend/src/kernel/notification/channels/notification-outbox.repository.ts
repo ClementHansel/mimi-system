@@ -27,7 +27,12 @@ export type OutboxStatus = 'pending' | 'sent' | 'failed';
 export class NotificationOutboxRepository {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
 
-  async create(channel: OutboxChannel, recipient: string, templateKey: string, payload: unknown): Promise<string> {
+  async create(
+    channel: OutboxChannel,
+    recipient: string,
+    templateKey: string,
+    payload: unknown,
+  ): Promise<string> {
     return withSystemContext(this.pool, { role: '' }, async (client) => {
       const result = await client.query<{ id: string }>(
         `INSERT INTO notification_outbox (channel, recipient, template_key, payload, status)

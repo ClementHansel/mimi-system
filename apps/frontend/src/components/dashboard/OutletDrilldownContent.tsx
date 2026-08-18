@@ -77,22 +77,38 @@ export function OutletDrilldownContent({ locationId, date }: OutletDrilldownCont
         <Stat label={t('dashboard.overview.revenueOnline')} value={formatMoney(data.onlineNet)} />
         <Stat label={t('dashboard.overview.txCount')} value={formatNumber(data.txCount)} />
         <Stat label={t('dashboard.outlets.openShifts')} value={formatNumber(data.openShifts)} />
-        <Stat label={t('dashboard.outlets.lowStockCount')} value={formatNumber(data.lowStockCount)} alert={data.lowStockCount > 0} />
-        <Stat label={t('dashboard.outlets.offlineDevices')} value={formatNumber(data.offlineDevices)} alert={data.offlineDevices > 0} />
+        <Stat
+          label={t('dashboard.outlets.lowStockCount')}
+          value={formatNumber(data.lowStockCount)}
+          alert={data.lowStockCount > 0}
+        />
+        <Stat
+          label={t('dashboard.outlets.offlineDevices')}
+          value={formatNumber(data.offlineDevices)}
+          alert={data.offlineDevices > 0}
+        />
       </div>
 
       <section>
-        <h4 className="mb-2 text-sm font-semibold text-text-primary">{t('dashboard.outlets.hourlyTrend')}</h4>
+        <h4 className="mb-2 text-sm font-semibold text-text-primary">
+          {t('dashboard.outlets.hourlyTrend')}
+        </h4>
         {data.hourlyTrend.length === 0 ? (
           <p className="text-sm text-text-muted">{t('dashboard.trend.empty')}</p>
         ) : (
           <div className="flex h-24 items-end gap-0.5">
             {data.hourlyTrend.map((h, i) => (
-              <div key={h.hour} className="group relative flex flex-1 flex-col items-center justify-end gap-0.5">
+              <div
+                key={h.hour}
+                className="group relative flex flex-1 flex-col items-center justify-end gap-0.5"
+              >
                 <div className="pointer-events-none absolute -top-7 hidden whitespace-nowrap rounded bg-stone-900 px-1.5 py-0.5 text-xs text-white group-hover:block">
                   {formatMoney(h.revenue)}
                 </div>
-                <div className="w-full rounded-t bg-brand-400" style={{ height: `${Math.max(2, hourlyRatios[i]! * 100)}%` }} />
+                <div
+                  className="w-full rounded-t bg-brand-400"
+                  style={{ height: `${Math.max(2, hourlyRatios[i]! * 100)}%` }}
+                />
                 <span className="text-[9px] text-text-muted">{h.hour}</span>
               </div>
             ))}
@@ -101,7 +117,9 @@ export function OutletDrilldownContent({ locationId, date }: OutletDrilldownCont
       </section>
 
       <section>
-        <h4 className="mb-2 text-sm font-semibold text-text-primary">{t('dashboard.outlets.topProducts')}</h4>
+        <h4 className="mb-2 text-sm font-semibold text-text-primary">
+          {t('dashboard.outlets.topProducts')}
+        </h4>
         {data.topProducts.length === 0 ? (
           <p className="text-sm text-text-muted">{t('table.empty')}</p>
         ) : (
@@ -119,7 +137,9 @@ export function OutletDrilldownContent({ locationId, date }: OutletDrilldownCont
       </section>
 
       <section>
-        <h4 className="mb-2 text-sm font-semibold text-text-primary">{t('dashboard.outlets.staffOnShift')}</h4>
+        <h4 className="mb-2 text-sm font-semibold text-text-primary">
+          {t('dashboard.outlets.staffOnShift')}
+        </h4>
         {data.staffOnShift.length === 0 ? (
           <p className="text-sm text-text-muted">{t('table.empty')}</p>
         ) : (
@@ -139,7 +159,9 @@ export function OutletDrilldownContent({ locationId, date }: OutletDrilldownCont
 
 function Stat({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
   return (
-    <div className={`flex flex-col gap-0.5 rounded-lg border p-3 ${alert ? 'border-warning-200 bg-warning-50' : 'border-border bg-surface-raised'}`}>
+    <div
+      className={`flex flex-col gap-0.5 rounded-lg border p-3 ${alert ? 'border-warning-200 bg-warning-50' : 'border-border bg-surface-raised'}`}
+    >
       <span className="text-xs text-text-secondary">{label}</span>
       <span className="font-display text-base font-semibold text-text-primary">{value}</span>
     </div>

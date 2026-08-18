@@ -77,7 +77,11 @@ function buildKit() {
   return { prService, poService, pcService };
 }
 
-function actorFor(fx: Fixtures, role: RoleKey, locationScope: readonly string[] | null = null): ActorContext {
+function actorFor(
+  fx: Fixtures,
+  role: RoleKey,
+  locationScope: readonly string[] | null = null,
+): ActorContext {
   return { userId: fx.usersByRole[role], roleKey: role, locationScope };
 }
 
@@ -89,8 +93,14 @@ const cleanupPool = new Pool({
 
 async function cleanupPr(id: string): Promise<void> {
   await cleanupPool.query(`UPDATE purchase_requests SET approval_id = NULL WHERE id = $1`, [id]);
-  await cleanupPool.query(`DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'purchase_request' AND document_id = $1)`, [id]);
-  await cleanupPool.query(`DELETE FROM approvals WHERE document_type = 'purchase_request' AND document_id = $1`, [id]);
+  await cleanupPool.query(
+    `DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'purchase_request' AND document_id = $1)`,
+    [id],
+  );
+  await cleanupPool.query(
+    `DELETE FROM approvals WHERE document_type = 'purchase_request' AND document_id = $1`,
+    [id],
+  );
   await cleanupPool.query(`DELETE FROM purchase_requests WHERE id = $1`, [id]);
 }
 
@@ -111,7 +121,11 @@ async function cleanupPr(id: string): Promise<void> {
  * whatever movements remain for that key (never a blind delete of the balance row itself —
  * the key may carry real seed history this suite never touched).
  */
-async function reconcileStockBalance(locationId: string, storageAreaId: string, itemId: string): Promise<void> {
+async function reconcileStockBalance(
+  locationId: string,
+  storageAreaId: string,
+  itemId: string,
+): Promise<void> {
   await cleanupPool.query(
     `UPDATE stock_balances
         SET qty_on_hand = COALESCE(
@@ -127,30 +141,66 @@ async function reconcileStockBalance(locationId: string, storageAreaId: string, 
   );
 }
 
-async function deleteMovementsAndReconcile(refType: string, refIdCondition: string, params: unknown[]): Promise<void> {
-  const keys = await cleanupPool.query<{ location_id: string; storage_area_id: string; item_id: string }>(
+async function deleteMovementsAndReconcile(
+  refType: string,
+  refIdCondition: string,
+  params: unknown[],
+): Promise<void> {
+  const keys = await cleanupPool.query<{
+    location_id: string;
+    storage_area_id: string;
+    item_id: string;
+  }>(
     `SELECT DISTINCT location_id, storage_area_id, item_id FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`,
     params,
   );
-  await cleanupPool.query(`DELETE FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`, params);
-  for (const key of keys.rows) await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
+  await cleanupPool.query(
+    `DELETE FROM stock_movements WHERE ref_type = '${refType}' AND ${refIdCondition}`,
+    params,
+  );
+  for (const key of keys.rows)
+    await reconcileStockBalance(key.location_id, key.storage_area_id, key.item_id);
 }
 
 async function cleanupPo(id: string): Promise<void> {
-  await cleanupPool.query(`UPDATE purchase_orders SET approval_id = NULL, payment_verification_id = NULL WHERE id = $1`, [id]);
-  await deleteMovementsAndReconcile('po_receipt', `ref_id IN (SELECT id FROM po_receipts WHERE po_id = $1)`, [id]);
-  await cleanupPool.query(`DELETE FROM po_receipt_lines WHERE po_receipt_id IN (SELECT id FROM po_receipts WHERE po_id = $1)`, [id]);
+  await cleanupPool.query(
+    `UPDATE purchase_orders SET approval_id = NULL, payment_verification_id = NULL WHERE id = $1`,
+    [id],
+  );
+  await deleteMovementsAndReconcile(
+    'po_receipt',
+    `ref_id IN (SELECT id FROM po_receipts WHERE po_id = $1)`,
+    [id],
+  );
+  await cleanupPool.query(
+    `DELETE FROM po_receipt_lines WHERE po_receipt_id IN (SELECT id FROM po_receipts WHERE po_id = $1)`,
+    [id],
+  );
   await cleanupPool.query(`DELETE FROM po_receipts WHERE po_id = $1`, [id]);
-  await cleanupPool.query(`DELETE FROM payment_verifications WHERE ref_type = 'purchase_order' AND ref_id = $1`, [id]);
-  await cleanupPool.query(`DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'purchase_order' AND document_id = $1)`, [id]);
-  await cleanupPool.query(`DELETE FROM approvals WHERE document_type = 'purchase_order' AND document_id = $1`, [id]);
+  await cleanupPool.query(
+    `DELETE FROM payment_verifications WHERE ref_type = 'purchase_order' AND ref_id = $1`,
+    [id],
+  );
+  await cleanupPool.query(
+    `DELETE FROM approval_steps WHERE approval_id IN (SELECT id FROM approvals WHERE document_type = 'purchase_order' AND document_id = $1)`,
+    [id],
+  );
+  await cleanupPool.query(
+    `DELETE FROM approvals WHERE document_type = 'purchase_order' AND document_id = $1`,
+    [id],
+  );
   await cleanupPool.query(`DELETE FROM purchase_orders WHERE id = $1`, [id]);
 }
 
 async function cleanupPc(id: string): Promise<void> {
-  await cleanupPool.query(`UPDATE petty_cash SET payment_verification_id = NULL WHERE id = $1`, [id]);
+  await cleanupPool.query(`UPDATE petty_cash SET payment_verification_id = NULL WHERE id = $1`, [
+    id,
+  ]);
   await deleteMovementsAndReconcile('petty_cash', `ref_id = $1`, [id]);
-  await cleanupPool.query(`DELETE FROM payment_verifications WHERE ref_type = 'petty_cash' AND ref_id = $1`, [id]);
+  await cleanupPool.query(
+    `DELETE FROM payment_verifications WHERE ref_type = 'petty_cash' AND ref_id = $1`,
+    [id],
+  );
   await cleanupPool.query(`DELETE FROM petty_cash WHERE id = $1`, [id]);
 }
 
@@ -183,10 +233,17 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     // Fixed date — same day-shift regression rationale as the PO test below.
     const neededBy = '2026-12-31';
 
-    const created = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { prService } = buildKit();
-      return prService.create(client, kgd, { locationId: fx.warehouseId, neededBy, lines: [{ itemId: fx.itemId, qty: '10.000', unitId: fx.unitId, estPrice: '5000.00' }] });
-    });
+    const created = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { prService } = buildKit();
+        return prService.create(client, kgd, {
+          locationId: fx.warehouseId,
+          neededBy,
+          lines: [{ itemId: fx.itemId, qty: '10.000', unitId: fx.unitId, estPrice: '5000.00' }],
+        });
+      },
+    );
     prIds.push(created.id);
     expect(created.status).toBe('draft');
     // Exact round-trip, not a loose date-shaped regex — a one-day-shifted value would still match a regex.
@@ -194,18 +251,24 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     // CONTRACTS.md §4.11: PR detail is "PR with lines + `ApprovalDetail`" — absent pre-submit.
     expect(created.approval).toBeNull();
 
-    const submitted = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { prService } = buildKit();
-      return prService.submit(client, kgd, created.id);
-    });
+    const submitted = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { prService } = buildKit();
+        return prService.submit(client, kgd, created.id);
+      },
+    );
     expect(submitted.status).toBe('submitted');
     expect(submitted.approval).not.toBeNull();
     expect(submitted.approval!.currentStep).not.toBeNull();
 
-    const approved = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
-      const { prService } = buildKit();
-      return prService.approve(client, mgr, created.id, {});
-    });
+    const approved = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { prService } = buildKit();
+        return prService.approve(client, mgr, created.id, {});
+      },
+    );
     expect(approved.status).toBe('approved');
     expect(approved.approval).not.toBeNull();
     expect(approved.approval!.currentStep).toBeNull(); // finalized — the documented completion signal.
@@ -215,10 +278,16 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     const mgr = actorFor(fx, RoleKey.MANAGER, null);
     const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
 
-    const priorAvgCost = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, async (client) => {
-      const res = await client.query<{ avg_cost: string }>(`SELECT avg_cost FROM items WHERE id = $1`, [fx.itemId]);
-      return res.rows[0]!.avg_cost;
-    });
+    const priorAvgCost = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      async (client) => {
+        const res = await client.query<{ avg_cost: string }>(
+          `SELECT avg_cost FROM items WHERE id = $1`,
+          [fx.itemId],
+        );
+        return res.rows[0]!.avg_cost;
+      },
+    );
 
     // Fixed, non-today dates (rather than `new Date()`) so a day-shift regression can't hide behind
     // "today happens to fall on a date the bug doesn't visibly break" — BE-PURCH-FIX regression for the
@@ -226,13 +295,21 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     const orderDate = '2026-06-30';
     const expectedDate = '2026-07-15';
 
-    const created = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
-      const { poService } = buildKit();
-      return poService.create(client, mgr, {
-        supplierId: fx.supplierId, locationId: fx.warehouseId, orderDate, expectedDate,
-        lines: [{ itemId: fx.itemId, qtyOrdered: '20.000', unitId: fx.unitId, unitPrice: '8000.00' }],
-      });
-    });
+    const created = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.create(client, mgr, {
+          supplierId: fx.supplierId,
+          locationId: fx.warehouseId,
+          orderDate,
+          expectedDate,
+          lines: [
+            { itemId: fx.itemId, qtyOrdered: '20.000', unitId: fx.unitId, unitPrice: '8000.00' },
+          ],
+        });
+      },
+    );
     poIds.push(created.id);
     expect(created.status).toBe('draft');
     expect(created.total).toBe('160000.00');
@@ -244,41 +321,59 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     expect(created.approval).toBeNull();
     expect(created.paymentStatus).toBeNull();
 
-    const submitted = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
-      const { poService } = buildKit();
-      return poService.submit(client, mgr, created.id);
-    });
+    const submitted = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.submit(client, mgr, created.id);
+      },
+    );
     // Once submitted, the approval chain is real — `approval` must carry it (never null past 'draft').
     expect(submitted.approval).not.toBeNull();
     expect(submitted.approval!.steps.length).toBeGreaterThan(0);
     expect(submitted.approval!.currentStep).not.toBeNull();
 
-    const approved = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
-      const { poService } = buildKit();
-      return poService.approve(client, mgr, created.id, undefined);
-    });
+    const approved = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.approve(client, mgr, created.id, undefined);
+      },
+    );
     expect(approved.status).toBe('approved');
     // `currentStep === null` is the documented finalization signal (@mimi/shared ApprovalDetail) — this
     // single-manager-step chain should be finalized by now.
     expect(approved.approval).not.toBeNull();
     expect(approved.approval!.currentStep).toBeNull();
 
-    const issued = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
-      const { poService } = buildKit();
-      return poService.issue(client, created.id);
-    });
+    const issued = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.issue(client, created.id);
+      },
+    );
     expect(issued.status).toBe('issued');
 
     const photoId = await createAttachment(fx.kepalaGudangUserId);
     attachmentIds.push(photoId);
 
-    const received = await withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-      const { poService } = buildKit();
-      return poService.receive(client, kgd, created.id, {
-        lines: [{ poLineId: issued.lines[0]!.id, qtyReceived: '20.000', storageAreaId: fx.storageAreaWarehouse }],
-        photoAttachmentIds: [photoId],
-      });
-    });
+    const received = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.receive(client, kgd, created.id, {
+          lines: [
+            {
+              poLineId: issued.lines[0]!.id,
+              qtyReceived: '20.000',
+              storageAreaId: fx.storageAreaWarehouse,
+            },
+          ],
+          photoAttachmentIds: [photoId],
+        });
+      },
+    );
     expect(received.status).toBe('received');
     expect(received.lines[0]!.qtyReceived).toBe('20.000');
     expect(received.lines[0]!.qtyDifference).toBe('0.000');
@@ -298,20 +393,34 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     // next block re-reads the SAME PO as 'owner' and confirms the field matches exactly.
     expect(received.paymentStatus).toBe('pending');
 
-    const asOwner = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) => {
-      const { poService } = buildKit();
-      return poService.getDetail(client, created.id);
-    });
+    const asOwner = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.getDetail(client, created.id);
+      },
+    );
     expect(asOwner.paymentStatus).toBe('pending');
 
-    const afterAvgCost = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, async (client) => {
-      const res = await client.query<{ avg_cost: string }>(`SELECT avg_cost FROM items WHERE id = $1`, [fx.itemId]);
-      return res.rows[0]!.avg_cost;
-    });
+    const afterAvgCost = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      async (client) => {
+        const res = await client.query<{ avg_cost: string }>(
+          `SELECT avg_cost FROM items WHERE id = $1`,
+          [fx.itemId],
+        );
+        return res.rows[0]!.avg_cost;
+      },
+    );
     expect(afterAvgCost).not.toBe(priorAvgCost);
 
-    const pv = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) =>
-      client.query<{ status: string; ref_type: string }>(`SELECT status, ref_type FROM payment_verifications WHERE ref_id = $1`, [created.id]),
+    const pv = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) =>
+        client.query<{ status: string; ref_type: string }>(
+          `SELECT status, ref_type FROM payment_verifications WHERE ref_id = $1`,
+          [created.id],
+        ),
     );
     expect(pv.rows[0]?.status).toBe('pending');
     expect(pv.rows[0]?.ref_type).toBe('purchase_order');
@@ -321,13 +430,20 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     const mgr = actorFor(fx, RoleKey.MANAGER, null);
     const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
 
-    const created = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
-      const { poService } = buildKit();
-      return poService.create(client, mgr, {
-        supplierId: fx.supplierId, locationId: fx.warehouseId, orderDate: new Date().toISOString().slice(0, 10),
-        lines: [{ itemId: fx.itemId, qtyOrdered: '5.000', unitId: fx.unitId, unitPrice: '1000.00' }],
-      });
-    });
+    const created = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.create(client, mgr, {
+          supplierId: fx.supplierId,
+          locationId: fx.warehouseId,
+          orderDate: new Date().toISOString().slice(0, 10),
+          lines: [
+            { itemId: fx.itemId, qtyOrdered: '5.000', unitId: fx.unitId, unitPrice: '1000.00' },
+          ],
+        });
+      },
+    );
     poIds.push(created.id);
 
     await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
@@ -338,19 +454,31 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
       const { poService } = buildKit();
       return poService.approve(client, mgr, created.id, undefined);
     });
-    const issued = await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
-      const { poService } = buildKit();
-      return poService.issue(client, created.id);
-    });
+    const issued = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.issue(client, created.id);
+      },
+    );
 
     await expect(
-      withRollbackAs({ role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] }, (client) => {
-        const { poService } = buildKit();
-        return poService.receive(client, kgd, created.id, {
-          lines: [{ poLineId: issued.lines[0]!.id, qtyReceived: '5.000', storageAreaId: fx.storageAreaWarehouse }],
-          photoAttachmentIds: [],
-        });
-      }),
+      withRollbackAs(
+        { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+        (client) => {
+          const { poService } = buildKit();
+          return poService.receive(client, kgd, created.id, {
+            lines: [
+              {
+                poLineId: issued.lines[0]!.id,
+                qtyReceived: '5.000',
+                storageAreaId: fx.storageAreaWarehouse,
+              },
+            ],
+            photoAttachmentIds: [],
+          });
+        },
+      ),
     ).rejects.toMatchObject({ response: { code: ERR_PHOTO_REQUIRED } });
   });
 
@@ -358,10 +486,16 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     const spv = actorFor(fx, RoleKey.SUPERVISOR, [fx.outletId]);
 
     await expect(
-      withRollbackAs({ role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] }, (client) => {
-        const { prService } = buildKit();
-        return prService.create(client, spv, { locationId: fx.warehouseId, lines: [{ itemId: fx.itemId, qty: '1.000', unitId: fx.unitId }] });
-      }),
+      withRollbackAs(
+        { role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] },
+        (client) => {
+          const { prService } = buildKit();
+          return prService.create(client, spv, {
+            locationId: fx.warehouseId,
+            lines: [{ itemId: fx.itemId, qty: '1.000', unitId: fx.unitId }],
+          });
+        },
+      ),
     ).rejects.toMatchObject({ response: { code: ERR_FORBIDDEN } });
   });
 
@@ -376,17 +510,29 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     // Fixed date (not `new Date()`) — same day-shift regression rationale as the PO/PR tests above.
     const purchaseDate = '2026-03-01';
 
-    const created = await withRollbackAs({ role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] }, (client) => {
-      const { pcService } = buildKit();
-      return pcService.create(client, ldr, {
-        locationId: fx.outletId,
-        purchaseDate,
-        storeName: 'Toko Kelontong Pak Budi',
-        lines: [{ description: 'Bawang merah', itemId: fx.itemId, storageAreaId: fx.storageAreaOutlet, qty: '2.000', amount: '30000.00', expenseCategory: 'operasional' }],
-        paymentProofAttachmentId: proofId,
-        goodsPhotoAttachmentId: photoId,
-      });
-    });
+    const created = await withRollbackAs(
+      { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { pcService } = buildKit();
+        return pcService.create(client, ldr, {
+          locationId: fx.outletId,
+          purchaseDate,
+          storeName: 'Toko Kelontong Pak Budi',
+          lines: [
+            {
+              description: 'Bawang merah',
+              itemId: fx.itemId,
+              storageAreaId: fx.storageAreaOutlet,
+              qty: '2.000',
+              amount: '30000.00',
+              expenseCategory: 'operasional',
+            },
+          ],
+          paymentProofAttachmentId: proofId,
+          goodsPhotoAttachmentId: photoId,
+        });
+      },
+    );
     pcIds.push(created.id);
     expect(created.status).toBe('pending');
     expect(created.totalAmount).toBe('30000.00');
@@ -394,25 +540,43 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     // Exact round-trip — `petty_cash.purchase_date` is a `DATE` column (same `pg`/WITA pitfall).
     expect(created.purchaseDate).toBe(purchaseDate);
 
-    const balBefore = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) =>
-      client.query<{ qty_on_hand: string }>(`SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [fx.outletId, fx.storageAreaOutlet, fx.itemId]),
+    const balBefore = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) =>
+        client.query<{ qty_on_hand: string }>(
+          `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+          [fx.outletId, fx.storageAreaOutlet, fx.itemId],
+        ),
     );
 
-    const verified = await withRollbackAs({ role: 'finance', userId: fin.userId, locationIds: [] }, (client) => {
-      const { pcService } = buildKit();
-      return pcService.verify(client, fin, created.id, undefined);
-    });
+    const verified = await withRollbackAs(
+      { role: 'finance', userId: fin.userId, locationIds: [] },
+      (client) => {
+        const { pcService } = buildKit();
+        return pcService.verify(client, fin, created.id, undefined);
+      },
+    );
     expect(verified.status).toBe('verified');
 
-    const balAfter = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) =>
-      client.query<{ qty_on_hand: string }>(`SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`, [fx.outletId, fx.storageAreaOutlet, fx.itemId]),
+    const balAfter = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) =>
+        client.query<{ qty_on_hand: string }>(
+          `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
+          [fx.outletId, fx.storageAreaOutlet, fx.itemId],
+        ),
     );
     const before = Number(balBefore.rows[0]?.qty_on_hand ?? '0');
     const afterQty = Number(balAfter.rows[0]!.qty_on_hand);
     expect(afterQty - before).toBeCloseTo(2, 3);
 
-    const pv = await withRollbackAs({ role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] }, (client) =>
-      client.query<{ status: string; ref_type: string }>(`SELECT status, ref_type FROM payment_verifications WHERE ref_id = $1`, [created.id]),
+    const pv = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) =>
+        client.query<{ status: string; ref_type: string }>(
+          `SELECT status, ref_type FROM payment_verifications WHERE ref_id = $1`,
+          [created.id],
+        ),
     );
     expect(pv.rows[0]?.ref_type).toBe('petty_cash');
   });

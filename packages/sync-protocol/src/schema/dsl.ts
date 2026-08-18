@@ -19,26 +19,61 @@ import type { ISODate, ISODateTime, Money, Qty, Temp, UUID } from '@mimi/shared'
 
 // ── Field schema shapes ───────────────────────────────────────────────────────
 
-export interface StringField { kind: 'string' }
-export interface UuidField { kind: 'uuid' }
-export interface MoneyField { kind: 'money' }
-export interface QtyField { kind: 'qty' }
-export interface TempField { kind: 'temp' }
-export interface IsoDateField { kind: 'isoDate' }
-export interface IsoDateTimeField { kind: 'isoDateTime' }
-export interface BooleanField { kind: 'boolean' }
-export interface NumberField { kind: 'number' }
-export interface LiteralField<V extends string = string> { kind: 'literal'; value: V }
-export interface EnumField<V extends readonly string[] = readonly string[]> { kind: 'enum'; values: V }
-export interface ArrayField<F extends FieldSchema = FieldSchema> { kind: 'array'; of: F }
+export interface StringField {
+  kind: 'string';
+}
+export interface UuidField {
+  kind: 'uuid';
+}
+export interface MoneyField {
+  kind: 'money';
+}
+export interface QtyField {
+  kind: 'qty';
+}
+export interface TempField {
+  kind: 'temp';
+}
+export interface IsoDateField {
+  kind: 'isoDate';
+}
+export interface IsoDateTimeField {
+  kind: 'isoDateTime';
+}
+export interface BooleanField {
+  kind: 'boolean';
+}
+export interface NumberField {
+  kind: 'number';
+}
+export interface LiteralField<V extends string = string> {
+  kind: 'literal';
+  value: V;
+}
+export interface EnumField<V extends readonly string[] = readonly string[]> {
+  kind: 'enum';
+  values: V;
+}
+export interface ArrayField<F extends FieldSchema = FieldSchema> {
+  kind: 'array';
+  of: F;
+}
 export interface ObjectField<F extends Record<string, FieldSchema> = Record<string, FieldSchema>> {
   kind: 'object';
   fields: F;
 }
-export interface NullableField<F extends FieldSchema = FieldSchema> { kind: 'nullable'; of: F }
-export interface OptionalField<F extends FieldSchema = FieldSchema> { kind: 'optional'; of: F }
+export interface NullableField<F extends FieldSchema = FieldSchema> {
+  kind: 'nullable';
+  of: F;
+}
+export interface OptionalField<F extends FieldSchema = FieldSchema> {
+  kind: 'optional';
+  of: F;
+}
 /** Escape hatch for payload slices this registry deliberately doesn't pin down further (see the report's ambiguous-case list). Accepts anything, including absence. */
-export interface UnknownField { kind: 'unknown' }
+export interface UnknownField {
+  kind: 'unknown';
+}
 
 export type FieldSchema =
   | StringField
@@ -150,7 +185,9 @@ function mergeIssues(results: readonly ValidationResult[]): ValidationResult {
 export function validate(schema: FieldSchema, value: unknown, path = '$'): ValidationResult {
   switch (schema.kind) {
     case 'string':
-      return typeof value === 'string' ? { ok: true } : fail(path, `expected string, got ${typeOf(value)}`);
+      return typeof value === 'string'
+        ? { ok: true }
+        : fail(path, `expected string, got ${typeOf(value)}`);
     case 'uuid':
       return typeof value === 'string' && UUID_RE.test(value)
         ? { ok: true }
@@ -170,15 +207,27 @@ export function validate(schema: FieldSchema, value: unknown, path = '$'): Valid
         ? { ok: true }
         : fail(path, `expected an ISO-8601 datetime string, got ${describeValue(value)}`);
     case 'boolean':
-      return typeof value === 'boolean' ? { ok: true } : fail(path, `expected boolean, got ${typeOf(value)}`);
+      return typeof value === 'boolean'
+        ? { ok: true }
+        : fail(path, `expected boolean, got ${typeOf(value)}`);
     case 'number':
-      return typeof value === 'number' && !Number.isNaN(value) ? { ok: true } : fail(path, `expected number, got ${typeOf(value)}`);
+      return typeof value === 'number' && !Number.isNaN(value)
+        ? { ok: true }
+        : fail(path, `expected number, got ${typeOf(value)}`);
     case 'literal':
-      return value === schema.value ? { ok: true } : fail(path, `expected literal ${JSON.stringify(schema.value)}, got ${describeValue(value)}`);
+      return value === schema.value
+        ? { ok: true }
+        : fail(
+            path,
+            `expected literal ${JSON.stringify(schema.value)}, got ${describeValue(value)}`,
+          );
     case 'enum':
       return typeof value === 'string' && (schema.values as readonly string[]).includes(value)
         ? { ok: true }
-        : fail(path, `expected one of ${JSON.stringify(schema.values)}, got ${describeValue(value)}`);
+        : fail(
+            path,
+            `expected one of ${JSON.stringify(schema.values)}, got ${describeValue(value)}`,
+          );
     case 'array':
       if (!Array.isArray(value)) return fail(path, `expected array, got ${typeOf(value)}`);
       return mergeIssues(value.map((item, i) => validate(schema.of, item, `${path}[${i}]`)));
@@ -199,13 +248,22 @@ export function validate(schema: FieldSchema, value: unknown, path = '$'): Valid
   }
 }
 
-function validateDecimalString(value: unknown, path: string, scale: number, label: string): ValidationResult {
-  if (typeof value !== 'string') return fail(path, `expected a ${label} decimal string, got ${typeOf(value)}`);
+function validateDecimalString(
+  value: unknown,
+  path: string,
+  scale: number,
+  label: string,
+): ValidationResult {
+  if (typeof value !== 'string')
+    return fail(path, `expected a ${label} decimal string, got ${typeOf(value)}`);
   try {
     parseFixed(value, scale);
     return { ok: true };
   } catch {
-    return fail(path, `expected a valid ${label} decimal string at scale ${scale}, got ${describeValue(value)}`);
+    return fail(
+      path,
+      `expected a valid ${label} decimal string at scale ${scale}, got ${describeValue(value)}`,
+    );
   }
 }
 

@@ -1,7 +1,14 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import {
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  AlertCircle,
+} from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { Paginated } from '@/lib/api';
@@ -52,9 +59,20 @@ export interface DataTableProps<T> {
 }
 
 export function DataTable<T>({
-  columns, data, keyField, loading, error, emptyTitle, emptyDescription,
-  onRowClick, sort, onSortChange, onPageChange, onPageSizeChange,
-  pageSizeOptions = [10, 25, 50, 100], className,
+  columns,
+  data,
+  keyField,
+  loading,
+  error,
+  emptyTitle,
+  emptyDescription,
+  onRowClick,
+  sort,
+  onSortChange,
+  onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = [10, 25, 50, 100],
+  className,
 }: DataTableProps<T>) {
   const { t } = useI18n();
   const totalPages = Math.max(1, Math.ceil(data.total / Math.max(1, data.pageSize)));
@@ -73,7 +91,15 @@ export function DataTable<T>({
                   <th
                     key={col.key}
                     style={{ width: col.width }}
-                    aria-sort={col.sortable ? (isSorted ? (sort?.direction === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
+                    aria-sort={
+                      col.sortable
+                        ? isSorted
+                          ? sort?.direction === 'asc'
+                            ? 'ascending'
+                            : 'descending'
+                          : 'none'
+                        : undefined
+                    }
                     className={cn(
                       'px-3 py-2.5 font-medium text-text-secondary',
                       col.align === 'right' && 'text-right',
@@ -85,7 +111,11 @@ export function DataTable<T>({
                       <button
                         type="button"
                         onClick={() => onSortChange?.(col.key)}
-                        title={isSorted && sort?.direction === 'asc' ? t('table.sortDescending') : t('table.sortAscending')}
+                        title={
+                          isSorted && sort?.direction === 'asc'
+                            ? t('table.sortDescending')
+                            : t('table.sortAscending')
+                        }
                         className="inline-flex items-center gap-1 hover:text-text-primary"
                       >
                         {col.header}
@@ -133,7 +163,11 @@ export function DataTable<T>({
             {!loading && !error && data.rows.length === 0 && (
               <tr>
                 <td colSpan={columns.length}>
-                  <EmptyState title={emptyTitle ?? t('table.empty')} description={emptyDescription} size="sm" />
+                  <EmptyState
+                    title={emptyTitle ?? t('table.empty')}
+                    description={emptyDescription}
+                    size="sm"
+                  />
                 </td>
               </tr>
             )}
@@ -158,7 +192,9 @@ export function DataTable<T>({
                         col.align === 'center' && 'text-center',
                       )}
                     >
-                      {col.render ? col.render(row) : String((row as Record<string, unknown>)[col.key] ?? '—')}
+                      {col.render
+                        ? col.render(row)
+                        : String((row as Record<string, unknown>)[col.key] ?? '—')}
                     </td>
                   ))}
                 </tr>
@@ -169,7 +205,9 @@ export function DataTable<T>({
 
       {!loading && !error && data.total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-text-secondary">
-          <span>{t('table.showingRows', { from: showingFrom, to: showingTo, total: data.total })}</span>
+          <span>
+            {t('table.showingRows', { from: showingFrom, to: showingTo, total: data.total })}
+          </span>
           <div className="flex items-center gap-3">
             {onPageSizeChange && (
               <Select

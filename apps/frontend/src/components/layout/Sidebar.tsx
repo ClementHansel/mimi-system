@@ -38,11 +38,20 @@ export function Sidebar({ variant = 'desktop' }: { variant?: 'desktop' | 'mobile
       aria-label={t('shell.appName')}
     >
       {variant === 'desktop' && (
-        <div className={cn('flex items-center gap-2 border-b border-border px-4 py-4', isCollapsed && 'justify-center px-2')}>
+        <div
+          className={cn(
+            'flex items-center gap-2 border-b border-border px-4 py-4',
+            isCollapsed && 'justify-center px-2',
+          )}
+        >
           <span className="flex size-8 flex-none items-center justify-center rounded-md bg-brand-500 font-display text-sm font-bold text-white">
             MC
           </span>
-          {!isCollapsed && <span className="truncate font-display text-base font-semibold text-text-primary">{t('shell.appName')}</span>}
+          {!isCollapsed && (
+            <span className="truncate font-display text-base font-semibold text-text-primary">
+              {t('shell.appName')}
+            </span>
+          )}
         </div>
       )}
 

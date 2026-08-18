@@ -46,7 +46,11 @@ export class OutletNodeSettingRepository {
    *  session-role level; the controller enforces the STRICTER "Owner-only" business rule from D-26
    *  on top of that (RLS is the outer bound, never the only gate — same layering CONTRACTS.md §1.14
    *  describes for every other table). */
-  async setEnabled(client: DbClient, locationId: UUID, enabled: boolean): Promise<OutletNodeSettingRow | undefined> {
+  async setEnabled(
+    client: DbClient,
+    locationId: UUID,
+    enabled: boolean,
+  ): Promise<OutletNodeSettingRow | undefined> {
     const res = await client.query<OutletNodeSettingRow>(
       `UPDATE locations
           SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{nodeEnabled}', to_jsonb($2::boolean), true)

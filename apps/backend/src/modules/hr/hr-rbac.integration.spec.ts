@@ -64,7 +64,7 @@ describe('HR module RBAC + RLS (integration, live Postgres)', () => {
     }
   });
 
-  it('the roles CONTRACTS.md §3 actually grants these keys to are allowed — the matrix isn\'t locked out for everyone', () => {
+  it("the roles CONTRACTS.md §3 actually grants these keys to are allowed — the matrix isn't locked out for everyone", () => {
     const allowed: [string, RoleKey][] = [
       ['hr.employee.manage', RoleKey.HR_ADMIN],
       ['hr.employee.manage', RoleKey.OWNER],
@@ -85,16 +85,24 @@ describe('HR module RBAC + RLS (integration, live Postgres)', () => {
   it('a Kasir reading their OWN attendance rows succeeds under RLS', async () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
-    await withRollbackAs({ userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] }, async (client) => {
-      const res = await client.query('SELECT id FROM attendance WHERE employee_id = $1', [kasir.employeeId]);
-      // Not asserting a specific count (seed data varies) — asserting the query itself doesn't
-      // silently zero out rows that genuinely belong to this session's own employee.
-      const directCount = await client.query('SELECT COUNT(*) AS n FROM attendance WHERE employee_id = $1', [kasir.employeeId]);
-      expect(res.rows.length).toBe(Number(directCount.rows[0].n));
-    });
+    await withRollbackAs(
+      { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] },
+      async (client) => {
+        const res = await client.query('SELECT id FROM attendance WHERE employee_id = $1', [
+          kasir.employeeId,
+        ]);
+        // Not asserting a specific count (seed data varies) — asserting the query itself doesn't
+        // silently zero out rows that genuinely belong to this session's own employee.
+        const directCount = await client.query(
+          'SELECT COUNT(*) AS n FROM attendance WHERE employee_id = $1',
+          [kasir.employeeId],
+        );
+        expect(res.rows.length).toBe(Number(directCount.rows[0].n));
+      },
+    );
   });
 
-  it('a Kasir CANNOT see a co-worker\'s attendance rows, even at the SAME outlet — self-only, not location-wide', async () => {
+  it("a Kasir CANNOT see a co-worker's attendance rows, even at the SAME outlet — self-only, not location-wide", async () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
 
@@ -102,42 +110,66 @@ describe('HR module RBAC + RLS (integration, live Postgres)', () => {
     coworkerEmployeeId = await loadCoworkerEmployeeId(kasir.locationId, kasir.employeeId);
     if (!coworkerEmployeeId) return; // seed doesn't have a second employee at this outlet — nothing to prove
 
-    await withRollbackAs({ userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] }, async (client) => {
-      const asKasir = await client.query('SELECT id FROM attendance WHERE employee_id = $1', [coworkerEmployeeId]);
-      expect(asKasir.rows.length).toBe(0);
-    });
+    await withRollbackAs(
+      { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] },
+      async (client) => {
+        const asKasir = await client.query('SELECT id FROM attendance WHERE employee_id = $1', [
+          coworkerEmployeeId,
+        ]);
+        expect(asKasir.rows.length).toBe(0);
+      },
+    );
 
     // Both directions: a SUPERVISOR at the SAME outlet legitimately CAN see it (location-scoped read
     // is exactly what `hr.attendance.read` + the `attendance_scope` policy's supervisor clause grant).
     const spv = fixtures.usersByRole[RoleKey.SUPERVISOR];
     if (!spv) return;
-    await withRollbackAs({ userId: spv.userId, roleKey: RoleKey.SUPERVISOR, locationIds: [kasir.locationId] }, async (client) => {
-      const asSupervisor = await client.query('SELECT id FROM attendance WHERE employee_id = $1', [coworkerEmployeeId]);
-      const directCount = await client.query('SELECT COUNT(*) AS n FROM attendance WHERE employee_id = $1', [coworkerEmployeeId]);
-      expect(asSupervisor.rows.length).toBe(Number(directCount.rows[0].n));
-    });
+    await withRollbackAs(
+      { userId: spv.userId, roleKey: RoleKey.SUPERVISOR, locationIds: [kasir.locationId] },
+      async (client) => {
+        const asSupervisor = await client.query(
+          'SELECT id FROM attendance WHERE employee_id = $1',
+          [coworkerEmployeeId],
+        );
+        const directCount = await client.query(
+          'SELECT COUNT(*) AS n FROM attendance WHERE employee_id = $1',
+          [coworkerEmployeeId],
+        );
+        expect(asSupervisor.rows.length).toBe(Number(directCount.rows[0].n));
+      },
+    );
   });
 
-  it('a Kasir CANNOT see a co-worker\'s leave_requests, even at the SAME outlet', async () => {
+  it("a Kasir CANNOT see a co-worker's leave_requests, even at the SAME outlet", async () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
     if (!coworkerEmployeeId) return; // set by the previous test; seed-dependent
 
-    await withRollbackAs({ userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] }, async (client) => {
-      const asKasir = await client.query('SELECT id FROM leave_requests WHERE employee_id = $1', [coworkerEmployeeId]);
-      expect(asKasir.rows.length).toBe(0);
-    });
+    await withRollbackAs(
+      { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] },
+      async (client) => {
+        const asKasir = await client.query('SELECT id FROM leave_requests WHERE employee_id = $1', [
+          coworkerEmployeeId,
+        ]);
+        expect(asKasir.rows.length).toBe(0);
+      },
+    );
   });
 
-  it('a Kasir CANNOT see another outlet\'s employees at all (cross-location isolation)', async () => {
+  it("a Kasir CANNOT see another outlet's employees at all (cross-location isolation)", async () => {
     if (!dbAvailable) return;
     const kasir = fixtures.usersByRole[RoleKey.KASIR]!;
     const other = await loadOtherOutletKasir(kasir.locationId);
     if (!other) return;
 
-    await withRollbackAs({ userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] }, async (client) => {
-      const res = await client.query('SELECT id FROM employees WHERE id = $1', [other.employeeId]);
-      expect(res.rows.length).toBe(0);
-    });
+    await withRollbackAs(
+      { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] },
+      async (client) => {
+        const res = await client.query('SELECT id FROM employees WHERE id = $1', [
+          other.employeeId,
+        ]);
+        expect(res.rows.length).toBe(0);
+      },
+    );
   });
 });

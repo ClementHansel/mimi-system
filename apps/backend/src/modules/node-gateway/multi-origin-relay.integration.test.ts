@@ -41,7 +41,9 @@ import {
   insertTestNode,
 } from '../device-registry/test-support/live-db';
 
-const fakeConfig = { get: (_key: string, def?: string) => def } as unknown as import('@nestjs/config').ConfigService;
+const fakeConfig = {
+  get: (_key: string, def?: string) => def,
+} as unknown as import('@nestjs/config').ConfigService;
 
 const pool = getAppPool();
 // Verification-only reads (asserting what the code-under-test committed) go through the OWNER pool,
@@ -53,16 +55,38 @@ const eventsRepo = new SyncEventsRepository(pool);
 const conflictsRepo = new SyncConflictsRepository();
 const registryRepo = new RegistryRepository(pool);
 const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-const offlineAuth = new OfflineAuthService(new OfflineCredentialsRepository(), conflictsRepo, fakeConfig);
+const offlineAuth = new OfflineAuthService(
+  new OfflineCredentialsRepository(),
+  conflictsRepo,
+  fakeConfig,
+);
 const reconciliation = new ReconciliationService(pool, eventsRepo, conflictsRepo, registryRepo);
 const projectors = new SyncProjectorRegistry(); // empty registry — no Wave 3+ projector registered in this test process (matches kernel/sync's own sync-ingest.integration.test.ts)
-const ingest = new SyncIngestService(eventsRepo, conflictDetector, offlineAuth, reconciliation, projectors);
+const ingest = new SyncIngestService(
+  eventsRepo,
+  conflictDetector,
+  offlineAuth,
+  reconciliation,
+  projectors,
+);
 
 function validAttendanceData(loc: string) {
-  return { clientId: randomUUID(), locationId: loc, lat: '-1.240000', lng: '116.830000', accuracyM: 10, selfieAttachmentId: randomUUID() };
+  return {
+    clientId: randomUUID(),
+    locationId: loc,
+    lat: '-1.240000',
+    lng: '116.830000',
+    accuracyM: 10,
+    selfieAttachmentId: randomUUID(),
+  };
 }
 
-function mkEvent(originDeviceId: string, clientSeq: number, locationId: string, actorUserId: string): SyncEventEnvelope {
+function mkEvent(
+  originDeviceId: string,
+  clientSeq: number,
+  locationId: string,
+  actorUserId: string,
+): SyncEventEnvelope {
   return {
     eventId: formatUuidV7(Date.now() + clientSeq, randomBytes(16)),
     originTier: SyncOriginType.DEVICE,
@@ -71,7 +95,11 @@ function mkEvent(originDeviceId: string, clientSeq: number, locationId: string, 
     entity: 'attendance',
     entityId: randomUUID(),
     op: 'checked_in',
-    payload: { v: 1, data: validAttendanceData(locationId), meta: { actorUserId, actorRole: 'kasir', appVersion: '1.0.0' } },
+    payload: {
+      v: 1,
+      data: validAttendanceData(locationId),
+      meta: { actorUserId, actorRole: 'kasir', appVersion: '1.0.0' },
+    },
     clientSeq: BigInt(clientSeq),
     occurredAt: new Date().toISOString(),
     actorUserId,
@@ -95,7 +123,11 @@ describe('Multi-origin relay — live database (node-token connection, per-event
 
   afterEach(async () => {
     await cleanupOrigins(createdDeviceIds);
-    await cleanupNodesAndDevices({ nodeIds: createdNodeIds, deviceIds: createdDeviceIds, locationIds: createdLocationIds });
+    await cleanupNodesAndDevices({
+      nodeIds: createdNodeIds,
+      deviceIds: createdDeviceIds,
+      locationIds: createdLocationIds,
+    });
     for (const id of createdLocationIds) await deleteLocation(id);
     createdNodeIds.length = 0;
     createdDeviceIds.length = 0;
@@ -127,8 +159,16 @@ describe('Multi-origin relay — live database (node-token connection, per-event
     const otherNode = await insertTestNode(otherLocationId);
     createdNodeIds.push(node.id, otherNode.id);
 
-    const ownDevice = await insertTestDeviceForNode(locationId, node.id, randomBytes(16).toString('hex'));
-    const foreignDevice = await insertTestDeviceForNode(otherLocationId, otherNode.id, randomBytes(16).toString('hex'));
+    const ownDevice = await insertTestDeviceForNode(
+      locationId,
+      node.id,
+      randomBytes(16).toString('hex'),
+    );
+    const foreignDevice = await insertTestDeviceForNode(
+      otherLocationId,
+      otherNode.id,
+      randomBytes(16).toString('hex'),
+    );
     createdDeviceIds.push(ownDevice, foreignDevice);
 
     expect(await registryRepo.findDeviceLocationForNode(ownDevice, node.id)).toBe(locationId);
@@ -145,14 +185,23 @@ describe('Multi-origin relay — live database (node-token connection, per-event
     const actorUserId = await fetchOneUserId('kasir');
     const node = await insertTestNode(locationId);
     createdNodeIds.push(node.id);
-    const deviceA = await insertTestDeviceForNode(locationId, node.id, randomBytes(16).toString('hex'));
-    const deviceB = await insertTestDeviceForNode(locationId, node.id, randomBytes(16).toString('hex'));
+    const deviceA = await insertTestDeviceForNode(
+      locationId,
+      node.id,
+      randomBytes(16).toString('hex'),
+    );
+    const deviceB = await insertTestDeviceForNode(
+      locationId,
+      node.id,
+      randomBytes(16).toString('hex'),
+    );
     createdDeviceIds.push(deviceA, deviceB);
 
     // Exactly what `sync.gateway.ts`'s node branch builds: `(originDeviceId) =>
     // registry.findDeviceLocationForNode(originDeviceId, nodeId)` — no special-casing per event,
     // no trusting the node's own location for an event it didn't actually relay.
-    const resolveLocation = (originDeviceId: string) => registryRepo.findDeviceLocationForNode(originDeviceId, node.id);
+    const resolveLocation = (originDeviceId: string) =>
+      registryRepo.findDeviceLocationForNode(originDeviceId, node.id);
 
     const batch = batchOf([
       mkEvent(deviceA, 1, locationId, actorUserId),
@@ -182,11 +231,20 @@ describe('Multi-origin relay — live database (node-token connection, per-event
     const foreignNode = await insertTestNode(otherLocationId);
     createdNodeIds.push(node.id, foreignNode.id);
 
-    const ownDevice = await insertTestDeviceForNode(locationId, node.id, randomBytes(16).toString('hex'));
-    const foreignDevice = await insertTestDeviceForNode(otherLocationId, foreignNode.id, randomBytes(16).toString('hex'));
+    const ownDevice = await insertTestDeviceForNode(
+      locationId,
+      node.id,
+      randomBytes(16).toString('hex'),
+    );
+    const foreignDevice = await insertTestDeviceForNode(
+      otherLocationId,
+      foreignNode.id,
+      randomBytes(16).toString('hex'),
+    );
     createdDeviceIds.push(ownDevice, foreignDevice);
 
-    const resolveLocation = (originDeviceId: string) => registryRepo.findDeviceLocationForNode(originDeviceId, node.id);
+    const resolveLocation = (originDeviceId: string) =>
+      registryRepo.findDeviceLocationForNode(originDeviceId, node.id);
 
     const batch = batchOf([
       mkEvent(ownDevice, 1, locationId, actorUserId),
@@ -199,7 +257,10 @@ describe('Multi-origin relay — live database (node-token connection, per-event
     expect(ack.rejected).toHaveLength(1);
     expect(ack.rejected[0]?.code).toBe('authority_violation');
 
-    const foreignRows = await assertPool.query(`SELECT * FROM sync_events WHERE origin_device_id = $1`, [foreignDevice]);
+    const foreignRows = await assertPool.query(
+      `SELECT * FROM sync_events WHERE origin_device_id = $1`,
+      [foreignDevice],
+    );
     expect(foreignRows.rows).toHaveLength(0); // never stored — rejected before any insert (unresolved origin path)
   });
 });

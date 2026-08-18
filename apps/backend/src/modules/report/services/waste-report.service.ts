@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { businessDayBoundaries, ZERO_MONEY, ZERO_QTY, type ISODate, type Money, type Qty, type UUID } from '@mimi/shared';
+import {
+  businessDayBoundaries,
+  ZERO_MONEY,
+  ZERO_QTY,
+  type ISODate,
+  type Money,
+  type Qty,
+  type UUID,
+} from '@mimi/shared';
 import { assertLocationInScope } from '../scope.util';
 import type { ReportCallerContext } from '../report.types';
 

@@ -17,8 +17,11 @@ import {
  * calculation; it falls back to the `@mimi/shared` seed default instead.
  */
 async function readSetting<T>(client: PoolClient, key: SettingsKey, fallback: T): Promise<T> {
-  const res = await client.query<{ value: unknown }>('SELECT value FROM settings WHERE key = $1', [key]);
-  if (res.rows.length === 0 || res.rows[0]!.value === null || res.rows[0]!.value === undefined) return fallback;
+  const res = await client.query<{ value: unknown }>('SELECT value FROM settings WHERE key = $1', [
+    key,
+  ]);
+  if (res.rows.length === 0 || res.rows[0]!.value === null || res.rows[0]!.value === undefined)
+    return fallback;
   return res.rows[0]!.value as T;
 }
 
@@ -30,11 +33,21 @@ export interface StatutoryGate {
 
 /** CONTRACTS §4.20 `payroll.statutory` — Amendment 1's ONE gate, flipped only via the §4.15 wizard endpoints. */
 export async function getStatutoryGate(client: PoolClient): Promise<StatutoryGate> {
-  return readSetting<StatutoryGate>(client, 'payroll.statutory', { enabled: false, enabledAt: null, enabledBy: null });
+  return readSetting<StatutoryGate>(client, 'payroll.statutory', {
+    enabled: false,
+    enabledAt: null,
+    enabledBy: null,
+  });
 }
 
-export async function getOvertimeSettings(client: PoolClient): Promise<{ ratePerHour: Money; minMinutes: number }> {
-  return readSetting(client, 'hr.overtime', DEFAULT_OVERTIME_SETTINGS as unknown as { ratePerHour: Money; minMinutes: number });
+export async function getOvertimeSettings(
+  client: PoolClient,
+): Promise<{ ratePerHour: Money; minMinutes: number }> {
+  return readSetting(
+    client,
+    'hr.overtime',
+    DEFAULT_OVERTIME_SETTINGS as unknown as { ratePerHour: Money; minMinutes: number },
+  );
 }
 
 export interface DeductionRates {
@@ -45,11 +58,20 @@ export interface DeductionRates {
 }
 
 export async function getDeductionRates(client: PoolClient): Promise<DeductionRates> {
-  return readSetting<DeductionRates>(client, 'hr.deduction_rates', DEFAULT_DEDUCTION_RATES as unknown as DeductionRates);
+  return readSetting<DeductionRates>(
+    client,
+    'hr.deduction_rates',
+    DEFAULT_DEDUCTION_RATES as unknown as DeductionRates,
+  );
 }
 
-export async function getLeaveQuotas(client: PoolClient): Promise<{ annual: number; marriage: number }> {
-  return readSetting(client, 'leave.quotas', { annual: ANNUAL_LEAVE_QUOTA_DAYS, marriage: MARRIAGE_LEAVE_QUOTA_DAYS });
+export async function getLeaveQuotas(
+  client: PoolClient,
+): Promise<{ annual: number; marriage: number }> {
+  return readSetting(client, 'leave.quotas', {
+    annual: ANNUAL_LEAVE_QUOTA_DAYS,
+    marriage: MARRIAGE_LEAVE_QUOTA_DAYS,
+  });
 }
 
 export interface SoShortfallSettings {
@@ -58,5 +80,9 @@ export interface SoShortfallSettings {
 }
 
 export async function getSoShortfallSettings(client: PoolClient): Promise<SoShortfallSettings> {
-  return readSetting<SoShortfallSettings>(client, 'payroll.so_shortfall', DEFAULT_SO_SHORTFALL_SETTINGS as unknown as SoShortfallSettings);
+  return readSetting<SoShortfallSettings>(
+    client,
+    'payroll.so_shortfall',
+    DEFAULT_SO_SHORTFALL_SETTINGS as unknown as SoShortfallSettings,
+  );
 }

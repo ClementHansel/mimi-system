@@ -17,20 +17,18 @@ function movementArb(index: number) {
       movementType: fc.constantFrom(...MOVEMENT_TYPES),
       qtyWhole: fc.integer({ min: 0, max: 100_000 }),
     })
-    .map(
-      (r): MovementFact => ({
-        locationId: r.locationId,
-        storageAreaId: r.storageAreaId,
-        itemId: r.itemId,
-        factId: `fact-${index}`,
-        movementType: r.movementType,
-        qty: `${r.qtyWhole}.000`,
-        unitCost: '1000.00',
-        refType: 'test',
-        refId: null,
-        occurredAt: '2026-08-17T00:00:00.000Z',
-      }),
-    );
+    .map((r): MovementFact => ({
+      locationId: r.locationId,
+      storageAreaId: r.storageAreaId,
+      itemId: r.itemId,
+      factId: `fact-${index}`,
+      movementType: r.movementType,
+      qty: `${r.qtyWhole}.000`,
+      unitCost: '1000.00',
+      refType: 'test',
+      refId: null,
+      occurredAt: '2026-08-17T00:00:00.000Z',
+    }));
 }
 
 function movementsArb(maxLength = 60) {

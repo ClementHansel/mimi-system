@@ -23,7 +23,9 @@ export {
   rejectReplenishment,
 } from '@/components/warehouse/lib/warehouse-api';
 
-export function getPendingApprovals(params: { documentType?: string; page?: number; pageSize?: number } = {}) {
+export function getPendingApprovals(
+  params: { documentType?: string; page?: number; pageSize?: number } = {},
+) {
   const qs = new URLSearchParams();
   if (params.documentType) qs.set('documentType', params.documentType);
   qs.set('page', String(params.page ?? 1));

@@ -34,7 +34,17 @@ const drop: Drop = {
 };
 
 const areas: StorageArea[] = [
-  { id: 'area-1', locationId: 'loc-1', code: 'FRZ', name: 'Freezer', type: 'freezer', tempMin: null, tempMax: null, sortOrder: 1, isActive: true },
+  {
+    id: 'area-1',
+    locationId: 'loc-1',
+    code: 'FRZ',
+    name: 'Freezer',
+    type: 'freezer',
+    tempMin: null,
+    tempMax: null,
+    sortOrder: 1,
+    isActive: true,
+  },
 ];
 
 beforeAll(() => {

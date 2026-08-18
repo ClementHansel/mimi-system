@@ -29,7 +29,10 @@ import {
 
 const service = new StockLedgerService(new StockMovedEventEmitter(new EventBus()));
 
-function movementFor(key: StockFixtureKey, overrides: Partial<PostMovementInput> = {}): PostMovementInput {
+function movementFor(
+  key: StockFixtureKey,
+  overrides: Partial<PostMovementInput> = {},
+): PostMovementInput {
   return {
     ...key,
     movementType: MovementType.PURCHASE_IN,
@@ -72,7 +75,11 @@ describe('StockLedgerService — live database', () => {
     const key = await pickUnusedStockKey(client);
 
     await expect(
-      service.post(client, [movementFor(key, { movementType: MovementType.USAGE_OUT, qty: '1.000' })], 'strict'),
+      service.post(
+        client,
+        [movementFor(key, { movementType: MovementType.USAGE_OUT, qty: '1.000' })],
+        'strict',
+      ),
     ).rejects.toThrow(StockInsufficientError);
 
     expect(await readBalance(client, key)).toBeNull();
@@ -91,11 +98,20 @@ describe('StockLedgerService — live database', () => {
     expect(result.movements[0].wentNegative).toBe(true);
     expect(await readBalance(client, key)).toBe('-1.000');
 
-    const recon = await client.query<{ status: string; tier: string; expected_qty: string; stored_qty: string }>(
-      `SELECT status, tier, expected_qty, stored_qty FROM stock_reconciliations WHERE id = $1`,
-      [result.reconciliationsOpened[0]],
-    );
-    expect(recon.rows[0]).toMatchObject({ status: 'open', tier: 'cloud', expected_qty: '-1.000', stored_qty: '-1.000' });
+    const recon = await client.query<{
+      status: string;
+      tier: string;
+      expected_qty: string;
+      stored_qty: string;
+    }>(`SELECT status, tier, expected_qty, stored_qty FROM stock_reconciliations WHERE id = $1`, [
+      result.reconciliationsOpened[0],
+    ]);
+    expect(recon.rows[0]).toMatchObject({
+      status: 'open',
+      tier: 'cloud',
+      expected_qty: '-1.000',
+      stored_qty: '-1.000',
+    });
   });
 
   it('replaying the identical fact through post() a second time does not double-apply (idempotent replay)', async () => {
@@ -159,14 +175,18 @@ describe('StockLedgerService — live database', () => {
     await service.post(client, [movementFor(key, { qty: '10.000' })], 'strict');
 
     // Physical count says 6 — a real opname-style variance against the ledger's derived 10.
-    const check = await service.reconcile(client, key, '6.000', { detail: { source: 'physical_count' } });
+    const check = await service.reconcile(client, key, '6.000', {
+      detail: { source: 'physical_count' },
+    });
 
     expect(check.matches).toBe(false);
     expect(check.expectedQty).toBe('10.000');
     expect(check.divergence).toBe('4.000');
     expect(check.reconciliationId).toBeDefined();
 
-    const row = await client.query(`SELECT status FROM stock_reconciliations WHERE id = $1`, [check.reconciliationId]);
+    const row = await client.query(`SELECT status FROM stock_reconciliations WHERE id = $1`, [
+      check.reconciliationId,
+    ]);
     expect(row.rows[0].status).toBe('open');
   });
 
@@ -185,7 +205,11 @@ describe('StockLedgerService — live database', () => {
   describe('RLS enforcement (D-06/D-21 — FORCE ROW LEVEL SECURITY)', () => {
     it('a scoped role can write stock for a location inside app.location_ids', async () => {
       const key = await pickUnusedStockKey(client);
-      await setRlsContext(client, { role: 'kasir', userId: '00000000-0000-0000-0000-0000000000bb', locationIds: [key.locationId] });
+      await setRlsContext(client, {
+        role: 'kasir',
+        userId: '00000000-0000-0000-0000-0000000000bb',
+        locationIds: [key.locationId],
+      });
 
       const result = await service.post(client, [movementFor(key)], 'strict');
       expect(result.movements[0].balanceAfter).toBe('10.000');
@@ -199,7 +223,9 @@ describe('StockLedgerService — live database', () => {
         locationIds: ['00000000-0000-0000-0000-000000000000'], // a location the caller is NOT scoped to
       });
 
-      await expect(service.post(client, [movementFor(key)], 'strict')).rejects.toThrow(/row-level security|permission/i);
+      await expect(service.post(client, [movementFor(key)], 'strict')).rejects.toThrow(
+        /row-level security|permission/i,
+      );
     });
   });
 
@@ -232,7 +258,9 @@ describe('StockLedgerService — live database', () => {
      */
     it('the seed invariant is unchanged after the entire suite above has run', async () => {
       expect(await countInvariantMismatches(client)).toBe(0);
-      const counts = await client.query<{ n: string }>(`SELECT count(*)::int AS n FROM stock_balances`);
+      const counts = await client.query<{ n: string }>(
+        `SELECT count(*)::int AS n FROM stock_balances`,
+      );
       expect(Number(counts.rows[0].n)).toBeGreaterThanOrEqual(630);
     });
   });

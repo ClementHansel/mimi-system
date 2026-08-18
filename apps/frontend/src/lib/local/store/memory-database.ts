@@ -23,7 +23,8 @@ export function createMemoryDatabase(keyPaths: Record<string, string>): LocalDat
     const path = keyPaths[name];
     if (!path) throw new Error(`Unknown store: ${name}`);
     const key = (value as Record<string, unknown>)[path];
-    if (key === undefined) throw new Error(`Value for store "${name}" is missing its key field "${path}"`);
+    if (key === undefined)
+      throw new Error(`Value for store "${name}" is missing its key field "${path}"`);
     return key as IDBValidKey;
   }
 

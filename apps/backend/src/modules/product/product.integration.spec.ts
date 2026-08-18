@@ -18,7 +18,13 @@ import { EventBus } from '../../kernel/events/event-bus.service';
 import { StorageService } from '../../kernel/storage/storage.service';
 import { ProductService } from './product.service';
 import { RecipeService } from './recipe.service';
-import { getOwnerPool, loadFixtures, nextCode, withRollback, type Fixtures } from '../location/test-support/live-db';
+import {
+  getOwnerPool,
+  loadFixtures,
+  nextCode,
+  withRollback,
+  type Fixtures,
+} from '../location/test-support/live-db';
 
 const eventsRepo = new SyncEventsRepository();
 const conflictsRepo = new SyncConflictsRepository();
@@ -28,13 +34,22 @@ const eventBus = new EventBus();
 // No attachment is ever created in this suite (photoAttachmentId stays
 // unset), so `resolvePhotoUrl` returns null before ever touching this pool —
 // a dummy is safe here without standing up a real MinIO-backed StorageService.
-const dummyPool = { query: () => { throw new Error('StorageService.pool should not be queried in this suite'); } } as unknown as Pool;
+const dummyPool = {
+  query: () => {
+    throw new Error('StorageService.pool should not be queried in this suite');
+  },
+} as unknown as Pool;
 const storage = new StorageService(new ConfigService(), dummyPool);
 const productService = new ProductService(sync, eventBus, storage);
 const recipeService = new RecipeService(sync);
 
 const ACTOR = '00000000-0000-0000-0000-0000000000aa';
-const SYSTEM_USER: JwtAccessPayload = { sub: ACTOR, username: 'system', roleKey: 'owner', locationIds: [] };
+const SYSTEM_USER: JwtAccessPayload = {
+  sub: ACTOR,
+  username: 'system',
+  roleKey: 'owner',
+  locationIds: [],
+};
 
 async function cleanupProducts(productIds: string[]): Promise<void> {
   if (productIds.length === 0) return;
@@ -44,7 +59,10 @@ async function cleanupProducts(productIds: string[]): Promise<void> {
     `DELETE FROM sync_events WHERE entity_id = ANY(SELECT id FROM recipes WHERE product_id = ANY($1::uuid[]))`,
     [productIds],
   );
-  await pool.query(`DELETE FROM recipe_lines WHERE recipe_id = ANY(SELECT id FROM recipes WHERE product_id = ANY($1::uuid[]))`, [productIds]);
+  await pool.query(
+    `DELETE FROM recipe_lines WHERE recipe_id = ANY(SELECT id FROM recipes WHERE product_id = ANY($1::uuid[]))`,
+    [productIds],
+  );
   await pool.query(`DELETE FROM recipes WHERE product_id = ANY($1::uuid[])`, [productIds]);
   await pool.query(`DELETE FROM products WHERE id = ANY($1::uuid[])`, [productIds]);
 }
@@ -80,7 +98,13 @@ describe('ProductService / RecipeService (live database)', () => {
 
   it('updates a product and emits product.price_changed on the EventBus only when price actually changes', async () => {
     const created = await withRollback((client) =>
-      productService.create(client, { code: nextCode('PRD'), name: 'Before', category: 'Umum', price: '10000.00' }, ACTOR, SYSTEM_USER, null),
+      productService.create(
+        client,
+        { code: nextCode('PRD'), name: 'Before', category: 'Umum', price: '10000.00' },
+        ACTOR,
+        SYSTEM_USER,
+        null,
+      ),
     );
     createdProductIds.push(created.id);
 
@@ -90,13 +114,21 @@ describe('ProductService / RecipeService (live database)', () => {
     });
     try {
       // A non-price update must NOT emit product.price_changed.
-      await withRollback((client) => productService.update(client, created.id, { name: 'Renamed' }, ACTOR, SYSTEM_USER, null));
+      await withRollback((client) =>
+        productService.update(client, created.id, { name: 'Renamed' }, ACTOR, SYSTEM_USER, null),
+      );
       expect(received).toBeUndefined();
 
       // A real price change must.
-      const updated = await withRollback((client) => productService.update(client, created.id, { price: '30000.00' }, ACTOR, SYSTEM_USER, null));
+      const updated = await withRollback((client) =>
+        productService.update(client, created.id, { price: '30000.00' }, ACTOR, SYSTEM_USER, null),
+      );
       expect(updated.price).toBe('30000.00');
-      expect(received).toMatchObject({ productId: created.id, oldPrice: '10000.00', newPrice: '30000.00' });
+      expect(received).toMatchObject({
+        productId: created.id,
+        oldPrice: '10000.00',
+        newPrice: '30000.00',
+      });
     } finally {
       unsubscribe();
     }
@@ -104,22 +136,38 @@ describe('ProductService / RecipeService (live database)', () => {
 
   it('deactivates a product', async () => {
     const created = await withRollback((client) =>
-      productService.create(client, { code: nextCode('PRD'), name: 'ToDeactivate', category: 'Umum', price: '5000.00' }, ACTOR, SYSTEM_USER, null),
+      productService.create(
+        client,
+        { code: nextCode('PRD'), name: 'ToDeactivate', category: 'Umum', price: '5000.00' },
+        ACTOR,
+        SYSTEM_USER,
+        null,
+      ),
     );
     createdProductIds.push(created.id);
-    const result = await withRollback((client) => productService.deactivate(client, created.id, ACTOR));
+    const result = await withRollback((client) =>
+      productService.deactivate(client, created.id, ACTOR),
+    );
     expect(result.deactivated).toBe(true);
   });
 
   it('404s on a nonexistent product', async () => {
     await expect(
-      withRollback((client) => productService.getById(client, '00000000-0000-0000-0000-000000000000', SYSTEM_USER, null)),
+      withRollback((client) =>
+        productService.getById(client, '00000000-0000-0000-0000-000000000000', SYSTEM_USER, null),
+      ),
     ).rejects.toMatchObject({ status: 404 });
   });
 
   it('GET recipe on a product with no recipe yet returns an empty BOM (not 404)', async () => {
     const created = await withRollback((client) =>
-      productService.create(client, { code: nextCode('PRD'), name: 'No Recipe Yet', category: 'Umum', price: '1000.00' }, ACTOR, SYSTEM_USER, null),
+      productService.create(
+        client,
+        { code: nextCode('PRD'), name: 'No Recipe Yet', category: 'Umum', price: '1000.00' },
+        ACTOR,
+        SYSTEM_USER,
+        null,
+      ),
     );
     createdProductIds.push(created.id);
 
@@ -129,7 +177,13 @@ describe('ProductService / RecipeService (live database)', () => {
 
   it('PUT recipe replaces the BOM, sets hasRecipe=true, and the round-tripped recipe explodes correctly', async () => {
     const created = await withRollback((client) =>
-      productService.create(client, { code: nextCode('PRD'), name: 'With Recipe', category: 'Ayam', price: '20000.00' }, ACTOR, SYSTEM_USER, null),
+      productService.create(
+        client,
+        { code: nextCode('PRD'), name: 'With Recipe', category: 'Ayam', price: '20000.00' },
+        ACTOR,
+        SYSTEM_USER,
+        null,
+      ),
     );
     createdProductIds.push(created.id);
 
@@ -137,14 +191,19 @@ describe('ProductService / RecipeService (live database)', () => {
       recipeService.putRecipe(
         client,
         created.id,
-        { yieldQty: '1.000', lines: [{ itemId: fixtures.itemId, qty: '0.150', unitId: fixtures.baseUnitId }] },
+        {
+          yieldQty: '1.000',
+          lines: [{ itemId: fixtures.itemId, qty: '0.150', unitId: fixtures.baseUnitId }],
+        },
         ACTOR,
       ),
     );
     expect(putResult.lines).toHaveLength(1);
     expect(putResult.lines[0]!.itemId).toBe(fixtures.itemId);
 
-    const refetchedProduct = await withRollback((client) => productService.getById(client, created.id, SYSTEM_USER, null));
+    const refetchedProduct = await withRollback((client) =>
+      productService.getById(client, created.id, SYSTEM_USER, null),
+    );
     expect(refetchedProduct.hasRecipe).toBe(true);
 
     // Full-replace semantics: a second PUT with a different single line drops the first.
@@ -152,7 +211,10 @@ describe('ProductService / RecipeService (live database)', () => {
       recipeService.putRecipe(
         client,
         created.id,
-        { yieldQty: '2.000', lines: [{ itemId: fixtures.itemId2, qty: '1.000', unitId: fixtures.baseUnitId }] },
+        {
+          yieldQty: '2.000',
+          lines: [{ itemId: fixtures.itemId2, qty: '1.000', unitId: fixtures.baseUnitId }],
+        },
         ACTOR,
       ),
     );
@@ -161,7 +223,9 @@ describe('ProductService / RecipeService (live database)', () => {
     expect(secondPut.lines.some((l) => l.itemId === fixtures.itemId)).toBe(false);
 
     // DB-backed explosion wrapper (loads the just-persisted recipe, then explodes it) — FR-POS-06.
-    const usage = await withRollback((client) => recipeService.explodeForSale(client, created.id, '4.000'));
+    const usage = await withRollback((client) =>
+      recipeService.explodeForSale(client, created.id, '4.000'),
+    );
     expect(usage).toEqual([{ itemId: fixtures.itemId2, qty: '2.000' }]); // yieldQty=2, qtySold=4 → ratio 2 → 1.000×2 = 2.000
   });
 

@@ -27,6 +27,13 @@ import { WasteReportService } from './services/waste-report.service';
  */
 @Module({
   controllers: [ReportController],
-  providers: [SalesReportService, ShiftReportService, DeliveryReportService, StockReportService, WasteReportService, HrReportService],
+  providers: [
+    SalesReportService,
+    ShiftReportService,
+    DeliveryReportService,
+    StockReportService,
+    WasteReportService,
+    HrReportService,
+  ],
 })
 export class ReportModule {}

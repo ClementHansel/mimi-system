@@ -102,7 +102,8 @@ export function explodeSaleToMovements(
     const recipeLines = recipesByProduct.get(line.productId);
     if (!recipeLines) continue; // no BOM for this product (e.g. a bottled drink) — nothing to explode
     for (const ingredient of recipeLines) {
-      const rawProduct = parseFixed(line.qty, QTY_SCALE) * parseFixed(ingredient.qtyPerUnit, QTY_SCALE);
+      const rawProduct =
+        parseFixed(line.qty, QTY_SCALE) * parseFixed(ingredient.qtyPerUnit, QTY_SCALE);
       // rawProduct carries scale = 2*QTY_SCALE; round half-up back down to QTY_SCALE for accumulation.
       const rescaled = rescale(rawProduct, QTY_SCALE * 2, QTY_SCALE, 'half_up');
       const existing = usageByItem.get(ingredient.itemId);
@@ -162,12 +163,20 @@ export function explodeReceiptToMovements(
 }
 
 /** `waste_records` approved → `waste_out`. Stock effect derives ONLY after approval (strict: an unapproved report moves nothing). */
-export function explodeWasteToMovements(eventId: UUID, lines: readonly SimpleFactLine[], occurredAt: ISODateTime): MovementFact[] {
+export function explodeWasteToMovements(
+  eventId: UUID,
+  lines: readonly SimpleFactLine[],
+  occurredAt: ISODateTime,
+): MovementFact[] {
   return toMovements(lines, eventId, MovementType.WASTE_OUT, 'waste_record', occurredAt);
 }
 
 /** `returns.shipped_back` (either leg) → `return_out`. */
-export function explodeReturnOutToMovements(eventId: UUID, lines: readonly SimpleFactLine[], occurredAt: ISODateTime): MovementFact[] {
+export function explodeReturnOutToMovements(
+  eventId: UUID,
+  lines: readonly SimpleFactLine[],
+  occurredAt: ISODateTime,
+): MovementFact[] {
   return toMovements(lines, eventId, MovementType.RETURN_OUT, 'return', occurredAt);
 }
 
@@ -177,7 +186,8 @@ export function explodeAdjustmentToMovements(
   line: SimpleFactLine & { direction: 'shortage' | 'overage' },
   occurredAt: ISODateTime,
 ): MovementFact[] {
-  const movementType = line.direction === 'shortage' ? MovementType.ADJUSTMENT_OUT : MovementType.ADJUSTMENT_IN;
+  const movementType =
+    line.direction === 'shortage' ? MovementType.ADJUSTMENT_OUT : MovementType.ADJUSTMENT_IN;
   return toMovements([line], eventId, movementType, 'stock_adjustment', occurredAt);
 }
 
@@ -193,8 +203,30 @@ export function explodeAreaTransferToMovements(
   occurredAt: ISODateTime,
 ): MovementFact[] {
   return [
-    { locationId, storageAreaId: fromAreaId, itemId, factId: `${eventId}:transfer_out`, movementType: MovementType.TRANSFER_OUT, qty, unitCost, refType: 'area_transfer', refId: eventId, occurredAt },
-    { locationId, storageAreaId: toAreaId, itemId, factId: `${eventId}:transfer_in`, movementType: MovementType.TRANSFER_IN, qty, unitCost, refType: 'area_transfer', refId: eventId, occurredAt },
+    {
+      locationId,
+      storageAreaId: fromAreaId,
+      itemId,
+      factId: `${eventId}:transfer_out`,
+      movementType: MovementType.TRANSFER_OUT,
+      qty,
+      unitCost,
+      refType: 'area_transfer',
+      refId: eventId,
+      occurredAt,
+    },
+    {
+      locationId,
+      storageAreaId: toAreaId,
+      itemId,
+      factId: `${eventId}:transfer_in`,
+      movementType: MovementType.TRANSFER_IN,
+      qty,
+      unitCost,
+      refType: 'area_transfer',
+      refId: eventId,
+      occurredAt,
+    },
   ];
 }
 
@@ -212,7 +244,9 @@ export interface ProjectedBalance extends StockKey {
  * commutative/associative (proved generically for `@mimi/shared`'s Qty
  * arithmetic).
  */
-export function foldMovementsToBalances(movements: readonly MovementFact[]): Map<string, ProjectedBalance> {
+export function foldMovementsToBalances(
+  movements: readonly MovementFact[],
+): Map<string, ProjectedBalance> {
   const seen = new Set<string>();
   const totals = new Map<string, bigint>();
   const keys = new Map<string, StockKey>();
@@ -224,7 +258,8 @@ export function foldMovementsToBalances(movements: readonly MovementFact[]): Map
     const key = stockKeyOf(m);
     const signed = parseFixed(m.qty, QTY_SCALE) * BigInt(movementSign(m.movementType));
     totals.set(key, addFixed(totals.get(key) ?? 0n, signed));
-    if (!keys.has(key)) keys.set(key, { locationId: m.locationId, storageAreaId: m.storageAreaId, itemId: m.itemId });
+    if (!keys.has(key))
+      keys.set(key, { locationId: m.locationId, storageAreaId: m.storageAreaId, itemId: m.itemId });
   }
 
   const result = new Map<string, ProjectedBalance>();
@@ -236,7 +271,9 @@ export function foldMovementsToBalances(movements: readonly MovementFact[]): Map
 
 /** The balance at one specific key — convenience wrapper around `foldMovementsToBalances`. */
 export function projectBalanceAt(movements: readonly MovementFact[], key: StockKey): Qty {
-  return foldMovementsToBalances(movements).get(stockKeyOf(key))?.qtyOnHand ?? formatFixed(0n, QTY_SCALE);
+  return (
+    foldMovementsToBalances(movements).get(stockKeyOf(key))?.qtyOnHand ?? formatFixed(0n, QTY_SCALE)
+  );
 }
 
 // ── D-17a: the ledger's two posting modes ─────────────────────────────────────
@@ -263,7 +300,11 @@ export type LedgerPostOutcome =
  *    exception (C5) — it is not this function's job to open that exception,
  *    only to report that one is warranted.
  */
-export function applyMovement(currentBalance: Qty, movement: MovementFact, mode: LedgerMode): LedgerPostOutcome {
+export function applyMovement(
+  currentBalance: Qty,
+  movement: MovementFact,
+  mode: LedgerMode,
+): LedgerPostOutcome {
   const signed = parseFixed(movement.qty, QTY_SCALE) * BigInt(movementSign(movement.movementType));
   const next = addFixed(parseFixed(currentBalance, QTY_SCALE), signed);
   const negative = isNegativeFixed(next);
@@ -295,7 +336,11 @@ export interface ReconciliationCheck {
  * mismatch here is the D-16 canary — see `./checksum` for the cheaper
  * per-device probe this backs.
  */
-export function reconcileBalance(key: StockKey, storedQty: Qty, movements: readonly MovementFact[]): ReconciliationCheck {
+export function reconcileBalance(
+  key: StockKey,
+  storedQty: Qty,
+  movements: readonly MovementFact[],
+): ReconciliationCheck {
   const expectedQty = projectBalanceAt(movements, key);
   const divergenceScaled = parseFixed(expectedQty, QTY_SCALE) - parseFixed(storedQty, QTY_SCALE);
   return {

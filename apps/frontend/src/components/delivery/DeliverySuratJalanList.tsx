@@ -5,7 +5,15 @@ import { Plus, X } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
 import { SuratJalanStatus, type SuratJalan } from '@/lib/shared-types';
-import { Button, DataTable, Input, Select, StatusBadge, PermissionGate, type DataTableColumn } from '@/components/ui';
+import {
+  Button,
+  DataTable,
+  Input,
+  Select,
+  StatusBadge,
+  PermissionGate,
+  type DataTableColumn,
+} from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
 import { listSuratJalan } from './lib/delivery-api';
 import { routeCompletion } from './lib/drop-progress';
@@ -51,11 +59,23 @@ export function DeliverySuratJalanList() {
 
   const columns: DataTableColumn<SuratJalan>[] = [
     { key: 'sjNumber', header: t('delivery.columnNumber') },
-    { key: 'truckType', header: t('delivery.columnTruckType'), render: (r) => <TruckTypeBadge shipmentType={r.shipmentType} size="sm" /> },
-    { key: 'destinations', header: t('delivery.columnDestinations'), render: (r) => r.drops.map((d) => d.locationName).join(', ') || '—' },
+    {
+      key: 'truckType',
+      header: t('delivery.columnTruckType'),
+      render: (r) => <TruckTypeBadge shipmentType={r.shipmentType} size="sm" />,
+    },
+    {
+      key: 'destinations',
+      header: t('delivery.columnDestinations'),
+      render: (r) => r.drops.map((d) => d.locationName).join(', ') || '—',
+    },
     { key: 'driver', header: t('delivery.columnDriver'), render: (r) => r.driver.name },
     { key: 'vehicle', header: t('delivery.columnVehicle'), render: (r) => r.vehicle.plateNumber },
-    { key: 'plannedDate', header: t('delivery.columnPlannedDate'), render: (r) => fmtDate(r.plannedDate) },
+    {
+      key: 'plannedDate',
+      header: t('delivery.columnPlannedDate'),
+      render: (r) => fmtDate(r.plannedDate),
+    },
     {
       key: 'progress',
       header: t('delivery.columnProgress'),
@@ -65,7 +85,11 @@ export function DeliverySuratJalanList() {
         return t('delivery.detail.dropOf', { done, total });
       },
     },
-    { key: 'status', header: t('delivery.columnStatus'), render: (r) => <StatusBadge domain="suratJalan" status={r.status} /> },
+    {
+      key: 'status',
+      header: t('delivery.columnStatus'),
+      render: (r) => <StatusBadge domain="suratJalan" status={r.status} />,
+    },
   ];
 
   return (
@@ -77,18 +101,39 @@ export function DeliverySuratJalanList() {
             value={status}
             onValueChange={setStatus}
             placeholder={t('delivery.filterStatusAll')}
-            options={Object.values(SuratJalanStatus).map((v) => ({ value: v, label: t(`status.suratJalan.${v}`) }))}
+            options={Object.values(SuratJalanStatus).map((v) => ({
+              value: v,
+              label: t(`status.suratJalan.${v}`),
+            }))}
             wrapperClassName="w-48"
           />
-          <Input type="date" label={t('delivery.filterDate')} value={date} onChange={(e) => setDate(e.target.value)} wrapperClassName="w-44" />
+          <Input
+            type="date"
+            label={t('delivery.filterDate')}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            wrapperClassName="w-44"
+          />
           {hasFilters && (
-            <Button variant="ghost" size="sm" leftIcon={<X className="size-3.5" />} onClick={() => { setStatus(''); setDate(''); }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={<X className="size-3.5" />}
+              onClick={() => {
+                setStatus('');
+                setDate('');
+              }}
+            >
               {t('delivery.clearFilters')}
             </Button>
           )}
         </div>
         <PermissionGate permission="delivery.sj.create">
-          <Button leftIcon={<Plus className="size-4" />} size="touch" onClick={() => setCreateOpen(true)}>
+          <Button
+            leftIcon={<Plus className="size-4" />}
+            size="touch"
+            onClick={() => setCreateOpen(true)}
+          >
             {t('delivery.new')}
           </Button>
         </PermissionGate>
@@ -107,12 +152,19 @@ export function DeliverySuratJalanList() {
       {createOpen && (
         <CreateSuratJalanModal
           onClose={() => setCreateOpen(false)}
-          onCreated={() => { setCreateOpen(false); reload(); }}
+          onCreated={() => {
+            setCreateOpen(false);
+            reload();
+          }}
         />
       )}
 
       {selectedId && (
-        <SuratJalanDetailDrawer id={selectedId} onClose={() => setSelectedId(null)} onChanged={reload} />
+        <SuratJalanDetailDrawer
+          id={selectedId}
+          onClose={() => setSelectedId(null)}
+          onChanged={reload}
+        />
       )}
     </div>
   );

@@ -17,34 +17,61 @@ function makeClient(settingsRows: Array<{ key: string; value: unknown }>) {
 
 describe('resolveStepWindow', () => {
   it('reads the live settings value for a mapped (documentType, stepNo)', async () => {
-    const client = makeClient([{ key: 'approval.threshold.void', value: { managerAboveIdr: '500000.00' } }]);
-    const window = await resolveStepWindow(client as never, ApprovalDocumentType.VOID_REFUND, 2, { minAmount: '200000.00', maxAmount: null });
+    const client = makeClient([
+      { key: 'approval.threshold.void', value: { managerAboveIdr: '500000.00' } },
+    ]);
+    const window = await resolveStepWindow(client as never, ApprovalDocumentType.VOID_REFUND, 2, {
+      minAmount: '200000.00',
+      maxAmount: null,
+    });
     expect(window).toEqual({ minAmount: '500000.00', maxAmount: null });
   });
 
   it('falls back to the shared default when the settings row is missing entirely', async () => {
     const client = makeClient([]);
-    const window = await resolveStepWindow(client as never, ApprovalDocumentType.PURCHASE_ORDER, 2, { minAmount: null, maxAmount: null });
+    const window = await resolveStepWindow(
+      client as never,
+      ApprovalDocumentType.PURCHASE_ORDER,
+      2,
+      { minAmount: null, maxAmount: null },
+    );
     expect(window.minAmount).toBe('10000000.00');
   });
 
   it('falls back to the seeded chain-step value when settings has no mapping for this (documentType, stepNo)', async () => {
     const client = makeClient([]);
     const seeded = { minAmount: '2000000.00', maxAmount: null };
-    const window = await resolveStepWindow(client as never, ApprovalDocumentType.REPLENISHMENT_REQUEST, 2, seeded);
+    const window = await resolveStepWindow(
+      client as never,
+      ApprovalDocumentType.REPLENISHMENT_REQUEST,
+      2,
+      seeded,
+    );
     expect(window).toEqual(seeded);
   });
 
   it('falls back to the seeded value when the settings row value is malformed (not an object)', async () => {
     const client = makeClient([{ key: 'approval.threshold.opname', value: 'not-an-object' }]);
     const seeded = { minAmount: '999.00', maxAmount: null };
-    const window = await resolveStepWindow(client as never, ApprovalDocumentType.STOCK_OPNAME, 2, seeded);
+    const window = await resolveStepWindow(
+      client as never,
+      ApprovalDocumentType.STOCK_OPNAME,
+      2,
+      seeded,
+    );
     expect(window.minAmount).toBe('2000000.00'); // shared default, since the malformed settings row yields undefined
   });
 
   it('resolves payment_verification step 1 (owner gate) from live settings', async () => {
-    const client = makeClient([{ key: 'approval.threshold.payment', value: { ownerAboveIdr: '25000000.00' } }]);
-    const window = await resolveStepWindow(client as never, ApprovalDocumentType.PAYMENT_VERIFICATION, 1, { minAmount: '20000000.00', maxAmount: null });
+    const client = makeClient([
+      { key: 'approval.threshold.payment', value: { ownerAboveIdr: '25000000.00' } },
+    ]);
+    const window = await resolveStepWindow(
+      client as never,
+      ApprovalDocumentType.PAYMENT_VERIFICATION,
+      1,
+      { minAmount: '20000000.00', maxAmount: null },
+    );
     expect(window.minAmount).toBe('25000000.00');
   });
 });

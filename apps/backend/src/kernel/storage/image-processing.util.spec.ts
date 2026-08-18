@@ -80,7 +80,12 @@ describe('compressAndStripExif', () => {
 
   it('re-encodes to JPEG regardless of input format', async () => {
     const png = await sharp({
-      create: { width: 100, height: 100, channels: 4, background: { r: 0, g: 255, b: 0, alpha: 1 } },
+      create: {
+        width: 100,
+        height: 100,
+        channels: 4,
+        background: { r: 0, g: 255, b: 0, alpha: 1 },
+      },
     })
       .png()
       .toBuffer();

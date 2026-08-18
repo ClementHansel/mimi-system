@@ -241,7 +241,12 @@ export interface TaxProfile {
   npwp: string | null;
   ptkpCode: string;
   dependantsCount: number;
-  bpjsEnrollments: Partial<Record<'kesehatan' | 'jht' | 'jkk' | 'jkm' | 'jp', { enrolledSince: ISODate; endedAt: ISODate | null }>>;
+  bpjsEnrollments: Partial<
+    Record<
+      'kesehatan' | 'jht' | 'jkk' | 'jkm' | 'jp',
+      { enrolledSince: ISODate; endedAt: ISODate | null }
+    >
+  >;
   bpjsSalaryBase: Money | null;
 }
 

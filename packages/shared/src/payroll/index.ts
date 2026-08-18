@@ -151,13 +151,22 @@ export function calculateBasePayslip(inputs: BasePayrollInputs): {
       }),
     );
   }
-  const attAllowance = attendanceAllowance(inputs.attendance.hasPerfectAttendance, inputs.attendanceAllowanceAmount);
-  if (!isZero(attAllowance)) lines.push(earningLine(PayrollComponentCode.ATTENDANCE_ALLOWANCE, attAllowance));
+  const attAllowance = attendanceAllowance(
+    inputs.attendance.hasPerfectAttendance,
+    inputs.attendanceAllowanceAmount,
+  );
+  if (!isZero(attAllowance))
+    lines.push(earningLine(PayrollComponentCode.ATTENDANCE_ALLOWANCE, attAllowance));
 
   const incentive = performanceIncentive(inputs.performanceIncentiveAmount);
-  if (!isZero(incentive)) lines.push(earningLine(PayrollComponentCode.PERFORMANCE_INCENTIVE, incentive));
+  if (!isZero(incentive))
+    lines.push(earningLine(PayrollComponentCode.PERFORMANCE_INCENTIVE, incentive));
 
-  const tenure = tenureAllowance(inputs.employee.joinDate, inputs.periodEndDate, inputs.tenureTiers);
+  const tenure = tenureAllowance(
+    inputs.employee.joinDate,
+    inputs.periodEndDate,
+    inputs.tenureTiers,
+  );
   if (!isZero(tenure)) lines.push(earningLine(PayrollComponentCode.TENURE_ALLOWANCE, tenure));
 
   const position = positionAllowance(inputs.positionAllowanceAmount);
@@ -169,21 +178,49 @@ export function calculateBasePayslip(inputs: BasePayrollInputs): {
   // POUT-01..09 (POUT-08 is a data-source note, not its own component — Appendix A-6)
   const dailyRate = dailyRateOf(inputs);
   const sick = deductionSick(inputs.attendance.sickDays, dailyRate, inputs.sickPaid);
-  if (!isZero(sick)) lines.push(deductionLine(PayrollComponentCode.DEDUCTION_SICK, sick, { qty: String(inputs.attendance.sickDays) }));
+  if (!isZero(sick))
+    lines.push(
+      deductionLine(PayrollComponentCode.DEDUCTION_SICK, sick, {
+        qty: String(inputs.attendance.sickDays),
+      }),
+    );
 
-  const permission = deductionPermission(inputs.attendance.permissionDays, dailyRate, inputs.permissionPaid);
+  const permission = deductionPermission(
+    inputs.attendance.permissionDays,
+    dailyRate,
+    inputs.permissionPaid,
+  );
   if (!isZero(permission)) {
-    lines.push(deductionLine(PayrollComponentCode.DEDUCTION_PERMISSION, permission, { qty: String(inputs.attendance.permissionDays) }));
+    lines.push(
+      deductionLine(PayrollComponentCode.DEDUCTION_PERMISSION, permission, {
+        qty: String(inputs.attendance.permissionDays),
+      }),
+    );
   }
 
   const absence = deductionAbsence(inputs.attendance.absentDays, dailyRate);
-  if (!isZero(absence)) lines.push(deductionLine(PayrollComponentCode.DEDUCTION_ABSENCE, absence, { qty: String(inputs.attendance.absentDays) }));
+  if (!isZero(absence))
+    lines.push(
+      deductionLine(PayrollComponentCode.DEDUCTION_ABSENCE, absence, {
+        qty: String(inputs.attendance.absentDays),
+      }),
+    );
 
-  const leaveExcess = deductionLeaveExcess(inputs.leave.daysTakenThisYear, inputs.leave.quotaDays, dailyRate);
-  if (!isZero(leaveExcess)) lines.push(deductionLine(PayrollComponentCode.DEDUCTION_LEAVE_EXCESS, leaveExcess));
+  const leaveExcess = deductionLeaveExcess(
+    inputs.leave.daysTakenThisYear,
+    inputs.leave.quotaDays,
+    dailyRate,
+  );
+  if (!isZero(leaveExcess))
+    lines.push(deductionLine(PayrollComponentCode.DEDUCTION_LEAVE_EXCESS, leaveExcess));
 
   const shortfall = deductionStockShortfall(sumMoney([...inputs.stockShortfallShares]));
-  if (!isZero(shortfall)) lines.push(deductionLine(PayrollComponentCode.DEDUCTION_STOCK_SHORTFALL, shortfall, { sourceRefType: 'stock_opname' }));
+  if (!isZero(shortfall))
+    lines.push(
+      deductionLine(PayrollComponentCode.DEDUCTION_STOCK_SHORTFALL, shortfall, {
+        sourceRefType: 'stock_opname',
+      }),
+    );
 
   const loanInstallmentsTaken: { loanId: string; amount: Money }[] = [];
   let loanTotal = ZERO_MONEY;
@@ -194,19 +231,39 @@ export function calculateBasePayslip(inputs: BasePayrollInputs): {
       loanInstallmentsTaken.push({ loanId: loan.loanId, amount });
     }
   }
-  if (!isZero(loanTotal)) lines.push(deductionLine(PayrollComponentCode.DEDUCTION_LOAN_INSTALLMENT, loanTotal, { sourceRefType: 'employee_loan' }));
+  if (!isZero(loanTotal))
+    lines.push(
+      deductionLine(PayrollComponentCode.DEDUCTION_LOAN_INSTALLMENT, loanTotal, {
+        sourceRefType: 'employee_loan',
+      }),
+    );
 
   const late = deductionLate(inputs.attendance.lateMinutesTotal, inputs.perLateMinuteRate);
-  if (!isZero(late)) lines.push(deductionLine(PayrollComponentCode.DEDUCTION_LATE, late, { qty: String(inputs.attendance.lateMinutesTotal), rate: inputs.perLateMinuteRate }));
+  if (!isZero(late))
+    lines.push(
+      deductionLine(PayrollComponentCode.DEDUCTION_LATE, late, {
+        qty: String(inputs.attendance.lateMinutesTotal),
+        rate: inputs.perLateMinuteRate,
+      }),
+    );
 
   const otherDed = otherDeductions(inputs.otherDeductionAmounts);
   if (!isZero(otherDed)) lines.push(deductionLine(PayrollComponentCode.OTHER_DEDUCTION, otherDed));
 
   const cashVariance = deductionCashVariance(inputs.cashVarianceAmounts);
-  if (!isZero(cashVariance)) lines.push(deductionLine(PayrollComponentCode.DEDUCTION_CASH_VARIANCE, cashVariance, { sourceRefType: 'cash_variance_proposal' }));
+  if (!isZero(cashVariance))
+    lines.push(
+      deductionLine(PayrollComponentCode.DEDUCTION_CASH_VARIANCE, cashVariance, {
+        sourceRefType: 'cash_variance_proposal',
+      }),
+    );
 
-  const gross = sumMoney(lines.filter((l) => l.type === PayrollComponentType.EARNING).map((l) => l.amount));
-  const deductions = sumMoney(lines.filter((l) => l.type === PayrollComponentType.DEDUCTION).map((l) => l.amount));
+  const gross = sumMoney(
+    lines.filter((l) => l.type === PayrollComponentType.EARNING).map((l) => l.amount),
+  );
+  const deductions = sumMoney(
+    lines.filter((l) => l.type === PayrollComponentType.DEDUCTION).map((l) => l.amount),
+  );
   const net = clampMoneyToZero(subMoney(gross, deductions));
 
   return { lines, gross, deductions, net, loanInstallmentsTaken };
@@ -247,7 +304,9 @@ export function calculatePayroll(
     statutoryLines.filter((l) => l.type === PayrollComponentType.DEDUCTION).map((l) => l.amount),
   );
   const employerCost = sumMoney(
-    statutoryLines.filter((l) => l.type === PayrollComponentType.EMPLOYER_COST).map((l) => l.amount),
+    statutoryLines
+      .filter((l) => l.type === PayrollComponentType.EMPLOYER_COST)
+      .map((l) => l.amount),
   );
 
   const deductions = addMoney(baseResult.deductions, statutoryDeductionTotal);

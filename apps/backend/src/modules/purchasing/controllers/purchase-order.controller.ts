@@ -22,7 +22,11 @@ export class PurchaseOrderController {
   @Get()
   @RequirePermission('purchasing.read')
   list(@Req() req: RequestWithDbContext, @Query() query: ListPurchaseOrderQueryDto) {
-    return this.service.list(req.dbClient!, { ...query, page: query.page ?? 1, pageSize: query.pageSize ?? 50 });
+    return this.service.list(req.dbClient!, {
+      ...query,
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? 50,
+    });
   }
 
   @Get(':id')
@@ -41,7 +45,11 @@ export class PurchaseOrderController {
   @Patch(':id')
   @RequirePermission('purchasing.po.create')
   @Audited({ entityType: 'purchase_order', action: 'purchasing.po.create' })
-  update(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: UpdatePurchaseOrderDto) {
+  update(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: UpdatePurchaseOrderDto,
+  ) {
     return this.service.update(req.dbClient!, id, dto);
   }
 
@@ -55,14 +63,22 @@ export class PurchaseOrderController {
   @Post(':id/approve')
   @RequirePermission('purchasing.po.approve')
   @Audited({ entityType: 'purchase_order', action: 'purchasing.po.approve' })
-  approve(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: ApprovePurchaseOrderDto) {
+  approve(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: ApprovePurchaseOrderDto,
+  ) {
     return this.service.approve(req.dbClient!, this.actor(req), id, dto.note);
   }
 
   @Post(':id/reject')
   @RequirePermission('purchasing.po.approve')
   @Audited({ entityType: 'purchase_order', action: 'purchasing.po.approve' })
-  reject(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: RejectPurchaseOrderDto) {
+  reject(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: RejectPurchaseOrderDto,
+  ) {
     return this.service.reject(req.dbClient!, this.actor(req), id, dto.reason);
   }
 
@@ -76,14 +92,22 @@ export class PurchaseOrderController {
   @Post(':id/receipts')
   @RequirePermission('purchasing.po.receive')
   @Audited({ entityType: 'po_receipt', action: 'purchasing.po.receive' })
-  receive(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: CreatePoReceiptDto) {
+  receive(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: CreatePoReceiptDto,
+  ) {
     return this.service.receive(req.dbClient!, this.actor(req), id, dto);
   }
 
   @Post(':id/cancel')
   @RequirePermission('purchasing.po.approve')
   @Audited({ entityType: 'purchase_order', action: 'purchasing.po.approve' })
-  cancel(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: CancelPurchaseOrderDto) {
+  cancel(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: CancelPurchaseOrderDto,
+  ) {
     return this.service.cancel(req.dbClient!, id, dto.reason);
   }
 
@@ -96,6 +120,10 @@ export class PurchaseOrderController {
 
   private actor(req: RequestWithDbContext): ActorContext {
     const user = req.user!;
-    return { userId: user.sub, roleKey: user.roleKey as RoleKey, locationScope: req.locationScope ?? null };
+    return {
+      userId: user.sub,
+      roleKey: user.roleKey as RoleKey,
+      locationScope: req.locationScope ?? null,
+    };
   }
 }

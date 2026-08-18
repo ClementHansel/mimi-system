@@ -12,9 +12,19 @@ import {
 import { Audited, RequirePermission } from '../../common/decorators';
 import type { RequestWithDbContext } from '../../common/guards/rls-context.guard';
 import { CatalogQueryDto, DailyStockQueryDto } from './dto/misc.dto';
-import { CloseShiftDto, ListShiftsQueryDto, OpenShiftDto, ShiftsCurrentQueryDto } from './dto/shift.dto';
+import {
+  CloseShiftDto,
+  ListShiftsQueryDto,
+  OpenShiftDto,
+  ShiftsCurrentQueryDto,
+} from './dto/shift.dto';
 import { CreateSaleDto, ListSalesQueryDto } from './dto/sale.dto';
-import { ApproveVoidDto, ListVoidRefundsQueryDto, RejectVoidDto, VoidRequestDto } from './dto/void-refund.dto';
+import {
+  ApproveVoidDto,
+  ListVoidRefundsQueryDto,
+  RejectVoidDto,
+  VoidRequestDto,
+} from './dto/void-refund.dto';
 import { CreateOnlineOrderDto, ListOnlineOrdersQueryDto } from './dto/online-order.dto';
 import { CashVarianceDecisionDto, ListCashVariancesQueryDto } from './dto/cash-variance.dto';
 import { PosCatalogService, type CatalogResponse } from './services/pos-catalog.service';
@@ -56,7 +66,10 @@ export class PosController {
 
   @Get('catalog')
   @RequirePermission('pos.catalog.read')
-  async getCatalog(@Req() req: RequestWithDbContext, @Query() _query: CatalogQueryDto): Promise<CatalogResponse> {
+  async getCatalog(
+    @Req() req: RequestWithDbContext,
+    @Query() _query: CatalogQueryDto,
+  ): Promise<CatalogResponse> {
     return this.catalog.getCatalog(req.dbClient!);
   }
 
@@ -64,7 +77,10 @@ export class PosController {
 
   @Get('shifts/current')
   @RequirePermission('pos.shift.open')
-  async getCurrentShift(@Req() req: RequestWithDbContext, @Query() query: ShiftsCurrentQueryDto): Promise<Shift | null> {
+  async getCurrentShift(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ShiftsCurrentQueryDto,
+  ): Promise<Shift | null> {
     return this.shifts.getCurrent(req.dbClient!, query.locationId, query.deviceId);
   }
 
@@ -92,7 +108,10 @@ export class PosController {
 
   @Get('shifts')
   @RequirePermission('pos.sale.read')
-  async listShifts(@Req() req: RequestWithDbContext, @Query() query: ListShiftsQueryDto): Promise<Paginated<Shift>> {
+  async listShifts(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ListShiftsQueryDto,
+  ): Promise<Paginated<Shift>> {
     return this.shifts.list(req.dbClient!, {
       locationId: query.locationId,
       date: query.date,
@@ -104,7 +123,10 @@ export class PosController {
 
   @Get('shifts/:id/report')
   @RequirePermission('pos.sale.read')
-  async getShiftReport(@Req() req: RequestWithDbContext, @Param('id') id: UUID): Promise<ShiftReport> {
+  async getShiftReport(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: UUID,
+  ): Promise<ShiftReport> {
     return this.shifts.getReport(req.dbClient!, id);
   }
 
@@ -114,14 +136,20 @@ export class PosController {
   @RequirePermission('pos.sale.create')
   @Audited({ entityType: 'sale', action: 'pos.sale.create' })
   async createSale(@Req() req: RequestWithDbContext, @Body() dto: CreateSaleDto): Promise<Sale> {
-    const sale = await this.sales.create(req.dbClient!, req.user!.sub, dto, { roleKey: req.user!.roleKey, locationIds: req.locationScope ?? [] });
+    const sale = await this.sales.create(req.dbClient!, req.user!.sub, dto, {
+      roleKey: req.user!.roleKey,
+      locationIds: req.locationScope ?? [],
+    });
     await req.dbClient!.query('COMMIT');
     return sale;
   }
 
   @Get('sales')
   @RequirePermission('pos.sale.read')
-  async listSales(@Req() req: RequestWithDbContext, @Query() query: ListSalesQueryDto): Promise<Paginated<Sale>> {
+  async listSales(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ListSalesQueryDto,
+  ): Promise<Paginated<Sale>> {
     return this.sales.list(req.dbClient!, {
       locationId: query.locationId,
       shiftId: query.shiftId,
@@ -161,7 +189,13 @@ export class PosController {
     @Param('id') id: UUID,
     @Body() dto: ApproveVoidDto,
   ): Promise<{ id: UUID; status: VoidRefundStatus; offlineAuthorized: boolean }> {
-    const result = await this.voidRefunds.approve(req.dbClient!, id, req.user!.sub, req.user!.roleKey as RoleKey, dto.pin);
+    const result = await this.voidRefunds.approve(
+      req.dbClient!,
+      id,
+      req.user!.sub,
+      req.user!.roleKey as RoleKey,
+      dto.pin,
+    );
     await req.dbClient!.query('COMMIT');
     return result;
   }
@@ -169,15 +203,28 @@ export class PosController {
   @Post('void-refunds/:id/reject')
   @RequirePermission('pos.void.approve')
   @Audited({ entityType: 'void_refund', action: 'pos.void.approve' })
-  async rejectVoid(@Req() req: RequestWithDbContext, @Param('id') id: UUID, @Body() dto: RejectVoidDto): Promise<{ id: UUID; status: 'rejected' }> {
-    const result = await this.voidRefunds.reject(req.dbClient!, id, req.user!.sub, req.user!.roleKey as RoleKey, dto.reason);
+  async rejectVoid(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: UUID,
+    @Body() dto: RejectVoidDto,
+  ): Promise<{ id: UUID; status: 'rejected' }> {
+    const result = await this.voidRefunds.reject(
+      req.dbClient!,
+      id,
+      req.user!.sub,
+      req.user!.roleKey as RoleKey,
+      dto.reason,
+    );
     await req.dbClient!.query('COMMIT');
     return result;
   }
 
   @Get('void-refunds')
   @RequirePermission('pos.sale.read')
-  async listVoidRefunds(@Req() req: RequestWithDbContext, @Query() query: ListVoidRefundsQueryDto): Promise<Paginated<VoidRefundRow>> {
+  async listVoidRefunds(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ListVoidRefundsQueryDto,
+  ): Promise<Paginated<VoidRefundRow>> {
     return this.voidRefunds.list(req.dbClient!, {
       locationId: query.locationId,
       status: query.status,
@@ -192,7 +239,10 @@ export class PosController {
   @Post('online-orders')
   @RequirePermission('pos.online_order.record')
   @Audited({ entityType: 'online_order', action: 'pos.online_order.record' })
-  async createOnlineOrder(@Req() req: RequestWithDbContext, @Body() dto: CreateOnlineOrderDto): Promise<OnlineOrder> {
+  async createOnlineOrder(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: CreateOnlineOrderDto,
+  ): Promise<OnlineOrder> {
     const order = await this.onlineOrders.create(req.dbClient!, req.user!.sub, dto);
     await req.dbClient!.query('COMMIT');
     return order;
@@ -200,7 +250,10 @@ export class PosController {
 
   @Get('online-orders')
   @RequirePermission('pos.online_order.read')
-  async listOnlineOrders(@Req() req: RequestWithDbContext, @Query() query: ListOnlineOrdersQueryDto): Promise<Paginated<OnlineOrder>> {
+  async listOnlineOrders(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ListOnlineOrdersQueryDto,
+  ): Promise<Paginated<OnlineOrder>> {
     return this.onlineOrders.list(req.dbClient!, {
       locationId: query.locationId,
       platform: query.platform,
@@ -216,7 +269,10 @@ export class PosController {
 
   @Get('daily-stock')
   @RequirePermission('pos.daily_stock.read')
-  async getDailyStock(@Req() req: RequestWithDbContext, @Query() query: DailyStockQueryDto): Promise<DailyStockRow[]> {
+  async getDailyStock(
+    @Req() req: RequestWithDbContext,
+    @Query() query: DailyStockQueryDto,
+  ): Promise<DailyStockRow[]> {
     return this.dailyStock.getReport(req.dbClient!, query.locationId, query.date);
   }
 
@@ -224,7 +280,10 @@ export class PosController {
 
   @Get('cash-variances')
   @RequirePermission('pos.cash_variance.read')
-  async listCashVariances(@Req() req: RequestWithDbContext, @Query() query: ListCashVariancesQueryDto): Promise<Paginated<CashVarianceProposal>> {
+  async listCashVariances(
+    @Req() req: RequestWithDbContext,
+    @Query() query: ListCashVariancesQueryDto,
+  ): Promise<Paginated<CashVarianceProposal>> {
     return this.cashVariances.list(req.dbClient!, {
       locationId: query.locationId,
       status: query.status,
@@ -243,7 +302,13 @@ export class PosController {
     @Param('id') id: UUID,
     @Body() dto: CashVarianceDecisionDto,
   ): Promise<CashVarianceProposal> {
-    const result = await this.cashVariances.approve(req.dbClient!, id, req.user!.sub, req.user!.roleKey as RoleKey, dto.reason);
+    const result = await this.cashVariances.approve(
+      req.dbClient!,
+      id,
+      req.user!.sub,
+      req.user!.roleKey as RoleKey,
+      dto.reason,
+    );
     await req.dbClient!.query('COMMIT');
     return result;
   }
@@ -256,7 +321,13 @@ export class PosController {
     @Param('id') id: UUID,
     @Body() dto: CashVarianceDecisionDto,
   ): Promise<CashVarianceProposal> {
-    const result = await this.cashVariances.reject(req.dbClient!, id, req.user!.sub, req.user!.roleKey as RoleKey, dto.reason);
+    const result = await this.cashVariances.reject(
+      req.dbClient!,
+      id,
+      req.user!.sub,
+      req.user!.roleKey as RoleKey,
+      dto.reason,
+    );
     await req.dbClient!.query('COMMIT');
     return result;
   }

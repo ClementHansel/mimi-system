@@ -31,10 +31,23 @@
  */
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { groupByOrigin, processOriginBatch, sortByClientSeq, type SyncEventEnvelope } from '@mimi/sync-protocol';
+import {
+  groupByOrigin,
+  processOriginBatch,
+  sortByClientSeq,
+  type SyncEventEnvelope,
+} from '@mimi/sync-protocol';
 import type { UUID } from '@mimi/shared';
 import { createSocketPair, type FakeSocket } from './fake-socket-pair';
-import { eventFromWire, eventToWire, helloAckToWire, helloFromWire, pullResultToWire, pushAckToWire, pushBatchFromWire } from '../src/wire';
+import {
+  eventFromWire,
+  eventToWire,
+  helloAckToWire,
+  helloFromWire,
+  pullResultToWire,
+  pushAckToWire,
+  pushBatchFromWire,
+} from '../src/wire';
 import type { SocketFactory } from '../src/socket-like';
 import type { NodeRegisterRequest, NodeRegisterResponse } from '../src/bridge-types';
 
@@ -85,7 +98,9 @@ export class FakeCloud {
   }
 
   async closeHttp(): Promise<void> {
-    await new Promise<void>((resolve) => (this.httpServer ? this.httpServer.close(() => resolve()) : resolve()));
+    await new Promise<void>((resolve) =>
+      this.httpServer ? this.httpServer.close(() => resolve()) : resolve(),
+    );
   }
 
   private async routeHttp(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -138,8 +153,12 @@ export class FakeCloud {
   };
 
   private wireBridgeServer(server: FakeSocket, nodeId: UUID): void {
-    server.on('node:heartbeat', (...args) => this.heartbeatsReceived.push({ nodeId, payload: args[0] }));
-    server.on('discovery:report', (...args) => this.discoveryReportsReceived.push({ nodeId, payload: args[0] }));
+    server.on('node:heartbeat', (...args) =>
+      this.heartbeatsReceived.push({ nodeId, payload: args[0] }),
+    );
+    server.on('discovery:report', (...args) =>
+      this.discoveryReportsReceived.push({ nodeId, payload: args[0] }),
+    );
     server.on('command:ack', (...args) => this.commandAcksReceived.push(args[0]));
     server.on('logs:chunk', () => {});
   }
@@ -163,7 +182,12 @@ export class FakeCloud {
           serverTime: new Date().toISOString(),
           resumeCursor: req.pullCursor,
           confirmedThrough,
-          scope: { globalMaster: true, locationIds: [locationId], projectionRole: 'node', excludeOrigin: req.subscriberId },
+          scope: {
+            globalMaster: true,
+            locationIds: [locationId],
+            projectionRole: 'node',
+            excludeOrigin: req.subscriberId,
+          },
         }),
       );
     });
@@ -177,9 +201,15 @@ export class FakeCloud {
       for (const [originId, list] of groups) {
         const sorted = sortByClientSeq(list);
         const currentHighWater = this.highWater.get(originId) ?? 0n;
-        const result = processOriginBatch(sorted, currentHighWater, (seq) => this.eventIdAtSeq.get(`${originId}:${seq}`));
+        const result = processOriginBatch(sorted, currentHighWater, (seq) =>
+          this.eventIdAtSeq.get(`${originId}:${seq}`),
+        );
         for (const conflict of result.seqConflicts) {
-          rejected.push({ eventId: conflict.incoming.eventId, code: 'seq_conflict', detail: 'origin frozen' });
+          rejected.push({
+            eventId: conflict.incoming.eventId,
+            code: 'seq_conflict',
+            detail: 'origin frozen',
+          });
         }
         for (const event of result.applied) {
           const stored: StoredCloudEvent = { ...event, serverSeq: this.nextServerSeq++ };
@@ -194,7 +224,12 @@ export class FakeCloud {
       // Cloud IS the confirmation authority — accepted == confirmed here (§4.3).
       server.emit(
         'sync:push:ack',
-        pushAckToWire({ batchId: batch.batchId, acceptedThrough, confirmedThrough: acceptedThrough, rejected }),
+        pushAckToWire({
+          batchId: batch.batchId,
+          acceptedThrough,
+          confirmedThrough: acceptedThrough,
+          rejected,
+        }),
       );
     });
 
@@ -203,7 +238,10 @@ export class FakeCloud {
       const rest = this.events.filter((e) => e.serverSeq > cursor);
       const page = rest.slice(0, limit);
       const nextCursor = page.length > 0 ? page[page.length - 1]!.serverSeq : cursor;
-      server.emit('sync:pull:result', pullResultToWire({ events: page, nextCursor, hasMore: rest.length > page.length }));
+      server.emit(
+        'sync:pull:result',
+        pullResultToWire({ events: page, nextCursor, hasMore: rest.length > page.length }),
+      );
     });
 
     server.on('sync:heartbeat', () => {

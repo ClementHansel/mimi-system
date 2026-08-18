@@ -4,7 +4,13 @@ import { Audited, CurrentUser, RequirePermission } from '../../../common/decorat
 import type { JwtAccessPayload } from '../../../common/jwt/jwt-payload.interface';
 import { requireDbClient } from '../request-db-client';
 import { SuratJalanService } from '../services/surat-jalan.service';
-import { CreateSuratJalanDto, ListSuratJalanQueryDto, LoadSuratJalanDto, ReasonDto, UpdateSuratJalanDto } from '../dto/surat-jalan.dto';
+import {
+  CreateSuratJalanDto,
+  ListSuratJalanQueryDto,
+  LoadSuratJalanDto,
+  ReasonDto,
+  UpdateSuratJalanDto,
+} from '../dto/surat-jalan.dto';
 
 /** M10 `delivery` — Surat Jalan lifecycle (CONTRACTS.md §4.10). */
 @Controller('delivery/surat-jalan')
@@ -26,14 +32,23 @@ export class SuratJalanController {
   @Post()
   @RequirePermission('delivery.sj.create')
   @Audited({ entityType: 'surat_jalan', action: 'delivery.sj.create' })
-  create(@Req() req: Request, @Body() dto: CreateSuratJalanDto, @CurrentUser() user: JwtAccessPayload) {
+  create(
+    @Req() req: Request,
+    @Body() dto: CreateSuratJalanDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.sj.create(requireDbClient(req), dto, user.sub);
   }
 
   @Patch(':id')
   @RequirePermission('delivery.sj.create')
   @Audited({ entityType: 'surat_jalan', action: 'delivery.sj.create' })
-  update(@Req() req: Request, @Param('id') id: string, @Body() dto: UpdateSuratJalanDto, @CurrentUser() user: JwtAccessPayload) {
+  update(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: UpdateSuratJalanDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.sj.update(requireDbClient(req), id, dto, user.sub);
   }
 
@@ -47,7 +62,12 @@ export class SuratJalanController {
   @Post(':id/load')
   @RequirePermission('delivery.sj.dispatch')
   @Audited({ entityType: 'surat_jalan', action: 'delivery.sj.dispatch' })
-  load(@Req() req: Request, @Param('id') id: string, @Body() dto: LoadSuratJalanDto, @CurrentUser() user: JwtAccessPayload) {
+  load(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: LoadSuratJalanDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.sj.load(requireDbClient(req), id, dto, user.sub);
   }
 
@@ -61,7 +81,12 @@ export class SuratJalanController {
   @Post(':id/cancel')
   @RequirePermission('delivery.sj.cancel')
   @Audited({ entityType: 'surat_jalan', action: 'delivery.sj.cancel' })
-  cancel(@Req() req: Request, @Param('id') id: string, @Body() dto: ReasonDto, @CurrentUser() user: JwtAccessPayload) {
+  cancel(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: ReasonDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.sj.cancel(requireDbClient(req), id, dto.reason, user.sub);
   }
 }

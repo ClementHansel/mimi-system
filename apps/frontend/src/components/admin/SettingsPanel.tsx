@@ -32,15 +32,26 @@ export function SettingsPanel() {
 
   function reload() {
     setLoading(true);
-    api.get<Setting[]>('/settings').then(setSettings).finally(() => setLoading(false));
+    api
+      .get<Setting[]>('/settings')
+      .then(setSettings)
+      .finally(() => setLoading(false));
   }
   useEffect(reload, []);
 
   const columns: DataTableColumn<Setting>[] = [
     { key: 'key', header: t('admin.settings.columnKey') },
     { key: 'description', header: t('admin.settings.columnDescription') },
-    { key: 'updatedBy', header: t('admin.settings.columnUpdatedBy'), render: (r) => r.updatedBy ?? '—' },
-    { key: 'updatedAt', header: t('admin.settings.columnUpdatedAt'), render: (r) => fmtDateTime(r.updatedAt) },
+    {
+      key: 'updatedBy',
+      header: t('admin.settings.columnUpdatedBy'),
+      render: (r) => r.updatedBy ?? '—',
+    },
+    {
+      key: 'updatedAt',
+      header: t('admin.settings.columnUpdatedAt'),
+      render: (r) => fmtDateTime(r.updatedAt),
+    },
   ];
 
   return (
@@ -54,7 +65,12 @@ export function SettingsPanel() {
           <p className="text-sm text-text-secondary">{t('admin.settings.description')}</p>
           <DataTable
             columns={columns}
-            data={{ rows: settings.filter((s) => !s.key.startsWith('payroll.statutory')), total: settings.length, page: 1, pageSize: settings.length || 1 }}
+            data={{
+              rows: settings.filter((s) => !s.key.startsWith('payroll.statutory')),
+              total: settings.length,
+              page: 1,
+              pageSize: settings.length || 1,
+            }}
             keyField={(r) => r.key}
             loading={loading}
             onRowClick={can('settings.manage') ? (r) => setEditing(r) : undefined}
@@ -66,12 +82,29 @@ export function SettingsPanel() {
           <PayrollStatutoryCard />
         </PermissionGate>
       </TabsContent>
-      {editing && <SettingEditModal setting={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+      {editing && (
+        <SettingEditModal
+          setting={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            reload();
+          }}
+        />
+      )}
     </Tabs>
   );
 }
 
-function SettingEditModal({ setting, onClose, onSaved }: { setting: Setting; onClose: () => void; onSaved: () => void }) {
+function SettingEditModal({
+  setting,
+  onClose,
+  onSaved,
+}: {
+  setting: Setting;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const { t } = useI18n();
   const [raw, setRaw] = useState(JSON.stringify(setting.value, null, 2));
   const [error, setError] = useState<string | null>(null);
@@ -100,12 +133,30 @@ function SettingEditModal({ setting, onClose, onSaved }: { setting: Setting; onC
 
   return (
     <Modal
-      open onClose={onClose} title={`${t('admin.settings.editTitle')} — ${setting.key}`} size="lg"
-      footer={<><Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button><Button onClick={submit} loading={submitting}>{t('common.save')}</Button></>}
+      open
+      onClose={onClose}
+      title={`${t('admin.settings.editTitle')} — ${setting.key}`}
+      size="lg"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={submit} loading={submitting}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
     >
       <div className="flex flex-col gap-2">
         {error && <p className="text-sm text-danger-600">{error}</p>}
-        <Textarea value={raw} onChange={(e) => setRaw(e.target.value)} hint={t('admin.settings.rawJsonHint')} rows={10} className="font-mono text-xs" />
+        <Textarea
+          value={raw}
+          onChange={(e) => setRaw(e.target.value)}
+          hint={t('admin.settings.rawJsonHint')}
+          rows={10}
+          className="font-mono text-xs"
+        />
       </div>
     </Modal>
   );

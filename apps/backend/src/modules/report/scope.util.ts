@@ -15,7 +15,10 @@ import { ERR_LOCATION_OUT_OF_SCOPE } from '@mimi/shared';
  * is the "clearer 403 instead of a confusing empty report" belt-and-braces
  * check on top of RLS, never a substitute for it.
  */
-export function assertLocationInScope(locationScope: readonly string[] | null | undefined, locationId: string | undefined): void {
+export function assertLocationInScope(
+  locationScope: readonly string[] | null | undefined,
+  locationId: string | undefined,
+): void {
   if (!locationId) return;
   if (locationScope === null || locationScope === undefined) return; // central role — unrestricted
   if (!locationScope.includes(locationId)) {

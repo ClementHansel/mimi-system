@@ -67,7 +67,11 @@ function getAppPool(): Pool {
  * Runs fn against a mimi_app connection with real RLS session context.
  * Rolls back code-under-test writes, but fixture rows (inserted via owner pool) persist.
  */
-async function withRollback<T>(roleKey: RoleKey, locationIds: string[] = [], fn: (client: PoolClient) => Promise<T>): Promise<T> {
+async function withRollback<T>(
+  roleKey: RoleKey,
+  locationIds: string[] = [],
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
@@ -96,7 +100,9 @@ async function loadFixtures(): Promise<typeof fx> {
   const itemRes = await owner.query<{ id: string }>(`SELECT id FROM items LIMIT 1`);
 
   if (!svRes.rows[0] || !kgRes.rows[0] || !itemRes.rows[0]) {
-    throw new Error('Seed data missing: need users with Supervisor/Kepala Gudang roles and at least one item');
+    throw new Error(
+      'Seed data missing: need users with Supervisor/Kepala Gudang roles and at least one item',
+    );
   }
 
   return {
@@ -123,7 +129,9 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
         // Fresh mimi_app connection has NOT had SET LOCAL ROLE app_user issued
         // mimi_app has zero table grants, so this must fail with permission denied
         await client.query('SELECT count(*) FROM suppliers');
-        throw new Error('Expected "permission denied" but query succeeded — RLS is not enforced correctly');
+        throw new Error(
+          'Expected "permission denied" but query succeeded — RLS is not enforced correctly',
+        );
       } catch (err: any) {
         // Expected: permission denied for table suppliers
         expect(err.message).toMatch(/permission denied|table suppliers/i);
@@ -175,12 +183,15 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
         // A GENUINELY separate connection/transaction — never sees `create`'s connection's
         // uncommitted state, only what it actually COMMITted.
-        const fetched = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) => new SupplierService(syncEmit).getById(client, created.id));
+        const fetched = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService(syncEmit).getById(client, created.id),
+        );
         expect(fetched.id).toBe(created.id);
         expect(fetched.name).toBe('Test Supplier Corp');
         expect(fetched.paymentTermsDays).toBe(30);
       } finally {
-        if (supplierId) await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+        if (supplierId)
+          await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
       }
     });
 
@@ -220,11 +231,14 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
         // Independent read-back, a THIRD connection: proves `update`'s write genuinely
         // committed, not merely visible within its own now-closed transaction.
-        const reread = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) => new SupplierService(syncEmit).getById(client, created.id));
+        const reread = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService(syncEmit).getById(client, created.id),
+        );
         expect(reread.name).toBe('Updated Name');
         expect(reread.paymentTermsDays).toBe(45);
       } finally {
-        if (supplierId) await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+        if (supplierId)
+          await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
       }
     });
 
@@ -244,15 +258,20 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
         );
         supplierId = created.id;
 
-        const deactivated = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) => new SupplierService(syncEmit).deactivate(client, created.id, SYSTEM_USER_ID));
+        const deactivated = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService(syncEmit).deactivate(client, created.id, SYSTEM_USER_ID),
+        );
         expect(deactivated.deactivated).toBe(true);
 
         // A later GET (new connection) sees the deactivated status, not the pre-deactivate one —
         // proving `deactivate`'s write persisted past its own request.
-        const fetched = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) => new SupplierService(syncEmit).getById(client, created.id));
+        const fetched = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService(syncEmit).getById(client, created.id),
+        );
         expect(fetched.isActive).toBe(false);
       } finally {
-        if (supplierId) await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+        if (supplierId)
+          await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
       }
     });
   });
@@ -314,7 +333,9 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
           const entry = dir.rows.find((r) => r.id === supplierId);
 
           expect(entry).toBeTruthy();
-          expect(Object.keys(entry!).sort()).toEqual(['address', 'code', 'contactName', 'id', 'name', 'phone'].sort());
+          expect(Object.keys(entry!).sort()).toEqual(
+            ['address', 'code', 'contactName', 'id', 'name', 'phone'].sort(),
+          );
           expect((entry as any).paymentTermsDays).toBeUndefined();
           expect((entry as any).bankName).toBeUndefined();
           expect((entry as any).bankAccount).toBeUndefined();
@@ -328,10 +349,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     it('Supervisor: getItems returns zero rows (RLS blocks pricing)', async () => {
       const owner = getOwnerPool();
 
-      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
-        `ITEMS-${randomUUID().slice(0, 8)}`,
-        'Test',
-      ]);
+      const suppRes = await owner.query(
+        `INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`,
+        [`ITEMS-${randomUUID().slice(0, 8)}`, 'Test'],
+      );
       const supplierId = suppRes.rows[0].id;
 
       const itemRes = await owner.query(`SELECT id FROM items LIMIT 1`);
@@ -359,10 +380,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     it('Supervisor: getPriceHistory returns zero rows (RLS blocks pricing)', async () => {
       const owner = getOwnerPool();
 
-      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
-        `HIST-${randomUUID().slice(0, 8)}`,
-        'Test',
-      ]);
+      const suppRes = await owner.query(
+        `INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`,
+        [`HIST-${randomUUID().slice(0, 8)}`, 'Test'],
+      );
       const supplierId = suppRes.rows[0].id;
 
       const itemRes = await owner.query(`SELECT id FROM items LIMIT 1`);
@@ -383,7 +404,9 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
           expect(history.rows).toHaveLength(0);
         });
       } finally {
-        await owner.query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [supplierId]);
+        await owner.query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [
+          supplierId,
+        ]);
         await owner.query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
       }
     });
@@ -421,10 +444,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     it('Kepala Gudang: getItems returns supplier_items with prices', async () => {
       const owner = getOwnerPool();
 
-      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
-        `KG-ITEMS-${randomUUID().slice(0, 8)}`,
-        'KG Test',
-      ]);
+      const suppRes = await owner.query(
+        `INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`,
+        [`KG-ITEMS-${randomUUID().slice(0, 8)}`, 'KG Test'],
+      );
       const supplierId = suppRes.rows[0].id;
 
       const itemRes = await owner.query(`SELECT id FROM items LIMIT 1`);
@@ -454,10 +477,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     it('Kepala Gudang: getPriceHistory returns full history', async () => {
       const owner = getOwnerPool();
 
-      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
-        `KG-HIST-${randomUUID().slice(0, 8)}`,
-        'KG Test',
-      ]);
+      const suppRes = await owner.query(
+        `INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`,
+        [`KG-HIST-${randomUUID().slice(0, 8)}`, 'KG Test'],
+      );
       const supplierId = suppRes.rows[0].id;
 
       const itemRes = await owner.query(`SELECT id FROM items LIMIT 1`);
@@ -479,7 +502,9 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
           expect(history.rows[0].price).toBe('100000.00');
         });
       } finally {
-        await owner.query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [supplierId]);
+        await owner.query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [
+          supplierId,
+        ]);
         await owner.query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
       }
     });
@@ -490,10 +515,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
       const owner = getOwnerPool();
       const effectiveDate = '2026-06-30'; // fixed, non-"today" — a day-shift can't hide behind a lucky date.
 
-      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
-        `DATE-HIST-${randomUUID().slice(0, 8)}`,
-        'Date Test',
-      ]);
+      const suppRes = await owner.query(
+        `INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`,
+        [`DATE-HIST-${randomUUID().slice(0, 8)}`, 'Date Test'],
+      );
       const supplierId = suppRes.rows[0].id;
       const itemRes = await owner.query(`SELECT id FROM items LIMIT 1`);
       const itemId = itemRes.rows[0].id;
@@ -517,7 +542,9 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
           expect(row!.effectiveDate).toBe(effectiveDate);
         });
       } finally {
-        await owner.query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [supplierId]);
+        await owner.query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [
+          supplierId,
+        ]);
         await owner.query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
       }
     });
@@ -526,21 +553,29 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
       const owner = getOwnerPool();
       const orderDate = '2026-06-30';
 
-      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
-        `DATE-TXN-${randomUUID().slice(0, 8)}`,
-        'Date Txn Test',
-      ]);
+      const suppRes = await owner.query(
+        `INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`,
+        [`DATE-TXN-${randomUUID().slice(0, 8)}`, 'Date Txn Test'],
+      );
       const supplierId = suppRes.rows[0].id;
       const locRes = await owner.query(`SELECT id FROM locations LIMIT 1`);
       const locationId = locRes.rows[0].id;
-      const itemRes = await owner.query<{ id: string; base_unit_id: string }>(`SELECT id, base_unit_id FROM items LIMIT 1`);
+      const itemRes = await owner.query<{ id: string; base_unit_id: string }>(
+        `SELECT id, base_unit_id FROM items LIMIT 1`,
+      );
       const itemId = itemRes.rows[0]!.id;
       const unitId = itemRes.rows[0]!.base_unit_id;
 
       const poRes = await owner.query(
         `INSERT INTO purchase_orders (po_number, supplier_id, location_id, status, order_date, created_by)
          VALUES ($1, $2, $3, 'issued', $4, $5) RETURNING id`,
-        [`PO-TEST-${randomUUID().slice(0, 8)}`, supplierId, locationId, orderDate, fx.kepalaGudangUserId],
+        [
+          `PO-TEST-${randomUUID().slice(0, 8)}`,
+          supplierId,
+          locationId,
+          orderDate,
+          fx.kepalaGudangUserId,
+        ],
       );
       // `payment_verifications`' own RLS policy only allows role IN ('owner','manager','finance') —
       // `kepala_gudang` (this file's usual test role) can't see it, and `purchase_orders`' policy
@@ -556,7 +591,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
          VALUES ($1, 'purchase_order', $2, 'supplier', $3, '10000.00', 'pending', $4) RETURNING id`,
         [`PV-TEST-${randomUUID().slice(0, 8)}`, poId, supplierId, fx.kepalaGudangUserId],
       );
-      await owner.query(`UPDATE purchase_orders SET payment_verification_id = $2 WHERE id = $1`, [poId, pvRes.rows[0].id]);
+      await owner.query(`UPDATE purchase_orders SET payment_verification_id = $2 WHERE id = $1`, [
+        poId,
+        pvRes.rows[0].id,
+      ]);
 
       try {
         await withRollback(RoleKey.OWNER, [], async (client) => {
@@ -579,7 +617,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
       } finally {
         // `fk_po_pv` (migration 094) requires clearing `purchase_orders.payment_verification_id`
         // BEFORE the referenced `payment_verifications` row can be deleted.
-        await owner.query(`UPDATE purchase_orders SET payment_verification_id = NULL WHERE id = $1`, [poId]);
+        await owner.query(
+          `UPDATE purchase_orders SET payment_verification_id = NULL WHERE id = $1`,
+          [poId],
+        );
         await owner.query(`DELETE FROM payment_verifications WHERE id = $1`, [pvRes.rows[0].id]);
         await owner.query(`DELETE FROM po_lines WHERE po_id = $1`, [poId]);
         await owner.query(`DELETE FROM purchase_orders WHERE id = $1`, [poId]);
@@ -592,10 +633,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     it('currentPrice returned as decimal string, not JS number', async () => {
       const owner = getOwnerPool();
 
-      const suppRes = await owner.query(`INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`, [
-        `MONEY-${randomUUID().slice(0, 8)}`,
-        'Money Test',
-      ]);
+      const suppRes = await owner.query(
+        `INSERT INTO suppliers (code, name, is_active) VALUES ($1, $2, true) RETURNING id`,
+        [`MONEY-${randomUUID().slice(0, 8)}`, 'Money Test'],
+      );
       const supplierId = suppRes.rows[0].id;
 
       const itemRes = await owner.query(`SELECT id FROM items LIMIT 1`);

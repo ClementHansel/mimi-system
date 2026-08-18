@@ -4,7 +4,12 @@ import type { SyncHealth } from '../transport/types';
 
 function health(ok: boolean): Promise<SyncHealth> {
   return ok
-    ? Promise.resolve({ ok: true, protocolV: 1, serverTime: new Date().toISOString(), tier: 'cloud' })
+    ? Promise.resolve({
+        ok: true,
+        protocolV: 1,
+        serverTime: new Date().toISOString(),
+        tier: 'cloud',
+      })
     : Promise.reject(new Error('unhealthy'));
 }
 
@@ -13,21 +18,33 @@ describe('UpstreamSelector (SYNC-PROTOCOL §1.3)', () => {
   const cloud: UpstreamCandidate = { kind: 'cloud', baseUrl: 'https://cloud.mimi' };
 
   it('on startup, connects to the first healthy candidate in preference order (node before cloud)', async () => {
-    const selector = new UpstreamSelector([node, cloud], async () => health(true), () => 0);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async () => health(true),
+      () => 0,
+    );
     const state = await selector.tick();
     expect(state.current?.kind).toBe('node');
     expect(state.tier).toBe('lan');
   });
 
   it('falls through to cloud when the node is unhealthy', async () => {
-    const selector = new UpstreamSelector([node, cloud], async (url) => health(url === cloud.baseUrl), () => 0);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async (url) => health(url === cloud.baseUrl),
+      () => 0,
+    );
     const state = await selector.tick();
     expect(state.current?.kind).toBe('cloud');
     expect(state.tier).toBe('online');
   });
 
   it('reports "isolated" when no candidate is healthy', async () => {
-    const selector = new UpstreamSelector([node, cloud], async () => health(false), () => 0);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async () => health(false),
+      () => 0,
+    );
     const state = await selector.tick();
     expect(state.current).toBeNull();
     expect(state.tier).toBe('isolated');
@@ -36,7 +53,11 @@ describe('UpstreamSelector (SYNC-PROTOCOL §1.3)', () => {
   it('does NOT fail away on a single dropped probe (only 3 consecutive failures matter)', async () => {
     let now = 0;
     let nodeHealthy = true;
-    const selector = new UpstreamSelector([node, cloud], async (url) => health(url === node.baseUrl ? nodeHealthy : true), () => now);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async (url) => health(url === node.baseUrl ? nodeHealthy : true),
+      () => now,
+    );
     await selector.tick(); // selects node
 
     nodeHealthy = false;
@@ -53,7 +74,11 @@ describe('UpstreamSelector (SYNC-PROTOCOL §1.3)', () => {
   it('fails away only after 3 consecutive failures spanning >= 10s', async () => {
     let now = 0;
     let nodeHealthy = true;
-    const selector = new UpstreamSelector([node, cloud], async (url) => health(url === node.baseUrl ? nodeHealthy : true), () => now);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async (url) => health(url === node.baseUrl ? nodeHealthy : true),
+      () => now,
+    );
     await selector.tick(); // node selected
 
     nodeHealthy = false;
@@ -72,7 +97,11 @@ describe('UpstreamSelector (SYNC-PROTOCOL §1.3)', () => {
   it('fails back to the node only after it has been continuously healthy for 60s (not merely healthy once)', async () => {
     let now = 0;
     let nodeHealthy = false;
-    const selector = new UpstreamSelector([node, cloud], async (url) => health(url === node.baseUrl ? nodeHealthy : true), () => now);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async (url) => health(url === node.baseUrl ? nodeHealthy : true),
+      () => now,
+    );
     await selector.tick(); // node unhealthy -> selects cloud
     expect(selector.getState().current?.kind).toBe('cloud');
 
@@ -89,7 +118,11 @@ describe('UpstreamSelector (SYNC-PROTOCOL §1.3)', () => {
   it('flapping health resets the continuous-healthy timer for fail-back (hysteresis actually prevents flapping)', async () => {
     let now = 0;
     let nodeHealthy = false;
-    const selector = new UpstreamSelector([node, cloud], async (url) => health(url === node.baseUrl ? nodeHealthy : true), () => now);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async (url) => health(url === node.baseUrl ? nodeHealthy : true),
+      () => now,
+    );
     await selector.tick(); // -> cloud
 
     nodeHealthy = true;
@@ -105,14 +138,22 @@ describe('UpstreamSelector (SYNC-PROTOCOL §1.3)', () => {
   });
 
   it('works correctly with NO node candidate at all (RISK-P5: node absence never assumed)', async () => {
-    const selector = new UpstreamSelector([cloud], async () => health(true), () => 0);
+    const selector = new UpstreamSelector(
+      [cloud],
+      async () => health(true),
+      () => 0,
+    );
     const state = await selector.tick();
     expect(state.current?.kind).toBe('cloud');
     expect(state.tier).toBe('online');
   });
 
   it('is exactly one upstream at a time — never both node and cloud simultaneously', async () => {
-    const selector = new UpstreamSelector([node, cloud], async () => health(true), () => 0);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async () => health(true),
+      () => 0,
+    );
     await selector.tick();
     const state = selector.getState();
     expect([state.current?.kind]).not.toContain(undefined);
@@ -122,7 +163,11 @@ describe('UpstreamSelector (SYNC-PROTOCOL §1.3)', () => {
   it('notifies onChange listeners only when the selected upstream actually changes', async () => {
     const now = 0;
     const nodeHealthy = true;
-    const selector = new UpstreamSelector([node, cloud], async (url) => health(url === node.baseUrl ? nodeHealthy : true), () => now);
+    const selector = new UpstreamSelector(
+      [node, cloud],
+      async (url) => health(url === node.baseUrl ? nodeHealthy : true),
+      () => now,
+    );
     const changes: string[] = [];
     selector.onChange((s) => changes.push(s.tier));
 

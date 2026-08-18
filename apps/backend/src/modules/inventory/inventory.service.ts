@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
   addQty,
@@ -29,7 +34,14 @@ import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import type { ListBalancesFilters, ListMovementsFilters } from './inventory.repository';
 import { InventoryRepository } from './inventory.repository';
 import { assertLocationInScope } from './scope.util';
-import type { AreaTransferResult, HistoryDayRow, InventorySummary, LowStockRow, MinStockRuleRow, SuggestionRow } from './types';
+import type {
+  AreaTransferResult,
+  HistoryDayRow,
+  InventorySummary,
+  LowStockRow,
+  MinStockRuleRow,
+  SuggestionRow,
+} from './types';
 
 export interface CallerContext {
   userId: string;
@@ -71,7 +83,12 @@ export class InventoryService {
   ): Promise<Paginated<Balance>> {
     assertLocationInScope(caller.locationScope, filters.locationId);
     const includeValue = can(caller.roleKey, 'supplier.price.read');
-    const { rows, total, page: p, pageSize: ps } = await this.repo.listBalances(client, filters, page, pageSize);
+    const {
+      rows,
+      total,
+      page: p,
+      pageSize: ps,
+    } = await this.repo.listBalances(client, filters, page, pageSize);
 
     const mapped: Balance[] = rows.map((r) => ({
       locationId: r.locationId,
@@ -91,7 +108,11 @@ export class InventoryService {
   }
 
   // ── GET /summary ────────────────────────────────────────────────────────
-  async getSummary(client: PoolClient, caller: CallerContext, locationId: string | undefined): Promise<InventorySummary> {
+  async getSummary(
+    client: PoolClient,
+    caller: CallerContext,
+    locationId: string | undefined,
+  ): Promise<InventorySummary> {
     assertLocationInScope(caller.locationScope, locationId);
     const includeValue = can(caller.roleKey, 'supplier.price.read');
     const [totals, byArea] = await Promise.all([
@@ -119,7 +140,11 @@ export class InventoryService {
   }
 
   // ── GET /low-stock ──────────────────────────────────────────────────────
-  async getLowStock(client: PoolClient, caller: CallerContext, locationId: string | undefined): Promise<LowStockRow[]> {
+  async getLowStock(
+    client: PoolClient,
+    caller: CallerContext,
+    locationId: string | undefined,
+  ): Promise<LowStockRow[]> {
     assertLocationInScope(caller.locationScope, locationId);
     return this.repo.listLowStock(client, locationId);
   }
@@ -190,7 +215,11 @@ export class InventoryService {
    * warehouse-only item that never posts `usage_out`). `ZERO_QTY` with basis
    * `'reorder_qty'` when neither exists — nothing computable to suggest.
    */
-  async getSuggestions(client: PoolClient, caller: CallerContext, locationId: string | undefined): Promise<SuggestionRow[]> {
+  async getSuggestions(
+    client: PoolClient,
+    caller: CallerContext,
+    locationId: string | undefined,
+  ): Promise<SuggestionRow[]> {
     assertLocationInScope(caller.locationScope, locationId);
     const inputs = await this.repo.listSuggestionInputs(client, locationId);
 
@@ -224,12 +253,22 @@ export class InventoryService {
   async postAreaTransfer(
     client: PoolClient,
     caller: CallerContext,
-    input: { locationId: string; itemId: string; fromAreaId: string; toAreaId: string; qty: string; reason?: string },
+    input: {
+      locationId: string;
+      itemId: string;
+      fromAreaId: string;
+      toAreaId: string;
+      qty: string;
+      reason?: string;
+    },
   ): Promise<AreaTransferResult> {
     assertLocationInScope(caller.locationScope, input.locationId);
 
     if (input.fromAreaId === input.toAreaId) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'fromAreaId and toAreaId must be different storage areas' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'fromAreaId and toAreaId must be different storage areas',
+      });
     }
 
     const [fromArea, toArea, unitCost] = await Promise.all([
@@ -238,13 +277,22 @@ export class InventoryService {
       this.repo.getItemAvgCost(client, input.itemId),
     ]);
     if (!fromArea || fromArea.locationId !== input.locationId) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'fromAreaId does not belong to locationId' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'fromAreaId does not belong to locationId',
+      });
     }
     if (!toArea || toArea.locationId !== input.locationId) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: 'toAreaId does not belong to locationId' });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'toAreaId does not belong to locationId',
+      });
     }
     if (unitCost === null) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Item ${input.itemId} not found` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Item ${input.itemId} not found`,
+      });
     }
 
     const refId = randomUUID();
@@ -274,7 +322,10 @@ export class InventoryService {
       // "the sale already happened, don't block it" exemption, which does
       // not apply here.
       if (err instanceof StockInsufficientError) {
-        throw new UnprocessableEntityException({ code: ERR_STOCK_INSUFFICIENT, message: err.message });
+        throw new UnprocessableEntityException({
+          code: ERR_STOCK_INSUFFICIENT,
+          message: err.message,
+        });
       }
       throw err;
     }
@@ -358,6 +409,7 @@ function divideQtyByInteger(qty: string, divisor: number): string {
   const div = BigInt(divisor);
   const quotient = scaled / div;
   const remainder = scaled % div;
-  const roundedUp = (remainder < 0n ? -remainder : remainder) * 2n >= div ? (scaled < 0n ? -1n : 1n) : 0n;
+  const roundedUp =
+    (remainder < 0n ? -remainder : remainder) * 2n >= div ? (scaled < 0n ? -1n : 1n) : 0n;
   return formatQty(quotient + roundedUp);
 }

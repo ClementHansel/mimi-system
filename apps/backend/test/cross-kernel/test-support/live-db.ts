@@ -69,14 +69,19 @@ export interface RlsCtx {
  * `RlsContextGuard` would set for that step's real request, never a shared
  * superuser context spanning the whole scenario.
  */
-export async function withCommit<T>(ctx: RlsCtx, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withCommit<T>(
+  ctx: RlsCtx,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     const result = await fn(client);
     await client.query('COMMIT').catch(() => {}); // no-op NOTICE if `fn` already committed
     return result;
@@ -89,14 +94,19 @@ export async function withCommit<T>(ctx: RlsCtx, fn: (client: PoolClient) => Pro
 }
 
 /** Read-only verification queries under a specific role — never used to drive a mutation. */
-export async function withRollback<T>(ctx: RlsCtx, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollback<T>(
+  ctx: RlsCtx,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -139,7 +149,8 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
       `SELECT id FROM storage_areas WHERE location_id = $1 AND type = 'freezer' AND is_active = true LIMIT 1`,
       [locationId],
     );
-    if (!res.rows[0]) throw new Error(`Seed is missing a 'freezer' storage area at location ${locationId}`);
+    if (!res.rows[0])
+      throw new Error(`Seed is missing a 'freezer' storage area at location ${locationId}`);
     return res.rows[0].id;
   };
 
@@ -151,7 +162,8 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
   const driver = await pool.query<{ id: string; user_id: string }>(
     `SELECT id, user_id FROM drivers WHERE is_active = true AND user_id IS NOT NULL LIMIT 1`,
   );
-  if (!driver.rows[0]) throw new Error(`Seed data is missing an active driver with a linked user_id`);
+  if (!driver.rows[0])
+    throw new Error(`Seed data is missing an active driver with a linked user_id`);
 
   const frozenVehicle = await pool.query<{ id: string }>(
     `SELECT id FROM vehicles WHERE has_freezer = true AND is_active = true LIMIT 1`,
@@ -166,7 +178,8 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
         WHERE r.key = $1 AND ul.location_id = $2 LIMIT 1`,
       [roleKey, locationId],
     );
-    if (!res.rows[0]) throw new Error(`No user with role '${roleKey}' assigned to location ${locationId}`);
+    if (!res.rows[0])
+      throw new Error(`No user with role '${roleKey}' assigned to location ${locationId}`);
     return res.rows[0].id;
   };
 
@@ -205,12 +218,22 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
   };
 }
 
-export async function createConfirmedAttachment(kind: string, entityType: string | null, entityId: string | null): Promise<string> {
+export async function createConfirmedAttachment(
+  kind: string,
+  entityType: string | null,
+  entityId: string | null,
+): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
     `INSERT INTO attachments (bucket, object_key, file_name, mime_type, size_bytes, kind, entity_type, entity_id)
      VALUES ('mimi-test', $1, $2, 'image/jpeg', 1024, $3, $4, $5)
      RETURNING id`,
-    [`test/${kind}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`, `${kind}.jpg`, kind, entityType, entityId],
+    [
+      `test/${kind}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`,
+      `${kind}.jpg`,
+      kind,
+      entityType,
+      entityId,
+    ],
   );
   return res.rows[0]!.id;
 }

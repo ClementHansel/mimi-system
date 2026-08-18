@@ -93,7 +93,7 @@ describe('can() spot checks against CONTRACTS.md §3', () => {
     expect(can(RoleKey.OWNER, 'this.key.does.not.exist' as PermissionKey)).toBe(false);
   });
 
-  it('rejects a typo\'d key at COMPILE time, not just at runtime', () => {
+  it("rejects a typo'd key at COMPILE time, not just at runtime", () => {
     // @ts-expect-error - 'suplier.directory.read' is not a member of PermissionKey; this line
     // must fail to compile. If it ever compiles cleanly, PermissionKey has been re-widened.
     const typo: PermissionKey = 'suplier.directory.read';
@@ -130,6 +130,8 @@ describe('permissionsForRole / rolesWithPermission', () => {
   });
 
   it('only finance and owner can pay a verified payment', () => {
-    expect(rolesWithPermission('payment.pay').sort()).toEqual([RoleKey.OWNER, RoleKey.FINANCE].sort());
+    expect(rolesWithPermission('payment.pay').sort()).toEqual(
+      [RoleKey.OWNER, RoleKey.FINANCE].sort(),
+    );
   });
 });

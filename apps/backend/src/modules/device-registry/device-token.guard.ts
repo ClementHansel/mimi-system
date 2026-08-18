@@ -13,7 +13,13 @@
  * `kernel/sync/sync-http.controller.ts`'s own pattern, so it can never
  * collide with the global guard chain.
  */
-import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import type { Pool } from 'pg';
 import { ERR_AUTH_TOKEN_INVALID } from '@mimi/shared';
@@ -35,26 +41,49 @@ export class DeviceTokenGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<RequestWithDeviceIdentity>();
     const header = request.headers.authorization;
     if (!header?.startsWith('Bearer ')) {
-      throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Missing device credential' });
+      throw new UnauthorizedException({
+        code: ERR_AUTH_TOKEN_INVALID,
+        message: 'Missing device credential',
+      });
     }
     const token = header.slice('Bearer '.length).trim();
-    if (!token) throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Empty device credential' });
+    if (!token)
+      throw new UnauthorizedException({
+        code: ERR_AUTH_TOKEN_INVALID,
+        message: 'Empty device credential',
+      });
 
     const tokenHash = hashDeviceToken(token);
     const device = await withSystemContext(this.pool, async (client) => {
-      const res = await client.query<{ id: UUID; location_id: UUID; node_id: UUID | null; status: DeviceStatusRow }>(
-        `SELECT id, location_id, node_id, status FROM devices WHERE device_token_hash = $1`,
-        [tokenHash],
-      );
+      const res = await client.query<{
+        id: UUID;
+        location_id: UUID;
+        node_id: UUID | null;
+        status: DeviceStatusRow;
+      }>(`SELECT id, location_id, node_id, status FROM devices WHERE device_token_hash = $1`, [
+        tokenHash,
+      ]);
       return res.rows[0];
     });
 
-    if (!device) throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: 'Unknown device credential' });
+    if (!device)
+      throw new UnauthorizedException({
+        code: ERR_AUTH_TOKEN_INVALID,
+        message: 'Unknown device credential',
+      });
     if (device.status === 'retired' || device.status === 'unpaired') {
-      throw new UnauthorizedException({ code: ERR_AUTH_TOKEN_INVALID, message: `Device is ${device.status}` });
+      throw new UnauthorizedException({
+        code: ERR_AUTH_TOKEN_INVALID,
+        message: `Device is ${device.status}`,
+      });
     }
 
-    request.device = { id: device.id, locationId: device.location_id, nodeId: device.node_id, status: device.status };
+    request.device = {
+      id: device.id,
+      locationId: device.location_id,
+      nodeId: device.node_id,
+      status: device.status,
+    };
     return true;
   }
 }

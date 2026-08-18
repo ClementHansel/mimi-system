@@ -29,22 +29,40 @@ export default function HrPage() {
       <Tabs defaultValue="employees">
         <TabsList className="flex-wrap">
           <TabsTrigger value="employees">
-            <span className="inline-flex items-center gap-1.5"><Users className="size-4" aria-hidden />{t('hr.tabs.employees')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Users className="size-4" aria-hidden />
+              {t('hr.tabs.employees')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="roster">
-            <span className="inline-flex items-center gap-1.5"><CalendarClock className="size-4" aria-hidden />{t('hr.tabs.roster')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarClock className="size-4" aria-hidden />
+              {t('hr.tabs.roster')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="attendance">
-            <span className="inline-flex items-center gap-1.5"><ClipboardCheck className="size-4" aria-hidden />{t('hr.tabs.attendance')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <ClipboardCheck className="size-4" aria-hidden />
+              {t('hr.tabs.attendance')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="leaves">
-            <span className="inline-flex items-center gap-1.5"><FileClock className="size-4" aria-hidden />{t('hr.tabs.leaves')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <FileClock className="size-4" aria-hidden />
+              {t('hr.tabs.leaves')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="payroll">
-            <span className="inline-flex items-center gap-1.5"><Wallet className="size-4" aria-hidden />{t('hr.tabs.payroll')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Wallet className="size-4" aria-hidden />
+              {t('hr.tabs.payroll')}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="statutory">
-            <span className="inline-flex items-center gap-1.5"><Percent className="size-4" aria-hidden />{t('hr.tabs.statutory')}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Percent className="size-4" aria-hidden />
+              {t('hr.tabs.statutory')}
+            </span>
           </TabsTrigger>
         </TabsList>
 

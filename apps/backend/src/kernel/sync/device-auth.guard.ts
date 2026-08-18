@@ -42,18 +42,37 @@ export class DeviceAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<RequestWithDevice>();
     const header = request.headers.authorization;
     if (!header?.startsWith('Bearer ')) {
-      throw new UnauthorizedException({ code: 'ERR_UNAUTHORIZED', message: 'Missing device credential' });
+      throw new UnauthorizedException({
+        code: 'ERR_UNAUTHORIZED',
+        message: 'Missing device credential',
+      });
     }
     const token = header.slice('Bearer '.length).trim();
-    if (!token) throw new UnauthorizedException({ code: 'ERR_UNAUTHORIZED', message: 'Empty device credential' });
+    if (!token)
+      throw new UnauthorizedException({
+        code: 'ERR_UNAUTHORIZED',
+        message: 'Empty device credential',
+      });
 
     const device = await this.registry.findDeviceByTokenHash(hashDeviceToken(token));
-    if (!device) throw new UnauthorizedException({ code: 'ERR_UNAUTHORIZED', message: 'Unknown device credential' });
+    if (!device)
+      throw new UnauthorizedException({
+        code: 'ERR_UNAUTHORIZED',
+        message: 'Unknown device credential',
+      });
     if (device.status === 'retired' || device.status === 'unpaired') {
-      throw new UnauthorizedException({ code: 'ERR_UNAUTHORIZED', message: `Device is ${device.status}` });
+      throw new UnauthorizedException({
+        code: 'ERR_UNAUTHORIZED',
+        message: `Device is ${device.status}`,
+      });
     }
 
-    request.device = { id: device.id, locationId: device.location_id, nodeId: device.node_id, status: device.status };
+    request.device = {
+      id: device.id,
+      locationId: device.location_id,
+      nodeId: device.node_id,
+      status: device.status,
+    };
     return true;
   }
 }

@@ -38,7 +38,10 @@ export function getMyAttendance(month: string) {
   return api.get<AttendanceRow[]>(`/hr/attendance/me?month=${month}`);
 }
 
-const DEFAULT_QUOTA: MyLeaves['quota'] = { annual: { total: 12, used: 0 }, marriage: { total: 3, used: 0 } };
+const DEFAULT_QUOTA: MyLeaves['quota'] = {
+  annual: { total: 12, used: 0 },
+  marriage: { total: 3, used: 0 },
+};
 
 /**
  * CONTRACTS §4.14 documents this response shape unusually as
@@ -64,7 +67,14 @@ export function getMyLeaves(year: string): Promise<MyLeaves & { quotaUnavailable
   });
 }
 
-export function createLeaveRequest(body: { clientId: string; type: string; startDate: string; endDate: string; reason?: string; attachmentId?: string }) {
+export function createLeaveRequest(body: {
+  clientId: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+  reason?: string;
+  attachmentId?: string;
+}) {
   return api.post<Leave>('/hr/leaves', body);
 }
 

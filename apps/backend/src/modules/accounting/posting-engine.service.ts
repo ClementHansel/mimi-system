@@ -80,8 +80,18 @@ export class PostingEngineService implements OnModuleInit {
     const lines: DraftLine[] = [];
     for (const leg of legs) {
       if (leg.amount === ZERO_MONEY || leg.amount === '0.00') continue;
-      lines.push({ accountCode: leg.debit, debit: leg.amount, credit: ZERO_MONEY, memo: leg.memo ?? null });
-      lines.push({ accountCode: leg.credit, debit: ZERO_MONEY, credit: leg.amount, memo: leg.memo ?? null });
+      lines.push({
+        accountCode: leg.debit,
+        debit: leg.amount,
+        credit: ZERO_MONEY,
+        memo: leg.memo ?? null,
+      });
+      lines.push({
+        accountCode: leg.credit,
+        debit: ZERO_MONEY,
+        credit: leg.amount,
+        memo: leg.memo ?? null,
+      });
     }
     if (lines.length === 0) return;
 
@@ -98,7 +108,9 @@ export class PostingEngineService implements OnModuleInit {
 
   private async handle(event: DomainEvent<'journal.action'>): Promise<void> {
     try {
-      await withSystemContext(this.pool, { role: SYSTEM_CENTRAL_ROLE }, (client) => this.postForEvent(client, event));
+      await withSystemContext(this.pool, { role: SYSTEM_CENTRAL_ROLE }, (client) =>
+        this.postForEvent(client, event),
+      );
     } catch (err) {
       // EventBus already logs+swallows handler errors so a posting failure never breaks the emitting
       // module's own request — this log is for finding the failure at all (no other surface sees it).
@@ -109,13 +121,18 @@ export class PostingEngineService implements OnModuleInit {
     }
   }
 
-  private async resolveLegs(client: PoolClient, event: DomainEvent<'journal.action'>): Promise<JournalLeg[] | null> {
+  private async resolveLegs(
+    client: PoolClient,
+    event: DomainEvent<'journal.action'>,
+  ): Promise<JournalLeg[] | null> {
     const { eventType, amount, context, documentId } = event.payload;
     if (eventType === 'sale_void_reversal') {
       return resolveSaleVoidReversalLegs(client, amount, documentId);
     }
     if (!resolveEventTypes.has(eventType)) {
-      this.logger.warn(`No posting resolver for eventType '${eventType}' — ignoring (not one of the 16 PRD + 7 system extension types)`);
+      this.logger.warn(
+        `No posting resolver for eventType '${eventType}' — ignoring (not one of the 16 PRD + 7 system extension types)`,
+      );
       return null;
     }
     return resolvePureLegs(eventType, amount, context ?? {});
@@ -123,11 +140,30 @@ export class PostingEngineService implements OnModuleInit {
 }
 
 const resolveEventTypes = new Set([
-  'gudang_purchase', 'gudang_goods_in', 'gudang_goods_out_to_outlet', 'gudang_return_to_supplier', 'gudang_waste',
-  'gudang_stock_adjustment', 'gudang_stock_revaluation', 'outlet_goods_in_from_warehouse', 'outlet_ingredient_usage',
-  'outlet_waste', 'outlet_return_to_warehouse', 'outlet_sales', 'outlet_stock_adjustment', 'outlet_direct_purchase',
-  'outlet_petty_cash', 'outlet_operating_expense', 'payroll_accrual', 'payroll_payment', 'qris_settlement',
-  'transfer_verified', 'platform_settlement', 'offline_auth_rejected', 'petty_cash_topup', 'employee_loan_disbursement',
+  'gudang_purchase',
+  'gudang_goods_in',
+  'gudang_goods_out_to_outlet',
+  'gudang_return_to_supplier',
+  'gudang_waste',
+  'gudang_stock_adjustment',
+  'gudang_stock_revaluation',
+  'outlet_goods_in_from_warehouse',
+  'outlet_ingredient_usage',
+  'outlet_waste',
+  'outlet_return_to_warehouse',
+  'outlet_sales',
+  'outlet_stock_adjustment',
+  'outlet_direct_purchase',
+  'outlet_petty_cash',
+  'outlet_operating_expense',
+  'payroll_accrual',
+  'payroll_payment',
+  'qris_settlement',
+  'transfer_verified',
+  'platform_settlement',
+  'offline_auth_rejected',
+  'petty_cash_topup',
+  'employee_loan_disbursement',
 ]);
 
 /**
@@ -140,21 +176,34 @@ const resolveEventTypes = new Set([
  * when" bar requires. Exported for that test; `PostingEngineService` is the
  * only production caller.
  */
-export function resolvePureLegs(eventType: string, amount: Money, context: Record<string, unknown>): JournalLeg[] | null {
+export function resolvePureLegs(
+  eventType: string,
+  amount: Money,
+  context: Record<string, unknown>,
+): JournalLeg[] | null {
   const ctx = context;
   switch (eventType) {
     // ── JGUD-01..05: single unconditional pair ──────────────────────────
-    case 'gudang_purchase': return [{ debit: '1100', credit: '2000', amount }];
-    case 'gudang_goods_in': return [{ debit: '1100', credit: '1120', amount }];
-    case 'gudang_goods_out_to_outlet': return [{ debit: '1120', credit: '1100', amount }];
-    case 'gudang_return_to_supplier': return [{ debit: '2000', credit: '1100', amount }];
-    case 'gudang_waste': return [{ debit: '5100', credit: '1100', amount }];
+    case 'gudang_purchase':
+      return [{ debit: '1100', credit: '2000', amount }];
+    case 'gudang_goods_in':
+      return [{ debit: '1100', credit: '1120', amount }];
+    case 'gudang_goods_out_to_outlet':
+      return [{ debit: '1120', credit: '1100', amount }];
+    case 'gudang_return_to_supplier':
+      return [{ debit: '2000', credit: '1100', amount }];
+    case 'gudang_waste':
+      return [{ debit: '5100', credit: '1100', amount }];
 
     // ── JGUD-06/07: direction-conditioned single pair ───────────────────
     case 'gudang_stock_adjustment':
-      return ctx.direction === 'shortage' ? [{ debit: '6400', credit: '1100', amount }] : [{ debit: '1100', credit: '4100', amount }];
+      return ctx.direction === 'shortage'
+        ? [{ debit: '6400', credit: '1100', amount }]
+        : [{ debit: '1100', credit: '4100', amount }];
     case 'gudang_stock_revaluation':
-      return ctx.direction === 'up' ? [{ debit: '1100', credit: '5090', amount }] : [{ debit: '5090', credit: '1100', amount }];
+      return ctx.direction === 'up'
+        ? [{ debit: '1100', credit: '5090', amount }]
+        : [{ debit: '5090', credit: '1100', amount }];
 
     // ── JOUT-01/01b: base leg always; discrepancy leg uses context.shortfall (already money, per
     // the REAL publisher drop.service.ts — not a recomputed qty×cost) ───
@@ -162,15 +211,23 @@ export function resolvePureLegs(eventType: string, amount: Money, context: Recor
       const legs: JournalLeg[] = [{ debit: '1110', credit: '1120', amount }];
       const shortfall = typeof ctx.shortfall === 'string' ? (ctx.shortfall as Money) : ZERO_MONEY;
       if (ctx.discrepancy === true && shortfall !== '0.00') {
-        legs.push({ debit: '6400', credit: '1120', amount: shortfall, memo: 'Selisih kekurangan barang dalam perjalanan' });
+        legs.push({
+          debit: '6400',
+          credit: '1120',
+          amount: shortfall,
+          memo: 'Selisih kekurangan barang dalam perjalanan',
+        });
       }
       return legs;
     }
 
     // ── JOUT-02/04/05: single unconditional pair ─────────────────────────
-    case 'outlet_ingredient_usage': return [{ debit: '5000', credit: '1110', amount }];
-    case 'outlet_waste': return [{ debit: '5100', credit: '1110', amount }];
-    case 'outlet_return_to_warehouse': return [{ debit: '1120', credit: '1110', amount }];
+    case 'outlet_ingredient_usage':
+      return [{ debit: '5000', credit: '1110', amount }];
+    case 'outlet_waste':
+      return [{ debit: '5100', credit: '1110', amount }];
+    case 'outlet_return_to_warehouse':
+      return [{ debit: '1120', credit: '1110', amount }];
 
     // ── JOUT-03: method-conditioned; caller (daily aggregator) supplies context.byMethod ─────────
     case 'outlet_sales':
@@ -179,15 +236,28 @@ export function resolvePureLegs(eventType: string, amount: Money, context: Recor
     // ── JOUT-06: direction + attributable ────────────────────────────────
     case 'outlet_stock_adjustment':
       if (ctx.direction === 'overage') return [{ debit: '1110', credit: '4100', amount }];
-      return ctx.attributable === true ? [{ debit: '1210', credit: '1110', amount }] : [{ debit: '6400', credit: '1110', amount }];
+      return ctx.attributable === true
+        ? [{ debit: '1210', credit: '1110', amount }]
+        : [{ debit: '6400', credit: '1110', amount }];
 
     // ── JOUT-07: source-conditioned ──────────────────────────────────────
     case 'outlet_direct_purchase':
-      return ctx.source === 'po_receipt' || ctx.source === 'po' ? [{ debit: '1110', credit: '2000', amount }] : [{ debit: '1110', credit: '1010', amount }];
+      return ctx.source === 'po_receipt' || ctx.source === 'po'
+        ? [{ debit: '1110', credit: '2000', amount }]
+        : [{ debit: '1110', credit: '1010', amount }];
 
     // ── JOUT-08: default 6100 (expense_category account mapping is a future refinement, noted at §6.2) ──
     case 'outlet_petty_cash':
-      return [{ debit: typeof ctx.expenseAccountCode === 'string' ? (ctx.expenseAccountCode as string) : '6100', credit: '1010', amount }];
+      return [
+        {
+          debit:
+            typeof ctx.expenseAccountCode === 'string'
+              ? (ctx.expenseAccountCode as string)
+              : '6100',
+          credit: '1010',
+          amount,
+        },
+      ];
 
     // ── JOUT-09 ───────────────────────────────────────────────────────────
     case 'outlet_operating_expense':
@@ -198,19 +268,27 @@ export function resolvePureLegs(eventType: string, amount: Money, context: Recor
       return resolvePayrollAccrualLegs(ctx);
 
     // ── X2..X5: single unconditional pair ────────────────────────────────
-    case 'payroll_payment': return [{ debit: '2100', credit: '1020', amount }];
-    case 'qris_settlement': return [{ debit: '1020', credit: '1031', amount }];
-    case 'transfer_verified': return [{ debit: '1020', credit: '1032', amount }];
-    case 'platform_settlement': return [{ debit: '1020', credit: '1030', amount }];
+    case 'payroll_payment':
+      return [{ debit: '2100', credit: '1020', amount }];
+    case 'qris_settlement':
+      return [{ debit: '1020', credit: '1031', amount }];
+    case 'transfer_verified':
+      return [{ debit: '1020', credit: '1032', amount }];
+    case 'platform_settlement':
+      return [{ debit: '1020', credit: '1030', amount }];
 
     // ── X7: offline_auth_rejected ─────────────────────────────────────────
     case 'offline_auth_rejected':
-      return ctx.source === 'waste' ? [{ debit: '1220', credit: '5100', amount }] : [{ debit: '1220', credit: '4000', amount }];
+      return ctx.source === 'waste'
+        ? [{ debit: '1220', credit: '5100', amount }]
+        : [{ debit: '1220', credit: '4000', amount }];
 
     // ── local extensions (prose-only in §6.3; not in the frozen JournalSystemEventType enum —
     // carried item #2, reported not fixed) ──────────────────────────────
-    case 'petty_cash_topup': return [{ debit: '1010', credit: '1020', amount }];
-    case 'employee_loan_disbursement': return [{ debit: '1210', credit: '1020', amount }];
+    case 'petty_cash_topup':
+      return [{ debit: '1010', credit: '1020', amount }];
+    case 'employee_loan_disbursement':
+      return [{ debit: '1210', credit: '1020', amount }];
 
     default:
       return null;
@@ -227,40 +305,88 @@ function resolveOutletSalesLegs(amount: Money, ctx: Record<string, unknown>): Jo
   const legs: JournalLeg[] = [];
   for (const [method, methodAmount] of Object.entries(byMethod)) {
     if (methodAmount === '0.00') continue;
-    const acct = method === 'qris' ? '1031' : method === 'bank_transfer' ? '1032' : method === 'online' ? '1030' : '1000';
-    legs.push({ debit: acct, credit: '4000', amount: methodAmount as Money, memo: `Penjualan ${method}` });
+    const acct =
+      method === 'qris'
+        ? '1031'
+        : method === 'bank_transfer'
+          ? '1032'
+          : method === 'online'
+            ? '1030'
+            : '1000';
+    legs.push({
+      debit: acct,
+      credit: '4000',
+      amount: methodAmount as Money,
+      memo: `Penjualan ${method}`,
+    });
   }
   const onlineFees = ctx.onlineFees as string | undefined;
   if (onlineFees && onlineFees !== '0.00') {
-    legs.push({ debit: '6300', credit: '1030', amount: onlineFees as Money, memo: 'Komisi platform + diskon' });
+    legs.push({
+      debit: '6300',
+      credit: '1030',
+      amount: onlineFees as Money,
+      memo: 'Komisi platform + diskon',
+    });
   }
   return legs;
 }
 
 function resolvePayrollAccrualLegs(ctx: Record<string, unknown>): JournalLeg[] {
-  const num = (key: string): Money => (typeof ctx[key] === 'string' ? (ctx[key] as Money) : ZERO_MONEY);
+  const num = (key: string): Money =>
+    typeof ctx[key] === 'string' ? (ctx[key] as Money) : ZERO_MONEY;
   const legs: JournalLeg[] = [];
   const gross = num('grossAmount');
   const loanDeduction = num('loanDeductionTotal');
   const soShortfall = num('soShortfallDeductionTotal');
   // X1: gross debited to Beban Gaji; the SAME gross is credited to Hutang Gaji minus whatever is
   // immediately re-routed to the loan/claim legs below (net-of-deductions liability, §6.3 X1).
-  if (gross !== '0.00') legs.push({ debit: '6000', credit: '2100', amount: gross, memo: 'Akrual gaji (gross)' });
-  if (loanDeduction !== '0.00') legs.push({ debit: '2100', credit: '1210', amount: loanDeduction, memo: 'Potongan cicilan kasbon' });
-  if (soShortfall !== '0.00') legs.push({ debit: '2100', credit: '1220', amount: soShortfall, memo: 'Potongan selisih stok (piutang klaim)' });
+  if (gross !== '0.00')
+    legs.push({ debit: '6000', credit: '2100', amount: gross, memo: 'Akrual gaji (gross)' });
+  if (loanDeduction !== '0.00')
+    legs.push({
+      debit: '2100',
+      credit: '1210',
+      amount: loanDeduction,
+      memo: 'Potongan cicilan kasbon',
+    });
+  if (soShortfall !== '0.00')
+    legs.push({
+      debit: '2100',
+      credit: '1220',
+      amount: soShortfall,
+      memo: 'Potongan selisih stok (piutang klaim)',
+    });
 
   if (ctx.statutoryMode === true) {
     const employerCost = num('employerCostTotal');
     const bpjsEmployeeDeduction = num('bpjsEmployeeDeductionTotal');
     const pph21Deduction = num('pph21DeductionTotal');
-    if (employerCost !== '0.00') legs.push({ debit: '6010', credit: '2110', amount: employerCost, memo: 'Akrual BPJS perusahaan' });
-    if (bpjsEmployeeDeduction !== '0.00') legs.push({ debit: '2100', credit: '2110', amount: bpjsEmployeeDeduction, memo: 'Potongan BPJS karyawan' });
-    if (pph21Deduction !== '0.00') legs.push({ debit: '2100', credit: '2120', amount: pph21Deduction, memo: 'Potongan PPh21' });
+    if (employerCost !== '0.00')
+      legs.push({
+        debit: '6010',
+        credit: '2110',
+        amount: employerCost,
+        memo: 'Akrual BPJS perusahaan',
+      });
+    if (bpjsEmployeeDeduction !== '0.00')
+      legs.push({
+        debit: '2100',
+        credit: '2110',
+        amount: bpjsEmployeeDeduction,
+        memo: 'Potongan BPJS karyawan',
+      });
+    if (pph21Deduction !== '0.00')
+      legs.push({ debit: '2100', credit: '2120', amount: pph21Deduction, memo: 'Potongan PPh21' });
   }
   return legs;
 }
 
-async function resolveSaleVoidReversalLegs(client: PoolClient, amount: Money, saleId: string): Promise<JournalLeg[]> {
+async function resolveSaleVoidReversalLegs(
+  client: PoolClient,
+  amount: Money,
+  saleId: string,
+): Promise<JournalLeg[]> {
   const legs: JournalLeg[] = [];
 
   // Leg group 1: revenue reversal + payment-method cash-back. `sale_payments` (not the event
@@ -270,7 +396,8 @@ async function resolveSaleVoidReversalLegs(client: PoolClient, amount: Money, sa
     [saleId],
   );
   const primaryMethod = payments.rows[0]?.method ?? 'cash';
-  const acct = primaryMethod === 'qris' ? '1031' : primaryMethod === 'bank_transfer' ? '1032' : '1000';
+  const acct =
+    primaryMethod === 'qris' ? '1031' : primaryMethod === 'bank_transfer' ? '1032' : '1000';
   legs.push({ debit: '4000', credit: acct, amount, memo: 'Reversal pendapatan (void/refund)' });
 
   // Leg group 2: inventory/HPP reversal, valued from the RETURN_IN stock movements
@@ -282,7 +409,13 @@ async function resolveSaleVoidReversalLegs(client: PoolClient, amount: Money, sa
   );
   if (movements.rows.length > 0) {
     const costAmount = sumMoney(movements.rows.map((m) => mulMoneyByQty(m.unit_cost, m.qty)));
-    if (costAmount !== '0.00') legs.push({ debit: '1110', credit: '5000', amount: costAmount, memo: 'Reversal HPP - bahan baku kembali ke outlet' });
+    if (costAmount !== '0.00')
+      legs.push({
+        debit: '1110',
+        credit: '5000',
+        amount: costAmount,
+        memo: 'Reversal HPP - bahan baku kembali ke outlet',
+      });
   }
 
   return legs;

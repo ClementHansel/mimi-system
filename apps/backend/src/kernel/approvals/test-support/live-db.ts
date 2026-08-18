@@ -152,14 +152,19 @@ export interface RlsSessionContext {
  * for any test whose assertion depends on what a NON-central role's own
  * Postgres session can and cannot see.
  */
-export async function withRollbackAs<T>(ctx: RlsSessionContext, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollbackAs<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
-    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [ctx.locationIds.join(',')]);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
     return await fn(client);
   } finally {
     await client.query('ROLLBACK').catch(() => {});
@@ -180,12 +185,20 @@ export interface Fixtures {
 /** Reads real seeded rows (locations/users/items/suppliers/storage_areas) over the OWNER pool — never inserts master data (that is W1-C's territory), and reads are harmless regardless of connection identity. */
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
-  const warehouse = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`);
-  const outlet = await pool.query<{ id: string }>(`SELECT id FROM locations WHERE type = 'outlet' LIMIT 1`);
+  const warehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`,
+  );
+  const outlet = await pool.query<{ id: string }>(
+    `SELECT id FROM locations WHERE type = 'outlet' LIMIT 1`,
+  );
   const item = await pool.query<{ id: string }>(`SELECT id FROM items LIMIT 1`);
   const supplier = await pool.query<{ id: string }>(`SELECT id FROM suppliers LIMIT 1`);
-  const storageOutlet = await pool.query<{ id: string }>(`SELECT id FROM storage_areas LIMIT 1 OFFSET 0`);
-  const storageWarehouse = await pool.query<{ id: string }>(`SELECT id FROM storage_areas LIMIT 1 OFFSET 1`);
+  const storageOutlet = await pool.query<{ id: string }>(
+    `SELECT id FROM storage_areas LIMIT 1 OFFSET 0`,
+  );
+  const storageWarehouse = await pool.query<{ id: string }>(
+    `SELECT id FROM storage_areas LIMIT 1 OFFSET 1`,
+  );
 
   const usersByRole = {} as Record<RoleKey, string>;
   for (const roleKey of Object.values(RoleKey)) {
@@ -193,7 +206,10 @@ export async function loadFixtures(): Promise<Fixtures> {
       `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
       [roleKey],
     );
-    if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`);
+    if (!res.rows[0])
+      throw new Error(
+        `Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`,
+      );
     usersByRole[roleKey] = res.rows[0].id;
   }
 
@@ -232,7 +248,12 @@ export async function deleteStockOpname(id: string): Promise<void> {
   await getOwnerPool().query(`DELETE FROM stock_opname WHERE id = $1`, [id]);
 }
 
-export async function createWasteRecord(locationId: string, storageAreaId: string, itemId: string, reportedBy: string): Promise<string> {
+export async function createWasteRecord(
+  locationId: string,
+  storageAreaId: string,
+  itemId: string,
+  reportedBy: string,
+): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
     `INSERT INTO waste_records (waste_number, batch_id, location_id, storage_area_id, item_id, qty, reason, status, reported_by)
      VALUES ($1, gen_random_uuid(), $2, $3, $4, 1.000, 'expired', 'pending', $5)
@@ -246,7 +267,11 @@ export async function deleteWasteRecord(id: string): Promise<void> {
   await getOwnerPool().query(`DELETE FROM waste_records WHERE id = $1`, [id]);
 }
 
-export async function createReturnOutletToWarehouse(fromLocationId: string, toLocationId: string, requestedBy: string): Promise<string> {
+export async function createReturnOutletToWarehouse(
+  fromLocationId: string,
+  toLocationId: string,
+  requestedBy: string,
+): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
     `INSERT INTO returns (return_number, direction, from_location_id, to_location_id, status, requested_by)
      VALUES ($1, 'outlet_to_warehouse', $2, $3, 'submitted', $4)
@@ -256,7 +281,11 @@ export async function createReturnOutletToWarehouse(fromLocationId: string, toLo
   return res.rows[0]!.id;
 }
 
-export async function createReturnWarehouseToSupplier(fromLocationId: string, supplierId: string, requestedBy: string): Promise<string> {
+export async function createReturnWarehouseToSupplier(
+  fromLocationId: string,
+  supplierId: string,
+  requestedBy: string,
+): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
     `INSERT INTO returns (return_number, direction, from_location_id, supplier_id, status, requested_by)
      VALUES ($1, 'warehouse_to_supplier', $2, $3, 'submitted', $4)
@@ -277,7 +306,11 @@ export async function deleteReturn(id: string): Promise<void> {
  * the FK target is a placeholder; the actual credential minting/crypto
  * lifecycle is D-17/M01/kernel-sync territory, not this agent's.
  */
-export async function createOfflineCredential(userId: string, roleKey: string, locationIds: string[]): Promise<string> {
+export async function createOfflineCredential(
+  userId: string,
+  roleKey: string,
+  locationIds: string[],
+): Promise<string> {
   const res = await getOwnerPool().query<{ credential_id: string }>(
     `INSERT INTO offline_credentials (credential_id, user_id, role_key, location_ids, scopes, binding_secret_enc, pin_verifier, expires_at)
      VALUES (gen_random_uuid(), $1, $2, $3::uuid[], '{}'::jsonb, $4, 'test-pin-verifier', NOW() + INTERVAL '24 hours')
@@ -288,7 +321,9 @@ export async function createOfflineCredential(userId: string, roleKey: string, l
 }
 
 export async function deleteOfflineCredential(credentialId: string): Promise<void> {
-  await getOwnerPool().query(`DELETE FROM offline_credentials WHERE credential_id = $1`, [credentialId]);
+  await getOwnerPool().query(`DELETE FROM offline_credentials WHERE credential_id = $1`, [
+    credentialId,
+  ]);
 }
 
 /**
@@ -299,12 +334,15 @@ export async function deleteOfflineCredential(credentialId: string): Promise<voi
  * never clobbers a real value a fixture user might already have. Runs on the
  * owner pool — this is master-data-adjacent test setup, not code under test.
  */
-export async function ensureUserContact(userId: string, phone: string, email: string): Promise<void> {
-  await getOwnerPool().query(`UPDATE users SET phone = COALESCE(phone, $2), email = COALESCE(email, $3) WHERE id = $1`, [
-    userId,
-    phone,
-    email,
-  ]);
+export async function ensureUserContact(
+  userId: string,
+  phone: string,
+  email: string,
+): Promise<void> {
+  await getOwnerPool().query(
+    `UPDATE users SET phone = COALESCE(phone, $2), email = COALESCE(email, $3) WHERE id = $1`,
+    [userId, phone, email],
+  );
 }
 
 /**
@@ -320,10 +358,10 @@ export async function ensureUserContact(userId: string, phone: string, email: st
  * seed data.
  */
 export async function ensureUserLocation(userId: string, locationId: string): Promise<void> {
-  await getOwnerPool().query(`INSERT INTO user_locations (user_id, location_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
-    userId,
-    locationId,
-  ]);
+  await getOwnerPool().query(
+    `INSERT INTO user_locations (user_id, location_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [userId, locationId],
+  );
 }
 
 /**
@@ -332,7 +370,11 @@ export async function ensureUserLocation(userId: string, locationId: string): Pr
  * the owner pool, so the change is rolled back with everything else and
  * never needs a manual revert.
  */
-export async function setSettingValue(client: PoolClient, key: string, value: unknown): Promise<void> {
+export async function setSettingValue(
+  client: PoolClient,
+  key: string,
+  value: unknown,
+): Promise<void> {
   await client.query(`UPDATE settings SET value = $2 WHERE key = $1`, [key, JSON.stringify(value)]);
 }
 
@@ -373,7 +415,10 @@ function fakeConfig(values: Record<string, string>) {
  * must impersonate that exact recipient, not assert a central role.
  */
 /** `notification_outbox` carries no RLS at all (migration 009 §1.14 "NONE" group) — safe to read via the owner pool, purely for test assertions. */
-export async function readOutboxRows(channel: 'email' | 'whatsapp', recipient: string): Promise<Array<{ template_key: string; status: string }>> {
+export async function readOutboxRows(
+  channel: 'email' | 'whatsapp',
+  recipient: string,
+): Promise<Array<{ template_key: string; status: string }>> {
   const res = await getOwnerPool().query<{ template_key: string; status: string }>(
     `SELECT template_key, status FROM notification_outbox WHERE channel = $1 AND recipient = $2 ORDER BY created_at DESC`,
     [channel, recipient],
@@ -381,7 +426,9 @@ export async function readOutboxRows(channel: 'email' | 'whatsapp', recipient: s
   return res.rows;
 }
 
-export async function readOwnNotifications(userId: string): Promise<Array<{ type: string; title: string; body: string }>> {
+export async function readOwnNotifications(
+  userId: string,
+): Promise<Array<{ type: string; title: string; body: string }>> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');

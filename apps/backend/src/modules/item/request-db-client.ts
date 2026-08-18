@@ -17,7 +17,10 @@ import type { RequestWithDbContext } from '../../common/guards/rls-context.guard
 export function requireDbClient(req: Request): PoolClient {
   const client = (req as unknown as RequestWithDbContext).dbClient;
   if (!client) {
-    throw new ForbiddenException({ code: 'ERR_FORBIDDEN', message: 'No RLS session context on this request' });
+    throw new ForbiddenException({
+      code: 'ERR_FORBIDDEN',
+      message: 'No RLS session context on this request',
+    });
   }
   return client;
 }

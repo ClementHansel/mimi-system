@@ -43,7 +43,14 @@ import { PosSyncProjector } from './services/pos-sync-projector.service';
  * header for exactly what is and isn't shared).
  */
 @Module({
-  imports: [ApprovalsModule, StockLedgerModule, SyncEngineModule, NotificationModule, EventsModule, AccountingModule],
+  imports: [
+    ApprovalsModule,
+    StockLedgerModule,
+    SyncEngineModule,
+    NotificationModule,
+    EventsModule,
+    AccountingModule,
+  ],
   controllers: [PosController],
   providers: [
     PosCatalogService,

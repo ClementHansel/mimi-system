@@ -31,10 +31,22 @@ describe('ReturnPanel', () => {
     vi.clearAllMocks();
     useSessionStore.setState({
       user: {
-        id: 'u1', username: 'kepalagudang1', name: 'Test KGD', roleKey: 'kepala_gudang',
+        id: 'u1',
+        username: 'kepalagudang1',
+        name: 'Test KGD',
+        roleKey: 'kepala_gudang',
         permissions: ['return.read', 'return.create', 'return.ship'],
-        locations: [{ id: 'loc-gdg', code: 'GDG', name: 'Gudang Pusat', type: 'warehouse', city: 'Balikpapan' }],
-        employeeId: null, mustSetPin: false,
+        locations: [
+          {
+            id: 'loc-gdg',
+            code: 'GDG',
+            name: 'Gudang Pusat',
+            type: 'warehouse',
+            city: 'Balikpapan',
+          },
+        ],
+        employeeId: null,
+        mustSetPin: false,
       },
     });
   });
@@ -46,6 +58,9 @@ describe('ReturnPanel', () => {
 
   it('lists retur-dari-outlet using the real ReturnDirection enum value', () => {
     render(<ReturnPanel />);
-    expect(warehouseApi.listReturns).toHaveBeenCalledWith({ direction: 'outlet_to_warehouse', status: 'in_transit' });
+    expect(warehouseApi.listReturns).toHaveBeenCalledWith({
+      direction: 'outlet_to_warehouse',
+      status: 'in_transit',
+    });
   });
 });

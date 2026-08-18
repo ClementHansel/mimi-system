@@ -19,4 +19,10 @@
  * CONTRACTS table) — importing beats a third transcription that would only
  * drift from the other two over time.
  */
-export type { Driver, Vehicle, Replenishment, ReplenishmentLine, DailyRecap } from '@/components/warehouse/lib/types';
+export type {
+  Driver,
+  Vehicle,
+  Replenishment,
+  ReplenishmentLine,
+  DailyRecap,
+} from '@/components/warehouse/lib/types';

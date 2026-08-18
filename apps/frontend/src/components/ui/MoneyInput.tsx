@@ -37,8 +37,18 @@ const SIZE_CLASSES: Record<NonNullable<MoneyInputProps['size']>, string> = {
 };
 
 export function MoneyInput({
-  label, error, hint, value, onChange, placeholder = '0',
-  required, disabled, size = 'md', id, className, wrapperClassName,
+  label,
+  error,
+  hint,
+  value,
+  onChange,
+  placeholder = '0',
+  required,
+  disabled,
+  size = 'md',
+  id,
+  className,
+  wrapperClassName,
 }: MoneyInputProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
@@ -61,7 +71,9 @@ export function MoneyInput({
         </label>
       )}
       <div className="relative flex items-center">
-        <span className="pointer-events-none absolute left-3 text-sm font-medium text-text-muted">Rp</span>
+        <span className="pointer-events-none absolute left-3 text-sm font-medium text-text-muted">
+          Rp
+        </span>
         <input
           id={inputId}
           inputMode="numeric"

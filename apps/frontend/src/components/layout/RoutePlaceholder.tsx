@@ -19,7 +19,13 @@ export type PlaceholderRouteKey = keyof Dictionary['placeholder'];
  * component function isn't serializable across the server→client boundary
  * into this ('use client') component, whereas a rendered element is.
  */
-export function RoutePlaceholder({ routeKey, icon }: { routeKey: PlaceholderRouteKey; icon: ReactNode }) {
+export function RoutePlaceholder({
+  routeKey,
+  icon,
+}: {
+  routeKey: PlaceholderRouteKey;
+  icon: ReactNode;
+}) {
   const { t } = useI18n();
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
@@ -27,8 +33,12 @@ export function RoutePlaceholder({ routeKey, icon }: { routeKey: PlaceholderRout
         {icon}
       </span>
       <div className="flex flex-col gap-1.5">
-        <h1 className="font-display text-2xl font-semibold text-text-primary">{t(`placeholder.${routeKey}.title`)}</h1>
-        <p className="mx-auto max-w-md text-text-secondary">{t(`placeholder.${routeKey}.description`)}</p>
+        <h1 className="font-display text-2xl font-semibold text-text-primary">
+          {t(`placeholder.${routeKey}.title`)}
+        </h1>
+        <p className="mx-auto max-w-md text-text-secondary">
+          {t(`placeholder.${routeKey}.description`)}
+        </p>
       </div>
       <div className="flex flex-col gap-1 text-sm text-text-muted">
         <span>{t(`placeholder.${routeKey}.owner`)}</span>

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createTestDatabase } from '../test-support/fixtures';
-import { captureAttachment, sha256Hex, AttachmentCapExceededError, drainAttachmentUploads, type AttachmentUploader } from './attachment-store';
+import {
+  captureAttachment,
+  sha256Hex,
+  AttachmentCapExceededError,
+  drainAttachmentUploads,
+  type AttachmentUploader,
+} from './attachment-store';
 import type { AttachmentRecord } from '../types';
 
 function blobOf(content: string, mime = 'image/jpeg'): Blob {
@@ -37,7 +43,9 @@ describe('attachment-store (SYNC-PROTOCOL §4.7 side-channel)', () => {
     for (let i = 0; i < 500; i++) {
       await captureAttachment(db, blobOf(`content-${i}`), 'image/jpeg', 'k');
     }
-    await expect(captureAttachment(db, blobOf('overflow'), 'image/jpeg', 'k')).rejects.toThrow(AttachmentCapExceededError);
+    await expect(captureAttachment(db, blobOf('overflow'), 'image/jpeg', 'k')).rejects.toThrow(
+      AttachmentCapExceededError,
+    );
   });
 
   it('evicts oldest UPLOADED (cloud-confirmed) blobs to make room, but never evicts a still-pending one', async () => {

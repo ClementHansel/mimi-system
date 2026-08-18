@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { Audited, CurrentUser, RequirePermission } from '../../common/decorators';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
@@ -18,7 +31,11 @@ export class ProductController {
 
   @Get()
   @RequirePermission('product.read')
-  list(@Req() req: Request, @Query() query: ListProductsQueryDto, @CurrentUser() user: JwtAccessPayload) {
+  list(
+    @Req() req: Request,
+    @Query() query: ListProductsQueryDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.products.list(requireDbClient(req), query, user, requireLocationScope(req));
   }
 
@@ -38,15 +55,37 @@ export class ProductController {
   @RequirePermission('product.manage')
   @Audited({ entityType: 'product', action: 'product.manage' })
   @HttpCode(HttpStatus.CREATED)
-  create(@Req() req: Request, @Body() dto: CreateProductDto, @CurrentUser() user: JwtAccessPayload) {
-    return this.products.create(requireDbClient(req), dto, user.sub, user, requireLocationScope(req));
+  create(
+    @Req() req: Request,
+    @Body() dto: CreateProductDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
+    return this.products.create(
+      requireDbClient(req),
+      dto,
+      user.sub,
+      user,
+      requireLocationScope(req),
+    );
   }
 
   @Patch(':id')
   @RequirePermission('product.manage')
   @Audited({ entityType: 'product', action: 'product.manage' })
-  update(@Req() req: Request, @Param('id') id: string, @Body() dto: UpdateProductDto, @CurrentUser() user: JwtAccessPayload) {
-    return this.products.update(requireDbClient(req), id, dto, user.sub, user, requireLocationScope(req));
+  update(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
+    return this.products.update(
+      requireDbClient(req),
+      id,
+      dto,
+      user.sub,
+      user,
+      requireLocationScope(req),
+    );
   }
 
   @Delete(':id')
@@ -65,7 +104,12 @@ export class ProductController {
   @Put(':id/recipe')
   @RequirePermission('recipe.manage')
   @Audited({ entityType: 'recipe', action: 'recipe.manage' })
-  putRecipe(@Req() req: Request, @Param('id') id: string, @Body() dto: PutRecipeDto, @CurrentUser() user: JwtAccessPayload) {
+  putRecipe(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() dto: PutRecipeDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
     return this.recipes.putRecipe(requireDbClient(req), id, dto, user.sub);
   }
 }

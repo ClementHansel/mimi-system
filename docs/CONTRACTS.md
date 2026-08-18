@@ -23,7 +23,7 @@
 
 ## 1. Schema (migration blocks 001–129)
 
-DDL sketches below are the contract; W1-C turns them into real migrations (adding indexes beyond those listed is W1-C's discretion; removing/renaming columns is not). Every table gets the standard `updated_at` trigger unless marked *append-only* (no updates allowed at all).
+DDL sketches below are the contract; W1-C turns them into real migrations (adding indexes beyond those listed is W1-C's discretion; removing/renaming columns is not). Every table gets the standard `updated_at` trigger unless marked _append-only_ (no updates allowed at all).
 
 ### 1.1 Block 001–009 — core: identity, RBAC, audit, kernel
 
@@ -1581,6 +1581,7 @@ CREATE MATERIALIZED VIEW mv_delivery_recap_daily AS -- FR-LOG-04 rekap harian ti
   -- per planned_date: SJ count, drops, destination outlets, Σ qty per item, frozen/dry split
   SELECT ...;
 ```
+
 (Exact SELECT bodies are W1-C's to finalize; the **grains and column names above are contract** for M18/M19.)
 
 ### 1.12 Block 110–119 — device registry & branch nodes (D-13)
@@ -1858,23 +1859,23 @@ CREATE TABLE offline_authorizations (
 
 Predicate classes — `LOC` = `app_has_location(location_id)`; `PARENT` = via parent row's policy; `ROLE(x,y)` = `app.role IN (x,y)`; `SELF` = row belongs to `app.user_id` (directly or via `employees.user_id`); `ALL` = any authenticated user; `NONE` = RLS not enabled (guarded at API layer only). Central roles (`owner`,`manager`,`finance`,`hr_admin`) pass every `LOC` check via `app_is_central()`.
 
-| Tables | RLS | Predicate |
-|---|---|---|
-| `locations` | yes | `ALL` read; writes `ROLE(owner,manager)` |
-| `storage_areas`, `min_stock_rules`, `stock_balances`, `stock_movements`, `stock_opname`, `stock_adjustments`, `stock_reconciliations`, `replenishment_requests`, `goods_receipts`, `pos_shifts`, `sales`, `void_refunds`, `online_orders`, `cash_variance_proposals`, `waste_records`, `returns` (via `from_location_id`), `petty_cash`, `assets`, `devices`, `branch_nodes` | yes | `LOC` |
-| `stock_opname_lines`, `replenishment_request_lines`, `goods_receipt_lines`, `sale_lines`, `sale_payments`, `return_lines`, `petty_cash_lines`, `po_lines`, `po_receipt_lines`, `sj_lines` | yes | `PARENT` |
-| `surat_jalan`, `sj_drops`, `sj_temperature_logs`, `sj_seals` | yes | origin `LOC` OR any drop `LOC` OR `app.role='driver'` and SJ assigned to the driver's `drivers.user_id` |
-| `purchase_requests`, `purchase_orders`, `po_receipts` | yes | `LOC` AND `ROLE(owner,manager,finance,kepala_gudang,supervisor)` |
-| `suppliers` | yes | `ROLE(owner,manager,finance,kepala_gudang)` OR (`ROLE(supervisor,leader_outlet)` AND `outlet_visible = true`) — **Amendment 3**: outlet roles see the row but the API serves them only the directory projection (name/contact); `payment_terms_days`, bank fields, and all pricing are stripped at the API layer (column-level lock, FR-SUP-06) |
-| `supplier_items`, `supplier_price_history` | yes | `ROLE(owner,manager,finance,kepala_gudang)` — price rows stay fully hidden from outlet roles (FR-SUP-06) |
-| `employees`, `employments`, `attendance`, `leave_requests`, `shift_assignments` | yes | `ROLE(owner,manager,finance,hr_admin)` OR (`supervisor` AND `LOC`) OR `SELF` |
-| `salary_components`, `employee_salary_components`, `employee_loans`, `payroll_periods`, `payroll_runs`, `payroll_lines` | yes | `ROLE(owner,manager,finance,hr_admin)` OR `SELF` (read own lines/loans/slips) |
-| `chart_of_accounts`, `fiscal_periods`, `journal_entries`, `journal_lines`, `posting_rules`, `payment_verifications` | yes | `ROLE(owner,manager,finance)` |
-| `audit_log` | yes | read `ROLE(owner,manager,finance)`; INSERT via app role only; no UPDATE/DELETE grants |
-| `notifications` | yes | `SELF` |
-| `sessions`, `offline_credentials` | yes | `SELF` |
-| `users`, `user_locations` | yes | `ROLE(owner,manager,hr_admin,finance)` read; self-read own row; writes `ROLE(owner,manager)` |
-| `items`, `item_categories`, `units`, `unit_conversions`, `products`, `recipes`, `recipe_lines`, `shipment_types`, `roles`, `permissions`, `role_permissions`, `settings`, `document_counters`, `drivers`, `vehicles`, `work_shifts`, `maintenance_schedules`, `maintenance_jobs`, `service_history`, `attachments`, `notification_outbox`, `approval_*`, `device_*`, `pairing_tokens`, `discovered_devices`, `sync_*`, `offline_authorizations` | no (`NONE`) | master/kernel data; enforced by PermissionsGuard. `recipes`/`recipe_lines` reads additionally API-gated (`recipe.read`) because recipe = cost structure |
+| Tables                                                                                                                                                                                                                                                                                                                                                                                                                                          | RLS         | Predicate                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `locations`                                                                                                                                                                                                                                                                                                                                                                                                                                     | yes         | `ALL` read; writes `ROLE(owner,manager)`                                                                                                                                                                                                                                                                                                        |
+| `storage_areas`, `min_stock_rules`, `stock_balances`, `stock_movements`, `stock_opname`, `stock_adjustments`, `stock_reconciliations`, `replenishment_requests`, `goods_receipts`, `pos_shifts`, `sales`, `void_refunds`, `online_orders`, `cash_variance_proposals`, `waste_records`, `returns` (via `from_location_id`), `petty_cash`, `assets`, `devices`, `branch_nodes`                                                                    | yes         | `LOC`                                                                                                                                                                                                                                                                                                                                           |
+| `stock_opname_lines`, `replenishment_request_lines`, `goods_receipt_lines`, `sale_lines`, `sale_payments`, `return_lines`, `petty_cash_lines`, `po_lines`, `po_receipt_lines`, `sj_lines`                                                                                                                                                                                                                                                       | yes         | `PARENT`                                                                                                                                                                                                                                                                                                                                        |
+| `surat_jalan`, `sj_drops`, `sj_temperature_logs`, `sj_seals`                                                                                                                                                                                                                                                                                                                                                                                    | yes         | origin `LOC` OR any drop `LOC` OR `app.role='driver'` and SJ assigned to the driver's `drivers.user_id`                                                                                                                                                                                                                                         |
+| `purchase_requests`, `purchase_orders`, `po_receipts`                                                                                                                                                                                                                                                                                                                                                                                           | yes         | `LOC` AND `ROLE(owner,manager,finance,kepala_gudang,supervisor)`                                                                                                                                                                                                                                                                                |
+| `suppliers`                                                                                                                                                                                                                                                                                                                                                                                                                                     | yes         | `ROLE(owner,manager,finance,kepala_gudang)` OR (`ROLE(supervisor,leader_outlet)` AND `outlet_visible = true`) — **Amendment 3**: outlet roles see the row but the API serves them only the directory projection (name/contact); `payment_terms_days`, bank fields, and all pricing are stripped at the API layer (column-level lock, FR-SUP-06) |
+| `supplier_items`, `supplier_price_history`                                                                                                                                                                                                                                                                                                                                                                                                      | yes         | `ROLE(owner,manager,finance,kepala_gudang)` — price rows stay fully hidden from outlet roles (FR-SUP-06)                                                                                                                                                                                                                                        |
+| `employees`, `employments`, `attendance`, `leave_requests`, `shift_assignments`                                                                                                                                                                                                                                                                                                                                                                 | yes         | `ROLE(owner,manager,finance,hr_admin)` OR (`supervisor` AND `LOC`) OR `SELF`                                                                                                                                                                                                                                                                    |
+| `salary_components`, `employee_salary_components`, `employee_loans`, `payroll_periods`, `payroll_runs`, `payroll_lines`                                                                                                                                                                                                                                                                                                                         | yes         | `ROLE(owner,manager,finance,hr_admin)` OR `SELF` (read own lines/loans/slips)                                                                                                                                                                                                                                                                   |
+| `chart_of_accounts`, `fiscal_periods`, `journal_entries`, `journal_lines`, `posting_rules`, `payment_verifications`                                                                                                                                                                                                                                                                                                                             | yes         | `ROLE(owner,manager,finance)`                                                                                                                                                                                                                                                                                                                   |
+| `audit_log`                                                                                                                                                                                                                                                                                                                                                                                                                                     | yes         | read `ROLE(owner,manager,finance)`; INSERT via app role only; no UPDATE/DELETE grants                                                                                                                                                                                                                                                           |
+| `notifications`                                                                                                                                                                                                                                                                                                                                                                                                                                 | yes         | `SELF`                                                                                                                                                                                                                                                                                                                                          |
+| `sessions`, `offline_credentials`                                                                                                                                                                                                                                                                                                                                                                                                               | yes         | `SELF`                                                                                                                                                                                                                                                                                                                                          |
+| `users`, `user_locations`                                                                                                                                                                                                                                                                                                                                                                                                                       | yes         | `ROLE(owner,manager,hr_admin,finance)` read; self-read own row; writes `ROLE(owner,manager)`                                                                                                                                                                                                                                                    |
+| `items`, `item_categories`, `units`, `unit_conversions`, `products`, `recipes`, `recipe_lines`, `shipment_types`, `roles`, `permissions`, `role_permissions`, `settings`, `document_counters`, `drivers`, `vehicles`, `work_shifts`, `maintenance_schedules`, `maintenance_jobs`, `service_history`, `attachments`, `notification_outbox`, `approval_*`, `device_*`, `pairing_tokens`, `discovered_devices`, `sync_*`, `offline_authorizations` | no (`NONE`) | master/kernel data; enforced by PermissionsGuard. `recipes`/`recipe_lines` reads additionally API-gated (`recipe.read`) because recipe = cost structure                                                                                                                                                                                         |
 
 ---
 
@@ -1885,290 +1886,617 @@ W1-B transcribes these exactly: `export enum <Name> { KEY = 'value', … }`. DB 
 ### 2.1 Core / location
 
 ```ts
-export enum LocationType { WAREHOUSE = 'warehouse', OUTLET = 'outlet' }
-export enum StorageAreaType {                    // D-15
-  FREEZER = 'freezer', CHILLER = 'chiller', DRY_STORE = 'dry_store',
-  DISPLAY = 'display', KITCHEN_LINE = 'kitchen_line',
+export enum LocationType {
+  WAREHOUSE = 'warehouse',
+  OUTLET = 'outlet',
 }
-export enum RoleKey {                            // §3 columns
-  OWNER = 'owner', MANAGER = 'manager', FINANCE = 'finance', KEPALA_GUDANG = 'kepala_gudang',
-  SUPERVISOR = 'supervisor', LEADER_OUTLET = 'leader_outlet', KASIR = 'kasir',
-  HR_ADMIN = 'hr_admin', DRIVER = 'driver',      // driver added by D-14 (Appendix A-2)
+export enum StorageAreaType {
+  // D-15
+  FREEZER = 'freezer',
+  CHILLER = 'chiller',
+  DRY_STORE = 'dry_store',
+  DISPLAY = 'display',
+  KITCHEN_LINE = 'kitchen_line',
+}
+export enum RoleKey {
+  // §3 columns
+  OWNER = 'owner',
+  MANAGER = 'manager',
+  FINANCE = 'finance',
+  KEPALA_GUDANG = 'kepala_gudang',
+  SUPERVISOR = 'supervisor',
+  LEADER_OUTLET = 'leader_outlet',
+  KASIR = 'kasir',
+  HR_ADMIN = 'hr_admin',
+  DRIVER = 'driver', // driver added by D-14 (Appendix A-2)
 }
 ```
 
 ### 2.2 Stock & logistics
 
 ```ts
-export enum MovementType {                       // stock_movements.movement_type; sign encoded in suffix
-  OPENING_BALANCE = 'opening_balance', PURCHASE_IN = 'purchase_in',
-  TRANSFER_IN = 'transfer_in', TRANSFER_OUT = 'transfer_out',
-  USAGE_OUT = 'usage_out', WASTE_OUT = 'waste_out',
-  RETURN_IN = 'return_in', RETURN_OUT = 'return_out',
-  ADJUSTMENT_IN = 'adjustment_in', ADJUSTMENT_OUT = 'adjustment_out',
+export enum MovementType {
+  // stock_movements.movement_type; sign encoded in suffix
+  OPENING_BALANCE = 'opening_balance',
+  PURCHASE_IN = 'purchase_in',
+  TRANSFER_IN = 'transfer_in',
+  TRANSFER_OUT = 'transfer_out',
+  USAGE_OUT = 'usage_out',
+  WASTE_OUT = 'waste_out',
+  RETURN_IN = 'return_in',
+  RETURN_OUT = 'return_out',
+  ADJUSTMENT_IN = 'adjustment_in',
+  ADJUSTMENT_OUT = 'adjustment_out',
 }
-export enum ReplenishmentStatus {                // FR-LOG-11 — exactly these 9
-  DRAFT = 'draft',                               // Draft
-  SUBMITTED = 'submitted',                       // Diajukan (menunggu supervisor)
-  AWAITING_APPROVAL = 'awaiting_approval',       // Menunggu Approval (gudang/pusat)
-  APPROVED = 'approved',                         // Disetujui
-  REJECTED = 'rejected',                         // Ditolak
-  PROCESSING = 'processing',                     // Diproses (picking di gudang)
-  SHIPPED = 'shipped',                           // Dikirim (SJ in transit)
-  RECEIVED = 'received',                         // Diterima (drop received)
-  COMPLETED = 'completed',                       // Selesai
+export enum ReplenishmentStatus {
+  // FR-LOG-11 — exactly these 9
+  DRAFT = 'draft', // Draft
+  SUBMITTED = 'submitted', // Diajukan (menunggu supervisor)
+  AWAITING_APPROVAL = 'awaiting_approval', // Menunggu Approval (gudang/pusat)
+  APPROVED = 'approved', // Disetujui
+  REJECTED = 'rejected', // Ditolak
+  PROCESSING = 'processing', // Diproses (picking di gudang)
+  SHIPPED = 'shipped', // Dikirim (SJ in transit)
+  RECEIVED = 'received', // Diterima (drop received)
+  COMPLETED = 'completed', // Selesai
 }
-export enum ReplenishmentSource { MANUAL = 'manual', AUTO_SUGGESTION = 'auto_suggestion' }
+export enum ReplenishmentSource {
+  MANUAL = 'manual',
+  AUTO_SUGGESTION = 'auto_suggestion',
+}
 export enum SuratJalanStatus {
-  DRAFT = 'draft', READY = 'ready', LOADING = 'loading',
-  IN_TRANSIT = 'in_transit', COMPLETED = 'completed', CANCELLED = 'cancelled',
+  DRAFT = 'draft',
+  READY = 'ready',
+  LOADING = 'loading',
+  IN_TRANSIT = 'in_transit',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
 }
 export enum DropStatus {
-  PENDING = 'pending', EN_ROUTE = 'en_route', ARRIVED = 'arrived',
-  COMPLETED = 'completed', COMPLETED_DISCREPANCY = 'completed_discrepancy', FAILED = 'failed',
+  PENDING = 'pending',
+  EN_ROUTE = 'en_route',
+  ARRIVED = 'arrived',
+  COMPLETED = 'completed',
+  COMPLETED_DISCREPANCY = 'completed_discrepancy',
+  FAILED = 'failed',
 }
-export enum ShipmentType { FROZEN = 'frozen', DRY = 'dry' }          // FR-LOG-02 (rows in shipment_types)
-export enum TempLogStage { LOAD = 'load', DEPART = 'depart', ARRIVE = 'arrive' }
-export enum SealStatus { APPLIED = 'applied', VERIFIED_INTACT = 'verified_intact', BROKEN = 'broken', REPLACED = 'replaced' }
-export enum GoodsReceiptType { SJ_DROP = 'sj_drop', RETURN_IN = 'return_in' }
+export enum ShipmentType {
+  FROZEN = 'frozen',
+  DRY = 'dry',
+} // FR-LOG-02 (rows in shipment_types)
+export enum TempLogStage {
+  LOAD = 'load',
+  DEPART = 'depart',
+  ARRIVE = 'arrive',
+}
+export enum SealStatus {
+  APPLIED = 'applied',
+  VERIFIED_INTACT = 'verified_intact',
+  BROKEN = 'broken',
+  REPLACED = 'replaced',
+}
+export enum GoodsReceiptType {
+  SJ_DROP = 'sj_drop',
+  RETURN_IN = 'return_in',
+}
 export enum OpnameStatus {
-  DRAFT = 'draft', COUNTING = 'counting', SUBMITTED = 'submitted',
-  APPROVED = 'approved', REJECTED = 'rejected', ADJUSTED = 'adjusted', CANCELLED = 'cancelled',
+  DRAFT = 'draft',
+  COUNTING = 'counting',
+  SUBMITTED = 'submitted',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  ADJUSTED = 'adjusted',
+  CANCELLED = 'cancelled',
 }
-export enum AdjustmentSource { OPNAME = 'opname', MANUAL = 'manual', RECONCILIATION = 'reconciliation' }
+export enum AdjustmentSource {
+  OPNAME = 'opname',
+  MANUAL = 'manual',
+  RECONCILIATION = 'reconciliation',
+}
 export enum WasteReason {
-  EXPIRED = 'expired', DAMAGED = 'damaged', LOST = 'lost', CONTAMINATED = 'contaminated',
-  COLD_CHAIN_BREACH = 'cold_chain_breach', PRODUCTION_ERROR = 'production_error', OTHER = 'other',
+  EXPIRED = 'expired',
+  DAMAGED = 'damaged',
+  LOST = 'lost',
+  CONTAMINATED = 'contaminated',
+  COLD_CHAIN_BREACH = 'cold_chain_breach',
+  PRODUCTION_ERROR = 'production_error',
+  OTHER = 'other',
 }
-export enum WasteStatus { PENDING = 'pending', APPROVED = 'approved', REJECTED = 'rejected' }
-export enum ReturnDirection { OUTLET_TO_WAREHOUSE = 'outlet_to_warehouse', WAREHOUSE_TO_SUPPLIER = 'warehouse_to_supplier' }
+export enum WasteStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+export enum ReturnDirection {
+  OUTLET_TO_WAREHOUSE = 'outlet_to_warehouse',
+  WAREHOUSE_TO_SUPPLIER = 'warehouse_to_supplier',
+}
 export enum ReturnStatus {
-  DRAFT = 'draft', SUBMITTED = 'submitted', APPROVED = 'approved', REJECTED = 'rejected',
-  IN_TRANSIT = 'in_transit', RECEIVED = 'received', COMPLETED = 'completed', CANCELLED = 'cancelled',
+  DRAFT = 'draft',
+  SUBMITTED = 'submitted',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  IN_TRANSIT = 'in_transit',
+  RECEIVED = 'received',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
 }
-export enum ReturnCondition { DAMAGED = 'damaged', EXPIRED = 'expired', WRONG_ITEM = 'wrong_item', QUALITY = 'quality', OTHER = 'other' }
-export enum ItemStorageType { FROZEN = 'frozen', CHILLED = 'chilled', DRY = 'dry' }
+export enum ReturnCondition {
+  DAMAGED = 'damaged',
+  EXPIRED = 'expired',
+  WRONG_ITEM = 'wrong_item',
+  QUALITY = 'quality',
+  OTHER = 'other',
+}
+export enum ItemStorageType {
+  FROZEN = 'frozen',
+  CHILLED = 'chilled',
+  DRY = 'dry',
+}
 ```
 
 ### 2.3 Purchasing
 
 ```ts
 export enum PurchaseRequestStatus {
-  DRAFT = 'draft', SUBMITTED = 'submitted', APPROVED = 'approved',
-  REJECTED = 'rejected', CONVERTED = 'converted', CANCELLED = 'cancelled',
+  DRAFT = 'draft',
+  SUBMITTED = 'submitted',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  CONVERTED = 'converted',
+  CANCELLED = 'cancelled',
 }
 export enum PurchaseOrderStatus {
-  DRAFT = 'draft', PENDING_APPROVAL = 'pending_approval', APPROVED = 'approved', ISSUED = 'issued',
-  PARTIALLY_RECEIVED = 'partially_received', RECEIVED = 'received', CLOSED = 'closed', CANCELLED = 'cancelled',
+  DRAFT = 'draft',
+  PENDING_APPROVAL = 'pending_approval',
+  APPROVED = 'approved',
+  ISSUED = 'issued',
+  PARTIALLY_RECEIVED = 'partially_received',
+  RECEIVED = 'received',
+  CLOSED = 'closed',
+  CANCELLED = 'cancelled',
 }
-export enum PettyCashStatus { PENDING = 'pending', VERIFIED = 'verified', REJECTED = 'rejected' }
+export enum PettyCashStatus {
+  PENDING = 'pending',
+  VERIFIED = 'verified',
+  REJECTED = 'rejected',
+}
 ```
 
 ### 2.4 POS & payments
 
 ```ts
-export enum ShiftStatus { OPEN = 'open', CLOSED = 'closed' }
-export enum SaleStatus { COMPLETED = 'completed', VOIDED = 'voided', REFUNDED = 'refunded' }
-export enum PaymentMethod { CASH = 'cash', QRIS = 'qris', BANK_TRANSFER = 'bank_transfer' }   // FR-POS-04
-export enum PaymentStatus { PENDING = 'pending', VERIFIED = 'verified', PAID = 'paid' }        // FR-ACCT-03
-export enum VoidRefundType { VOID = 'void', REFUND = 'refund' }
-export enum VoidRefundStatus { PENDING = 'pending', APPROVED = 'approved', REJECTED = 'rejected' }
-export enum OnlinePlatform { GOFOOD = 'gofood', SHOPEEFOOD = 'shopeefood' }                    // FR-POS-05/07
-export enum OnlineOrderStatus { COMPLETED = 'completed', CANCELLED = 'cancelled' }
-export enum SettlementStatus { PENDING = 'pending', SETTLED = 'settled' }
-export enum CashVarianceProposalStatus {          // Amendment 2 (auto-propose, human-approve)
-  PENDING = 'pending', APPROVED = 'approved', REJECTED = 'rejected', CANCELLED = 'cancelled',
+export enum ShiftStatus {
+  OPEN = 'open',
+  CLOSED = 'closed',
+}
+export enum SaleStatus {
+  COMPLETED = 'completed',
+  VOIDED = 'voided',
+  REFUNDED = 'refunded',
+}
+export enum PaymentMethod {
+  CASH = 'cash',
+  QRIS = 'qris',
+  BANK_TRANSFER = 'bank_transfer',
+} // FR-POS-04
+export enum PaymentStatus {
+  PENDING = 'pending',
+  VERIFIED = 'verified',
+  PAID = 'paid',
+} // FR-ACCT-03
+export enum VoidRefundType {
+  VOID = 'void',
+  REFUND = 'refund',
+}
+export enum VoidRefundStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+export enum OnlinePlatform {
+  GOFOOD = 'gofood',
+  SHOPEEFOOD = 'shopeefood',
+} // FR-POS-05/07
+export enum OnlineOrderStatus {
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
+}
+export enum SettlementStatus {
+  PENDING = 'pending',
+  SETTLED = 'settled',
+}
+export enum CashVarianceProposalStatus {
+  // Amendment 2 (auto-propose, human-approve)
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  CANCELLED = 'cancelled',
 }
 ```
 
 ### 2.5 Approvals (D-08)
 
 ```ts
-export enum ApprovalState { PENDING = 'pending', APPROVED = 'approved', REJECTED = 'rejected', CANCELLED = 'cancelled' }
-export enum ApprovalStepState { PENDING = 'pending', APPROVED = 'approved', REJECTED = 'rejected', SKIPPED = 'skipped' }
-export enum ApprovalAction { SUBMIT = 'submit', APPROVE = 'approve', REJECT = 'reject', AMEND = 'amend', CANCEL = 'cancel' }
-export enum ApprovalDocumentType {
-  REPLENISHMENT_REQUEST = 'replenishment_request', VOID_REFUND = 'void_refund',
-  PURCHASE_REQUEST = 'purchase_request', PURCHASE_ORDER = 'purchase_order',
-  STOCK_OPNAME = 'stock_opname', RETURN = 'return',
-  WASTE = 'waste',                               // §5.10 waste chain (outlet step offline-eligible per §7.6)
-  PAYROLL_RUN = 'payroll_run', PAYMENT_VERIFICATION = 'payment_verification',
-  LEAVE_REQUEST = 'leave_request', EMPLOYEE_LOAN = 'employee_loan',
-  CASH_VARIANCE_PROPOSAL = 'cash_variance_proposal',  // Amendment 2
+export enum ApprovalState {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  CANCELLED = 'cancelled',
 }
-export enum ReverificationStatus { VERIFIED = 'verified', FAILED = 'failed', UNPROVABLE = 'unprovable' } // D-17, SYNC-PROTOCOL §7.4
+export enum ApprovalStepState {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  SKIPPED = 'skipped',
+}
+export enum ApprovalAction {
+  SUBMIT = 'submit',
+  APPROVE = 'approve',
+  REJECT = 'reject',
+  AMEND = 'amend',
+  CANCEL = 'cancel',
+}
+export enum ApprovalDocumentType {
+  REPLENISHMENT_REQUEST = 'replenishment_request',
+  VOID_REFUND = 'void_refund',
+  PURCHASE_REQUEST = 'purchase_request',
+  PURCHASE_ORDER = 'purchase_order',
+  STOCK_OPNAME = 'stock_opname',
+  RETURN = 'return',
+  WASTE = 'waste', // §5.10 waste chain (outlet step offline-eligible per §7.6)
+  PAYROLL_RUN = 'payroll_run',
+  PAYMENT_VERIFICATION = 'payment_verification',
+  LEAVE_REQUEST = 'leave_request',
+  EMPLOYEE_LOAN = 'employee_loan',
+  CASH_VARIANCE_PROPOSAL = 'cash_variance_proposal', // Amendment 2
+}
+export enum ReverificationStatus {
+  VERIFIED = 'verified',
+  FAILED = 'failed',
+  UNPROVABLE = 'unprovable',
+} // D-17, SYNC-PROTOCOL §7.4
 ```
 
 ### 2.6 HR & payroll
 
 ```ts
-export enum EmploymentStatus { ACTIVE = 'active', PROBATION = 'probation', RESIGNED = 'resigned', TERMINATED = 'terminated' }
+export enum EmploymentStatus {
+  ACTIVE = 'active',
+  PROBATION = 'probation',
+  RESIGNED = 'resigned',
+  TERMINATED = 'terminated',
+}
 export enum AttendanceStatus {
-  PRESENT = 'present', LATE = 'late', ABSENT = 'absent',            // absent = alpha (POUT-03)
-  SICK = 'sick', PERMISSION = 'permission', LEAVE = 'leave', HOLIDAY = 'holiday', OFF = 'off',
+  PRESENT = 'present',
+  LATE = 'late',
+  ABSENT = 'absent', // absent = alpha (POUT-03)
+  SICK = 'sick',
+  PERMISSION = 'permission',
+  LEAVE = 'leave',
+  HOLIDAY = 'holiday',
+  OFF = 'off',
 }
 export enum LeaveType {
-  ANNUAL = 'annual',           // cuti tahunan 12 hari (POUT-04)
-  MARRIAGE = 'marriage',       // cuti nikah 3 hari (POUT-04)
-  SICK = 'sick',               // POUT-01
-  PERMISSION = 'permission',   // izin (POUT-02)
+  ANNUAL = 'annual', // cuti tahunan 12 hari (POUT-04)
+  MARRIAGE = 'marriage', // cuti nikah 3 hari (POUT-04)
+  SICK = 'sick', // POUT-01
+  PERMISSION = 'permission', // izin (POUT-02)
   UNPAID = 'unpaid',
 }
-export enum LeaveStatus { PENDING = 'pending', APPROVED = 'approved', REJECTED = 'rejected', CANCELLED = 'cancelled' }
+export enum LeaveStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  CANCELLED = 'cancelled',
+}
 export enum PayrollComponentType {
-  EARNING = 'earning', DEDUCTION = 'deduction',
-  EMPLOYER_COST = 'employer_cost',               // Amendment 1: BPJS employer shares — company cost, not net-pay
+  EARNING = 'earning',
+  DEDUCTION = 'deduction',
+  EMPLOYER_COST = 'employer_cost', // Amendment 1: BPJS employer shares — company cost, not net-pay
 }
 export enum PayrollComponentCode {
   // ── PRD BASE components (the 7 PIN + 9 POUT, plus the Amendment-2 cash-variance deduction; always active) ──
-  BASE_SALARY = 'base_salary',                             // PIN-01
-  OVERTIME = 'overtime',                                   // PIN-02 (formula: attendance overtime_minutes)
-  ATTENDANCE_ALLOWANCE = 'attendance_allowance',           // PIN-03
-  PERFORMANCE_INCENTIVE = 'performance_incentive',         // PIN-04
-  TENURE_ALLOWANCE = 'tenure_allowance',                   // PIN-05 (formula: join_date)
-  POSITION_ALLOWANCE = 'position_allowance',               // PIN-06
-  OTHER_EARNING = 'other_earning',                         // PIN-07
-  DEDUCTION_SICK = 'deduction_sick',                       // POUT-01
-  DEDUCTION_PERMISSION = 'deduction_permission',           // POUT-02
-  DEDUCTION_ABSENCE = 'deduction_absence',                 // POUT-03 (alpha)
-  DEDUCTION_LEAVE_EXCESS = 'deduction_leave_excess',       // POUT-04 (beyond quota)
+  BASE_SALARY = 'base_salary', // PIN-01
+  OVERTIME = 'overtime', // PIN-02 (formula: attendance overtime_minutes)
+  ATTENDANCE_ALLOWANCE = 'attendance_allowance', // PIN-03
+  PERFORMANCE_INCENTIVE = 'performance_incentive', // PIN-04
+  TENURE_ALLOWANCE = 'tenure_allowance', // PIN-05 (formula: join_date)
+  POSITION_ALLOWANCE = 'position_allowance', // PIN-06
+  OTHER_EARNING = 'other_earning', // PIN-07
+  DEDUCTION_SICK = 'deduction_sick', // POUT-01
+  DEDUCTION_PERMISSION = 'deduction_permission', // POUT-02
+  DEDUCTION_ABSENCE = 'deduction_absence', // POUT-03 (alpha)
+  DEDUCTION_LEAVE_EXCESS = 'deduction_leave_excess', // POUT-04 (beyond quota)
   DEDUCTION_STOCK_SHORTFALL = 'deduction_stock_shortfall', // POUT-05 (from approved SO diff)
   DEDUCTION_LOAN_INSTALLMENT = 'deduction_loan_installment', // POUT-06 (kasbon amortization)
-  DEDUCTION_LATE = 'deduction_late',                       // POUT-07 (+ POUT-08 attendance-data basis, Appendix A-6)
-  OTHER_DEDUCTION = 'other_deduction',                     // POUT-09
-  DEDUCTION_CASH_VARIANCE = 'deduction_cash_variance',     // Amendment 2: approved shift cash-shortfall proposal (POUT-09 family)
+  DEDUCTION_LATE = 'deduction_late', // POUT-07 (+ POUT-08 attendance-data basis, Appendix A-6)
+  OTHER_DEDUCTION = 'other_deduction', // POUT-09
+  DEDUCTION_CASH_VARIANCE = 'deduction_cash_variance', // Amendment 2: approved shift cash-shortfall proposal (POUT-09 family)
   // ── STATUTORY components (Amendment 1; is_statutory=true — compute ONLY when payroll.statutory enabled) ──
-  BPJS_KESEHATAN_EMPLOYEE = 'bpjs_kesehatan_employee',     // deduction (1%)
-  BPJS_JHT_EMPLOYEE = 'bpjs_jht_employee',                 // deduction (2%)
-  BPJS_JP_EMPLOYEE = 'bpjs_jp_employee',                   // deduction (1%, capped)
-  PPH21 = 'pph21',                                         // deduction (TER monthly; Article-17 true-up in December)
-  BPJS_KESEHATAN_EMPLOYER = 'bpjs_kesehatan_employer',     // employer_cost (4%)
-  BPJS_JHT_EMPLOYER = 'bpjs_jht_employer',                 // employer_cost (3.7%)
-  BPJS_JKK_EMPLOYER = 'bpjs_jkk_employer',                 // employer_cost (risk-class rate; employer-only)
-  BPJS_JKM_EMPLOYER = 'bpjs_jkm_employer',                 // employer_cost (0.3%; employer-only)
-  BPJS_JP_EMPLOYER = 'bpjs_jp_employer',                   // employer_cost (2%, capped)
+  BPJS_KESEHATAN_EMPLOYEE = 'bpjs_kesehatan_employee', // deduction (1%)
+  BPJS_JHT_EMPLOYEE = 'bpjs_jht_employee', // deduction (2%)
+  BPJS_JP_EMPLOYEE = 'bpjs_jp_employee', // deduction (1%, capped)
+  PPH21 = 'pph21', // deduction (TER monthly; Article-17 true-up in December)
+  BPJS_KESEHATAN_EMPLOYER = 'bpjs_kesehatan_employer', // employer_cost (4%)
+  BPJS_JHT_EMPLOYER = 'bpjs_jht_employer', // employer_cost (3.7%)
+  BPJS_JKK_EMPLOYER = 'bpjs_jkk_employer', // employer_cost (risk-class rate; employer-only)
+  BPJS_JKM_EMPLOYER = 'bpjs_jkm_employer', // employer_cost (0.3%; employer-only)
+  BPJS_JP_EMPLOYER = 'bpjs_jp_employer', // employer_cost (2%, capped)
 }
 export enum PayrollRunStatus {
-  DRAFT = 'draft', CALCULATED = 'calculated', PENDING_APPROVAL = 'pending_approval',
-  APPROVED = 'approved', PAID = 'paid', CANCELLED = 'cancelled',
+  DRAFT = 'draft',
+  CALCULATED = 'calculated',
+  PENDING_APPROVAL = 'pending_approval',
+  APPROVED = 'approved',
+  PAID = 'paid',
+  CANCELLED = 'cancelled',
 }
-export enum LoanStatus { PENDING = 'pending', ACTIVE = 'active', PAID_OFF = 'paid_off', WRITTEN_OFF = 'written_off', REJECTED = 'rejected' }
+export enum LoanStatus {
+  PENDING = 'pending',
+  ACTIVE = 'active',
+  PAID_OFF = 'paid_off',
+  WRITTEN_OFF = 'written_off',
+  REJECTED = 'rejected',
+}
 ```
 
 ### 2.7 Assets
 
 ```ts
-export enum AssetCategory { MACHINE = 'machine', VEHICLE = 'vehicle', EQUIPMENT = 'equipment', ELECTRONICS = 'electronics', FURNITURE = 'furniture', OTHER = 'other' }
-export enum AssetCondition { GOOD = 'good', FAIR = 'fair', POOR = 'poor', BROKEN = 'broken' }
-export enum AssetStatus { ACTIVE = 'active', IN_MAINTENANCE = 'in_maintenance', RETIRED = 'retired', LOST = 'lost' }
-export enum MaintenanceJobStatus { SCHEDULED = 'scheduled', DUE = 'due', IN_PROGRESS = 'in_progress', DONE = 'done', VERIFIED = 'verified', SKIPPED = 'skipped' }
-export enum MaintenanceJobType { SCHEDULED = 'scheduled', CORRECTIVE = 'corrective' }
+export enum AssetCategory {
+  MACHINE = 'machine',
+  VEHICLE = 'vehicle',
+  EQUIPMENT = 'equipment',
+  ELECTRONICS = 'electronics',
+  FURNITURE = 'furniture',
+  OTHER = 'other',
+}
+export enum AssetCondition {
+  GOOD = 'good',
+  FAIR = 'fair',
+  POOR = 'poor',
+  BROKEN = 'broken',
+}
+export enum AssetStatus {
+  ACTIVE = 'active',
+  IN_MAINTENANCE = 'in_maintenance',
+  RETIRED = 'retired',
+  LOST = 'lost',
+}
+export enum MaintenanceJobStatus {
+  SCHEDULED = 'scheduled',
+  DUE = 'due',
+  IN_PROGRESS = 'in_progress',
+  DONE = 'done',
+  VERIFIED = 'verified',
+  SKIPPED = 'skipped',
+}
+export enum MaintenanceJobType {
+  SCHEDULED = 'scheduled',
+  CORRECTIVE = 'corrective',
+}
 ```
 
 ### 2.8 Accounting
 
 ```ts
-export enum AccountType { ASSET = 'asset', LIABILITY = 'liability', EQUITY = 'equity', REVENUE = 'revenue', EXPENSE = 'expense' }
-export enum NormalBalance { DEBIT = 'debit', CREDIT = 'credit' }
-export enum FiscalPeriodStatus { OPEN = 'open', CLOSED = 'closed', LOCKED = 'locked' }
-export enum JournalEntryStatus { POSTED = 'posted', REVERSED = 'reversed' }
-export enum JournalEventType {                   // the 16 PRD journal event types (§6.2)
-  GUDANG_PURCHASE = 'gudang_purchase',                           // FR-ACC-JGUD-01
-  GUDANG_GOODS_IN = 'gudang_goods_in',                           // FR-ACC-JGUD-02
-  GUDANG_GOODS_OUT_TO_OUTLET = 'gudang_goods_out_to_outlet',     // FR-ACC-JGUD-03
-  GUDANG_RETURN_TO_SUPPLIER = 'gudang_return_to_supplier',       // FR-ACC-JGUD-04
-  GUDANG_WASTE = 'gudang_waste',                                 // FR-ACC-JGUD-05
-  GUDANG_STOCK_ADJUSTMENT = 'gudang_stock_adjustment',           // FR-ACC-JGUD-06
-  GUDANG_STOCK_REVALUATION = 'gudang_stock_revaluation',         // FR-ACC-JGUD-07
-  OUTLET_GOODS_IN_FROM_WAREHOUSE = 'outlet_goods_in_from_warehouse', // FR-ACC-JOUT-01
-  OUTLET_INGREDIENT_USAGE = 'outlet_ingredient_usage',           // FR-ACC-JOUT-02
-  OUTLET_SALES = 'outlet_sales',                                 // FR-ACC-JOUT-03
-  OUTLET_WASTE = 'outlet_waste',                                 // FR-ACC-JOUT-04
-  OUTLET_RETURN_TO_WAREHOUSE = 'outlet_return_to_warehouse',     // FR-ACC-JOUT-05
-  OUTLET_STOCK_ADJUSTMENT = 'outlet_stock_adjustment',           // FR-ACC-JOUT-06
-  OUTLET_DIRECT_PURCHASE = 'outlet_direct_purchase',             // FR-ACC-JOUT-07
-  OUTLET_PETTY_CASH = 'outlet_petty_cash',                       // FR-ACC-JOUT-08
-  OUTLET_OPERATING_EXPENSE = 'outlet_operating_expense',         // FR-ACC-JOUT-09
+export enum AccountType {
+  ASSET = 'asset',
+  LIABILITY = 'liability',
+  EQUITY = 'equity',
+  REVENUE = 'revenue',
+  EXPENSE = 'expense',
 }
-export enum JournalSystemEventType {             // D-04 extensions beyond the 16 (§6.3)
-  PAYROLL_ACCRUAL = 'payroll_accrual', PAYROLL_PAYMENT = 'payroll_payment',
-  QRIS_SETTLEMENT = 'qris_settlement', TRANSFER_VERIFIED = 'transfer_verified',
-  PLATFORM_SETTLEMENT = 'platform_settlement', SALE_VOID_REVERSAL = 'sale_void_reversal',
-  OFFLINE_AUTH_REJECTED = 'offline_auth_rejected',  // SYNC-PROTOCOL §7.5: failed offline approval w/ physical effect → claim
+export enum NormalBalance {
+  DEBIT = 'debit',
+  CREDIT = 'credit',
+}
+export enum FiscalPeriodStatus {
+  OPEN = 'open',
+  CLOSED = 'closed',
+  LOCKED = 'locked',
+}
+export enum JournalEntryStatus {
+  POSTED = 'posted',
+  REVERSED = 'reversed',
+}
+export enum JournalEventType {
+  // the 16 PRD journal event types (§6.2)
+  GUDANG_PURCHASE = 'gudang_purchase', // FR-ACC-JGUD-01
+  GUDANG_GOODS_IN = 'gudang_goods_in', // FR-ACC-JGUD-02
+  GUDANG_GOODS_OUT_TO_OUTLET = 'gudang_goods_out_to_outlet', // FR-ACC-JGUD-03
+  GUDANG_RETURN_TO_SUPPLIER = 'gudang_return_to_supplier', // FR-ACC-JGUD-04
+  GUDANG_WASTE = 'gudang_waste', // FR-ACC-JGUD-05
+  GUDANG_STOCK_ADJUSTMENT = 'gudang_stock_adjustment', // FR-ACC-JGUD-06
+  GUDANG_STOCK_REVALUATION = 'gudang_stock_revaluation', // FR-ACC-JGUD-07
+  OUTLET_GOODS_IN_FROM_WAREHOUSE = 'outlet_goods_in_from_warehouse', // FR-ACC-JOUT-01
+  OUTLET_INGREDIENT_USAGE = 'outlet_ingredient_usage', // FR-ACC-JOUT-02
+  OUTLET_SALES = 'outlet_sales', // FR-ACC-JOUT-03
+  OUTLET_WASTE = 'outlet_waste', // FR-ACC-JOUT-04
+  OUTLET_RETURN_TO_WAREHOUSE = 'outlet_return_to_warehouse', // FR-ACC-JOUT-05
+  OUTLET_STOCK_ADJUSTMENT = 'outlet_stock_adjustment', // FR-ACC-JOUT-06
+  OUTLET_DIRECT_PURCHASE = 'outlet_direct_purchase', // FR-ACC-JOUT-07
+  OUTLET_PETTY_CASH = 'outlet_petty_cash', // FR-ACC-JOUT-08
+  OUTLET_OPERATING_EXPENSE = 'outlet_operating_expense', // FR-ACC-JOUT-09
+}
+export enum JournalSystemEventType {
+  // D-04 extensions beyond the 16 (§6.3)
+  PAYROLL_ACCRUAL = 'payroll_accrual',
+  PAYROLL_PAYMENT = 'payroll_payment',
+  QRIS_SETTLEMENT = 'qris_settlement',
+  TRANSFER_VERIFIED = 'transfer_verified',
+  PLATFORM_SETTLEMENT = 'platform_settlement',
+  SALE_VOID_REVERSAL = 'sale_void_reversal',
+  OFFLINE_AUTH_REJECTED = 'offline_auth_rejected', // SYNC-PROTOCOL §7.5: failed offline approval w/ physical effect → claim
 }
 export enum PaymentVerificationRefType {
-  PURCHASE_ORDER = 'purchase_order', PAYROLL_RUN = 'payroll_run', PETTY_CASH = 'petty_cash',
-  MAINTENANCE_JOB = 'maintenance_job', SALE_PAYMENT = 'sale_payment', ONLINE_ORDER = 'online_order',
-  INCENTIVE = 'incentive', THR = 'thr', OTHER = 'other',        // FR-ACCT-04 list
+  PURCHASE_ORDER = 'purchase_order',
+  PAYROLL_RUN = 'payroll_run',
+  PETTY_CASH = 'petty_cash',
+  MAINTENANCE_JOB = 'maintenance_job',
+  SALE_PAYMENT = 'sale_payment',
+  ONLINE_ORDER = 'online_order',
+  INCENTIVE = 'incentive',
+  THR = 'thr',
+  OTHER = 'other', // FR-ACCT-04 list
 }
-export enum PayeeType { SUPPLIER = 'supplier', EMPLOYEE = 'employee', PLATFORM = 'platform', OTHER = 'other' }
+export enum PayeeType {
+  SUPPLIER = 'supplier',
+  EMPLOYEE = 'employee',
+  PLATFORM = 'platform',
+  OTHER = 'other',
+}
 ```
 
 ### 2.9 Devices, topology, sync
 
 ```ts
-export enum DeviceCategory {                     // adapted from AIRE for Mimi (D-13)
-  TABLET = 'tablet', POS_TERMINAL = 'pos_terminal', PRINTER = 'printer',
-  LAPTOP = 'laptop', ROUTER = 'router', BRANCH_NODE = 'branch_node', OTHER = 'other',
+export enum DeviceCategory {
+  // adapted from AIRE for Mimi (D-13)
+  TABLET = 'tablet',
+  POS_TERMINAL = 'pos_terminal',
+  PRINTER = 'printer',
+  LAPTOP = 'laptop',
+  ROUTER = 'router',
+  BRANCH_NODE = 'branch_node',
+  OTHER = 'other',
 }
-export enum DeviceStatus { ONLINE = 'online', STALE = 'stale', OFFLINE = 'offline', UNPAIRED = 'unpaired', RETIRED = 'retired' }
+export enum DeviceStatus {
+  ONLINE = 'online',
+  STALE = 'stale',
+  OFFLINE = 'offline',
+  UNPAIRED = 'unpaired',
+  RETIRED = 'retired',
+}
 export enum DeviceEventType {
-  PAIRED = 'paired', UNPAIRED = 'unpaired', ONLINE = 'online', OFFLINE = 'offline', STALE = 'stale',
-  VERSION_CHANGED = 'version_changed', QUEUE_ALERT = 'queue_alert', CLOCK_SKEW = 'clock_skew',
-  OUTLET_OFFLINE = 'outlet_offline', OUTLET_ONLINE = 'outlet_online',
+  PAIRED = 'paired',
+  UNPAIRED = 'unpaired',
+  ONLINE = 'online',
+  OFFLINE = 'offline',
+  STALE = 'stale',
+  VERSION_CHANGED = 'version_changed',
+  QUEUE_ALERT = 'queue_alert',
+  CLOCK_SKEW = 'clock_skew',
+  OUTLET_OFFLINE = 'outlet_offline',
+  OUTLET_ONLINE = 'outlet_online',
 }
-export enum DiscoverySource { MDNS = 'mdns', SSDP = 'ssdp', ONVIF = 'onvif', TCP_PROBE = 'tcp_probe' }
-export enum PairingTargetType { DEVICE = 'device', NODE = 'node' }
-export enum SyncOriginType { DEVICE = 'device', NODE = 'node', CLOUD = 'cloud' }               // = origin_tier
-export enum SyncApplyStatus {                     // cloud bookkeeping (SYNC-PROTOCOL §4.4/§5.1)
-  PENDING = 'pending', APPLIED = 'applied', QUARANTINED = 'quarantined',
-  SUPERSEDED = 'superseded', PENDING_DEPENDENCY = 'pending_dependency',
+export enum DiscoverySource {
+  MDNS = 'mdns',
+  SSDP = 'ssdp',
+  ONVIF = 'onvif',
+  TCP_PROBE = 'tcp_probe',
 }
-export enum SyncRejectCode {                      // permanent reject codes (SYNC-PROTOCOL §4.4)
-  AUTHORITY_VIOLATION = 'authority_violation', MALFORMED = 'malformed',
-  SEQ_CONFLICT = 'seq_conflict', PAYLOAD_VERSION_UNSUPPORTED = 'payload_version_unsupported',
+export enum PairingTargetType {
+  DEVICE = 'device',
+  NODE = 'node',
 }
-export enum SyncBatchStatus { RECEIVED = 'received', APPLIED = 'applied', PARTIAL = 'partial', FAILED = 'failed' }
-export enum SyncConflictKind {                    // SYNC-PROTOCOL §5.2 C1..C9
-  DOUBLE_COUNT = 'double_count', DUPLICATE_RECEIPT = 'duplicate_receipt', DECISION_RACE = 'decision_race',
-  ATTENDANCE_OVERLAP = 'attendance_overlap', NEGATIVE_BALANCE = 'negative_balance',
-  DUPLICATE_INBOUND = 'duplicate_inbound', OFFLINE_AUTH = 'offline_auth',
-  DUPLICATE_PLATFORM_ORDER = 'duplicate_platform_order', POISON = 'poison',
+export enum SyncOriginType {
+  DEVICE = 'device',
+  NODE = 'node',
+  CLOUD = 'cloud',
+} // = origin_tier
+export enum SyncApplyStatus {
+  // cloud bookkeeping (SYNC-PROTOCOL §4.4/§5.1)
+  PENDING = 'pending',
+  APPLIED = 'applied',
+  QUARANTINED = 'quarantined',
+  SUPERSEDED = 'superseded',
+  PENDING_DEPENDENCY = 'pending_dependency',
 }
-export enum SyncQueue { CONFLICT = 'conflict', EXCEPTION = 'exception', FINANCE = 'finance', HR = 'hr' }
+export enum SyncRejectCode {
+  // permanent reject codes (SYNC-PROTOCOL §4.4)
+  AUTHORITY_VIOLATION = 'authority_violation',
+  MALFORMED = 'malformed',
+  SEQ_CONFLICT = 'seq_conflict',
+  PAYLOAD_VERSION_UNSUPPORTED = 'payload_version_unsupported',
+}
+export enum SyncBatchStatus {
+  RECEIVED = 'received',
+  APPLIED = 'applied',
+  PARTIAL = 'partial',
+  FAILED = 'failed',
+}
+export enum SyncConflictKind {
+  // SYNC-PROTOCOL §5.2 C1..C9
+  DOUBLE_COUNT = 'double_count',
+  DUPLICATE_RECEIPT = 'duplicate_receipt',
+  DECISION_RACE = 'decision_race',
+  ATTENDANCE_OVERLAP = 'attendance_overlap',
+  NEGATIVE_BALANCE = 'negative_balance',
+  DUPLICATE_INBOUND = 'duplicate_inbound',
+  OFFLINE_AUTH = 'offline_auth',
+  DUPLICATE_PLATFORM_ORDER = 'duplicate_platform_order',
+  POISON = 'poison',
+}
+export enum SyncQueue {
+  CONFLICT = 'conflict',
+  EXCEPTION = 'exception',
+  FINANCE = 'finance',
+  HR = 'hr',
+}
 // SyncEntity: values are the EXACT table names of §4.1 that travel the wire per SYNC-PROTOCOL §3.3
 // (classes M/F/B + special cases; D/X/T and embedded child tables are NOT entities).
 // The op vocabulary per entity lives in SYNC-PROTOCOL §3.3 and ships as executable data in packages/sync-protocol.
 export enum SyncEntity {
   // block 001–009
-  LOCATIONS = 'locations', STORAGE_AREAS = 'storage_areas', USERS = 'users', ROLES = 'roles',
-  PERMISSIONS = 'permissions', ROLE_PERMISSIONS = 'role_permissions', USER_LOCATIONS = 'user_locations',
-  NOTIFICATIONS = 'notifications', SETTINGS = 'settings',
+  LOCATIONS = 'locations',
+  STORAGE_AREAS = 'storage_areas',
+  USERS = 'users',
+  ROLES = 'roles',
+  PERMISSIONS = 'permissions',
+  ROLE_PERMISSIONS = 'role_permissions',
+  USER_LOCATIONS = 'user_locations',
+  NOTIFICATIONS = 'notifications',
+  SETTINGS = 'settings',
   // block 010–019
-  ITEM_CATEGORIES = 'item_categories', UNITS = 'units', UNIT_CONVERSIONS = 'unit_conversions',
-  ITEMS = 'items', PRODUCTS = 'products', RECIPES = 'recipes',
+  ITEM_CATEGORIES = 'item_categories',
+  UNITS = 'units',
+  UNIT_CONVERSIONS = 'unit_conversions',
+  ITEMS = 'items',
+  PRODUCTS = 'products',
+  RECIPES = 'recipes',
   // block 020–029
-  MIN_STOCK_RULES = 'min_stock_rules', STOCK_OPNAME = 'stock_opname', STOCK_ADJUSTMENTS = 'stock_adjustments',
+  MIN_STOCK_RULES = 'min_stock_rules',
+  STOCK_OPNAME = 'stock_opname',
+  STOCK_ADJUSTMENTS = 'stock_adjustments',
   // block 030–039
-  REPLENISHMENT_REQUESTS = 'replenishment_requests', SURAT_JALAN = 'surat_jalan', SJ_DROPS = 'sj_drops',
-  SJ_TEMPERATURE_LOGS = 'sj_temperature_logs', SJ_SEALS = 'sj_seals', DRIVERS = 'drivers',
-  VEHICLES = 'vehicles', GOODS_RECEIPTS = 'goods_receipts', SHIPMENT_TYPES = 'shipment_types',
+  REPLENISHMENT_REQUESTS = 'replenishment_requests',
+  SURAT_JALAN = 'surat_jalan',
+  SJ_DROPS = 'sj_drops',
+  SJ_TEMPERATURE_LOGS = 'sj_temperature_logs',
+  SJ_SEALS = 'sj_seals',
+  DRIVERS = 'drivers',
+  VEHICLES = 'vehicles',
+  GOODS_RECEIPTS = 'goods_receipts',
+  SHIPMENT_TYPES = 'shipment_types',
   // block 040–049
   PETTY_CASH = 'petty_cash',
   // block 050–059
-  POS_SHIFTS = 'pos_shifts', SALES = 'sales', VOID_REFUNDS = 'void_refunds', ONLINE_ORDERS = 'online_orders',
+  POS_SHIFTS = 'pos_shifts',
+  SALES = 'sales',
+  VOID_REFUNDS = 'void_refunds',
+  ONLINE_ORDERS = 'online_orders',
   // block 060–069
-  EMPLOYEES = 'employees', WORK_SHIFTS = 'work_shifts', SHIFT_ASSIGNMENTS = 'shift_assignments',
-  ATTENDANCE = 'attendance', LEAVE_REQUESTS = 'leave_requests',
+  EMPLOYEES = 'employees',
+  WORK_SHIFTS = 'work_shifts',
+  SHIFT_ASSIGNMENTS = 'shift_assignments',
+  ATTENDANCE = 'attendance',
+  LEAVE_REQUESTS = 'leave_requests',
   // block 070–079
-  ASSETS = 'assets', MAINTENANCE_SCHEDULES = 'maintenance_schedules', MAINTENANCE_JOBS = 'maintenance_jobs',
+  ASSETS = 'assets',
+  MAINTENANCE_SCHEDULES = 'maintenance_schedules',
+  MAINTENANCE_JOBS = 'maintenance_jobs',
   SERVICE_HISTORY = 'service_history',
   // block 080–089
-  WASTE_RECORDS = 'waste_records', RETURNS = 'returns',
+  WASTE_RECORDS = 'waste_records',
+  RETURNS = 'returns',
   // block 090–099
   PAYMENT_VERIFICATIONS = 'payment_verifications',
   // block 110–119
-  DEVICES = 'devices', BRANCH_NODES = 'branch_nodes', DEVICE_EVENTS = 'device_events',
+  DEVICES = 'devices',
+  BRANCH_NODES = 'branch_nodes',
+  DEVICE_EVENTS = 'device_events',
   DISCOVERED_DEVICES = 'discovered_devices',
   // block 120–129
   OFFLINE_AUTHORIZATIONS = 'offline_authorizations',
@@ -2180,14 +2508,32 @@ export enum SyncEntity {
 // cash_variance_proposals (Amendment 2 — class X: cloud-born at shift-close apply, decided online only),
 // device_heartbeats (class T — lossy telemetry channel, not events), and all embedded child tables
 // (recipe_lines, *_lines, sale_payments — they ride inside their parent's payload).
-export enum NotificationChannel { IN_APP = 'in_app', EMAIL = 'email', WHATSAPP = 'whatsapp' }  // D-03
-export enum OutboxStatus { PENDING = 'pending', SENT = 'sent', FAILED = 'failed' }
-export enum ReconciliationTier { DEVICE = 'device', NODE = 'node', CLOUD = 'cloud' }
-export enum OfflineAuthOutcome {                  // three-valued + pending (SYNC-PROTOCOL §7.4)
-  PENDING_VERIFICATION = 'pending_verification', VERIFIED = 'verified',
-  FAILED = 'failed', UNPROVABLE = 'unprovable',
+export enum NotificationChannel {
+  IN_APP = 'in_app',
+  EMAIL = 'email',
+  WHATSAPP = 'whatsapp',
+} // D-03
+export enum OutboxStatus {
+  PENDING = 'pending',
+  SENT = 'sent',
+  FAILED = 'failed',
 }
-export enum OfflineAuthVerdict { UPHELD = 'upheld', REJECTED = 'rejected' }                    // finance decision (§7.5)
+export enum ReconciliationTier {
+  DEVICE = 'device',
+  NODE = 'node',
+  CLOUD = 'cloud',
+}
+export enum OfflineAuthOutcome {
+  // three-valued + pending (SYNC-PROTOCOL §7.4)
+  PENDING_VERIFICATION = 'pending_verification',
+  VERIFIED = 'verified',
+  FAILED = 'failed',
+  UNPROVABLE = 'unprovable',
+}
+export enum OfflineAuthVerdict {
+  UPHELD = 'upheld',
+  REJECTED = 'rejected',
+} // finance decision (§7.5)
 ```
 
 ---
@@ -2197,167 +2543,168 @@ export enum OfflineAuthVerdict { UPHELD = 'upheld', REJECTED = 'rejected' }     
 Roles (PRD §6.2) + `driver` (added by D-14 — see Appendix A-2). Column keys: **OWN**=`owner`, **MGR**=`manager`, **FIN**=`finance`, **KGD**=`kepala_gudang`, **SPV**=`supervisor` (Supervisor Cabang), **LDR**=`leader_outlet` (Leader/Staff Outlet), **KSR**=`kasir`, **HRA**=`hr_admin`, **DRV**=`driver`.
 
 Rules of use:
+
 - `PermissionsGuard` checks the key; **RLS additionally scopes rows by location** — a ✓ never grants cross-location access for scoped roles (KGD/SPV/LDR/KSR/DRV act only within their `user_locations`).
-- Approval keys authorize *acting on the step whose `approver_role` matches*; the engine enforces step order (§5).
+- Approval keys authorize _acting on the step whose `approver_role` matches_; the engine enforces step order (§5).
 - Device-token endpoints (register/heartbeat/sync push/pull) authenticate with the device JWT, not user permission keys.
 - ✓ = allowed, `·` = denied (403).
 
-| Permission key | OWN | MGR | FIN | KGD | SPV | LDR | KSR | HRA | DRV |
-|---|---|---|---|---|---|---|---|---|---|
-| **auth / users / admin** | | | | | | | | | |
-| `auth.pin.set` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `auth.offline_credential.mint` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| `user.read` | ✓ | ✓ | ✓ | · | · | · | · | ✓ | · |
-| `user.create` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `user.update` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `user.deactivate` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `user.role.assign` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `user.location.assign` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `user.password.reset` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `audit.read` | ✓ | ✓ | ✓ | · | · | · | · | · | · |
-| `settings.read` | ✓ | ✓ | ✓ | ✓ | · | · | · | ✓ | · |
-| `settings.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `settings.approval_chain.manage` | ✓ | · | · | · | · | · | · | · | · |
-| **location / master data** | | | | | | | | | |
-| `location.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `location.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `storage_area.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `item.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · |
-| `item.manage` | ✓ | ✓ | · | ✓ | · | · | · | · | · |
-| `unit.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `product.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · |
-| `product.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `recipe.read` | ✓ | ✓ | ✓ | ✓ | · | · | · | · | · |
-| `recipe.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| **supplier (FR-SUP-06 role lock)** | | | | | | | | | |
-| `supplier.read` | ✓ | ✓ | ✓ | ✓ | · | · | · | · | · |
-| `supplier.directory.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · |
-| `supplier.manage` | ✓ | ✓ | · | ✓ | · | · | · | · | · |
-| `supplier.price.read` | ✓ | ✓ | ✓ | ✓ | · | · | · | · | · |
-| `supplier.price.manage` | ✓ | ✓ | · | ✓ | · | · | · | · | · |
-| **inventory** | | | | | | | | | |
-| `inventory.balance.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · |
-| `inventory.movement.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · |
-| `inventory.minstock.manage` | ✓ | ✓ | · | ✓ | · | · | · | · | · |
-| `inventory.area_transfer.create` | · | · | · | ✓ | ✓ | ✓ | · | · | · |
-| `inventory.suggestion.read` | ✓ | ✓ | · | ✓ | ✓ | ✓ | · | · | · |
-| **stock opname** | | | | | | | | | |
-| `opname.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · |
-| `opname.create` | · | · | · | ✓ | ✓ | ✓ | · | · | · |
-| `opname.submit` | · | · | · | ✓ | ✓ | ✓ | · | · | · |
-| `opname.approve` | ✓ | ✓ | · | ✓ | ✓ | · | · | · | · |
-| **replenishment** | | | | | | | | | |
-| `replenishment.read` | ✓ | ✓ | · | ✓ | ✓ | ✓ | · | · | · |
-| `replenishment.create` | · | · | · | · | ✓ | ✓ | · | · | · |
-| `replenishment.submit` | · | · | · | · | ✓ | ✓ | · | · | · |
-| `replenishment.approve.supervisor` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| `replenishment.approve.warehouse` | ✓ | ✓ | · | ✓ | · | · | · | · | · |
-| `replenishment.amend` | ✓ | ✓ | · | ✓ | ✓ | · | · | · | · |
-| **delivery / surat jalan** | | | | | | | | | |
-| `delivery.read` | ✓ | ✓ | · | ✓ | ✓ | ✓ | · | · | ✓ |
-| `delivery.sj.create` | · | · | · | ✓ | · | · | · | · | · |
-| `delivery.sj.dispatch` | · | · | · | ✓ | · | · | · | · | · |
-| `delivery.sj.cancel` | · | ✓ | · | ✓ | · | · | · | · | · |
-| `delivery.drop.execute` | · | · | · | ✓ | · | · | · | · | ✓ |
-| `delivery.receive` | · | · | · | · | ✓ | ✓ | · | · | · |
-| `delivery.master.manage` | ✓ | ✓ | · | ✓ | · | · | · | · | · |
-| **purchasing / petty cash** | | | | | | | | | |
-| `purchasing.read` | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · | · |
-| `purchasing.pr.create` | · | · | · | ✓ | ✓ | · | · | · | · |
-| `purchasing.pr.approve` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `purchasing.po.create` | · | ✓ | · | ✓ | · | · | · | · | · |
-| `purchasing.po.approve` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `purchasing.po.receive` | · | · | · | ✓ | · | ✓ | · | · | · |
-| `purchasing.po.close` | · | · | ✓ | · | · | · | · | · | · |
-| `pettycash.read` | ✓ | ✓ | ✓ | · | ✓ | ✓ | · | · | · |
-| `pettycash.create` | · | · | · | · | ✓ | ✓ | · | · | · |
-| `pettycash.verify` | · | ✓ | ✓ | · | · | · | · | · | · |
-| **waste / returns** | | | | | | | | | |
-| `waste.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · |
-| `waste.create` | · | · | · | ✓ | ✓ | ✓ | · | · | · |
-| `waste.approve` | ✓ | ✓ | · | ✓ | ✓ | · | · | · | · |
-| `return.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · |
-| `return.create` | · | · | · | ✓ | ✓ | ✓ | · | · | · |
-| `return.approve` | ✓ | ✓ | · | ✓ | ✓ | · | · | · | · |
-| `return.ship` | · | · | · | ✓ | ✓ | ✓ | · | · | · |
-| `return.receive` | · | · | · | ✓ | · | · | · | · | · |
-| **POS** | | | | | | | | | |
-| `pos.catalog.read` | ✓ | ✓ | · | · | ✓ | ✓ | ✓ | · | · |
-| `pos.shift.open` | · | · | · | · | ✓ | · | ✓ | · | · |
-| `pos.shift.close` | · | · | · | · | ✓ | · | ✓ | · | · |
-| `pos.sale.create` | · | · | · | · | ✓ | · | ✓ | · | · |
-| `pos.sale.read` | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | · | · |
-| `pos.void.request` | · | · | · | · | ✓ | · | ✓ | · | · |
-| `pos.void.approve` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| `pos.online_order.record` | · | · | · | · | ✓ | ✓ | ✓ | · | · |
-| `pos.online_order.read` | ✓ | ✓ | ✓ | · | ✓ | ✓ | ✓ | · | · |
-| `pos.daily_stock.read` | ✓ | ✓ | · | ✓ | ✓ | ✓ | ✓ | · | · |
-| `pos.cash_variance.read` | ✓ | ✓ | ✓ | · | ✓ | · | · | ✓ | · |
-| `pos.cash_variance.approve` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| **HR** | | | | | | | | | |
-| `hr.attendance.check` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `hr.attendance.read` | ✓ | ✓ | · | · | ✓ | · | · | ✓ | · |
-| `hr.attendance.correct` | · | · | · | · | · | · | · | ✓ | · |
-| `hr.shift.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `hr.shift.manage` | · | ✓ | · | · | ✓ | · | · | ✓ | · |
-| `hr.employee.read` | ✓ | ✓ | ✓ | · | ✓ | · | · | ✓ | · |
-| `hr.employee.manage` | ✓ | ✓ | · | · | · | · | · | ✓ | · |
-| `hr.leave.request` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `hr.leave.approve` | ✓ | ✓ | · | · | ✓ | · | · | ✓ | · |
-| `hr.leave.read` | ✓ | ✓ | · | · | ✓ | · | · | ✓ | · |
-| **payroll** | | | | | | | | | |
-| `payroll.read` | ✓ | ✓ | ✓ | · | · | · | · | ✓ | · |
-| `payroll.component.manage` | ✓ | · | ✓ | · | · | · | · | ✓ | · |
-| `payroll.run.calculate` | · | · | · | · | · | · | · | ✓ | · |
-| `payroll.run.submit` | · | · | · | · | · | · | · | ✓ | · |
-| `payroll.run.approve` | ✓ | ✓ | ✓ | · | · | · | · | · | · |
-| `payroll.run.pay` | ✓ | · | ✓ | · | · | · | · | · | · |
-| `payroll.slip.send` | · | · | · | · | · | · | · | ✓ | · |
-| `payroll.slip.read.own` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `payroll.loan.manage` | · | · | ✓ | · | · | · | · | ✓ | · |
-| `payroll.loan.approve` | ✓ | ✓ | ✓ | · | · | · | · | · | · |
-| `payroll.statutory.read` | ✓ | ✓ | ✓ | · | · | · | · | ✓ | · |
-| `payroll.statutory.config` | · | · | ✓ | · | · | · | · | ✓ | · |
-| `payroll.statutory.enable` | ✓ | ✓ | · | · | · | · | · | · | · |
-| **assets (PMS)** | | | | | | | | | |
-| `asset.read` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · | · | · |
-| `asset.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `asset.schedule.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `asset.job.execute` | · | ✓ | · | ✓ | ✓ | ✓ | · | · | · |
-| `asset.job.verify` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| **accounting / payments** | | | | | | | | | |
-| `accounting.coa.read` | ✓ | ✓ | ✓ | · | · | · | · | · | · |
-| `accounting.coa.manage` | ✓ | · | ✓ | · | · | · | · | · | · |
-| `accounting.journal.read` | ✓ | ✓ | ✓ | · | · | · | · | · | · |
-| `accounting.journal.post` | · | · | ✓ | · | · | · | · | · | · |
-| `accounting.journal.reverse` | · | · | ✓ | · | · | · | · | · | · |
-| `accounting.period.close` | ✓ | · | ✓ | · | · | · | · | · | · |
-| `accounting.report.read` | ✓ | ✓ | ✓ | · | · | · | · | · | · |
-| `payment.read` | ✓ | ✓ | ✓ | · | · | · | · | · | · |
-| `payment.proof.upload` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | · |
-| `payment.verify` | · | · | ✓ | · | · | · | · | · | · |
-| `payment.pay` | ✓ | · | ✓ | · | · | · | · | · | · |
-| `payment.reject` | · | · | ✓ | · | · | · | · | · | · |
-| **dashboard / reports** | | | | | | | | | |
-| `dashboard.view` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `dashboard.outlet.view` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| `report.sales.read` | ✓ | ✓ | ✓ | · | ✓ | · | · | · | · |
-| `report.logistics.read` | ✓ | ✓ | · | ✓ | · | · | · | · | · |
-| `report.hr.read` | ✓ | ✓ | · | · | · | · | · | ✓ | · |
-| `report.export` | ✓ | ✓ | ✓ | ✓ | · | · | · | ✓ | · |
-| **devices / topology / sync** | | | | | | | | | |
-| `device.read` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| `device.pair` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| `device.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `node.read` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `node.manage` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `topology.read` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `sync.status.read` | ✓ | ✓ | · | · | ✓ | · | · | · | · |
-| `sync.conflict.resolve` | ✓ | ✓ | · | · | · | · | · | · | · |
-| `sync.exception.review` | ✓ | · | ✓ | · | · | · | · | · | · |
-| **kernel** | | | | | | | | | |
-| `notification.read.own` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `attachment.upload` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Permission key                     | OWN | MGR | FIN | KGD | SPV | LDR | KSR | HRA | DRV |
+| ---------------------------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **auth / users / admin**           |     |     |     |     |     |     |     |     |     |
+| `auth.pin.set`                     | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
+| `auth.offline_credential.mint`     | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| `user.read`                        | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `user.create`                      | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `user.update`                      | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `user.deactivate`                  | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `user.role.assign`                 | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `user.location.assign`             | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `user.password.reset`              | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `audit.read`                       | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `settings.read`                    | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   | ✓   | ·   |
+| `settings.manage`                  | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `settings.approval_chain.manage`   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| **location / master data**         |     |     |     |     |     |     |     |     |     |
+| `location.read`                    | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
+| `location.manage`                  | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `storage_area.manage`              | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `item.read`                        | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `item.manage`                      | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `unit.manage`                      | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `product.read`                     | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   |
+| `product.manage`                   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `recipe.read`                      | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `recipe.manage`                    | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| **supplier (FR-SUP-06 role lock)** |     |     |     |     |     |     |     |     |     |
+| `supplier.read`                    | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `supplier.directory.read`          | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `supplier.manage`                  | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `supplier.price.read`              | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `supplier.price.manage`            | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| **inventory**                      |     |     |     |     |     |     |     |     |     |
+| `inventory.balance.read`           | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   |
+| `inventory.movement.read`          | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `inventory.minstock.manage`        | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `inventory.area_transfer.create`   | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `inventory.suggestion.read`        | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| **stock opname**                   |     |     |     |     |     |     |     |     |     |
+| `opname.read`                      | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `opname.create`                    | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `opname.submit`                    | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `opname.approve`                   | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
+| **replenishment**                  |     |     |     |     |     |     |     |     |     |
+| `replenishment.read`               | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `replenishment.create`             | ·   | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   |
+| `replenishment.submit`             | ·   | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   |
+| `replenishment.approve.supervisor` | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| `replenishment.approve.warehouse`  | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `replenishment.amend`              | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
+| **delivery / surat jalan**         |     |     |     |     |     |     |     |     |     |
+| `delivery.read`                    | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ✓   |
+| `delivery.sj.create`               | ·   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `delivery.sj.dispatch`             | ·   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `delivery.sj.cancel`               | ·   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `delivery.drop.execute`            | ·   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   |
+| `delivery.receive`                 | ·   | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   |
+| `delivery.master.manage`           | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| **purchasing / petty cash**        |     |     |     |     |     |     |     |     |     |
+| `purchasing.read`                  | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   |
+| `purchasing.pr.create`             | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
+| `purchasing.pr.approve`            | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `purchasing.po.create`             | ·   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `purchasing.po.approve`            | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `purchasing.po.receive`            | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   | ·   |
+| `purchasing.po.close`              | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `pettycash.read`                   | ✓   | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   |
+| `pettycash.create`                 | ·   | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   |
+| `pettycash.verify`                 | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| **waste / returns**                |     |     |     |     |     |     |     |     |     |
+| `waste.read`                       | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `waste.create`                     | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `waste.approve`                    | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
+| `return.read`                      | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `return.create`                    | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `return.approve`                   | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
+| `return.ship`                      | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `return.receive`                   | ·   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| **POS**                            |     |     |     |     |     |     |     |     |     |
+| `pos.catalog.read`                 | ✓   | ✓   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
+| `pos.shift.open`                   | ·   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
+| `pos.shift.close`                  | ·   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
+| `pos.sale.create`                  | ·   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
+| `pos.sale.read`                    | ✓   | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
+| `pos.void.request`                 | ·   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
+| `pos.void.approve`                 | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| `pos.online_order.record`          | ·   | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
+| `pos.online_order.read`            | ✓   | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
+| `pos.daily_stock.read`             | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ✓   | ·   | ·   |
+| `pos.cash_variance.read`           | ✓   | ✓   | ✓   | ·   | ✓   | ·   | ·   | ✓   | ·   |
+| `pos.cash_variance.approve`        | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| **HR**                             |     |     |     |     |     |     |     |     |     |
+| `hr.attendance.check`              | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
+| `hr.attendance.read`               | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ✓   | ·   |
+| `hr.attendance.correct`            | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `hr.shift.read`                    | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
+| `hr.shift.manage`                  | ·   | ✓   | ·   | ·   | ✓   | ·   | ·   | ✓   | ·   |
+| `hr.employee.read`                 | ✓   | ✓   | ✓   | ·   | ✓   | ·   | ·   | ✓   | ·   |
+| `hr.employee.manage`               | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `hr.leave.request`                 | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
+| `hr.leave.approve`                 | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ✓   | ·   |
+| `hr.leave.read`                    | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ✓   | ·   |
+| **payroll**                        |     |     |     |     |     |     |     |     |     |
+| `payroll.read`                     | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.component.manage`         | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.run.calculate`            | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.run.submit`               | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.run.approve`              | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payroll.run.pay`                  | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payroll.slip.send`                | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.slip.read.own`            | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
+| `payroll.loan.manage`              | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.loan.approve`             | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payroll.statutory.read`           | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.statutory.config`         | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.statutory.enable`         | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| **assets (PMS)**                   |     |     |     |     |     |     |     |     |     |
+| `asset.read`                       | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `asset.manage`                     | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `asset.schedule.manage`            | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `asset.job.execute`                | ·   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `asset.job.verify`                 | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| **accounting / payments**          |     |     |     |     |     |     |     |     |     |
+| `accounting.coa.read`              | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `accounting.coa.manage`            | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `accounting.journal.read`          | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `accounting.journal.post`          | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `accounting.journal.reverse`       | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `accounting.period.close`          | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `accounting.report.read`           | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payment.read`                     | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payment.proof.upload`             | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   |
+| `payment.verify`                   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payment.pay`                      | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payment.reject`                   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| **dashboard / reports**            |     |     |     |     |     |     |     |     |     |
+| `dashboard.view`                   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `dashboard.outlet.view`            | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| `report.sales.read`                | ✓   | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| `report.logistics.read`            | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `report.hr.read`                   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `report.export`                    | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   | ✓   | ·   |
+| **devices / topology / sync**      |     |     |     |     |     |     |     |     |     |
+| `device.read`                      | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| `device.pair`                      | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| `device.manage`                    | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `node.read`                        | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `node.manage`                      | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `topology.read`                    | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `sync.status.read`                 | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
+| `sync.conflict.resolve`            | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `sync.exception.review`            | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| **kernel**                         |     |     |     |     |     |     |     |     |     |
+| `notification.read.own`            | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
+| `attachment.upload`                | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
 
 **137 permission keys** (131 base + 6 from Amendments 1–3). APR mapping: APR-01→`pos.sale.create`(KSR); APR-02→`pos.void.approve`+`replenishment.approve.supervisor`(SPV); APR-03→`replenishment.create`(LDR); APR-04→`delivery.sj.*`(KGD); APR-05→`payment.verify`/`payment.pay`(FIN); APR-06→`opname.approve`/`waste.approve`/`replenishment.approve.warehouse`(KGD); APR-07→Manager ✓s bounded by approval thresholds (§5 amounts); APR-08→Owner report access + top approval steps.
 
@@ -2375,567 +2722,934 @@ Rules of use:
 
 Kernel endpoints (owned by W2-C, not a numbered module):
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/notifications` | `notification.read.own` | `?unreadOnly=&page=` | `Paginated<{id:UUID; type:string; title:string; body:string; payload:object; readAt:ISODateTime\|null; createdAt:ISODateTime}>` | D-03 |
-| POST | `/api/notifications/:id/read` | `notification.read.own` | – | `{id:UUID; readAt:ISODateTime}` | D-03 |
-| POST | `/api/notifications/read-all` | `notification.read.own` | – | `{updated:number}` | D-03 |
-| POST | `/api/attachments/presign` | `attachment.upload` | `{fileName:string; mimeType:string; sizeBytes:number; kind:string; entityType?:string; entityId?:UUID}` | `{attachmentId:UUID; uploadUrl:string; objectKey:string; expiresAt:ISODateTime}` | NFR-09 |
-| POST | `/api/attachments/:id/confirm` | `attachment.upload` | `{sha256:string}` | `Attachment` (`{id, fileName, mimeType, sizeBytes, kind, entityType, entityId, url}`) | NFR-09 |
-| GET | `/api/attachments/:id/url` | (any authenticated; entity-scope checked) | – | `{url:string; expiresAt:ISODateTime}` (presigned GET) | NFR-09 |
-| GET | `/api/audit` | `audit.read` | `?entityType=&entityId=&userId=&module=&locationId=&from=&to=&page=` | `Paginated<AuditRow>` where `AuditRow = {id:UUID; userId:UUID; userName:string; roleKey:string; module:string; action:string; entityType:string; entityId:UUID; beforeValue:object\|null; afterValue:object\|null; reason:string\|null; offlineAuthorized:boolean; occurredAt:ISODateTime}` | FR-AUDIT-01/02 |
-| GET | `/api/approvals/pending` | (any; filtered to caller's role+locations) | `?documentType=&page=` | `Paginated<{approvalId:UUID; documentType:string; documentId:UUID; documentNumber:string; amount:Money\|null; locationId:UUID; locationName:string; requestedBy:string; requestedAt:ISODateTime; stepNo:number; summary:object}>` | SCOPE-IN-10 |
-| GET | `/api/approvals/:documentType/:documentId` | (any; RLS-scoped) | – | `ApprovalDetail = {approvalId:UUID; state:ApprovalState; amount:Money\|null; steps:{stepNo:number; approverRole:string; state:ApprovalStepState; actedBy:string\|null; actedAt:ISODateTime\|null; reason:string\|null; offlineAuthorized:boolean; reverificationStatus:ReverificationStatus\|null}[]}` | FR-LOG-05 |
+| Method | Path                                       | Permission                                 | Request                                                                                                 | Response                                                                                                                                                                                                                                                                                               | FR             |
+| ------ | ------------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
+| GET    | `/api/notifications`                       | `notification.read.own`                    | `?unreadOnly=&page=`                                                                                    | `Paginated<{id:UUID; type:string; title:string; body:string; payload:object; readAt:ISODateTime\|null; createdAt:ISODateTime}>`                                                                                                                                                                        | D-03           |
+| POST   | `/api/notifications/:id/read`              | `notification.read.own`                    | –                                                                                                       | `{id:UUID; readAt:ISODateTime}`                                                                                                                                                                                                                                                                        | D-03           |
+| POST   | `/api/notifications/read-all`              | `notification.read.own`                    | –                                                                                                       | `{updated:number}`                                                                                                                                                                                                                                                                                     | D-03           |
+| POST   | `/api/attachments/presign`                 | `attachment.upload`                        | `{fileName:string; mimeType:string; sizeBytes:number; kind:string; entityType?:string; entityId?:UUID}` | `{attachmentId:UUID; uploadUrl:string; objectKey:string; expiresAt:ISODateTime}`                                                                                                                                                                                                                       | NFR-09         |
+| POST   | `/api/attachments/:id/confirm`             | `attachment.upload`                        | `{sha256:string}`                                                                                       | `Attachment` (`{id, fileName, mimeType, sizeBytes, kind, entityType, entityId, url}`)                                                                                                                                                                                                                  | NFR-09         |
+| GET    | `/api/attachments/:id/url`                 | (any authenticated; entity-scope checked)  | –                                                                                                       | `{url:string; expiresAt:ISODateTime}` (presigned GET)                                                                                                                                                                                                                                                  | NFR-09         |
+| GET    | `/api/audit`                               | `audit.read`                               | `?entityType=&entityId=&userId=&module=&locationId=&from=&to=&page=`                                    | `Paginated<AuditRow>` where `AuditRow = {id:UUID; userId:UUID; userName:string; roleKey:string; module:string; action:string; entityType:string; entityId:UUID; beforeValue:object\|null; afterValue:object\|null; reason:string\|null; offlineAuthorized:boolean; occurredAt:ISODateTime}`            | FR-AUDIT-01/02 |
+| GET    | `/api/approvals/pending`                   | (any; filtered to caller's role+locations) | `?documentType=&page=`                                                                                  | `Paginated<{approvalId:UUID; documentType:string; documentId:UUID; documentNumber:string; amount:Money\|null; locationId:UUID; locationName:string; requestedBy:string; requestedAt:ISODateTime; stepNo:number; summary:object}>`                                                                      | SCOPE-IN-10    |
+| GET    | `/api/approvals/:documentType/:documentId` | (any; RLS-scoped)                          | –                                                                                                       | `ApprovalDetail = {approvalId:UUID; state:ApprovalState; amount:Money\|null; steps:{stepNo:number; approverRole:string; state:ApprovalStepState; actedBy:string\|null; actedAt:ISODateTime\|null; reason:string\|null; offlineAuthorized:boolean; reverificationStatus:ReverificationStatus\|null}[]}` | FR-LOG-05      |
 
 Approve/reject/amend actions are exposed **per document type** on the owning module (`/api/replenishment/:id/approve` etc.) so permissions and side effects stay module-local; all of them delegate to the kernel `ApprovalService` (D-08).
 
 ### 4.1 M01 `auth`
 
 ```ts
-interface LoginRes { accessToken: string; refreshToken: string; user: Me }
-interface Me { id: UUID; username: string; name: string; roleKey: string; permissions: string[];
-               locations: {id: UUID; code: string; name: string; type: 'warehouse'|'outlet'; city: string}[];
-               employeeId: UUID | null; mustSetPin: boolean }
-interface OfflineCredentialRes {                 // SYNC-PROTOCOL §7.2 (v1.4) — credential token + registry row
+interface LoginRes {
+  accessToken: string;
+  refreshToken: string;
+  user: Me;
+}
+interface Me {
+  id: UUID;
+  username: string;
+  name: string;
+  roleKey: string;
+  permissions: string[];
+  locations: { id: UUID; code: string; name: string; type: 'warehouse' | 'outlet'; city: string }[];
+  employeeId: UUID | null;
+  mustSetPin: boolean;
+}
+interface OfflineCredentialRes {
+  // SYNC-PROTOCOL §7.2 (v1.4) — credential token + registry row
   credentialId: UUID;
-  token: string;  // unsigned compact token, base64url(JSON.stringify(claims)) — opaque to FE;
-                  // see SYNC-PROTOCOL §7.2 (v1.4)
-  scopes: Record<string, {maxIdr?: Money}>; expiresAt: ISODateTime }
+  token: string; // unsigned compact token, base64url(JSON.stringify(claims)) — opaque to FE;
+  // see SYNC-PROTOCOL §7.2 (v1.4)
+  scopes: Record<string, { maxIdr?: Money }>;
+  expiresAt: ISODateTime;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| POST | `/api/auth/login` | (public) | `{username:string; password:string; deviceId?:UUID}` | `LoginRes` — response additionally includes `offlineCredentials: OfflineCredentialRes[]` when the user holds offline-eligible scopes (§7.6) | FR-POS-02, NFR-03 |
-| POST | `/api/auth/refresh` | (public) | `{refreshToken:string}` | `{accessToken:string; refreshToken:string}` | NFR-03 |
-| POST | `/api/auth/logout` | (any) | `{refreshToken:string}` | `{ok:true}` | NFR-03 |
-| GET | `/api/auth/me` | (any) | – | `Me` | NFR-03 |
-| POST | `/api/auth/pin` | `auth.pin.set` | `{currentPassword:string; pin:string}` (6 digits) | `{ok:true}` | FR-POS-03, D-17 |
-| POST | `/api/auth/pin/verify` | (any) | `{userId:UUID; pin:string; context:'pos_override'\|'approval'}` | `{ok:true; verifierToken:string; expiresAt:ISODateTime}` (5-min single-purpose token) | FR-POS-03 |
-| POST | `/api/auth/offline-credential/refresh` | `auth.offline_credential.mint` | `{deviceId:UUID}` | `OfflineCredentialRes` | D-17 |
-| POST | `/api/auth/offline-credential/:credentialId/revoke` | `auth.offline_credential.mint` (own) or `user.update` | `{reason:string}` | `{ok:true}` (CRL event emitted) | D-17 |
+| Method | Path                                                | Permission                                            | Request                                                         | Response                                                                                                                                    | FR                |
+| ------ | --------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| POST   | `/api/auth/login`                                   | (public)                                              | `{username:string; password:string; deviceId?:UUID}`            | `LoginRes` — response additionally includes `offlineCredentials: OfflineCredentialRes[]` when the user holds offline-eligible scopes (§7.6) | FR-POS-02, NFR-03 |
+| POST   | `/api/auth/refresh`                                 | (public)                                              | `{refreshToken:string}`                                         | `{accessToken:string; refreshToken:string}`                                                                                                 | NFR-03            |
+| POST   | `/api/auth/logout`                                  | (any)                                                 | `{refreshToken:string}`                                         | `{ok:true}`                                                                                                                                 | NFR-03            |
+| GET    | `/api/auth/me`                                      | (any)                                                 | –                                                               | `Me`                                                                                                                                        | NFR-03            |
+| POST   | `/api/auth/pin`                                     | `auth.pin.set`                                        | `{currentPassword:string; pin:string}` (6 digits)               | `{ok:true}`                                                                                                                                 | FR-POS-03, D-17   |
+| POST   | `/api/auth/pin/verify`                              | (any)                                                 | `{userId:UUID; pin:string; context:'pos_override'\|'approval'}` | `{ok:true; verifierToken:string; expiresAt:ISODateTime}` (5-min single-purpose token)                                                       | FR-POS-03         |
+| POST   | `/api/auth/offline-credential/refresh`              | `auth.offline_credential.mint`                        | `{deviceId:UUID}`                                               | `OfflineCredentialRes`                                                                                                                      | D-17              |
+| POST   | `/api/auth/offline-credential/:credentialId/revoke` | `auth.offline_credential.mint` (own) or `user.update` | `{reason:string}`                                               | `{ok:true}` (CRL event emitted)                                                                                                             | D-17              |
 
 ### 4.2 M02 `users`
 
 ```ts
-interface UserRow { id: UUID; username: string; name: string; email: string|null; phone: string|null;
-                    roleKey: string; roleName: string; locations: {id: UUID; name: string}[];
-                    isActive: boolean; lastLoginAt: ISODateTime|null; createdAt: ISODateTime }
+interface UserRow {
+  id: UUID;
+  username: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  roleKey: string;
+  roleName: string;
+  locations: { id: UUID; name: string }[];
+  isActive: boolean;
+  lastLoginAt: ISODateTime | null;
+  createdAt: ISODateTime;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/users` | `user.read` | `?q=&roleKey=&locationId=&active=&page=` | `Paginated<UserRow>` | RBAC-01..08 |
-| GET | `/api/users/:id` | `user.read` | – | `UserRow` | RBAC |
-| POST | `/api/users` | `user.create` | `{username; name; email?; phone?; password; roleKey; locationIds:UUID[]}` | `UserRow` | RBAC, FR-POS-02 |
-| PATCH | `/api/users/:id` | `user.update` | `{name?; email?; phone?}` | `UserRow` | RBAC |
-| PUT | `/api/users/:id/role` | `user.role.assign` | `{roleKey:string}` — cannot assign a role ranked ≥ caller's | `UserRow` | RBAC, APR-07/08 |
-| PUT | `/api/users/:id/locations` | `user.location.assign` | `{locationIds:UUID[]}` | `UserRow` | D-05 |
-| POST | `/api/users/:id/reset-password` | `user.password.reset` | `{newPassword:string}` | `{ok:true}` (revokes sessions) | NFR-03 |
-| DELETE | `/api/users/:id` | `user.deactivate` | – | `{id:UUID; deactivated:true}` (revokes sessions + offline credentials) | NFR-03 |
-| GET | `/api/roles` | `user.read` | – | `{key:string; name:string; permissions:string[]}[]` | RBAC |
+| Method | Path                            | Permission             | Request                                                                   | Response                                                               | FR              |
+| ------ | ------------------------------- | ---------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------- |
+| GET    | `/api/users`                    | `user.read`            | `?q=&roleKey=&locationId=&active=&page=`                                  | `Paginated<UserRow>`                                                   | RBAC-01..08     |
+| GET    | `/api/users/:id`                | `user.read`            | –                                                                         | `UserRow`                                                              | RBAC            |
+| POST   | `/api/users`                    | `user.create`          | `{username; name; email?; phone?; password; roleKey; locationIds:UUID[]}` | `UserRow`                                                              | RBAC, FR-POS-02 |
+| PATCH  | `/api/users/:id`                | `user.update`          | `{name?; email?; phone?}`                                                 | `UserRow`                                                              | RBAC            |
+| PUT    | `/api/users/:id/role`           | `user.role.assign`     | `{roleKey:string}` — cannot assign a role ranked ≥ caller's               | `UserRow`                                                              | RBAC, APR-07/08 |
+| PUT    | `/api/users/:id/locations`      | `user.location.assign` | `{locationIds:UUID[]}`                                                    | `UserRow`                                                              | D-05            |
+| POST   | `/api/users/:id/reset-password` | `user.password.reset`  | `{newPassword:string}`                                                    | `{ok:true}` (revokes sessions)                                         | NFR-03          |
+| DELETE | `/api/users/:id`                | `user.deactivate`      | –                                                                         | `{id:UUID; deactivated:true}` (revokes sessions + offline credentials) | NFR-03          |
+| GET    | `/api/roles`                    | `user.read`            | –                                                                         | `{key:string; name:string; permissions:string[]}[]`                    | RBAC            |
 
 ### 4.3 M03 `location` (incl. storage areas, D-15)
 
 ```ts
-interface Location { id: UUID; code: string; name: string; type: 'warehouse'|'outlet'; city: string;
-                     address: string|null; phone: string|null; latitude: string|null; longitude: string|null;
-                     geofenceRadiusM: number; isActive: boolean; storageAreaCount: number }
-interface StorageArea { id: UUID; locationId: UUID; code: string; name: string; type: StorageAreaType;
-                        tempMin: Temp|null; tempMax: Temp|null; sortOrder: number; isActive: boolean }
+interface Location {
+  id: UUID;
+  code: string;
+  name: string;
+  type: 'warehouse' | 'outlet';
+  city: string;
+  address: string | null;
+  phone: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  geofenceRadiusM: number;
+  isActive: boolean;
+  storageAreaCount: number;
+}
+interface StorageArea {
+  id: UUID;
+  locationId: UUID;
+  code: string;
+  name: string;
+  type: StorageAreaType;
+  tempMin: Temp | null;
+  tempMax: Temp | null;
+  sortOrder: number;
+  isActive: boolean;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/locations` | `location.read` | `?type=&city=&active=&page=` | `Paginated<Location>` | D-05 |
-| GET | `/api/locations/cities` | `location.read` | – | `string[]` (the 4 cities) | FR-LOG-01 |
-| GET | `/api/locations/:id` | `location.read` | – | `Location` | D-05 |
-| POST | `/api/locations` | `location.manage` | `{code; name; type; city; address?; phone?; latitude?; longitude?; geofenceRadiusM?}` | `Location` | NFR-05 |
-| PATCH | `/api/locations/:id` | `location.manage` | partial of POST body | `Location` | NFR-05 |
-| DELETE | `/api/locations/:id` | `location.manage` | – | `{id; deactivated:true}` | NFR-05 |
-| GET | `/api/locations/:id/storage-areas` | `location.read` | `?active=` | `StorageArea[]` | D-15 |
-| POST | `/api/locations/:id/storage-areas` | `storage_area.manage` | `{code; name; type:StorageAreaType; tempMin?:Temp; tempMax?:Temp; sortOrder?}` | `StorageArea` | D-15 |
-| PATCH | `/api/locations/:id/storage-areas/:areaId` | `storage_area.manage` | partial | `StorageArea` | D-15 |
-| DELETE | `/api/locations/:id/storage-areas/:areaId` | `storage_area.manage` | – | `{id; deactivated:true}` — rejected `ERR_AREA_HAS_STOCK` if balance ≠ 0 | D-15 |
+| Method | Path                                       | Permission            | Request                                                                               | Response                                                                | FR        |
+| ------ | ------------------------------------------ | --------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | --------- |
+| GET    | `/api/locations`                           | `location.read`       | `?type=&city=&active=&page=`                                                          | `Paginated<Location>`                                                   | D-05      |
+| GET    | `/api/locations/cities`                    | `location.read`       | –                                                                                     | `string[]` (the 4 cities)                                               | FR-LOG-01 |
+| GET    | `/api/locations/:id`                       | `location.read`       | –                                                                                     | `Location`                                                              | D-05      |
+| POST   | `/api/locations`                           | `location.manage`     | `{code; name; type; city; address?; phone?; latitude?; longitude?; geofenceRadiusM?}` | `Location`                                                              | NFR-05    |
+| PATCH  | `/api/locations/:id`                       | `location.manage`     | partial of POST body                                                                  | `Location`                                                              | NFR-05    |
+| DELETE | `/api/locations/:id`                       | `location.manage`     | –                                                                                     | `{id; deactivated:true}`                                                | NFR-05    |
+| GET    | `/api/locations/:id/storage-areas`         | `location.read`       | `?active=`                                                                            | `StorageArea[]`                                                         | D-15      |
+| POST   | `/api/locations/:id/storage-areas`         | `storage_area.manage` | `{code; name; type:StorageAreaType; tempMin?:Temp; tempMax?:Temp; sortOrder?}`        | `StorageArea`                                                           | D-15      |
+| PATCH  | `/api/locations/:id/storage-areas/:areaId` | `storage_area.manage` | partial                                                                               | `StorageArea`                                                           | D-15      |
+| DELETE | `/api/locations/:id/storage-areas/:areaId` | `storage_area.manage` | –                                                                                     | `{id; deactivated:true}` — rejected `ERR_AREA_HAS_STOCK` if balance ≠ 0 | D-15      |
 
 ### 4.4 M04 `item`
 
 ```ts
-interface Item { id: UUID; sku: string; name: string; categoryId: UUID|null; categoryName: string|null;
-                 baseUnit: {id: UUID; code: string}; storageType: 'frozen'|'chilled'|'dry';
-                 isSellable: boolean; shelfLifeDays: number|null; tempMin: Temp|null; tempMax: Temp|null;
-                 avgCost?: Money; lastPurchaseCost?: Money;   // present only when caller has supplier.price.read
-                 barcode: string|null; isActive: boolean }
+interface Item {
+  id: UUID;
+  sku: string;
+  name: string;
+  categoryId: UUID | null;
+  categoryName: string | null;
+  baseUnit: { id: UUID; code: string };
+  storageType: 'frozen' | 'chilled' | 'dry';
+  isSellable: boolean;
+  shelfLifeDays: number | null;
+  tempMin: Temp | null;
+  tempMax: Temp | null;
+  avgCost?: Money;
+  lastPurchaseCost?: Money; // present only when caller has supplier.price.read
+  barcode: string | null;
+  isActive: boolean;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/items` | `item.read` | `?q=&categoryId=&storageType=&active=&page=` | `Paginated<Item>` (cost fields filtered by `supplier.price.read`) | FR-LOG-06 |
-| GET | `/api/items/:id` | `item.read` | – | `Item` | – |
-| POST | `/api/items` | `item.manage` | `{sku; name; categoryId?; baseUnitId; storageType; isSellable?; shelfLifeDays?; tempMin?; tempMax?; barcode?}` | `Item` | – |
-| PATCH | `/api/items/:id` | `item.manage` | partial | `Item` | – |
-| DELETE | `/api/items/:id` | `item.manage` | – | `{id; deactivated:true}` | – |
-| GET | `/api/items/categories` | `item.read` | – | `{id:UUID; name:string; parentId:UUID\|null; sortOrder:number}[]` | – |
-| POST | `/api/items/categories` | `item.manage` | `{name; parentId?; sortOrder?}` | category | – |
-| PATCH | `/api/items/categories/:id` | `item.manage` | partial | category | – |
-| GET | `/api/units` | `item.read` | – | `{id:UUID; code:string; name:string}[]` | – |
-| POST | `/api/units` | `unit.manage` | `{code; name}` | unit | – |
-| GET | `/api/items/:id/conversions` | `item.read` | – | `{id:UUID; fromUnit:string; toUnit:string; factor:string}[]` | – |
-| PUT | `/api/items/:id/conversions` | `item.manage` | `{conversions:{fromUnitId:UUID; toUnitId:UUID; factor:string}[]}` | conversions list | – |
+| Method | Path                         | Permission    | Request                                                                                                        | Response                                                          | FR        |
+| ------ | ---------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------- |
+| GET    | `/api/items`                 | `item.read`   | `?q=&categoryId=&storageType=&active=&page=`                                                                   | `Paginated<Item>` (cost fields filtered by `supplier.price.read`) | FR-LOG-06 |
+| GET    | `/api/items/:id`             | `item.read`   | –                                                                                                              | `Item`                                                            | –         |
+| POST   | `/api/items`                 | `item.manage` | `{sku; name; categoryId?; baseUnitId; storageType; isSellable?; shelfLifeDays?; tempMin?; tempMax?; barcode?}` | `Item`                                                            | –         |
+| PATCH  | `/api/items/:id`             | `item.manage` | partial                                                                                                        | `Item`                                                            | –         |
+| DELETE | `/api/items/:id`             | `item.manage` | –                                                                                                              | `{id; deactivated:true}`                                          | –         |
+| GET    | `/api/items/categories`      | `item.read`   | –                                                                                                              | `{id:UUID; name:string; parentId:UUID\|null; sortOrder:number}[]` | –         |
+| POST   | `/api/items/categories`      | `item.manage` | `{name; parentId?; sortOrder?}`                                                                                | category                                                          | –         |
+| PATCH  | `/api/items/categories/:id`  | `item.manage` | partial                                                                                                        | category                                                          | –         |
+| GET    | `/api/units`                 | `item.read`   | –                                                                                                              | `{id:UUID; code:string; name:string}[]`                           | –         |
+| POST   | `/api/units`                 | `unit.manage` | `{code; name}`                                                                                                 | unit                                                              | –         |
+| GET    | `/api/items/:id/conversions` | `item.read`   | –                                                                                                              | `{id:UUID; fromUnit:string; toUnit:string; factor:string}[]`      | –         |
+| PUT    | `/api/items/:id/conversions` | `item.manage` | `{conversions:{fromUnitId:UUID; toUnitId:UUID; factor:string}[]}`                                              | conversions list                                                  | –         |
 
 ### 4.5 M05 `product` (menu + recipes/BOM)
 
 ```ts
-interface Product { id: UUID; code: string; name: string; category: string; price: Money;
-                    photoUrl: string|null; sortOrder: number; isActive: boolean; hasRecipe: boolean;
-                    // present (non-empty) only when hasRecipe — the device's offline FR-POS-06 projection seam:
-                    // consumed qty per line = line.qty × (qtySold / recipeYieldQty), same ratio-then-multiply
-                    // RecipeService.explodeForSale uses server-side. Minimal projection (id+qty+unit only,
-                    // no item name/unit code) to keep the precached catalog payload small.
-                    recipeYieldQty?: Qty; recipeLines?: CatalogRecipeLine[] }
-interface CatalogRecipeLine { itemId: UUID; qty: Qty; unitId: UUID }
-interface RecipeLine { itemId: UUID; itemName: string; qty: Qty; unitId: UUID; unitCode: string }
+interface Product {
+  id: UUID;
+  code: string;
+  name: string;
+  category: string;
+  price: Money;
+  photoUrl: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  hasRecipe: boolean;
+  // present (non-empty) only when hasRecipe — the device's offline FR-POS-06 projection seam:
+  // consumed qty per line = line.qty × (qtySold / recipeYieldQty), same ratio-then-multiply
+  // RecipeService.explodeForSale uses server-side. Minimal projection (id+qty+unit only,
+  // no item name/unit code) to keep the precached catalog payload small.
+  recipeYieldQty?: Qty;
+  recipeLines?: CatalogRecipeLine[];
+}
+interface CatalogRecipeLine {
+  itemId: UUID;
+  qty: Qty;
+  unitId: UUID;
+}
+interface RecipeLine {
+  itemId: UUID;
+  itemName: string;
+  qty: Qty;
+  unitId: UUID;
+  unitCode: string;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/products` | `product.read` | `?q=&category=&active=&page=` | `Paginated<Product>` | FR-POS-01 |
-| GET | `/api/products/:id` | `product.read` | – | `Product` | – |
-| POST | `/api/products` | `product.manage` | `{code; name; category; price:Money; photoAttachmentId?; sortOrder?}` | `Product` | – |
-| PATCH | `/api/products/:id` | `product.manage` | partial (price change emits `products.price_changed` master event) | `Product` | – |
-| DELETE | `/api/products/:id` | `product.manage` | – | `{id; deactivated:true}` | – |
-| GET | `/api/products/:id/recipe` | `recipe.read` | – | `{productId:UUID; yieldQty:Qty; lines:RecipeLine[]}` | FR-POS-06 |
-| PUT | `/api/products/:id/recipe` | `recipe.manage` | `{yieldQty:Qty; lines:{itemId:UUID; qty:Qty; unitId:UUID}[]}` | recipe | FR-POS-06 |
-| GET | `/api/products/categories` | `product.read` | – | `string[]` | – |
+| Method | Path                       | Permission       | Request                                                               | Response                                             | FR        |
+| ------ | -------------------------- | ---------------- | --------------------------------------------------------------------- | ---------------------------------------------------- | --------- |
+| GET    | `/api/products`            | `product.read`   | `?q=&category=&active=&page=`                                         | `Paginated<Product>`                                 | FR-POS-01 |
+| GET    | `/api/products/:id`        | `product.read`   | –                                                                     | `Product`                                            | –         |
+| POST   | `/api/products`            | `product.manage` | `{code; name; category; price:Money; photoAttachmentId?; sortOrder?}` | `Product`                                            | –         |
+| PATCH  | `/api/products/:id`        | `product.manage` | partial (price change emits `products.price_changed` master event)    | `Product`                                            | –         |
+| DELETE | `/api/products/:id`        | `product.manage` | –                                                                     | `{id; deactivated:true}`                             | –         |
+| GET    | `/api/products/:id/recipe` | `recipe.read`    | –                                                                     | `{productId:UUID; yieldQty:Qty; lines:RecipeLine[]}` | FR-POS-06 |
+| PUT    | `/api/products/:id/recipe` | `recipe.manage`  | `{yieldQty:Qty; lines:{itemId:UUID; qty:Qty; unitId:UUID}[]}`         | recipe                                               | FR-POS-06 |
+| GET    | `/api/products/categories` | `product.read`   | –                                                                     | `string[]`                                           | –         |
 
 ### 4.6 M06 `supplier` (FR-SUP-01..06; price data role-locked)
 
 ```ts
-interface Supplier { id: UUID; code: string; name: string; contactName: string|null; phone: string|null;
-                     email: string|null; address: string|null; paymentTermsDays: number;
-                     bankName: string|null; bankAccount: string|null; outletVisible: boolean; isActive: boolean }
+interface Supplier {
+  id: UUID;
+  code: string;
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  paymentTermsDays: number;
+  bankName: string | null;
+  bankAccount: string | null;
+  outletVisible: boolean;
+  isActive: boolean;
+}
 // Amendment 3: the projected shape outlet roles (SPV/LDR) receive — name/contact ONLY.
 // harga beli, termin (paymentTermsDays), bank fields, and purchase history NEVER appear in this shape.
-interface SupplierDirectoryEntry { id: UUID; code: string; name: string; contactName: string|null;
-                                   phone: string|null; address: string|null }
-interface SupplierItem { id: UUID; itemId: UUID; itemName: string; supplierSku: string|null;
-                         currentPrice: Money; leadTimeDays: number; isPreferred: boolean }
+interface SupplierDirectoryEntry {
+  id: UUID;
+  code: string;
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  address: string | null;
+}
+interface SupplierItem {
+  id: UUID;
+  itemId: UUID;
+  itemName: string;
+  supplierSku: string | null;
+  currentPrice: Money;
+  leadTimeDays: number;
+  isPreferred: boolean;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/suppliers` | `supplier.read` | `?q=&active=&page=` | `Paginated<Supplier>` (full shape; outlet roles get 403 here — their path is `/directory`) | FR-SUP-01/06 |
-| GET | `/api/suppliers/directory` | `supplier.directory.read` | `?q=&page=` | `Paginated<SupplierDirectoryEntry>` — only rows with `outlet_visible=true` for SPV/LDR (RLS §1.14); full-permission roles see all rows in the same reduced shape. Powers the petty-cash `storeName` picker (PRD 8.6.1) — `petty_cash.store_name` stays free text (a warung need not be a registered supplier), the directory assists. **Online-only**: suppliers are sync class X (never cached on devices); offline petty cash falls back to free text | FR-SUP-06, 8.6.1, Amendment 3 |
-| GET | `/api/suppliers/:id` | `supplier.read` | – | `Supplier` | FR-SUP-01 |
-| POST | `/api/suppliers` | `supplier.manage` | `{code; name; contactName?; phone?; email?; address?; paymentTermsDays?; bankName?; bankAccount?; bankAccountName?; outletVisible?:boolean}` | `Supplier` | FR-SUP-01, Amendment 3 |
-| PATCH | `/api/suppliers/:id` | `supplier.manage` | partial | `Supplier` | FR-SUP-01 |
-| DELETE | `/api/suppliers/:id` | `supplier.manage` | – | `{id; deactivated:true}` | FR-SUP-01 |
-| GET | `/api/suppliers/:id/items` | `supplier.price.read` | – | `SupplierItem[]` | FR-SUP-03 |
-| PUT | `/api/suppliers/:id/items/:itemId` | `supplier.price.manage` | `{supplierSku?; currentPrice:Money; leadTimeDays?; isPreferred?}` — price change appends `supplier_price_history` | `SupplierItem` | FR-SUP-03/04 |
-| DELETE | `/api/suppliers/:id/items/:itemId` | `supplier.price.manage` | – | `{ok:true}` | FR-SUP-03 |
-| GET | `/api/suppliers/:id/price-history` | `supplier.price.read` | `?itemId=&page=` | `Paginated<{itemId:UUID; itemName:string; price:Money; effectiveDate:ISODate; source:'manual'\|'po'; recordedBy:string}>` | FR-SUP-04 |
-| GET | `/api/suppliers/:id/transactions` | `supplier.read` | `?from=&to=&page=` | `Paginated<{poId:UUID; poNumber:string; orderDate:ISODate; status:string; total:Money; paymentStatus:PaymentStatus\|null}>` | FR-SUP-02/05 |
+| Method | Path                               | Permission                | Request                                                                                                                                      | Response                                                                                                                                                                                                                                                                                                                                                                                                                                                | FR                            |
+| ------ | ---------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| GET    | `/api/suppliers`                   | `supplier.read`           | `?q=&active=&page=`                                                                                                                          | `Paginated<Supplier>` (full shape; outlet roles get 403 here — their path is `/directory`)                                                                                                                                                                                                                                                                                                                                                              | FR-SUP-01/06                  |
+| GET    | `/api/suppliers/directory`         | `supplier.directory.read` | `?q=&page=`                                                                                                                                  | `Paginated<SupplierDirectoryEntry>` — only rows with `outlet_visible=true` for SPV/LDR (RLS §1.14); full-permission roles see all rows in the same reduced shape. Powers the petty-cash `storeName` picker (PRD 8.6.1) — `petty_cash.store_name` stays free text (a warung need not be a registered supplier), the directory assists. **Online-only**: suppliers are sync class X (never cached on devices); offline petty cash falls back to free text | FR-SUP-06, 8.6.1, Amendment 3 |
+| GET    | `/api/suppliers/:id`               | `supplier.read`           | –                                                                                                                                            | `Supplier`                                                                                                                                                                                                                                                                                                                                                                                                                                              | FR-SUP-01                     |
+| POST   | `/api/suppliers`                   | `supplier.manage`         | `{code; name; contactName?; phone?; email?; address?; paymentTermsDays?; bankName?; bankAccount?; bankAccountName?; outletVisible?:boolean}` | `Supplier`                                                                                                                                                                                                                                                                                                                                                                                                                                              | FR-SUP-01, Amendment 3        |
+| PATCH  | `/api/suppliers/:id`               | `supplier.manage`         | partial                                                                                                                                      | `Supplier`                                                                                                                                                                                                                                                                                                                                                                                                                                              | FR-SUP-01                     |
+| DELETE | `/api/suppliers/:id`               | `supplier.manage`         | –                                                                                                                                            | `{id; deactivated:true}`                                                                                                                                                                                                                                                                                                                                                                                                                                | FR-SUP-01                     |
+| GET    | `/api/suppliers/:id/items`         | `supplier.price.read`     | –                                                                                                                                            | `SupplierItem[]`                                                                                                                                                                                                                                                                                                                                                                                                                                        | FR-SUP-03                     |
+| PUT    | `/api/suppliers/:id/items/:itemId` | `supplier.price.manage`   | `{supplierSku?; currentPrice:Money; leadTimeDays?; isPreferred?}` — price change appends `supplier_price_history`                            | `SupplierItem`                                                                                                                                                                                                                                                                                                                                                                                                                                          | FR-SUP-03/04                  |
+| DELETE | `/api/suppliers/:id/items/:itemId` | `supplier.price.manage`   | –                                                                                                                                            | `{ok:true}`                                                                                                                                                                                                                                                                                                                                                                                                                                             | FR-SUP-03                     |
+| GET    | `/api/suppliers/:id/price-history` | `supplier.price.read`     | `?itemId=&page=`                                                                                                                             | `Paginated<{itemId:UUID; itemName:string; price:Money; effectiveDate:ISODate; source:'manual'\|'po'; recordedBy:string}>`                                                                                                                                                                                                                                                                                                                               | FR-SUP-04                     |
+| GET    | `/api/suppliers/:id/transactions`  | `supplier.read`           | `?from=&to=&page=`                                                                                                                           | `Paginated<{poId:UUID; poNumber:string; orderDate:ISODate; status:string; total:Money; paymentStatus:PaymentStatus\|null}>`                                                                                                                                                                                                                                                                                                                             | FR-SUP-02/05                  |
 
 ### 4.7 M07 `inventory` (balances per storage area, movements, min-stock, low stock — FR-LOG-06/07/17..21)
 
 ```ts
-interface Balance { locationId: UUID; storageAreaId: UUID; storageAreaName: string; storageAreaType: StorageAreaType;
-                    itemId: UUID; sku: string; itemName: string; unitCode: string; qtyOnHand: Qty;
-                    minQty: Qty|null; belowMin: boolean; value?: Money /* qty × avgCost; needs supplier.price.read */ }
-interface Movement { id: UUID; movementType: MovementType; qty: Qty; unitCost?: Money; refType: string; refId: UUID|null;
-                     storageAreaName: string; counterpartyLocationName: string|null; actorName: string|null;
-                     reason: string|null; occurredAt: ISODateTime }
+interface Balance {
+  locationId: UUID;
+  storageAreaId: UUID;
+  storageAreaName: string;
+  storageAreaType: StorageAreaType;
+  itemId: UUID;
+  sku: string;
+  itemName: string;
+  unitCode: string;
+  qtyOnHand: Qty;
+  minQty: Qty | null;
+  belowMin: boolean;
+  value?: Money; /* qty × avgCost; needs supplier.price.read */
+}
+interface Movement {
+  id: UUID;
+  movementType: MovementType;
+  qty: Qty;
+  unitCost?: Money;
+  refType: string;
+  refId: UUID | null;
+  storageAreaName: string;
+  counterpartyLocationName: string | null;
+  actorName: string | null;
+  reason: string | null;
+  occurredAt: ISODateTime;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/inventory/balances` | `inventory.balance.read` | `?locationId=&storageAreaId=&itemId=&belowMin=&q=&page=` | `Paginated<Balance>` | FR-LOG-20, FR-POS-06, D-15 |
-| GET | `/api/inventory/summary` | `inventory.balance.read` | `?locationId=` | `{totalItems:number; belowMin:number; stockValue?:Money; byArea:{storageAreaId:UUID; name:string; items:number}[]}` | FR-LOG-20 |
-| GET | `/api/inventory/movements` | `inventory.movement.read` | `?locationId=&itemId=&storageAreaId=&movementType=&from=&to=&page=` | `Paginated<Movement>` | FR-LOG-21, FR-SO-04 |
-| GET | `/api/inventory/low-stock` | `inventory.balance.read` | `?locationId=` | `{locationId:UUID; itemId:UUID; itemName:string; qtyOnHand:Qty; minQty:Qty; suggestedQty:Qty\|null}[]` | FR-LOG-07/18/20 |
-| GET | `/api/inventory/min-stock` | `inventory.balance.read` | `?locationId=&page=` | `Paginated<{id:UUID; locationId:UUID; itemId:UUID; itemName:string; minQty:Qty; reorderQty:Qty\|null; isActive:boolean}>` | FR-LOG-06/17 |
-| PUT | `/api/inventory/min-stock` | `inventory.minstock.manage` | `{locationId:UUID; rules:{itemId:UUID; minQty:Qty; reorderQty?:Qty}[]}` (bulk upsert) | updated rules list | FR-LOG-06/17 |
-| GET | `/api/inventory/suggestions` | `inventory.suggestion.read` | `?locationId=` | `{itemId:UUID; itemName:string; qtyOnHand:Qty; minQty:Qty; avgDailyUsage:Qty; suggestedQty:Qty; basis:'usage_pattern'\|'reorder_qty'}[]` — usage from `mv_item_usage_daily` (14-day window) | FR-LOG-08/19 |
-| POST | `/api/inventory/area-transfer` | `inventory.area_transfer.create` | `{locationId:UUID; itemId:UUID; fromAreaId:UUID; toAreaId:UUID; qty:Qty; reason?:string}` — posts `transfer_out`+`transfer_in` via ledger (strict) | `{ok:true; movements:Movement[]}` | D-15 |
-| GET | `/api/inventory/history/:itemId` | `inventory.movement.read` | `?locationId=&days=30` | `{date:ISODate; qtyIn:Qty; qtyOut:Qty; closing:Qty}[]` | FR-LOG-21 |
+| Method | Path                             | Permission                       | Request                                                                                                                                            | Response                                                                                                                                                                                    | FR                         |
+| ------ | -------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| GET    | `/api/inventory/balances`        | `inventory.balance.read`         | `?locationId=&storageAreaId=&itemId=&belowMin=&q=&page=`                                                                                           | `Paginated<Balance>`                                                                                                                                                                        | FR-LOG-20, FR-POS-06, D-15 |
+| GET    | `/api/inventory/summary`         | `inventory.balance.read`         | `?locationId=`                                                                                                                                     | `{totalItems:number; belowMin:number; stockValue?:Money; byArea:{storageAreaId:UUID; name:string; items:number}[]}`                                                                         | FR-LOG-20                  |
+| GET    | `/api/inventory/movements`       | `inventory.movement.read`        | `?locationId=&itemId=&storageAreaId=&movementType=&from=&to=&page=`                                                                                | `Paginated<Movement>`                                                                                                                                                                       | FR-LOG-21, FR-SO-04        |
+| GET    | `/api/inventory/low-stock`       | `inventory.balance.read`         | `?locationId=`                                                                                                                                     | `{locationId:UUID; itemId:UUID; itemName:string; qtyOnHand:Qty; minQty:Qty; suggestedQty:Qty\|null}[]`                                                                                      | FR-LOG-07/18/20            |
+| GET    | `/api/inventory/min-stock`       | `inventory.balance.read`         | `?locationId=&page=`                                                                                                                               | `Paginated<{id:UUID; locationId:UUID; itemId:UUID; itemName:string; minQty:Qty; reorderQty:Qty\|null; isActive:boolean}>`                                                                   | FR-LOG-06/17               |
+| PUT    | `/api/inventory/min-stock`       | `inventory.minstock.manage`      | `{locationId:UUID; rules:{itemId:UUID; minQty:Qty; reorderQty?:Qty}[]}` (bulk upsert)                                                              | updated rules list                                                                                                                                                                          | FR-LOG-06/17               |
+| GET    | `/api/inventory/suggestions`     | `inventory.suggestion.read`      | `?locationId=`                                                                                                                                     | `{itemId:UUID; itemName:string; qtyOnHand:Qty; minQty:Qty; avgDailyUsage:Qty; suggestedQty:Qty; basis:'usage_pattern'\|'reorder_qty'}[]` — usage from `mv_item_usage_daily` (14-day window) | FR-LOG-08/19               |
+| POST   | `/api/inventory/area-transfer`   | `inventory.area_transfer.create` | `{locationId:UUID; itemId:UUID; fromAreaId:UUID; toAreaId:UUID; qty:Qty; reason?:string}` — posts `transfer_out`+`transfer_in` via ledger (strict) | `{ok:true; movements:Movement[]}`                                                                                                                                                           | D-15                       |
+| GET    | `/api/inventory/history/:itemId` | `inventory.movement.read`        | `?locationId=&days=30`                                                                                                                             | `{date:ISODate; qtyIn:Qty; qtyOut:Qty; closing:Qty}[]`                                                                                                                                      | FR-LOG-21                  |
 
 Low-stock crossing (balance falls below `min_qty` after any ledger post) emits `NotificationService` `low_stock` to LDR/SPV of the location (+KGD for warehouse) — FR-LOG-07/18.
 
 ### 4.8 M08 `stock-opname` (FR-SO-01..04; per storage area D-15)
 
 ```ts
-interface Opname { id: UUID; opnameNumber: string; locationId: UUID; locationName: string;
-                   storageAreaId: UUID|null; status: OpnameStatus; countedBy: string; startedAt: ISODateTime;
-                   submittedAt: ISODateTime|null; approvedBy: string|null; approvedAt: ISODateTime|null;
-                   totalVarianceValue?: Money; lineCount: number; disputedCount: number }
-interface OpnameLine { id: UUID; storageAreaId: UUID; storageAreaName: string; itemId: UUID; itemName: string;
-                       unitCode: string; systemQty: Qty; countedQty: Qty; diffQty: Qty; varianceReason: string|null;
-                       disputed: boolean /* C1 double-count flag */ }
+interface Opname {
+  id: UUID;
+  opnameNumber: string;
+  locationId: UUID;
+  locationName: string;
+  storageAreaId: UUID | null;
+  status: OpnameStatus;
+  countedBy: string;
+  startedAt: ISODateTime;
+  submittedAt: ISODateTime | null;
+  approvedBy: string | null;
+  approvedAt: ISODateTime | null;
+  totalVarianceValue?: Money;
+  lineCount: number;
+  disputedCount: number;
+}
+interface OpnameLine {
+  id: UUID;
+  storageAreaId: UUID;
+  storageAreaName: string;
+  itemId: UUID;
+  itemName: string;
+  unitCode: string;
+  systemQty: Qty;
+  countedQty: Qty;
+  diffQty: Qty;
+  varianceReason: string | null;
+  disputed: boolean; /* C1 double-count flag */
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/stock-opname` | `opname.read` | `?locationId=&status=&from=&to=&page=` | `Paginated<Opname>` | FR-SO-01 |
-| GET | `/api/stock-opname/:id` | `opname.read` | – | `Opname & {lines: OpnameLine[]}` | FR-SO-02 |
-| POST | `/api/stock-opname` | `opname.create` | `{locationId:UUID; storageAreaId?:UUID}` → status `counting`, snapshots `systemQty` per line lazily at count | `Opname` | FR-SO-01 |
-| PUT | `/api/stock-opname/:id/lines` | `opname.create` | `{lines:{storageAreaId:UUID; itemId:UUID; countedQty:Qty; varianceReason?:string}[]}` (upsert batch = one storage area) | `OpnameLine[]` | FR-SO-02 |
-| POST | `/api/stock-opname/:id/lines/:lineId/resolve` | `opname.approve` | `{chosenEventId:UUID; reason:string}` — resolves a C1 dispute (new event, SYNC-PROTOCOL §5.2) | `OpnameLine` | FR-SO-02 |
-| POST | `/api/stock-opname/:id/submit` | `opname.submit` | – → status `submitted`; rejects `ERR_VARIANCE_REASON_REQUIRED` if any `diffQty≠0` lacks a reason; `ERR_DISPUTES_OPEN` if C1 disputes open | `Opname` | FR-SO-02 |
-| POST | `/api/stock-opname/:id/approve` | `opname.approve` | `{note?:string}` — **online-only** (never offline, §7.6); creates `stock_adjustments` + posts via ledger + `GUDANG/OUTLET_STOCK_ADJUSTMENT` journal; shortfall attributable → payroll POUT-05 source | `Opname` (status `adjusted`) | FR-SO-03/04 |
-| POST | `/api/stock-opname/:id/reject` | `opname.approve` | `{reason:string}` (required) | `Opname` | FR-SO-02/03 |
-| DELETE | `/api/stock-opname/:id` | `opname.create` | – (draft/counting only) | `{id; status:'cancelled'}` | – |
+| Method | Path                                          | Permission       | Request                                                                                                                                                                                              | Response                         | FR          |
+| ------ | --------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ----------- |
+| GET    | `/api/stock-opname`                           | `opname.read`    | `?locationId=&status=&from=&to=&page=`                                                                                                                                                               | `Paginated<Opname>`              | FR-SO-01    |
+| GET    | `/api/stock-opname/:id`                       | `opname.read`    | –                                                                                                                                                                                                    | `Opname & {lines: OpnameLine[]}` | FR-SO-02    |
+| POST   | `/api/stock-opname`                           | `opname.create`  | `{locationId:UUID; storageAreaId?:UUID}` → status `counting`, snapshots `systemQty` per line lazily at count                                                                                         | `Opname`                         | FR-SO-01    |
+| PUT    | `/api/stock-opname/:id/lines`                 | `opname.create`  | `{lines:{storageAreaId:UUID; itemId:UUID; countedQty:Qty; varianceReason?:string}[]}` (upsert batch = one storage area)                                                                              | `OpnameLine[]`                   | FR-SO-02    |
+| POST   | `/api/stock-opname/:id/lines/:lineId/resolve` | `opname.approve` | `{chosenEventId:UUID; reason:string}` — resolves a C1 dispute (new event, SYNC-PROTOCOL §5.2)                                                                                                        | `OpnameLine`                     | FR-SO-02    |
+| POST   | `/api/stock-opname/:id/submit`                | `opname.submit`  | – → status `submitted`; rejects `ERR_VARIANCE_REASON_REQUIRED` if any `diffQty≠0` lacks a reason; `ERR_DISPUTES_OPEN` if C1 disputes open                                                            | `Opname`                         | FR-SO-02    |
+| POST   | `/api/stock-opname/:id/approve`               | `opname.approve` | `{note?:string}` — **online-only** (never offline, §7.6); creates `stock_adjustments` + posts via ledger + `GUDANG/OUTLET_STOCK_ADJUSTMENT` journal; shortfall attributable → payroll POUT-05 source | `Opname` (status `adjusted`)     | FR-SO-03/04 |
+| POST   | `/api/stock-opname/:id/reject`                | `opname.approve` | `{reason:string}` (required)                                                                                                                                                                         | `Opname`                         | FR-SO-02/03 |
+| DELETE | `/api/stock-opname/:id`                       | `opname.create`  | – (draft/counting only)                                                                                                                                                                              | `{id; status:'cancelled'}`       | –           |
 
 ### 4.9 M09 `replenishment` (FR-LOG-06..13)
 
 ```ts
-interface Replenishment { id: UUID; requestNumber: string; locationId: UUID; locationName: string;
-                          status: ReplenishmentStatus; source: 'manual'|'auto_suggestion'; requestedBy: string;
-                          submittedAt: ISODateTime|null; neededBy: ISODate|null; sjId: UUID|null; sjNumber: string|null;
-                          approval: ApprovalDetail|null; lines: ReplenishmentLine[] }
-interface ReplenishmentLine { id: UUID; itemId: UUID; itemName: string; unitCode: string;
-                              qtyRequested: Qty; qtyApproved: Qty|null; qtyShipped: Qty|null; qtyReceived: Qty|null;
-                              amendReason: string|null }
+interface Replenishment {
+  id: UUID;
+  requestNumber: string;
+  locationId: UUID;
+  locationName: string;
+  status: ReplenishmentStatus;
+  source: 'manual' | 'auto_suggestion';
+  requestedBy: string;
+  submittedAt: ISODateTime | null;
+  neededBy: ISODate | null;
+  sjId: UUID | null;
+  sjNumber: string | null;
+  approval: ApprovalDetail | null;
+  lines: ReplenishmentLine[];
+}
+interface ReplenishmentLine {
+  id: UUID;
+  itemId: UUID;
+  itemName: string;
+  unitCode: string;
+  qtyRequested: Qty;
+  qtyApproved: Qty | null;
+  qtyShipped: Qty | null;
+  qtyReceived: Qty | null;
+  amendReason: string | null;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/replenishment` | `replenishment.read` | `?locationId=&status=&from=&to=&page=` | `Paginated<Replenishment>` (without lines) | FR-LOG-11 |
-| GET | `/api/replenishment/:id` | `replenishment.read` | – | `Replenishment` | FR-LOG-11/12 |
-| GET | `/api/replenishment/:id/history` | `replenishment.read` | – | `AuditRow[]` (all status + qty changes) | FR-LOG-12 |
-| POST | `/api/replenishment` | `replenishment.create` | `{locationId:UUID; neededBy?:ISODate; source?:'manual'\|'auto_suggestion'; lines:{itemId:UUID; qtyRequested:Qty; unitId:UUID}[]}` | `Replenishment` (draft) | FR-LOG-09, APR-03 |
-| PATCH | `/api/replenishment/:id` | `replenishment.create` | `{lines?; neededBy?}` (draft only) | `Replenishment` | FR-LOG-09 |
-| POST | `/api/replenishment/:id/submit` | `replenishment.submit` | – → `submitted`, approval chain starts (§5.1) | `Replenishment` | FR-LOG-10 |
-| POST | `/api/replenishment/:id/approve` | step 1: `replenishment.approve.supervisor` · step 2: `replenishment.approve.warehouse` | `{note?:string; amendments?:{lineId:UUID; qtyApproved:Qty; reason:string}[]}` — amendments require `replenishment.amend`; reason REQUIRED per amended line | `Replenishment` | FR-LOG-05/10/13 |
-| POST | `/api/replenishment/:id/reject` | same keys as approve (current step) | `{reason:string}` (required) | `Replenishment` (`rejected`) | FR-LOG-13 |
-| POST | `/api/replenishment/:id/process` | `replenishment.approve.warehouse` | – → `processing` (picking starts) | `Replenishment` | FR-LOG-10 |
-| DELETE | `/api/replenishment/:id` | `replenishment.create` | – (draft only) | `{id; deleted:true}` | – |
-| GET | `/api/replenishment/queue/warehouse` | `replenishment.approve.warehouse` | `?status=awaiting_approval\|approved\|processing` | `Paginated<Replenishment>` — the warehouse work queue; `approved`+`processing` feed SJ building (M10) | FR-LOG-04/10 |
+| Method | Path                                 | Permission                                                                             | Request                                                                                                                                                    | Response                                                                                              | FR                |
+| ------ | ------------------------------------ | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------- |
+| GET    | `/api/replenishment`                 | `replenishment.read`                                                                   | `?locationId=&status=&from=&to=&page=`                                                                                                                     | `Paginated<Replenishment>` (without lines)                                                            | FR-LOG-11         |
+| GET    | `/api/replenishment/:id`             | `replenishment.read`                                                                   | –                                                                                                                                                          | `Replenishment`                                                                                       | FR-LOG-11/12      |
+| GET    | `/api/replenishment/:id/history`     | `replenishment.read`                                                                   | –                                                                                                                                                          | `AuditRow[]` (all status + qty changes)                                                               | FR-LOG-12         |
+| POST   | `/api/replenishment`                 | `replenishment.create`                                                                 | `{locationId:UUID; neededBy?:ISODate; source?:'manual'\|'auto_suggestion'; lines:{itemId:UUID; qtyRequested:Qty; unitId:UUID}[]}`                          | `Replenishment` (draft)                                                                               | FR-LOG-09, APR-03 |
+| PATCH  | `/api/replenishment/:id`             | `replenishment.create`                                                                 | `{lines?; neededBy?}` (draft only)                                                                                                                         | `Replenishment`                                                                                       | FR-LOG-09         |
+| POST   | `/api/replenishment/:id/submit`      | `replenishment.submit`                                                                 | – → `submitted`, approval chain starts (§5.1)                                                                                                              | `Replenishment`                                                                                       | FR-LOG-10         |
+| POST   | `/api/replenishment/:id/approve`     | step 1: `replenishment.approve.supervisor` · step 2: `replenishment.approve.warehouse` | `{note?:string; amendments?:{lineId:UUID; qtyApproved:Qty; reason:string}[]}` — amendments require `replenishment.amend`; reason REQUIRED per amended line | `Replenishment`                                                                                       | FR-LOG-05/10/13   |
+| POST   | `/api/replenishment/:id/reject`      | same keys as approve (current step)                                                    | `{reason:string}` (required)                                                                                                                               | `Replenishment` (`rejected`)                                                                          | FR-LOG-13         |
+| POST   | `/api/replenishment/:id/process`     | `replenishment.approve.warehouse`                                                      | – → `processing` (picking starts)                                                                                                                          | `Replenishment`                                                                                       | FR-LOG-10         |
+| DELETE | `/api/replenishment/:id`             | `replenishment.create`                                                                 | – (draft only)                                                                                                                                             | `{id; deleted:true}`                                                                                  | –                 |
+| GET    | `/api/replenishment/queue/warehouse` | `replenishment.approve.warehouse`                                                      | `?status=awaiting_approval\|approved\|processing`                                                                                                          | `Paginated<Replenishment>` — the warehouse work queue; `approved`+`processing` feed SJ building (M10) | FR-LOG-04/10      |
 
 Status walk (enforced by engine): `draft→submitted→awaiting_approval→approved→processing→shipped→received→completed`, `rejected` from either approval step (§5.1). `shipped/received/completed` are driven by M10 events, never set directly.
 
 ### 4.10 M10 `delivery` — Surat Jalan, drops, cold chain, receiving (D-14; FR-LOG-01..05, 08, 14..16)
 
 ```ts
-interface SuratJalan { id: UUID; sjNumber: string; originLocationId: UUID; shipmentType: 'frozen'|'dry';
-                       driver: {id: UUID; name: string; phone: string|null}; vehicle: {id: UUID; plateNumber: string; hasFreezer: boolean};
-                       status: SuratJalanStatus; plannedDate: ISODate; dispatchedAt: ISODateTime|null; completedAt: ISODateTime|null;
-                       drops: Drop[]; seals: Seal[]; tempLogs: TempLog[]; createdBy: string }
-interface Drop { id: UUID; dropSeq: number; locationId: UUID; locationName: string; city: string;
-                 replenishmentRequestId: UUID|null; status: DropStatus; departedAt: ISODateTime|null; arrivedAt: ISODateTime|null;
-                 receivedBy: string|null; receivedAt: ISODateTime|null; signatureUrl: string|null; photoUrls: string[];
-                 discrepancyNotes: string|null; lines: DropLine[] }
-interface DropLine { id: UUID; itemId: UUID; itemName: string; unitCode: string; storageType: 'frozen'|'chilled'|'dry';
-                     qty: Qty; qtyReceived: Qty|null; receivedStorageAreaId: UUID|null; discrepancyReason: string|null }
-interface TempLog { id: UUID; dropId: UUID|null; stage: 'load'|'depart'|'arrive'; tempC: Temp; isBreach: boolean;
-                    loggedBy: string; loggedAt: ISODateTime }
-interface Seal { id: UUID; dropId: UUID|null; sealNumber: string; status: SealStatus; checkedBy: string|null; checkedAt: ISODateTime|null }
+interface SuratJalan {
+  id: UUID;
+  sjNumber: string;
+  originLocationId: UUID;
+  shipmentType: 'frozen' | 'dry';
+  driver: { id: UUID; name: string; phone: string | null };
+  vehicle: { id: UUID; plateNumber: string; hasFreezer: boolean };
+  status: SuratJalanStatus;
+  plannedDate: ISODate;
+  dispatchedAt: ISODateTime | null;
+  completedAt: ISODateTime | null;
+  drops: Drop[];
+  seals: Seal[];
+  tempLogs: TempLog[];
+  createdBy: string;
+}
+interface Drop {
+  id: UUID;
+  dropSeq: number;
+  locationId: UUID;
+  locationName: string;
+  city: string;
+  replenishmentRequestId: UUID | null;
+  status: DropStatus;
+  departedAt: ISODateTime | null;
+  arrivedAt: ISODateTime | null;
+  receivedBy: string | null;
+  receivedAt: ISODateTime | null;
+  signatureUrl: string | null;
+  photoUrls: string[];
+  discrepancyNotes: string | null;
+  lines: DropLine[];
+}
+interface DropLine {
+  id: UUID;
+  itemId: UUID;
+  itemName: string;
+  unitCode: string;
+  storageType: 'frozen' | 'chilled' | 'dry';
+  qty: Qty;
+  qtyReceived: Qty | null;
+  receivedStorageAreaId: UUID | null;
+  discrepancyReason: string | null;
+}
+interface TempLog {
+  id: UUID;
+  dropId: UUID | null;
+  stage: 'load' | 'depart' | 'arrive';
+  tempC: Temp;
+  isBreach: boolean;
+  loggedBy: string;
+  loggedAt: ISODateTime;
+}
+interface Seal {
+  id: UUID;
+  dropId: UUID | null;
+  sealNumber: string;
+  status: SealStatus;
+  checkedBy: string | null;
+  checkedAt: ISODateTime | null;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/delivery/surat-jalan` | `delivery.read` | `?status=&date=&locationId=&driverId=&page=` | `Paginated<SuratJalan>` (without lines) | FR-LOG-01/03 |
-| GET | `/api/delivery/surat-jalan/:id` | `delivery.read` | – | `SuratJalan` | FR-LOG-01 |
-| POST | `/api/delivery/surat-jalan` | `delivery.sj.create` | `{shipmentType:'frozen'\|'dry'; driverId:UUID; vehicleId:UUID; plannedDate:ISODate; drops:{locationId:UUID; replenishmentRequestId?:UUID; lines:{itemId:UUID; qty:Qty; unitId:UUID; requestLineId?:UUID}[]}[]; notes?}` — frozen SJ requires `vehicle.hasFreezer`; frozen+dry items may not mix (FR-LOG-02, `ERR_SHIPMENT_TYPE_MIX`) | `SuratJalan` (draft; SJ number issued) | FR-LOG-01/02/03, APR-04 |
-| PATCH | `/api/delivery/surat-jalan/:id` | `delivery.sj.create` | drops/lines/driver/vehicle edits (draft/ready only) | `SuratJalan` | FR-LOG-05 |
-| POST | `/api/delivery/surat-jalan/:id/ready` | `delivery.sj.create` | – → `ready` (picking done; linked requests → `processing`) | `SuratJalan` | FR-LOG-10 |
-| POST | `/api/delivery/surat-jalan/:id/load` | `delivery.sj.dispatch` | `{seals:{sealNumber:string}[]; tempC?:Temp}` — temp REQUIRED for frozen (`load` stage log) | `SuratJalan` (`loading`) | D-14 |
-| POST | `/api/delivery/surat-jalan/:id/dispatch` | `delivery.sj.dispatch` | – → `in_transit`; posts `transfer_out` per line via ledger (strict); journal `GUDANG_GOODS_OUT_TO_OUTLET`; linked requests → `shipped` | `SuratJalan` | FR-LOG-16, JGUD-03 |
-| POST | `/api/delivery/surat-jalan/:id/cancel` | `delivery.sj.cancel` | `{reason:string}` (draft/ready/loading only) | `SuratJalan` | FR-LOG-05 |
-| POST | `/api/delivery/drops/:dropId/depart` | `delivery.drop.execute` | `{at?:ISODateTime; tempC?:Temp}` (frozen: temp required, `depart` stage) | `Drop` | D-14 |
-| POST | `/api/delivery/drops/:dropId/arrive` | `delivery.drop.execute` | `{at?:ISODateTime; tempC:Temp /* frozen */; sealCheck?:{sealId:UUID; status:'verified_intact'\|'broken'; notes?}}` | `Drop` | D-14, FR-LOG-14 |
-| POST | `/api/delivery/drops/:dropId/receive` | `delivery.receive` | `{lines:{lineId:UUID; qtyReceived:Qty; receivedStorageAreaId:UUID; discrepancyReason?:string}[]; photoAttachmentIds:UUID[] /* ≥1 wajib */; signatureAttachmentId:UUID; tempC?:Temp; discrepancyNotes?}` — posts `transfer_in` per area (fact mode), journal `OUTLET_GOODS_IN_FROM_WAREHOUSE`, request → `received`; discrepancy is data (C2 handles duplicates) | `Drop` (`completed` or `completed_discrepancy`) | FR-LOG-14/15/16, JOUT-01 |
-| POST | `/api/delivery/drops/:dropId/fail` | `delivery.drop.execute` | `{reason:string}` (outlet closed etc.; stock returns to warehouse on SJ completion) | `Drop` | D-14 |
-| POST | `/api/delivery/temperature-logs` | `delivery.drop.execute` | `{sjId:UUID; dropId?:UUID; stage:'load'\|'depart'\|'arrive'; tempC:Temp}` — breach ⇒ `cold_chain_breach` notification to KGD/MGR/OWN | `TempLog` | D-14, OBJ-03 |
-| GET | `/api/delivery/my-jobs` | `delivery.drop.execute` | `?date=` | `SuratJalan[]` (driver's assigned SJs, full detail — F13 pre-departure cache) | D-14 |
-| GET | `/api/delivery/recap/daily` | `report.logistics.read` | `?date=` | `{date:ISODate; sjCount:number; dropCount:number; byCity:{city:string; outlets:number; items:{itemId:UUID; itemName:string; qty:Qty}[]}[]; frozenSjCount:number; drySjCount:number}` | FR-LOG-04/08 |
-| GET | `/api/delivery/drivers` | `delivery.read` | `?active=` | `{id:UUID; name:string; phone:string\|null; licenseNumber:string\|null; userId:UUID\|null; isActive:boolean}[]` | D-14 |
-| POST | `/api/delivery/drivers` | `delivery.master.manage` | `{name; phone?; licenseNumber?; employeeId?; userId?}` | driver | D-14 |
-| PATCH | `/api/delivery/drivers/:id` | `delivery.master.manage` | partial | driver | D-14 |
-| GET | `/api/delivery/vehicles` | `delivery.read` | `?active=` | `{id:UUID; plateNumber:string; type:string; hasFreezer:boolean; isActive:boolean}[]` | D-14 |
-| POST | `/api/delivery/vehicles` | `delivery.master.manage` | `{plateNumber; type; brand?; model?; hasFreezer?}` | vehicle | D-14 |
-| PATCH | `/api/delivery/vehicles/:id` | `delivery.master.manage` | partial | vehicle | D-14 |
+| Method | Path                                     | Permission               | Request                                                                                                                                                                                                                                                                                                                                                         | Response                                                                                                                                                                             | FR                       |
+| ------ | ---------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| GET    | `/api/delivery/surat-jalan`              | `delivery.read`          | `?status=&date=&locationId=&driverId=&page=`                                                                                                                                                                                                                                                                                                                    | `Paginated<SuratJalan>` (without lines)                                                                                                                                              | FR-LOG-01/03             |
+| GET    | `/api/delivery/surat-jalan/:id`          | `delivery.read`          | –                                                                                                                                                                                                                                                                                                                                                               | `SuratJalan`                                                                                                                                                                         | FR-LOG-01                |
+| POST   | `/api/delivery/surat-jalan`              | `delivery.sj.create`     | `{shipmentType:'frozen'\|'dry'; driverId:UUID; vehicleId:UUID; plannedDate:ISODate; drops:{locationId:UUID; replenishmentRequestId?:UUID; lines:{itemId:UUID; qty:Qty; unitId:UUID; requestLineId?:UUID}[]}[]; notes?}` — frozen SJ requires `vehicle.hasFreezer`; frozen+dry items may not mix (FR-LOG-02, `ERR_SHIPMENT_TYPE_MIX`)                            | `SuratJalan` (draft; SJ number issued)                                                                                                                                               | FR-LOG-01/02/03, APR-04  |
+| PATCH  | `/api/delivery/surat-jalan/:id`          | `delivery.sj.create`     | drops/lines/driver/vehicle edits (draft/ready only)                                                                                                                                                                                                                                                                                                             | `SuratJalan`                                                                                                                                                                         | FR-LOG-05                |
+| POST   | `/api/delivery/surat-jalan/:id/ready`    | `delivery.sj.create`     | – → `ready` (picking done; linked requests → `processing`)                                                                                                                                                                                                                                                                                                      | `SuratJalan`                                                                                                                                                                         | FR-LOG-10                |
+| POST   | `/api/delivery/surat-jalan/:id/load`     | `delivery.sj.dispatch`   | `{seals:{sealNumber:string}[]; tempC?:Temp}` — temp REQUIRED for frozen (`load` stage log)                                                                                                                                                                                                                                                                      | `SuratJalan` (`loading`)                                                                                                                                                             | D-14                     |
+| POST   | `/api/delivery/surat-jalan/:id/dispatch` | `delivery.sj.dispatch`   | – → `in_transit`; posts `transfer_out` per line via ledger (strict); journal `GUDANG_GOODS_OUT_TO_OUTLET`; linked requests → `shipped`                                                                                                                                                                                                                          | `SuratJalan`                                                                                                                                                                         | FR-LOG-16, JGUD-03       |
+| POST   | `/api/delivery/surat-jalan/:id/cancel`   | `delivery.sj.cancel`     | `{reason:string}` (draft/ready/loading only)                                                                                                                                                                                                                                                                                                                    | `SuratJalan`                                                                                                                                                                         | FR-LOG-05                |
+| POST   | `/api/delivery/drops/:dropId/depart`     | `delivery.drop.execute`  | `{at?:ISODateTime; tempC?:Temp}` (frozen: temp required, `depart` stage)                                                                                                                                                                                                                                                                                        | `Drop`                                                                                                                                                                               | D-14                     |
+| POST   | `/api/delivery/drops/:dropId/arrive`     | `delivery.drop.execute`  | `{at?:ISODateTime; tempC:Temp /* frozen */; sealCheck?:{sealId:UUID; status:'verified_intact'\|'broken'; notes?}}`                                                                                                                                                                                                                                              | `Drop`                                                                                                                                                                               | D-14, FR-LOG-14          |
+| POST   | `/api/delivery/drops/:dropId/receive`    | `delivery.receive`       | `{lines:{lineId:UUID; qtyReceived:Qty; receivedStorageAreaId:UUID; discrepancyReason?:string}[]; photoAttachmentIds:UUID[] /* ≥1 wajib */; signatureAttachmentId:UUID; tempC?:Temp; discrepancyNotes?}` — posts `transfer_in` per area (fact mode), journal `OUTLET_GOODS_IN_FROM_WAREHOUSE`, request → `received`; discrepancy is data (C2 handles duplicates) | `Drop` (`completed` or `completed_discrepancy`)                                                                                                                                      | FR-LOG-14/15/16, JOUT-01 |
+| POST   | `/api/delivery/drops/:dropId/fail`       | `delivery.drop.execute`  | `{reason:string}` (outlet closed etc.; stock returns to warehouse on SJ completion)                                                                                                                                                                                                                                                                             | `Drop`                                                                                                                                                                               | D-14                     |
+| POST   | `/api/delivery/temperature-logs`         | `delivery.drop.execute`  | `{sjId:UUID; dropId?:UUID; stage:'load'\|'depart'\|'arrive'; tempC:Temp}` — breach ⇒ `cold_chain_breach` notification to KGD/MGR/OWN                                                                                                                                                                                                                            | `TempLog`                                                                                                                                                                            | D-14, OBJ-03             |
+| GET    | `/api/delivery/my-jobs`                  | `delivery.drop.execute`  | `?date=`                                                                                                                                                                                                                                                                                                                                                        | `SuratJalan[]` (driver's assigned SJs, full detail — F13 pre-departure cache)                                                                                                        | D-14                     |
+| GET    | `/api/delivery/recap/daily`              | `report.logistics.read`  | `?date=`                                                                                                                                                                                                                                                                                                                                                        | `{date:ISODate; sjCount:number; dropCount:number; byCity:{city:string; outlets:number; items:{itemId:UUID; itemName:string; qty:Qty}[]}[]; frozenSjCount:number; drySjCount:number}` | FR-LOG-04/08             |
+| GET    | `/api/delivery/drivers`                  | `delivery.read`          | `?active=`                                                                                                                                                                                                                                                                                                                                                      | `{id:UUID; name:string; phone:string\|null; licenseNumber:string\|null; userId:UUID\|null; isActive:boolean}[]`                                                                      | D-14                     |
+| POST   | `/api/delivery/drivers`                  | `delivery.master.manage` | `{name; phone?; licenseNumber?; employeeId?; userId?}`                                                                                                                                                                                                                                                                                                          | driver                                                                                                                                                                               | D-14                     |
+| PATCH  | `/api/delivery/drivers/:id`              | `delivery.master.manage` | partial                                                                                                                                                                                                                                                                                                                                                         | driver                                                                                                                                                                               | D-14                     |
+| GET    | `/api/delivery/vehicles`                 | `delivery.read`          | `?active=`                                                                                                                                                                                                                                                                                                                                                      | `{id:UUID; plateNumber:string; type:string; hasFreezer:boolean; isActive:boolean}[]`                                                                                                 | D-14                     |
+| POST   | `/api/delivery/vehicles`                 | `delivery.master.manage` | `{plateNumber; type; brand?; model?; hasFreezer?}`                                                                                                                                                                                                                                                                                                              | vehicle                                                                                                                                                                              | D-14                     |
+| PATCH  | `/api/delivery/vehicles/:id`             | `delivery.master.manage` | partial                                                                                                                                                                                                                                                                                                                                                         | vehicle                                                                                                                                                                              | D-14                     |
 
 SJ auto-completes (`completed`) when every drop is terminal; linked requests flip `received→completed` when all lines reconciled.
 
 ### 4.11 M11 `purchasing` (FR-PO-01..04, F-PUR-01..05, petty cash 8.6.1)
 
 ```ts
-interface PurchaseOrder { id: UUID; poNumber: string; supplierId: UUID; supplierName: string; locationId: UUID;
-                          status: PurchaseOrderStatus; orderDate: ISODate; expectedDate: ISODate|null;
-                          paymentTermsDays: number; subtotal: Money; tax: Money; total: Money;
-                          approval: ApprovalDetail|null; paymentStatus: PaymentStatus|null;
-                          lines: {id: UUID; itemId: UUID; itemName: string; unitCode: string; qtyOrdered: Qty;
-                                  unitPrice: Money; lineTotal: Money; qtyReceived: Qty}[] }
-interface PettyCash { id: UUID; pcNumber: string; locationId: UUID; purchasedBy: string; purchaseDate: ISODate;
-                      storeName: string; totalAmount: Money; status: PettyCashStatus; verifiedBy: string|null;
-                      photoUrls: string[]; lines: {description: string; itemId: UUID|null; qty: Qty|null;
-                      amount: Money; expenseCategory: string}[] }
+interface PurchaseOrder {
+  id: UUID;
+  poNumber: string;
+  supplierId: UUID;
+  supplierName: string;
+  locationId: UUID;
+  status: PurchaseOrderStatus;
+  orderDate: ISODate;
+  expectedDate: ISODate | null;
+  paymentTermsDays: number;
+  subtotal: Money;
+  tax: Money;
+  total: Money;
+  approval: ApprovalDetail | null;
+  paymentStatus: PaymentStatus | null;
+  lines: {
+    id: UUID;
+    itemId: UUID;
+    itemName: string;
+    unitCode: string;
+    qtyOrdered: Qty;
+    unitPrice: Money;
+    lineTotal: Money;
+    qtyReceived: Qty;
+  }[];
+}
+interface PettyCash {
+  id: UUID;
+  pcNumber: string;
+  locationId: UUID;
+  purchasedBy: string;
+  purchaseDate: ISODate;
+  storeName: string;
+  totalAmount: Money;
+  status: PettyCashStatus;
+  verifiedBy: string | null;
+  photoUrls: string[];
+  lines: {
+    description: string;
+    itemId: UUID | null;
+    qty: Qty | null;
+    amount: Money;
+    expenseCategory: string;
+  }[];
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/purchasing/requests` | `purchasing.read` | `?locationId=&status=&page=` | `Paginated<{id; prNumber; locationName; status; requestedBy; neededBy; lineCount}>` | F-PUR-01 |
-| GET | `/api/purchasing/requests/:id` | `purchasing.read` | – | PR with lines + `ApprovalDetail` | F-PUR-01 |
-| POST | `/api/purchasing/requests` | `purchasing.pr.create` | `{locationId:UUID; neededBy?:ISODate; lines:{itemId:UUID; qty:Qty; unitId:UUID; estPrice?:Money; suggestedSupplierId?:UUID}[]}` | PR (draft) | F-PUR-01, FR-LOG-19 |
-| POST | `/api/purchasing/requests/:id/submit` | `purchasing.pr.create` | – | PR (`submitted`) | F-PUR-01 |
-| POST | `/api/purchasing/requests/:id/approve` | `purchasing.pr.approve` | `{note?}` | PR (`approved`) | APR-07 |
-| POST | `/api/purchasing/requests/:id/reject` | `purchasing.pr.approve` | `{reason:string}` | PR (`rejected`) | FR-LOG-13 pattern |
-| GET | `/api/purchasing/orders` | `purchasing.read` | `?supplierId=&status=&from=&to=&page=` | `Paginated<PurchaseOrder>` (no lines) | FR-PO-01/02 |
-| GET | `/api/purchasing/orders/:id` | `purchasing.read` | – | `PurchaseOrder` | FR-PO-01 |
-| POST | `/api/purchasing/orders` | `purchasing.po.create` | `{supplierId:UUID; locationId:UUID; prId?:UUID; orderDate:ISODate; expectedDate?:ISODate; lines:{itemId:UUID; qtyOrdered:Qty; unitId:UUID; unitPrice:Money}[]; notes?}` — prices need `supplier.price.read` | `PurchaseOrder` (draft) | FR-PO-01 |
-| PATCH | `/api/purchasing/orders/:id` | `purchasing.po.create` | partial (draft only) | `PurchaseOrder` | FR-PO-01 |
-| POST | `/api/purchasing/orders/:id/submit` | `purchasing.po.create` | – → `pending_approval` (chain per §5.3) | `PurchaseOrder` | APR-07 |
-| POST | `/api/purchasing/orders/:id/approve` | `purchasing.po.approve` | `{note?}` (threshold steps §5.3) | `PurchaseOrder` (`approved`) | APR-07/08 |
-| POST | `/api/purchasing/orders/:id/reject` | `purchasing.po.approve` | `{reason:string}` | `PurchaseOrder` | FR-LOG-13 pattern |
-| POST | `/api/purchasing/orders/:id/issue` | `purchasing.po.create` | – → `issued` (sent to supplier; PO PDF W5-05) | `PurchaseOrder` | FR-PO-02 |
-| POST | `/api/purchasing/orders/:id/receipts` | `purchasing.po.receive` | `{lines:{poLineId:UUID; qtyReceived:Qty; storageAreaId:UUID; conditionNotes?}[]; photoAttachmentIds:UUID[] /* wajib FR-PO-04 */; notes?}` — posts `purchase_in` (strict), updates `qty_received`, avg cost, price history; journal `GUDANG_PURCHASE`; creates `payment_verifications` row (pending) | `PurchaseOrder` (`partially_received`/`received`) | FR-PO-02/03/04, JGUD-01 |
-| POST | `/api/purchasing/orders/:id/cancel` | `purchasing.po.approve` | `{reason:string}` | `PurchaseOrder` | – |
-| POST | `/api/purchasing/orders/:id/close` | `purchasing.po.close` | – (requires payment `paid`) | `PurchaseOrder` (`closed`) | FR-ACCT-04 |
-| GET | `/api/purchasing/petty-cash` | `pettycash.read` | `?locationId=&status=&from=&to=&page=` | `Paginated<PettyCash>` | F-PUR-03 |
-| POST | `/api/purchasing/petty-cash` | `pettycash.create` | `{locationId:UUID; purchaseDate:ISODate; storeName:string; lines:{description:string; itemId?:UUID; storageAreaId?:UUID; qty?:Qty; amount:Money; expenseCategory:string}[]; paymentProofAttachmentId:UUID; goodsPhotoAttachmentId:UUID}` (both photos wajib) | `PettyCash` (pending) | F-PUR-03, 8.6.1 |
-| POST | `/api/purchasing/petty-cash/:id/verify` | `pettycash.verify` | `{note?}` — stockable lines post `purchase_in`; journal `OUTLET_PETTY_CASH`/`OUTLET_DIRECT_PURCHASE`; `payment_verifications` row created (FR-ACCT-04) | `PettyCash` (verified) | 8.6.1, JOUT-07/08 |
-| POST | `/api/purchasing/petty-cash/:id/reject` | `pettycash.verify` | `{reason:string}` | `PettyCash` (rejected) | 8.6.1 |
+| Method | Path                                    | Permission              | Request                                                                                                                                                                                                                                                                                             | Response                                                                            | FR                      |
+| ------ | --------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------- |
+| GET    | `/api/purchasing/requests`              | `purchasing.read`       | `?locationId=&status=&page=`                                                                                                                                                                                                                                                                        | `Paginated<{id; prNumber; locationName; status; requestedBy; neededBy; lineCount}>` | F-PUR-01                |
+| GET    | `/api/purchasing/requests/:id`          | `purchasing.read`       | –                                                                                                                                                                                                                                                                                                   | PR with lines + `ApprovalDetail`                                                    | F-PUR-01                |
+| POST   | `/api/purchasing/requests`              | `purchasing.pr.create`  | `{locationId:UUID; neededBy?:ISODate; lines:{itemId:UUID; qty:Qty; unitId:UUID; estPrice?:Money; suggestedSupplierId?:UUID}[]}`                                                                                                                                                                     | PR (draft)                                                                          | F-PUR-01, FR-LOG-19     |
+| POST   | `/api/purchasing/requests/:id/submit`   | `purchasing.pr.create`  | –                                                                                                                                                                                                                                                                                                   | PR (`submitted`)                                                                    | F-PUR-01                |
+| POST   | `/api/purchasing/requests/:id/approve`  | `purchasing.pr.approve` | `{note?}`                                                                                                                                                                                                                                                                                           | PR (`approved`)                                                                     | APR-07                  |
+| POST   | `/api/purchasing/requests/:id/reject`   | `purchasing.pr.approve` | `{reason:string}`                                                                                                                                                                                                                                                                                   | PR (`rejected`)                                                                     | FR-LOG-13 pattern       |
+| GET    | `/api/purchasing/orders`                | `purchasing.read`       | `?supplierId=&status=&from=&to=&page=`                                                                                                                                                                                                                                                              | `Paginated<PurchaseOrder>` (no lines)                                               | FR-PO-01/02             |
+| GET    | `/api/purchasing/orders/:id`            | `purchasing.read`       | –                                                                                                                                                                                                                                                                                                   | `PurchaseOrder`                                                                     | FR-PO-01                |
+| POST   | `/api/purchasing/orders`                | `purchasing.po.create`  | `{supplierId:UUID; locationId:UUID; prId?:UUID; orderDate:ISODate; expectedDate?:ISODate; lines:{itemId:UUID; qtyOrdered:Qty; unitId:UUID; unitPrice:Money}[]; notes?}` — prices need `supplier.price.read`                                                                                         | `PurchaseOrder` (draft)                                                             | FR-PO-01                |
+| PATCH  | `/api/purchasing/orders/:id`            | `purchasing.po.create`  | partial (draft only)                                                                                                                                                                                                                                                                                | `PurchaseOrder`                                                                     | FR-PO-01                |
+| POST   | `/api/purchasing/orders/:id/submit`     | `purchasing.po.create`  | – → `pending_approval` (chain per §5.3)                                                                                                                                                                                                                                                             | `PurchaseOrder`                                                                     | APR-07                  |
+| POST   | `/api/purchasing/orders/:id/approve`    | `purchasing.po.approve` | `{note?}` (threshold steps §5.3)                                                                                                                                                                                                                                                                    | `PurchaseOrder` (`approved`)                                                        | APR-07/08               |
+| POST   | `/api/purchasing/orders/:id/reject`     | `purchasing.po.approve` | `{reason:string}`                                                                                                                                                                                                                                                                                   | `PurchaseOrder`                                                                     | FR-LOG-13 pattern       |
+| POST   | `/api/purchasing/orders/:id/issue`      | `purchasing.po.create`  | – → `issued` (sent to supplier; PO PDF W5-05)                                                                                                                                                                                                                                                       | `PurchaseOrder`                                                                     | FR-PO-02                |
+| POST   | `/api/purchasing/orders/:id/receipts`   | `purchasing.po.receive` | `{lines:{poLineId:UUID; qtyReceived:Qty; storageAreaId:UUID; conditionNotes?}[]; photoAttachmentIds:UUID[] /* wajib FR-PO-04 */; notes?}` — posts `purchase_in` (strict), updates `qty_received`, avg cost, price history; journal `GUDANG_PURCHASE`; creates `payment_verifications` row (pending) | `PurchaseOrder` (`partially_received`/`received`)                                   | FR-PO-02/03/04, JGUD-01 |
+| POST   | `/api/purchasing/orders/:id/cancel`     | `purchasing.po.approve` | `{reason:string}`                                                                                                                                                                                                                                                                                   | `PurchaseOrder`                                                                     | –                       |
+| POST   | `/api/purchasing/orders/:id/close`      | `purchasing.po.close`   | – (requires payment `paid`)                                                                                                                                                                                                                                                                         | `PurchaseOrder` (`closed`)                                                          | FR-ACCT-04              |
+| GET    | `/api/purchasing/petty-cash`            | `pettycash.read`        | `?locationId=&status=&from=&to=&page=`                                                                                                                                                                                                                                                              | `Paginated<PettyCash>`                                                              | F-PUR-03                |
+| POST   | `/api/purchasing/petty-cash`            | `pettycash.create`      | `{locationId:UUID; purchaseDate:ISODate; storeName:string; lines:{description:string; itemId?:UUID; storageAreaId?:UUID; qty?:Qty; amount:Money; expenseCategory:string}[]; paymentProofAttachmentId:UUID; goodsPhotoAttachmentId:UUID}` (both photos wajib)                                        | `PettyCash` (pending)                                                               | F-PUR-03, 8.6.1         |
+| POST   | `/api/purchasing/petty-cash/:id/verify` | `pettycash.verify`      | `{note?}` — stockable lines post `purchase_in`; journal `OUTLET_PETTY_CASH`/`OUTLET_DIRECT_PURCHASE`; `payment_verifications` row created (FR-ACCT-04)                                                                                                                                              | `PettyCash` (verified)                                                              | 8.6.1, JOUT-07/08       |
+| POST   | `/api/purchasing/petty-cash/:id/reject` | `pettycash.verify`      | `{reason:string}`                                                                                                                                                                                                                                                                                   | `PettyCash` (rejected)                                                              | 8.6.1                   |
 
 ### 4.12 M12 `waste-return` (FR-WST-01..04, both retur directions)
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/waste` | `waste.read` | `?locationId=&status=&reason=&from=&to=&page=` | `Paginated<{id; wasteNumber; batchId; locationName; storageAreaName; itemName; qty:Qty; unitCost:Money; reason:WasteReason; status:WasteStatus; reportedBy; photoUrls:string[]; occurredAt}>` | FR-WST-01/02 |
-| POST | `/api/waste` | `waste.create` | `{locationId:UUID; items:{storageAreaId:UUID; itemId:UUID; qty:Qty; reason:WasteReason; reasonDetail?:string}[]; photoAttachmentIds:UUID[] /* ≥1 wajib */}` → one batch, N records, status pending | waste batch | FR-WST-01 |
-| POST | `/api/waste/:batchId/approve` | `waste.approve` | `{note?}` — outlet step offline-eligible (§7.6); posts `waste_out` (fact mode), journal `GUDANG_WASTE`/`OUTLET_WASTE` | batch (approved) | FR-WST-02/04, JGUD-05, JOUT-04 |
-| POST | `/api/waste/:batchId/reject` | `waste.approve` | `{reason:string}` | batch (rejected) | FR-WST-02 |
-| GET | `/api/returns` | `return.read` | `?direction=&locationId=&status=&page=` | `Paginated<Return>` where `Return = {id; returnNumber; direction:ReturnDirection; fromLocationName; toLocationName\|supplierName; status:ReturnStatus; requestedBy; approvedBy; shippedAt; receivedAt; lines:{itemId; itemName; qty:Qty; condition:ReturnCondition; reason:string; qtyReceived:Qty\|null}[]}` | FR-WST-02 |
-| GET | `/api/returns/:id` | `return.read` | – | `Return & {approval: ApprovalDetail|null; proofUrls: {shipped:string[]; received:string[]}}` | FR-WST-03 |
-| POST | `/api/returns` | `return.create` | `{direction:ReturnDirection; fromLocationId:UUID; toLocationId?:UUID; supplierId?:UUID; lines:{itemId:UUID; storageAreaId:UUID; qty:Qty; condition:ReturnCondition; reason:string}[]; photoAttachmentIds:UUID[] /* wajib */}` | `Return` (draft) | FR-WST-01 |
-| POST | `/api/returns/:id/submit` | `return.create` | – | `Return` (`submitted`) | FR-WST-02 |
-| POST | `/api/returns/:id/approve` | `return.approve` | `{note?}` (outlet→gudang: SPV; gudang→supplier: KGD — §5.5/§5.6) | `Return` (`approved`) | FR-WST-02 |
-| POST | `/api/returns/:id/reject` | `return.approve` | `{reason:string}` | `Return` (`rejected`) | FR-WST-02 |
-| POST | `/api/returns/:id/ship` | `return.ship` | `{proofAttachmentIds:UUID[] /* wajib FR-WST-03 */}` — posts `return_out` at origin (journal `OUTLET_RETURN_TO_WAREHOUSE` / `GUDANG_RETURN_TO_SUPPLIER`) | `Return` (`in_transit`) | FR-WST-03/04, JOUT-05, JGUD-04 |
-| POST | `/api/returns/:id/receive` | `return.receive` | `{lines:{lineId:UUID; qtyReceived:Qty; storageAreaId:UUID}[]; proofAttachmentIds:UUID[] /* wajib */}` — outlet→gudang only: posts `return_in` at warehouse (journal `GUDANG_GOODS_IN`) | `Return` (`received`) | FR-WST-03/04, JGUD-02 |
-| POST | `/api/returns/:id/complete` | `return.approve` | supplier leg: `{supplierAcceptedAt:ISODateTime; creditNoteRef?:string}` | `Return` (`completed`) | FR-WST-04 |
+| Method | Path                          | Permission       | Request                                                                                                                                                                                                                       | Response                                                                                                                                                                                                                                                                                                      | FR                                                       |
+| ------ | ----------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| GET    | `/api/waste`                  | `waste.read`     | `?locationId=&status=&reason=&from=&to=&page=`                                                                                                                                                                                | `Paginated<{id; wasteNumber; batchId; locationName; storageAreaName; itemName; qty:Qty; unitCost:Money; reason:WasteReason; status:WasteStatus; reportedBy; photoUrls:string[]; occurredAt}>`                                                                                                                 | FR-WST-01/02                                             |
+| POST   | `/api/waste`                  | `waste.create`   | `{locationId:UUID; items:{storageAreaId:UUID; itemId:UUID; qty:Qty; reason:WasteReason; reasonDetail?:string}[]; photoAttachmentIds:UUID[] /* ≥1 wajib */}` → one batch, N records, status pending                            | waste batch                                                                                                                                                                                                                                                                                                   | FR-WST-01                                                |
+| POST   | `/api/waste/:batchId/approve` | `waste.approve`  | `{note?}` — outlet step offline-eligible (§7.6); posts `waste_out` (fact mode), journal `GUDANG_WASTE`/`OUTLET_WASTE`                                                                                                         | batch (approved)                                                                                                                                                                                                                                                                                              | FR-WST-02/04, JGUD-05, JOUT-04                           |
+| POST   | `/api/waste/:batchId/reject`  | `waste.approve`  | `{reason:string}`                                                                                                                                                                                                             | batch (rejected)                                                                                                                                                                                                                                                                                              | FR-WST-02                                                |
+| GET    | `/api/returns`                | `return.read`    | `?direction=&locationId=&status=&page=`                                                                                                                                                                                       | `Paginated<Return>` where `Return = {id; returnNumber; direction:ReturnDirection; fromLocationName; toLocationName\|supplierName; status:ReturnStatus; requestedBy; approvedBy; shippedAt; receivedAt; lines:{itemId; itemName; qty:Qty; condition:ReturnCondition; reason:string; qtyReceived:Qty\|null}[]}` | FR-WST-02                                                |
+| GET    | `/api/returns/:id`            | `return.read`    | –                                                                                                                                                                                                                             | `Return & {approval: ApprovalDetail                                                                                                                                                                                                                                                                           | null; proofUrls: {shipped:string[]; received:string[]}}` | FR-WST-03 |
+| POST   | `/api/returns`                | `return.create`  | `{direction:ReturnDirection; fromLocationId:UUID; toLocationId?:UUID; supplierId?:UUID; lines:{itemId:UUID; storageAreaId:UUID; qty:Qty; condition:ReturnCondition; reason:string}[]; photoAttachmentIds:UUID[] /* wajib */}` | `Return` (draft)                                                                                                                                                                                                                                                                                              | FR-WST-01                                                |
+| POST   | `/api/returns/:id/submit`     | `return.create`  | –                                                                                                                                                                                                                             | `Return` (`submitted`)                                                                                                                                                                                                                                                                                        | FR-WST-02                                                |
+| POST   | `/api/returns/:id/approve`    | `return.approve` | `{note?}` (outlet→gudang: SPV; gudang→supplier: KGD — §5.5/§5.6)                                                                                                                                                              | `Return` (`approved`)                                                                                                                                                                                                                                                                                         | FR-WST-02                                                |
+| POST   | `/api/returns/:id/reject`     | `return.approve` | `{reason:string}`                                                                                                                                                                                                             | `Return` (`rejected`)                                                                                                                                                                                                                                                                                         | FR-WST-02                                                |
+| POST   | `/api/returns/:id/ship`       | `return.ship`    | `{proofAttachmentIds:UUID[] /* wajib FR-WST-03 */}` — posts `return_out` at origin (journal `OUTLET_RETURN_TO_WAREHOUSE` / `GUDANG_RETURN_TO_SUPPLIER`)                                                                       | `Return` (`in_transit`)                                                                                                                                                                                                                                                                                       | FR-WST-03/04, JOUT-05, JGUD-04                           |
+| POST   | `/api/returns/:id/receive`    | `return.receive` | `{lines:{lineId:UUID; qtyReceived:Qty; storageAreaId:UUID}[]; proofAttachmentIds:UUID[] /* wajib */}` — outlet→gudang only: posts `return_in` at warehouse (journal `GUDANG_GOODS_IN`)                                        | `Return` (`received`)                                                                                                                                                                                                                                                                                         | FR-WST-03/04, JGUD-02                                    |
+| POST   | `/api/returns/:id/complete`   | `return.approve` | supplier leg: `{supplierAcceptedAt:ISODateTime; creditNoteRef?:string}`                                                                                                                                                       | `Return` (`completed`)                                                                                                                                                                                                                                                                                        | FR-WST-04                                                |
 
 ### 4.13 M13 `pos` (FR-POS-01..07)
 
 ```ts
-interface Shift { id: UUID; shiftNumber: string; locationId: UUID; deviceId: UUID|null; openedBy: string;
-                  openedAt: ISODateTime; openingCash: Money; status: 'open'|'closed'; closedAt: ISODateTime|null;
-                  closingCashCounted: Money|null; expectedCash: Money|null; cashVariance: Money|null;
-                  salesCount: number; grossSales: Money }
-interface Sale { id: UUID; receiptNumber: string; locationId: UUID; shiftId: UUID; kasirName: string;
-                 status: SaleStatus; subtotal: Money; discount: Money; total: Money; paidAmount: Money;
-                 changeAmount: Money; offlineCreated: boolean; occurredAt: ISODateTime;
-                 lines: {productId: UUID; productName: string; qty: Qty; unitPrice: Money; discount: Money; lineTotal: Money}[];
-                 payments: {method: PaymentMethod; amount: Money; reference: string|null; paymentStatus: PaymentStatus}[] }
+interface Shift {
+  id: UUID;
+  shiftNumber: string;
+  locationId: UUID;
+  deviceId: UUID | null;
+  openedBy: string;
+  openedAt: ISODateTime;
+  openingCash: Money;
+  status: 'open' | 'closed';
+  closedAt: ISODateTime | null;
+  closingCashCounted: Money | null;
+  expectedCash: Money | null;
+  cashVariance: Money | null;
+  salesCount: number;
+  grossSales: Money;
+}
+interface Sale {
+  id: UUID;
+  receiptNumber: string;
+  locationId: UUID;
+  shiftId: UUID;
+  kasirName: string;
+  status: SaleStatus;
+  subtotal: Money;
+  discount: Money;
+  total: Money;
+  paidAmount: Money;
+  changeAmount: Money;
+  offlineCreated: boolean;
+  occurredAt: ISODateTime;
+  lines: {
+    productId: UUID;
+    productName: string;
+    qty: Qty;
+    unitPrice: Money;
+    discount: Money;
+    lineTotal: Money;
+  }[];
+  payments: {
+    method: PaymentMethod;
+    amount: Money;
+    reference: string | null;
+    paymentStatus: PaymentStatus;
+  }[];
+}
 ```
 
 POS devices mutate through the W2-E outbox (events `pos_shifts.opened/closed`, `sales.completed`, `void_refunds.*`, `online_orders.recorded`); the endpoints below are the online/apply/test surface for the same service methods. `clientId` = the offline idempotency key; online calls must send one too (generated the same way).
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/pos/catalog` | `pos.catalog.read` | `?locationId=` | `{products: Product[]; categories: string[]; version: string}` — the device precache payload | FR-POS-01 |
-| GET | `/api/pos/shifts/current` | `pos.shift.open` | `?deviceId=&locationId=` | `Shift \| null` | FR-POS-02 |
-| POST | `/api/pos/shifts/open` | `pos.shift.open` | `{clientId:UUID; locationId:UUID; deviceId?:UUID; openingCash:Money; openedAt?:ISODateTime}` | `Shift` | FR-POS-02 |
-| POST | `/api/pos/shifts/:id/close` | `pos.shift.close` | `{closingCashCounted:Money; notes?; closedAt?:ISODateTime}` — cloud recomputes expected cash (R7); a shortfall > `pos.cash_variance_propose_above` **auto-creates a pending `cash_variance_proposals` row** (Amendment 2); overage stays an R7 finance exception | `Shift & {report: ShiftReport}` (`ShiftReport = {byMethod:{method:PaymentMethod; amount:Money; count:number}[]; voids:number; voidAmount:Money; onlineOrders:{platform:OnlinePlatform; count:number; net:Money}[]; cashVarianceProposalId:UUID\|null}`) | FR-POS-02, F-POS-01, Amendment 2 |
-| GET | `/api/pos/shifts` | `pos.sale.read` | `?locationId=&date=&status=&page=` | `Paginated<Shift>` | FR-POS-02 |
-| GET | `/api/pos/shifts/:id/report` | `pos.sale.read` | – | `ShiftReport` (laporan shift) | F-POS-01 |
-| POST | `/api/pos/sales` | `pos.sale.create` | `{clientId:UUID; shiftId:UUID; locationId:UUID; occurredAt:ISODateTime; lines:{productId:UUID; qty:Qty; unitPrice:Money; discount?:Money}[]; payments:{method:PaymentMethod; amount:Money; reference?:string; proofAttachmentId?:UUID}[]; discount?:Money}` — duplicate `clientId` returns the existing sale (200, idempotent); posts recipe `usage_out` (fact mode); payment statuses: cash→`paid`, qris→`verified`, transfer→`pending` | `Sale` | FR-POS-04/06, JOUT-02/03 |
-| GET | `/api/pos/sales` | `pos.sale.read` | `?locationId=&shiftId=&date=&status=&page=` | `Paginated<Sale>` | FR-POS-06 |
-| GET | `/api/pos/sales/:id` | `pos.sale.read` | – | `Sale` | – |
-| POST | `/api/pos/sales/:id/void-request` | `pos.void.request` | `{clientId:UUID; type:'void'\|'refund'; reason:string /* required */; amount?:Money}` | `{voidRefundId:UUID; status:'pending'}` | FR-POS-03 |
-| POST | `/api/pos/void-refunds/:id/approve` | `pos.void.approve` | `{pin:string}` online; offline path = `void_refunds.approved_offline` event (§7.3) | `{id; status:'approved'; offlineAuthorized:boolean}` — reverses payments/usage, journal `SALE_VOID_REVERSAL` | FR-POS-03, APR-02, D-17 |
-| POST | `/api/pos/void-refunds/:id/reject` | `pos.void.approve` | `{reason:string}` | `{id; status:'rejected'}` | FR-POS-03 |
-| GET | `/api/pos/void-refunds` | `pos.sale.read` | `?locationId=&status=&date=&page=` | `Paginated<{id; saleId; receiptNumber; type; amount:Money; reason; status; requestedBy; approvedBy; offlineAuthorized:boolean; reverificationStatus:ReverificationStatus\|null}>` | FR-POS-03 |
-| POST | `/api/pos/online-orders` | `pos.online_order.record` | `{clientId:UUID; locationId:UUID; platform:OnlinePlatform; orderRef:string; orderDate:ISODate; grossAmount:Money; discountAmount:Money; platformFee:Money; otherFee:Money; netReceived:Money; status:OnlineOrderStatus; items?:{productId:UUID; qty:Qty}[]; shiftId?:UUID}` — `netReceived` must equal `gross−discount−fees` (`ERR_NET_MISMATCH`) | online order | FR-POS-05/07 |
-| GET | `/api/pos/online-orders` | `pos.online_order.read` | `?locationId=&platform=&from=&to=&settlement=&page=` | `Paginated<OnlineOrder>` | FR-POS-07 |
-| GET | `/api/pos/daily-stock` | `pos.daily_stock.read` | `?locationId=&date=` | `{itemId:UUID; itemName:string; unitCode:string; opening:Qty; received:Qty; estimatedUsage:Qty; waste:Qty; closing:Qty}[]` — from movements + `mv_item_usage_daily` | FR-POS-06 |
-| GET | `/api/pos/cash-variances` | `pos.cash_variance.read` | `?locationId=&status=&from=&to=&page=` | `Paginated<CashVarianceProposal>` where `CashVarianceProposal = {id:UUID; shiftId:UUID; shiftNumber:string; locationName:string; kasirName:string; employeeId:UUID\|null; amount:Money; status:CashVarianceProposalStatus; decidedBy:string\|null; decidedAt:ISODateTime\|null; decisionReason:string\|null; payrollRunNumber:string\|null; createdAt:ISODateTime}` | Amendment 2 |
-| POST | `/api/pos/cash-variances/:id/approve` | `pos.cash_variance.approve` | `{reason:string /* REQUIRED */}` — **online-only, never offline-authorizable** (§5.9); approved proposal becomes a `deduction_cash_variance` line in the next payroll run | `CashVarianceProposal` (approved) | Amendment 2 |
-| POST | `/api/pos/cash-variances/:id/reject` | `pos.cash_variance.approve` | `{reason:string /* REQUIRED */}` | `CashVarianceProposal` (rejected) | Amendment 2 |
+| Method | Path                                  | Permission                  | Request                                                                                                                                                                                                                                                                                                                                                                                                                                  | Response                                                                                                                                                                                                                                                                                                                                                            | FR                               |
+| ------ | ------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| GET    | `/api/pos/catalog`                    | `pos.catalog.read`          | `?locationId=`                                                                                                                                                                                                                                                                                                                                                                                                                           | `{products: Product[]; categories: string[]; version: string}` — the device precache payload                                                                                                                                                                                                                                                                        | FR-POS-01                        |
+| GET    | `/api/pos/shifts/current`             | `pos.shift.open`            | `?deviceId=&locationId=`                                                                                                                                                                                                                                                                                                                                                                                                                 | `Shift \| null`                                                                                                                                                                                                                                                                                                                                                     | FR-POS-02                        |
+| POST   | `/api/pos/shifts/open`                | `pos.shift.open`            | `{clientId:UUID; locationId:UUID; deviceId?:UUID; openingCash:Money; openedAt?:ISODateTime}`                                                                                                                                                                                                                                                                                                                                             | `Shift`                                                                                                                                                                                                                                                                                                                                                             | FR-POS-02                        |
+| POST   | `/api/pos/shifts/:id/close`           | `pos.shift.close`           | `{closingCashCounted:Money; notes?; closedAt?:ISODateTime}` — cloud recomputes expected cash (R7); a shortfall > `pos.cash_variance_propose_above` **auto-creates a pending `cash_variance_proposals` row** (Amendment 2); overage stays an R7 finance exception                                                                                                                                                                         | `Shift & {report: ShiftReport}` (`ShiftReport = {byMethod:{method:PaymentMethod; amount:Money; count:number}[]; voids:number; voidAmount:Money; onlineOrders:{platform:OnlinePlatform; count:number; net:Money}[]; cashVarianceProposalId:UUID\|null}`)                                                                                                             | FR-POS-02, F-POS-01, Amendment 2 |
+| GET    | `/api/pos/shifts`                     | `pos.sale.read`             | `?locationId=&date=&status=&page=`                                                                                                                                                                                                                                                                                                                                                                                                       | `Paginated<Shift>`                                                                                                                                                                                                                                                                                                                                                  | FR-POS-02                        |
+| GET    | `/api/pos/shifts/:id/report`          | `pos.sale.read`             | –                                                                                                                                                                                                                                                                                                                                                                                                                                        | `ShiftReport` (laporan shift)                                                                                                                                                                                                                                                                                                                                       | F-POS-01                         |
+| POST   | `/api/pos/sales`                      | `pos.sale.create`           | `{clientId:UUID; shiftId:UUID; locationId:UUID; occurredAt:ISODateTime; lines:{productId:UUID; qty:Qty; unitPrice:Money; discount?:Money}[]; payments:{method:PaymentMethod; amount:Money; reference?:string; proofAttachmentId?:UUID}[]; discount?:Money}` — duplicate `clientId` returns the existing sale (200, idempotent); posts recipe `usage_out` (fact mode); payment statuses: cash→`paid`, qris→`verified`, transfer→`pending` | `Sale`                                                                                                                                                                                                                                                                                                                                                              | FR-POS-04/06, JOUT-02/03         |
+| GET    | `/api/pos/sales`                      | `pos.sale.read`             | `?locationId=&shiftId=&date=&status=&page=`                                                                                                                                                                                                                                                                                                                                                                                              | `Paginated<Sale>`                                                                                                                                                                                                                                                                                                                                                   | FR-POS-06                        |
+| GET    | `/api/pos/sales/:id`                  | `pos.sale.read`             | –                                                                                                                                                                                                                                                                                                                                                                                                                                        | `Sale`                                                                                                                                                                                                                                                                                                                                                              | –                                |
+| POST   | `/api/pos/sales/:id/void-request`     | `pos.void.request`          | `{clientId:UUID; type:'void'\|'refund'; reason:string /* required */; amount?:Money}`                                                                                                                                                                                                                                                                                                                                                    | `{voidRefundId:UUID; status:'pending'}`                                                                                                                                                                                                                                                                                                                             | FR-POS-03                        |
+| POST   | `/api/pos/void-refunds/:id/approve`   | `pos.void.approve`          | `{pin:string}` online; offline path = `void_refunds.approved_offline` event (§7.3)                                                                                                                                                                                                                                                                                                                                                       | `{id; status:'approved'; offlineAuthorized:boolean}` — reverses payments/usage, journal `SALE_VOID_REVERSAL`                                                                                                                                                                                                                                                        | FR-POS-03, APR-02, D-17          |
+| POST   | `/api/pos/void-refunds/:id/reject`    | `pos.void.approve`          | `{reason:string}`                                                                                                                                                                                                                                                                                                                                                                                                                        | `{id; status:'rejected'}`                                                                                                                                                                                                                                                                                                                                           | FR-POS-03                        |
+| GET    | `/api/pos/void-refunds`               | `pos.sale.read`             | `?locationId=&status=&date=&page=`                                                                                                                                                                                                                                                                                                                                                                                                       | `Paginated<{id; saleId; receiptNumber; type; amount:Money; reason; status; requestedBy; approvedBy; offlineAuthorized:boolean; reverificationStatus:ReverificationStatus\|null}>`                                                                                                                                                                                   | FR-POS-03                        |
+| POST   | `/api/pos/online-orders`              | `pos.online_order.record`   | `{clientId:UUID; locationId:UUID; platform:OnlinePlatform; orderRef:string; orderDate:ISODate; grossAmount:Money; discountAmount:Money; platformFee:Money; otherFee:Money; netReceived:Money; status:OnlineOrderStatus; items?:{productId:UUID; qty:Qty}[]; shiftId?:UUID}` — `netReceived` must equal `gross−discount−fees` (`ERR_NET_MISMATCH`)                                                                                        | online order                                                                                                                                                                                                                                                                                                                                                        | FR-POS-05/07                     |
+| GET    | `/api/pos/online-orders`              | `pos.online_order.read`     | `?locationId=&platform=&from=&to=&settlement=&page=`                                                                                                                                                                                                                                                                                                                                                                                     | `Paginated<OnlineOrder>`                                                                                                                                                                                                                                                                                                                                            | FR-POS-07                        |
+| GET    | `/api/pos/daily-stock`                | `pos.daily_stock.read`      | `?locationId=&date=`                                                                                                                                                                                                                                                                                                                                                                                                                     | `{itemId:UUID; itemName:string; unitCode:string; opening:Qty; received:Qty; estimatedUsage:Qty; waste:Qty; closing:Qty}[]` — from movements + `mv_item_usage_daily`                                                                                                                                                                                                 | FR-POS-06                        |
+| GET    | `/api/pos/cash-variances`             | `pos.cash_variance.read`    | `?locationId=&status=&from=&to=&page=`                                                                                                                                                                                                                                                                                                                                                                                                   | `Paginated<CashVarianceProposal>` where `CashVarianceProposal = {id:UUID; shiftId:UUID; shiftNumber:string; locationName:string; kasirName:string; employeeId:UUID\|null; amount:Money; status:CashVarianceProposalStatus; decidedBy:string\|null; decidedAt:ISODateTime\|null; decisionReason:string\|null; payrollRunNumber:string\|null; createdAt:ISODateTime}` | Amendment 2                      |
+| POST   | `/api/pos/cash-variances/:id/approve` | `pos.cash_variance.approve` | `{reason:string /* REQUIRED */}` — **online-only, never offline-authorizable** (§5.9); approved proposal becomes a `deduction_cash_variance` line in the next payroll run                                                                                                                                                                                                                                                                | `CashVarianceProposal` (approved)                                                                                                                                                                                                                                                                                                                                   | Amendment 2                      |
+| POST   | `/api/pos/cash-variances/:id/reject`  | `pos.cash_variance.approve` | `{reason:string /* REQUIRED */}`                                                                                                                                                                                                                                                                                                                                                                                                         | `CashVarianceProposal` (rejected)                                                                                                                                                                                                                                                                                                                                   | Amendment 2                      |
 
 ### 4.14 M14 `hr` (FR-HR-01/02, attendance GPS + selfie, shifts, cuti/izin)
 
 ```ts
-interface Employee { id: UUID; employeeNumber: string; userId: UUID|null; name: string; position: string;
-                     locationId: UUID; locationName: string; employmentStatus: EmploymentStatus; joinDate: ISODate;
-                     phone: string|null; /* bank + NIK fields visible only with hr.employee.manage */ }
-interface AttendanceRow { id: UUID; employeeId: UUID; employeeName: string; locationName: string; date: ISODate;
-                          status: AttendanceStatus; checkInAt: ISODateTime|null; checkOutAt: ISODateTime|null;
-                          lateMinutes: number; overtimeMinutes: number; geofenceOk: boolean;
-                          selfieUrls: {in: string|null; out: string|null}; timeSuspect: boolean }
+interface Employee {
+  id: UUID;
+  employeeNumber: string;
+  userId: UUID | null;
+  name: string;
+  position: string;
+  locationId: UUID;
+  locationName: string;
+  employmentStatus: EmploymentStatus;
+  joinDate: ISODate;
+  phone: string | null; /* bank + NIK fields visible only with hr.employee.manage */
+}
+interface AttendanceRow {
+  id: UUID;
+  employeeId: UUID;
+  employeeName: string;
+  locationName: string;
+  date: ISODate;
+  status: AttendanceStatus;
+  checkInAt: ISODateTime | null;
+  checkOutAt: ISODateTime | null;
+  lateMinutes: number;
+  overtimeMinutes: number;
+  geofenceOk: boolean;
+  selfieUrls: { in: string | null; out: string | null };
+  timeSuspect: boolean;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| POST | `/api/hr/attendance/check-in` | `hr.attendance.check` | `{clientId:UUID; locationId:UUID; lat:string; lng:string; accuracyM:number; selfieAttachmentId:UUID /* wajib */; deviceId?:UUID; at?:ISODateTime}` — server computes distance vs geofence (radius from location, default 100 m); outside ⇒ `ERR_GEOFENCE_OUT_OF_RANGE` (no silent accept) | `AttendanceRow` | FR-HR-01 |
-| POST | `/api/hr/attendance/check-out` | `hr.attendance.check` | same shape | `AttendanceRow` (work/late/overtime minutes computed vs shift assignment) | FR-HR-01/03 |
-| GET | `/api/hr/attendance/me` | `hr.attendance.check` | `?month=YYYY-MM` | `AttendanceRow[]` (own) | FR-HR-01 |
-| GET | `/api/hr/attendance` | `hr.attendance.read` | `?locationId=&date=&employeeId=&status=&page=` | `Paginated<AttendanceRow>` | FR-HR-03 |
-| PATCH | `/api/hr/attendance/:id` | `hr.attendance.correct` | `{status?; checkInAt?; checkOutAt?; correctionReason:string /* required */}` | `AttendanceRow` | FR-AUDIT-02 |
-| GET | `/api/hr/attendance/summary` | `hr.attendance.read` | `?periodCode=&locationId=&employeeId=` | `{employeeId:UUID; presentDays:number; lateCount:number; lateMinutes:number; overtimeMinutes:number; sickDays:number; permissionDays:number; absentDays:number; leaveDays:number; disputedRows:number}[]` — the payroll input (POUT-01/02/03/07/08) | FR-HR-03/04 |
-| GET | `/api/hr/employees` | `hr.employee.read` | `?locationId=&status=&q=&page=` | `Paginated<Employee>` | SCOPE-IN-03 |
-| GET | `/api/hr/employees/:id` | `hr.employee.read` | – | `Employee & {employments: {position; locationName; baseSalary?:Money; startDate; endDate}[]}` (salary needs `hr.employee.manage`) | – |
-| POST | `/api/hr/employees` | `hr.employee.manage` | `{employeeNumber; name; nik?; phone?; email?; joinDate; position; locationId; baseSalary:Money; bankName?; bankAccountNumber?; bankAccountName?; userId?}` | `Employee` | ASM-01 |
-| PATCH | `/api/hr/employees/:id` | `hr.employee.manage` | partial + `{employmentChange?:{position; locationId; baseSalary:Money; startDate}}` (appends `employments`) | `Employee` | – |
-| GET | `/api/hr/shifts` | `hr.shift.read` | `?locationId=` | `{id:UUID; name:string; startTime:string; endTime:string; breakMinutes:number}[]` | FR-HR-02 |
-| POST | `/api/hr/shifts` | `hr.shift.manage` | `{locationId?:UUID; name; startTime:'HH:mm'; endTime:'HH:mm'; breakMinutes?}` | shift | FR-HR-02 |
-| PATCH | `/api/hr/shifts/:id` | `hr.shift.manage` | partial | shift | FR-HR-02 |
-| GET | `/api/hr/roster` | `hr.shift.read` | `?locationId=&from=&to=&employeeId=` | `{employeeId:UUID; employeeName:string; days:{date:ISODate; workShiftId:UUID\|null; shiftName:string\|null}[]}[]` | FR-HR-02 |
-| PUT | `/api/hr/roster` | `hr.shift.manage` | `{locationId:UUID; assignments:{employeeId:UUID; date:ISODate; workShiftId:UUID\|null /* null = libur */}[]}` (bulk upsert) | updated roster | FR-HR-02 |
-| GET | `/api/hr/leaves` | `hr.leave.read` | `?locationId=&status=&type=&employeeId=&page=` | `Paginated<Leave>` where `Leave = {id; employeeName; type:LeaveType; startDate; endDate; days:string; reason; status:LeaveStatus; attachmentUrl:string\|null; decidedBy}` | F-HR-06 |
-| GET | `/api/hr/leaves/me` | `hr.leave.request` | `?year=` | `Leave[] & quota: {annual:{total:12; used:number}; marriage:{total:3; used:number}}` | POUT-04 |
-| POST | `/api/hr/leaves` | `hr.leave.request` | `{clientId:UUID; type:LeaveType; startDate:ISODate; endDate:ISODate; reason?:string; attachmentId?:UUID}` — quota checked for annual/marriage | `Leave` (pending) | F-HR-06 |
-| POST | `/api/hr/leaves/:id/approve` | `hr.leave.approve` | `{note?}` (online-only) | `Leave` — approved days write `attendance.status` for the range | POUT-01/02/04 |
-| POST | `/api/hr/leaves/:id/reject` | `hr.leave.approve` | `{reason:string}` | `Leave` | F-HR-06 |
-| POST | `/api/hr/leaves/:id/cancel` | `hr.leave.request` | – (own, pending only) | `Leave` (cancelled) | – |
+| Method | Path                           | Permission              | Request                                                                                                                                                                                                                                                                                   | Response                                                                                                                                                                                                                                            | FR            |
+| ------ | ------------------------------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| POST   | `/api/hr/attendance/check-in`  | `hr.attendance.check`   | `{clientId:UUID; locationId:UUID; lat:string; lng:string; accuracyM:number; selfieAttachmentId:UUID /* wajib */; deviceId?:UUID; at?:ISODateTime}` — server computes distance vs geofence (radius from location, default 100 m); outside ⇒ `ERR_GEOFENCE_OUT_OF_RANGE` (no silent accept) | `AttendanceRow`                                                                                                                                                                                                                                     | FR-HR-01      |
+| POST   | `/api/hr/attendance/check-out` | `hr.attendance.check`   | same shape                                                                                                                                                                                                                                                                                | `AttendanceRow` (work/late/overtime minutes computed vs shift assignment)                                                                                                                                                                           | FR-HR-01/03   |
+| GET    | `/api/hr/attendance/me`        | `hr.attendance.check`   | `?month=YYYY-MM`                                                                                                                                                                                                                                                                          | `AttendanceRow[]` (own)                                                                                                                                                                                                                             | FR-HR-01      |
+| GET    | `/api/hr/attendance`           | `hr.attendance.read`    | `?locationId=&date=&employeeId=&status=&page=`                                                                                                                                                                                                                                            | `Paginated<AttendanceRow>`                                                                                                                                                                                                                          | FR-HR-03      |
+| PATCH  | `/api/hr/attendance/:id`       | `hr.attendance.correct` | `{status?; checkInAt?; checkOutAt?; correctionReason:string /* required */}`                                                                                                                                                                                                              | `AttendanceRow`                                                                                                                                                                                                                                     | FR-AUDIT-02   |
+| GET    | `/api/hr/attendance/summary`   | `hr.attendance.read`    | `?periodCode=&locationId=&employeeId=`                                                                                                                                                                                                                                                    | `{employeeId:UUID; presentDays:number; lateCount:number; lateMinutes:number; overtimeMinutes:number; sickDays:number; permissionDays:number; absentDays:number; leaveDays:number; disputedRows:number}[]` — the payroll input (POUT-01/02/03/07/08) | FR-HR-03/04   |
+| GET    | `/api/hr/employees`            | `hr.employee.read`      | `?locationId=&status=&q=&page=`                                                                                                                                                                                                                                                           | `Paginated<Employee>`                                                                                                                                                                                                                               | SCOPE-IN-03   |
+| GET    | `/api/hr/employees/:id`        | `hr.employee.read`      | –                                                                                                                                                                                                                                                                                         | `Employee & {employments: {position; locationName; baseSalary?:Money; startDate; endDate}[]}` (salary needs `hr.employee.manage`)                                                                                                                   | –             |
+| POST   | `/api/hr/employees`            | `hr.employee.manage`    | `{employeeNumber; name; nik?; phone?; email?; joinDate; position; locationId; baseSalary:Money; bankName?; bankAccountNumber?; bankAccountName?; userId?}`                                                                                                                                | `Employee`                                                                                                                                                                                                                                          | ASM-01        |
+| PATCH  | `/api/hr/employees/:id`        | `hr.employee.manage`    | partial + `{employmentChange?:{position; locationId; baseSalary:Money; startDate}}` (appends `employments`)                                                                                                                                                                               | `Employee`                                                                                                                                                                                                                                          | –             |
+| GET    | `/api/hr/shifts`               | `hr.shift.read`         | `?locationId=`                                                                                                                                                                                                                                                                            | `{id:UUID; name:string; startTime:string; endTime:string; breakMinutes:number}[]`                                                                                                                                                                   | FR-HR-02      |
+| POST   | `/api/hr/shifts`               | `hr.shift.manage`       | `{locationId?:UUID; name; startTime:'HH:mm'; endTime:'HH:mm'; breakMinutes?}`                                                                                                                                                                                                             | shift                                                                                                                                                                                                                                               | FR-HR-02      |
+| PATCH  | `/api/hr/shifts/:id`           | `hr.shift.manage`       | partial                                                                                                                                                                                                                                                                                   | shift                                                                                                                                                                                                                                               | FR-HR-02      |
+| GET    | `/api/hr/roster`               | `hr.shift.read`         | `?locationId=&from=&to=&employeeId=`                                                                                                                                                                                                                                                      | `{employeeId:UUID; employeeName:string; days:{date:ISODate; workShiftId:UUID\|null; shiftName:string\|null}[]}[]`                                                                                                                                   | FR-HR-02      |
+| PUT    | `/api/hr/roster`               | `hr.shift.manage`       | `{locationId:UUID; assignments:{employeeId:UUID; date:ISODate; workShiftId:UUID\|null /* null = libur */}[]}` (bulk upsert)                                                                                                                                                               | updated roster                                                                                                                                                                                                                                      | FR-HR-02      |
+| GET    | `/api/hr/leaves`               | `hr.leave.read`         | `?locationId=&status=&type=&employeeId=&page=`                                                                                                                                                                                                                                            | `Paginated<Leave>` where `Leave = {id; employeeName; type:LeaveType; startDate; endDate; days:string; reason; status:LeaveStatus; attachmentUrl:string\|null; decidedBy}`                                                                           | F-HR-06       |
+| GET    | `/api/hr/leaves/me`            | `hr.leave.request`      | `?year=`                                                                                                                                                                                                                                                                                  | `Leave[] & quota: {annual:{total:12; used:number}; marriage:{total:3; used:number}}`                                                                                                                                                                | POUT-04       |
+| POST   | `/api/hr/leaves`               | `hr.leave.request`      | `{clientId:UUID; type:LeaveType; startDate:ISODate; endDate:ISODate; reason?:string; attachmentId?:UUID}` — quota checked for annual/marriage                                                                                                                                             | `Leave` (pending)                                                                                                                                                                                                                                   | F-HR-06       |
+| POST   | `/api/hr/leaves/:id/approve`   | `hr.leave.approve`      | `{note?}` (online-only)                                                                                                                                                                                                                                                                   | `Leave` — approved days write `attendance.status` for the range                                                                                                                                                                                     | POUT-01/02/04 |
+| POST   | `/api/hr/leaves/:id/reject`    | `hr.leave.approve`      | `{reason:string}`                                                                                                                                                                                                                                                                         | `Leave`                                                                                                                                                                                                                                             | F-HR-06       |
+| POST   | `/api/hr/leaves/:id/cancel`    | `hr.leave.request`      | – (own, pending only)                                                                                                                                                                                                                                                                     | `Leave` (cancelled)                                                                                                                                                                                                                                 | –             |
 
 ### 4.15 M15 `payroll` (FR-HR-03/04, PIN-01..07, POUT-01..09, slip gaji 8.3.3)
 
 ```ts
-interface PayrollRun { id: UUID; runNumber: string; periodCode: string; status: PayrollRunStatus;
-                       statutoryMode: boolean;   // Amendment 1: mode the run executed in (immutable after calculate)
-                       employeeCount: number; totalGross: Money; totalDeductions: Money; totalNet: Money;
-                       totalEmployerCost: Money; // Amendment 1: Σ employer_cost lines (0 when statutoryMode=false)
-                       calculatedAt: ISODateTime|null; approval: ApprovalDetail|null; paidAt: ISODateTime|null }
-interface PayslipLine { componentCode: PayrollComponentCode; componentName: string;
-                        type: 'earning'|'deduction'|'employer_cost'; isStatutory: boolean;
-                        qty: Qty|null; rate: Money|null; amount: Money; sourceRefType: string|null; manualOverride: boolean }
-interface Payslip { runId: UUID; periodCode: string; employee: {id: UUID; name: string; position: string; locationName: string};
-                    lines: PayslipLine[];        // statutory lines present ONLY on statutoryMode runs;
-                                                 // employer_cost lines render as an info section, excluded from net
-                    gross: Money; deductions: Money; net: Money; employerCost: Money; slipPdfUrl: string|null }
+interface PayrollRun {
+  id: UUID;
+  runNumber: string;
+  periodCode: string;
+  status: PayrollRunStatus;
+  statutoryMode: boolean; // Amendment 1: mode the run executed in (immutable after calculate)
+  employeeCount: number;
+  totalGross: Money;
+  totalDeductions: Money;
+  totalNet: Money;
+  totalEmployerCost: Money; // Amendment 1: Σ employer_cost lines (0 when statutoryMode=false)
+  calculatedAt: ISODateTime | null;
+  approval: ApprovalDetail | null;
+  paidAt: ISODateTime | null;
+}
+interface PayslipLine {
+  componentCode: PayrollComponentCode;
+  componentName: string;
+  type: 'earning' | 'deduction' | 'employer_cost';
+  isStatutory: boolean;
+  qty: Qty | null;
+  rate: Money | null;
+  amount: Money;
+  sourceRefType: string | null;
+  manualOverride: boolean;
+}
+interface Payslip {
+  runId: UUID;
+  periodCode: string;
+  employee: { id: UUID; name: string; position: string; locationName: string };
+  lines: PayslipLine[]; // statutory lines present ONLY on statutoryMode runs;
+  // employer_cost lines render as an info section, excluded from net
+  gross: Money;
+  deductions: Money;
+  net: Money;
+  employerCost: Money;
+  slipPdfUrl: string | null;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/payroll/periods` | `payroll.read` | `?page=` | `Paginated<{id; periodCode; startDate; endDate; status; runs:{id; runNumber; status}[]}>` | FR-HR-04 |
-| POST | `/api/payroll/periods` | `payroll.run.calculate` | `{periodCode:'YYYY-MM'}` (dates derived) | period | FR-HR-04 |
-| POST | `/api/payroll/periods/:id/calculate` | `payroll.run.calculate` | `{employeeIds?:UUID[] /* default all active */}` — pulls attendance summary (PIN-02, POUT-01/02/03/07/08), leave quota excess (POUT-04), approved SO shortfalls (POUT-05), active loans (POUT-06), approved cash-variance proposals (Amendment 2), component assignments (PIN-03..07); pure calculators in `packages/shared`. Snapshots `statutoryMode` from `settings payroll.statutory.enabled` — OFF ⇒ exactly the PRD base components, zero statutory lines; ON ⇒ statutory lines computed from the effective-dated `bpjs_configs`/`pph21_*` tables + `employee_tax_profiles` (rejects `ERR_STATUTORY_NOT_READY` if the readiness check fails) | `PayrollRun` (calculated, with lines) | FR-HR-03/04, PIN-*, POUT-*, Amendment 1/2 |
-| GET | `/api/payroll/runs/:id` | `payroll.read` | – | `PayrollRun & {employees: Payslip[]}` | FR-HR-04 |
-| PATCH | `/api/payroll/runs/:id/lines/:lineId` | `payroll.run.calculate` | `{amount:Money; overrideReason:string /* required */}` | `PayslipLine` | FR-AUDIT-02 |
-| POST | `/api/payroll/runs/:id/recalculate` | `payroll.run.calculate` | – (drops non-overridden lines, recomputes) | `PayrollRun` | FR-HR-03 |
-| POST | `/api/payroll/runs/:id/submit` | `payroll.run.submit` | – → `pending_approval` (chain §5.7: Finance → Owner) | `PayrollRun` | FR-HR-04 |
-| POST | `/api/payroll/runs/:id/approve` | `payroll.run.approve` | `{note?}` — final approval posts journal `PAYROLL_ACCRUAL`, creates `payment_verifications` (pending), decrements loan `outstanding` via `employee_loan_payments` | `PayrollRun` (approved) | FR-HR-04, APR-05/08, POUT-06 |
-| POST | `/api/payroll/runs/:id/reject` | `payroll.run.approve` | `{reason:string}` → back to `calculated` | `PayrollRun` | FR-AUDIT-02 |
-| POST | `/api/payroll/runs/:id/mark-paid` | `payroll.run.pay` | `{paymentVerificationId:UUID}` (must be `paid`) → journal `PAYROLL_PAYMENT` | `PayrollRun` (paid) | FR-ACCT-04 |
-| POST | `/api/payroll/runs/:id/send-slips` | `payroll.slip.send` | `{channels:('email'\|'whatsapp')[]}` — renders slip PDFs (W5-05), queues `notification_outbox` per employee | `{queued:number; skippedNoContact:number}` | 8.3.3, D-03 |
-| GET | `/api/payroll/my-slips` | `payroll.slip.read.own` | `?year=` | `Payslip[]` (own, approved runs only) | 8.3.3 |
-| GET | `/api/payroll/components` | `payroll.read` | – | `{id; code:PayrollComponentCode; name; type; calcMethod; formulaKey; defaultAmount:Money\|null; isSystem:boolean}[]` | PIN-07, POUT-09 |
-| POST | `/api/payroll/components` | `payroll.component.manage` | `{code; name; type:'earning'\|'deduction'; calcMethod; defaultAmount?:Money}` (custom components) | component | PIN-07, POUT-09 |
-| PATCH | `/api/payroll/components/:id` | `payroll.component.manage` | partial (system rows: only `defaultAmount`/`isActive`) | component | – |
-| GET | `/api/payroll/employees/:employeeId/components` | `payroll.read` | – | `{componentId:UUID; code:string; amount:Money\|null; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]` | PIN-03..06 |
-| PUT | `/api/payroll/employees/:employeeId/components` | `payroll.component.manage` | `{assignments:{componentId:UUID; amount:Money\|null; effectiveFrom:ISODate}[]}` | assignments | PIN-03..06 |
-| GET | `/api/payroll/loans` | `payroll.read` | `?employeeId=&status=&page=` | `Paginated<{id; loanNumber; employeeName; principal:Money; monthlyInstallment:Money; outstanding:Money; status:LoanStatus}>` | POUT-06 |
-| POST | `/api/payroll/loans` | `payroll.loan.manage` | `{employeeId:UUID; principal:Money; monthlyInstallment:Money; reason?}` | loan (pending) | POUT-06 |
-| POST | `/api/payroll/loans/:id/approve` | `payroll.loan.approve` | `{note?}` → active, `disbursed_at` set, `payment_verifications` row for disbursement | loan | POUT-06, FR-ACCT-04 |
-| POST | `/api/payroll/loans/:id/reject` | `payroll.loan.approve` | `{reason:string}` | loan | – |
-| GET | `/api/payroll/loans/:id/schedule` | `payroll.read` | – | `{paidAt:ISODateTime; amount:Money; method:string; payrollRunNumber:string\|null}[] & {outstanding:Money}` | POUT-06 |
-| GET | `/api/payroll/statutory/status` | `payroll.statutory.read` | – | `{enabled:boolean; ready:boolean; enabledAt:ISODateTime\|null; enabledBy:string\|null; missing:('bpjs_configs'\|'pph21_ter_rates'\|'pph21_ptkp'\|'pph21_article17_brackets'\|'employee_tax_profiles')[]; profileCoverage:{withProfile:number; total:number}}` — the wizard's completeness check ("is statutory payroll ready to enable?") | Amendment 1 |
-| GET | `/api/payroll/statutory/bpjs` | `payroll.statutory.read` | `?program=&asOf=` | `{id:UUID; program:string; employerPct:string; employeePct:string; salaryFloor:Money\|null; salaryCap:Money\|null; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]` | Amendment 1 |
-| PUT | `/api/payroll/statutory/bpjs` | `payroll.statutory.config` | `{rows:{program:'kesehatan'\|'jht'\|'jkk'\|'jkm'\|'jp'; employerPct:string; employeePct:string; salaryFloor?:Money; salaryCap?:Money; effectiveFrom:ISODate}[]}` — inserting a new effective window auto-closes (`effective_to`) the previous row per programme; windows may never overlap (`ERR_EFFECTIVE_OVERLAP`) | updated rows | Amendment 1 |
-| GET | `/api/payroll/statutory/pph21/ter` | `payroll.statutory.read` | `?category=&asOf=` | `{id:UUID; category:'A'\|'B'\|'C'; bracketMin:Money; bracketMax:Money\|null; ratePct:string; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]` | Amendment 1 |
-| PUT | `/api/payroll/statutory/pph21/ter` | `payroll.statutory.config` | `{effectiveFrom:ISODate; rows:{category:'A'\|'B'\|'C'; bracketMin:Money; bracketMax?:Money; ratePct:string}[]}` — replaces the full bracket set per effective date; brackets must be contiguous from 0 per category (`ERR_BRACKET_GAP`) | updated rows | Amendment 1 |
-| GET | `/api/payroll/statutory/pph21/ptkp` | `payroll.statutory.read` | `?asOf=` | `{id:UUID; ptkpCode:string; annualAmount:Money; terCategory:'A'\|'B'\|'C'; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]` | Amendment 1 |
-| PUT | `/api/payroll/statutory/pph21/ptkp` | `payroll.statutory.config` | `{effectiveFrom:ISODate; rows:{ptkpCode:string; annualAmount:Money; terCategory:'A'\|'B'\|'C'}[]}` (full-set replace per effective date) | updated rows | Amendment 1 |
-| GET | `/api/payroll/statutory/pph21/article17` | `payroll.statutory.read` | `?asOf=` | `{id:UUID; bracketMin:Money; bracketMax:Money\|null; ratePct:string; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]` — the annual Art-17 true-up schedule | Amendment 1 |
-| PUT | `/api/payroll/statutory/pph21/article17` | `payroll.statutory.config` | `{effectiveFrom:ISODate; rows:{bracketMin:Money; bracketMax?:Money; ratePct:string}[]}` — full-set replace per effective date; brackets contiguous from 0, top bracket open-ended (`ERR_BRACKET_GAP`), windows never overlap (`ERR_EFFECTIVE_OVERLAP`) | updated rows | Amendment 1 |
-| GET | `/api/payroll/employees/:employeeId/tax-profile` | `payroll.statutory.read` | – | `TaxProfile = {employeeId:UUID; npwp:string\|null; ptkpCode:string; dependantsCount:number; bpjsEnrollments:Record<'kesehatan'\|'jht'\|'jkk'\|'jkm'\|'jp',{enrolledSince:ISODate; endedAt:ISODate\|null}>; bpjsSalaryBase:Money\|null}` | Amendment 1 |
-| PUT | `/api/payroll/employees/:employeeId/tax-profile` | `payroll.statutory.config` | `TaxProfile` minus `employeeId` (upsert; `ptkpCode` validated against `pph21_ptkp`) | `TaxProfile` | Amendment 1 |
-| POST | `/api/payroll/statutory/enable` | `payroll.statutory.enable` | `{confirm:true}` — the wizard's final step: rejects `ERR_STATUTORY_NOT_READY` unless `/status.ready`; flips `settings payroll.statutory.enabled=true` (audited; emits `settings.updated` master event) | statutory status | Amendment 1 |
-| POST | `/api/payroll/statutory/disable` | `payroll.statutory.enable` | `{reason:string}` — future runs revert to base mode; historical `statutory_mode=true` runs are untouched | statutory status | Amendment 1 |
+| Method | Path                                             | Permission                 | Request                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Response                                                                                                                                                                                                                                                                                                                                  | FR                                        |
+| ------ | ------------------------------------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| GET    | `/api/payroll/periods`                           | `payroll.read`             | `?page=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `Paginated<{id; periodCode; startDate; endDate; status; runs:{id; runNumber; status}[]}>`                                                                                                                                                                                                                                                 | FR-HR-04                                  |
+| POST   | `/api/payroll/periods`                           | `payroll.run.calculate`    | `{periodCode:'YYYY-MM'}` (dates derived)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | period                                                                                                                                                                                                                                                                                                                                    | FR-HR-04                                  |
+| POST   | `/api/payroll/periods/:id/calculate`             | `payroll.run.calculate`    | `{employeeIds?:UUID[] /* default all active */}` — pulls attendance summary (PIN-02, POUT-01/02/03/07/08), leave quota excess (POUT-04), approved SO shortfalls (POUT-05), active loans (POUT-06), approved cash-variance proposals (Amendment 2), component assignments (PIN-03..07); pure calculators in `packages/shared`. Snapshots `statutoryMode` from `settings payroll.statutory.enabled` — OFF ⇒ exactly the PRD base components, zero statutory lines; ON ⇒ statutory lines computed from the effective-dated `bpjs_configs`/`pph21_*` tables + `employee_tax_profiles` (rejects `ERR_STATUTORY_NOT_READY` if the readiness check fails) | `PayrollRun` (calculated, with lines)                                                                                                                                                                                                                                                                                                     | FR-HR-03/04, PIN-_, POUT-_, Amendment 1/2 |
+| GET    | `/api/payroll/runs/:id`                          | `payroll.read`             | –                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `PayrollRun & {employees: Payslip[]}`                                                                                                                                                                                                                                                                                                     | FR-HR-04                                  |
+| PATCH  | `/api/payroll/runs/:id/lines/:lineId`            | `payroll.run.calculate`    | `{amount:Money; overrideReason:string /* required */}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `PayslipLine`                                                                                                                                                                                                                                                                                                                             | FR-AUDIT-02                               |
+| POST   | `/api/payroll/runs/:id/recalculate`              | `payroll.run.calculate`    | – (drops non-overridden lines, recomputes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `PayrollRun`                                                                                                                                                                                                                                                                                                                              | FR-HR-03                                  |
+| POST   | `/api/payroll/runs/:id/submit`                   | `payroll.run.submit`       | – → `pending_approval` (chain §5.7: Finance → Owner)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `PayrollRun`                                                                                                                                                                                                                                                                                                                              | FR-HR-04                                  |
+| POST   | `/api/payroll/runs/:id/approve`                  | `payroll.run.approve`      | `{note?}` — final approval posts journal `PAYROLL_ACCRUAL`, creates `payment_verifications` (pending), decrements loan `outstanding` via `employee_loan_payments`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `PayrollRun` (approved)                                                                                                                                                                                                                                                                                                                   | FR-HR-04, APR-05/08, POUT-06              |
+| POST   | `/api/payroll/runs/:id/reject`                   | `payroll.run.approve`      | `{reason:string}` → back to `calculated`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `PayrollRun`                                                                                                                                                                                                                                                                                                                              | FR-AUDIT-02                               |
+| POST   | `/api/payroll/runs/:id/mark-paid`                | `payroll.run.pay`          | `{paymentVerificationId:UUID}` (must be `paid`) → journal `PAYROLL_PAYMENT`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `PayrollRun` (paid)                                                                                                                                                                                                                                                                                                                       | FR-ACCT-04                                |
+| POST   | `/api/payroll/runs/:id/send-slips`               | `payroll.slip.send`        | `{channels:('email'\|'whatsapp')[]}` — renders slip PDFs (W5-05), queues `notification_outbox` per employee                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `{queued:number; skippedNoContact:number}`                                                                                                                                                                                                                                                                                                | 8.3.3, D-03                               |
+| GET    | `/api/payroll/my-slips`                          | `payroll.slip.read.own`    | `?year=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `Payslip[]` (own, approved runs only)                                                                                                                                                                                                                                                                                                     | 8.3.3                                     |
+| GET    | `/api/payroll/components`                        | `payroll.read`             | –                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{id; code:PayrollComponentCode; name; type; calcMethod; formulaKey; defaultAmount:Money\|null; isSystem:boolean}[]`                                                                                                                                                                                                                      | PIN-07, POUT-09                           |
+| POST   | `/api/payroll/components`                        | `payroll.component.manage` | `{code; name; type:'earning'\|'deduction'; calcMethod; defaultAmount?:Money}` (custom components)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | component                                                                                                                                                                                                                                                                                                                                 | PIN-07, POUT-09                           |
+| PATCH  | `/api/payroll/components/:id`                    | `payroll.component.manage` | partial (system rows: only `defaultAmount`/`isActive`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | component                                                                                                                                                                                                                                                                                                                                 | –                                         |
+| GET    | `/api/payroll/employees/:employeeId/components`  | `payroll.read`             | –                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{componentId:UUID; code:string; amount:Money\|null; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]`                                                                                                                                                                                                                                 | PIN-03..06                                |
+| PUT    | `/api/payroll/employees/:employeeId/components`  | `payroll.component.manage` | `{assignments:{componentId:UUID; amount:Money\|null; effectiveFrom:ISODate}[]}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | assignments                                                                                                                                                                                                                                                                                                                               | PIN-03..06                                |
+| GET    | `/api/payroll/loans`                             | `payroll.read`             | `?employeeId=&status=&page=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `Paginated<{id; loanNumber; employeeName; principal:Money; monthlyInstallment:Money; outstanding:Money; status:LoanStatus}>`                                                                                                                                                                                                              | POUT-06                                   |
+| POST   | `/api/payroll/loans`                             | `payroll.loan.manage`      | `{employeeId:UUID; principal:Money; monthlyInstallment:Money; reason?}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | loan (pending)                                                                                                                                                                                                                                                                                                                            | POUT-06                                   |
+| POST   | `/api/payroll/loans/:id/approve`                 | `payroll.loan.approve`     | `{note?}` → active, `disbursed_at` set, `payment_verifications` row for disbursement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | loan                                                                                                                                                                                                                                                                                                                                      | POUT-06, FR-ACCT-04                       |
+| POST   | `/api/payroll/loans/:id/reject`                  | `payroll.loan.approve`     | `{reason:string}`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | loan                                                                                                                                                                                                                                                                                                                                      | –                                         |
+| GET    | `/api/payroll/loans/:id/schedule`                | `payroll.read`             | –                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{paidAt:ISODateTime; amount:Money; method:string; payrollRunNumber:string\|null}[] & {outstanding:Money}`                                                                                                                                                                                                                                | POUT-06                                   |
+| GET    | `/api/payroll/statutory/status`                  | `payroll.statutory.read`   | –                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{enabled:boolean; ready:boolean; enabledAt:ISODateTime\|null; enabledBy:string\|null; missing:('bpjs_configs'\|'pph21_ter_rates'\|'pph21_ptkp'\|'pph21_article17_brackets'\|'employee_tax_profiles')[]; profileCoverage:{withProfile:number; total:number}}` — the wizard's completeness check ("is statutory payroll ready to enable?") | Amendment 1                               |
+| GET    | `/api/payroll/statutory/bpjs`                    | `payroll.statutory.read`   | `?program=&asOf=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{id:UUID; program:string; employerPct:string; employeePct:string; salaryFloor:Money\|null; salaryCap:Money\|null; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]`                                                                                                                                                                   | Amendment 1                               |
+| PUT    | `/api/payroll/statutory/bpjs`                    | `payroll.statutory.config` | `{rows:{program:'kesehatan'\|'jht'\|'jkk'\|'jkm'\|'jp'; employerPct:string; employeePct:string; salaryFloor?:Money; salaryCap?:Money; effectiveFrom:ISODate}[]}` — inserting a new effective window auto-closes (`effective_to`) the previous row per programme; windows may never overlap (`ERR_EFFECTIVE_OVERLAP`)                                                                                                                                                                                                                                                                                                                               | updated rows                                                                                                                                                                                                                                                                                                                              | Amendment 1                               |
+| GET    | `/api/payroll/statutory/pph21/ter`               | `payroll.statutory.read`   | `?category=&asOf=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `{id:UUID; category:'A'\|'B'\|'C'; bracketMin:Money; bracketMax:Money\|null; ratePct:string; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]`                                                                                                                                                                                         | Amendment 1                               |
+| PUT    | `/api/payroll/statutory/pph21/ter`               | `payroll.statutory.config` | `{effectiveFrom:ISODate; rows:{category:'A'\|'B'\|'C'; bracketMin:Money; bracketMax?:Money; ratePct:string}[]}` — replaces the full bracket set per effective date; brackets must be contiguous from 0 per category (`ERR_BRACKET_GAP`)                                                                                                                                                                                                                                                                                                                                                                                                            | updated rows                                                                                                                                                                                                                                                                                                                              | Amendment 1                               |
+| GET    | `/api/payroll/statutory/pph21/ptkp`              | `payroll.statutory.read`   | `?asOf=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `{id:UUID; ptkpCode:string; annualAmount:Money; terCategory:'A'\|'B'\|'C'; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]`                                                                                                                                                                                                           | Amendment 1                               |
+| PUT    | `/api/payroll/statutory/pph21/ptkp`              | `payroll.statutory.config` | `{effectiveFrom:ISODate; rows:{ptkpCode:string; annualAmount:Money; terCategory:'A'\|'B'\|'C'}[]}` (full-set replace per effective date)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | updated rows                                                                                                                                                                                                                                                                                                                              | Amendment 1                               |
+| GET    | `/api/payroll/statutory/pph21/article17`         | `payroll.statutory.read`   | `?asOf=`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `{id:UUID; bracketMin:Money; bracketMax:Money\|null; ratePct:string; effectiveFrom:ISODate; effectiveTo:ISODate\|null}[]` — the annual Art-17 true-up schedule                                                                                                                                                                            | Amendment 1                               |
+| PUT    | `/api/payroll/statutory/pph21/article17`         | `payroll.statutory.config` | `{effectiveFrom:ISODate; rows:{bracketMin:Money; bracketMax?:Money; ratePct:string}[]}` — full-set replace per effective date; brackets contiguous from 0, top bracket open-ended (`ERR_BRACKET_GAP`), windows never overlap (`ERR_EFFECTIVE_OVERLAP`)                                                                                                                                                                                                                                                                                                                                                                                             | updated rows                                                                                                                                                                                                                                                                                                                              | Amendment 1                               |
+| GET    | `/api/payroll/employees/:employeeId/tax-profile` | `payroll.statutory.read`   | –                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `TaxProfile = {employeeId:UUID; npwp:string\|null; ptkpCode:string; dependantsCount:number; bpjsEnrollments:Record<'kesehatan'\|'jht'\|'jkk'\|'jkm'\|'jp',{enrolledSince:ISODate; endedAt:ISODate\|null}>; bpjsSalaryBase:Money\|null}`                                                                                                   | Amendment 1                               |
+| PUT    | `/api/payroll/employees/:employeeId/tax-profile` | `payroll.statutory.config` | `TaxProfile` minus `employeeId` (upsert; `ptkpCode` validated against `pph21_ptkp`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `TaxProfile`                                                                                                                                                                                                                                                                                                                              | Amendment 1                               |
+| POST   | `/api/payroll/statutory/enable`                  | `payroll.statutory.enable` | `{confirm:true}` — the wizard's final step: rejects `ERR_STATUTORY_NOT_READY` unless `/status.ready`; flips `settings payroll.statutory.enabled=true` (audited; emits `settings.updated` master event)                                                                                                                                                                                                                                                                                                                                                                                                                                             | statutory status                                                                                                                                                                                                                                                                                                                          | Amendment 1                               |
+| POST   | `/api/payroll/statutory/disable`                 | `payroll.statutory.enable` | `{reason:string}` — future runs revert to base mode; historical `statutory_mode=true` runs are untouched                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | statutory status                                                                                                                                                                                                                                                                                                                          | Amendment 1                               |
 
 **Statutory payroll (Amendment 1) is OFF by default.** The wizard (F08, Owner/Manager) walks: (1) BPJS programme rates → (2) PPh21 TER + PTKP tables → (3) employee tax profiles → (4) enable. When OFF, runs compute exactly the PRD's base components and slips show no statutory section. December runs in statutory mode perform the annual PPh21 true-up (§1.7 calculation notes); **maintaining the annual rates/PTKP values is the client's operational responsibility** — the system only enforces effective-dating.
 
 ### 4.16 M16 `asset` (FR-PMS-01..04)
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/assets` | `asset.read` | `?locationId=&category=&status=&condition=&q=&page=` | `Paginated<Asset>` where `Asset = {id; assetNumber; name; category:AssetCategory; locationName; serialNumber; brand; model; purchaseDate; purchasePrice?:Money; condition:AssetCondition; status:AssetStatus; assignedToName:string\|null; photoUrl:string\|null}` | FR-PMS-01 |
-| GET | `/api/assets/:id` | `asset.read` | – | `Asset & {schedules: Schedule[]; openJobs: Job[]}` | FR-PMS-01 |
-| POST | `/api/assets` | `asset.manage` | `{assetNumber?; name; category; locationId; serialNumber?; brand?; model?; purchaseDate?; purchasePrice?:Money; vehicleId?; assignedToEmployeeId?; photoAttachmentId?}` | `Asset` | FR-PMS-01 |
-| PATCH | `/api/assets/:id` | `asset.manage` | partial (incl. `condition`, `status`, `assignedToEmployeeId`) | `Asset` | FR-PMS-01/04 |
-| GET | `/api/assets/:id/schedules` | `asset.read` | – | `Schedule[] = {id; name; intervalType:'days'\|'months'; intervalValue:number; lastDoneAt:ISODate\|null; nextDueAt:ISODate; reminderDaysBefore:number; isActive:boolean}[]` | FR-PMS-02 |
-| POST | `/api/assets/:id/schedules` | `asset.schedule.manage` | `{name; intervalType; intervalValue; nextDueAt:ISODate; reminderDaysBefore?}` | `Schedule` | FR-PMS-02 |
-| PATCH | `/api/assets/schedules/:scheduleId` | `asset.schedule.manage` | partial | `Schedule` | FR-PMS-02 |
-| GET | `/api/assets/maintenance/due` | `asset.read` | `?windowDays=30&locationId=` | `{jobId:UUID\|null; scheduleId:UUID; assetId:UUID; assetName:string; locationName:string; name:string; dueDate:ISODate; overdue:boolean}[]` — daily scheduler creates `due` jobs + `maintenance_due` notifications (FR-PMS-03) | FR-PMS-02/03 |
-| GET | `/api/assets/jobs` | `asset.read` | `?locationId=&status=&assetId=&page=` | `Paginated<Job>` where `Job = {id; jobNumber; assetName; type; status:MaintenanceJobStatus; dueDate; assignedToName; completedAt; cost:Money\|null; proofUrls:string[]}` | FR-PMS-02 |
-| POST | `/api/assets/:id/jobs` | `asset.job.execute` | `{type:'corrective'; description:string; assignedToEmployeeId?}` (scheduled jobs are scheduler-born) | `Job` | FR-PMS-02 |
-| POST | `/api/assets/jobs/:jobId/start` | `asset.job.execute` | – → `in_progress` | `Job` | FR-PMS-02 |
-| POST | `/api/assets/jobs/:jobId/complete` | `asset.job.execute` | `{proofAttachmentIds:UUID[] /* ≥1 wajib FR-PMS-04 */; cost?:Money; vendor?; conditionAfter:AssetCondition; odometerKm?; notes?}` — appends `service_history`, rolls schedule `next_due_at`; cost>0 creates `payment_verifications` (pending) | `Job` (done) | FR-PMS-04, FR-ACCT-04 |
-| POST | `/api/assets/jobs/:jobId/verify` | `asset.job.verify` | `{note?}` (Supervisor/Manager verifikasi, PRD 14.5) | `Job` (verified) | FR-PMS-04 |
-| GET | `/api/assets/:id/history` | `asset.read` | `?page=` | `Paginated<{serviceDate:ISODate; description:string; vendor:string\|null; cost:Money; conditionAfter:AssetCondition; odometerKm:number\|null; recordedBy:string; proofUrls:string[]}>` | FR-PMS-04 |
+| Method | Path                                | Permission              | Request                                                                                                                                                                                                                                      | Response                                                                                                                                                                                                                                                           | FR                    |
+| ------ | ----------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| GET    | `/api/assets`                       | `asset.read`            | `?locationId=&category=&status=&condition=&q=&page=`                                                                                                                                                                                         | `Paginated<Asset>` where `Asset = {id; assetNumber; name; category:AssetCategory; locationName; serialNumber; brand; model; purchaseDate; purchasePrice?:Money; condition:AssetCondition; status:AssetStatus; assignedToName:string\|null; photoUrl:string\|null}` | FR-PMS-01             |
+| GET    | `/api/assets/:id`                   | `asset.read`            | –                                                                                                                                                                                                                                            | `Asset & {schedules: Schedule[]; openJobs: Job[]}`                                                                                                                                                                                                                 | FR-PMS-01             |
+| POST   | `/api/assets`                       | `asset.manage`          | `{assetNumber?; name; category; locationId; serialNumber?; brand?; model?; purchaseDate?; purchasePrice?:Money; vehicleId?; assignedToEmployeeId?; photoAttachmentId?}`                                                                      | `Asset`                                                                                                                                                                                                                                                            | FR-PMS-01             |
+| PATCH  | `/api/assets/:id`                   | `asset.manage`          | partial (incl. `condition`, `status`, `assignedToEmployeeId`)                                                                                                                                                                                | `Asset`                                                                                                                                                                                                                                                            | FR-PMS-01/04          |
+| GET    | `/api/assets/:id/schedules`         | `asset.read`            | –                                                                                                                                                                                                                                            | `Schedule[] = {id; name; intervalType:'days'\|'months'; intervalValue:number; lastDoneAt:ISODate\|null; nextDueAt:ISODate; reminderDaysBefore:number; isActive:boolean}[]`                                                                                         | FR-PMS-02             |
+| POST   | `/api/assets/:id/schedules`         | `asset.schedule.manage` | `{name; intervalType; intervalValue; nextDueAt:ISODate; reminderDaysBefore?}`                                                                                                                                                                | `Schedule`                                                                                                                                                                                                                                                         | FR-PMS-02             |
+| PATCH  | `/api/assets/schedules/:scheduleId` | `asset.schedule.manage` | partial                                                                                                                                                                                                                                      | `Schedule`                                                                                                                                                                                                                                                         | FR-PMS-02             |
+| GET    | `/api/assets/maintenance/due`       | `asset.read`            | `?windowDays=30&locationId=`                                                                                                                                                                                                                 | `{jobId:UUID\|null; scheduleId:UUID; assetId:UUID; assetName:string; locationName:string; name:string; dueDate:ISODate; overdue:boolean}[]` — daily scheduler creates `due` jobs + `maintenance_due` notifications (FR-PMS-03)                                     | FR-PMS-02/03          |
+| GET    | `/api/assets/jobs`                  | `asset.read`            | `?locationId=&status=&assetId=&page=`                                                                                                                                                                                                        | `Paginated<Job>` where `Job = {id; jobNumber; assetName; type; status:MaintenanceJobStatus; dueDate; assignedToName; completedAt; cost:Money\|null; proofUrls:string[]}`                                                                                           | FR-PMS-02             |
+| POST   | `/api/assets/:id/jobs`              | `asset.job.execute`     | `{type:'corrective'; description:string; assignedToEmployeeId?}` (scheduled jobs are scheduler-born)                                                                                                                                         | `Job`                                                                                                                                                                                                                                                              | FR-PMS-02             |
+| POST   | `/api/assets/jobs/:jobId/start`     | `asset.job.execute`     | – → `in_progress`                                                                                                                                                                                                                            | `Job`                                                                                                                                                                                                                                                              | FR-PMS-02             |
+| POST   | `/api/assets/jobs/:jobId/complete`  | `asset.job.execute`     | `{proofAttachmentIds:UUID[] /* ≥1 wajib FR-PMS-04 */; cost?:Money; vendor?; conditionAfter:AssetCondition; odometerKm?; notes?}` — appends `service_history`, rolls schedule `next_due_at`; cost>0 creates `payment_verifications` (pending) | `Job` (done)                                                                                                                                                                                                                                                       | FR-PMS-04, FR-ACCT-04 |
+| POST   | `/api/assets/jobs/:jobId/verify`    | `asset.job.verify`      | `{note?}` (Supervisor/Manager verifikasi, PRD 14.5)                                                                                                                                                                                          | `Job` (verified)                                                                                                                                                                                                                                                   | FR-PMS-04             |
+| GET    | `/api/assets/:id/history`           | `asset.read`            | `?page=`                                                                                                                                                                                                                                     | `Paginated<{serviceDate:ISODate; description:string; vendor:string\|null; cost:Money; conditionAfter:AssetCondition; odometerKm:number\|null; recordedBy:string; proofUrls:string[]}>`                                                                             | FR-PMS-04             |
 
 ### 4.17 M17 `accounting` (D-04 GL; FR-ACCT-01..04; JGUD/JOUT via posting engine §6)
 
 ```ts
-interface Account { id: UUID; code: string; name: string; type: AccountType; normalBalance: 'debit'|'credit';
-                    parentId: UUID|null; isPostable: boolean; isSystem: boolean; isActive: boolean }
-interface JournalEntry { id: UUID; entryNumber: string; entryDate: ISODate; eventType: string|null;
-                         source: 'system'|'manual'; refType: string|null; refId: UUID|null; locationName: string|null;
-                         description: string; status: 'posted'|'reversed';
-                         lines: {lineNo: number; accountCode: string; accountName: string; debit: Money; credit: Money; memo: string|null}[] }
-interface PaymentVerification { id: UUID; pvNumber: string; refType: PaymentVerificationRefType; refId: UUID|null;
-                                refNumber: string|null; payeeType: PayeeType; payeeName: string|null; amount: Money;
-                                status: PaymentStatus|'rejected'; proofUrl: string|null; referenceNumber: string|null;
-                                submittedBy: string; verifiedBy: string|null; verifiedAt: ISODateTime|null;
-                                paidBy: string|null; paidAt: ISODateTime|null; paidVia: string|null; locationName: string|null }
+interface Account {
+  id: UUID;
+  code: string;
+  name: string;
+  type: AccountType;
+  normalBalance: 'debit' | 'credit';
+  parentId: UUID | null;
+  isPostable: boolean;
+  isSystem: boolean;
+  isActive: boolean;
+}
+interface JournalEntry {
+  id: UUID;
+  entryNumber: string;
+  entryDate: ISODate;
+  eventType: string | null;
+  source: 'system' | 'manual';
+  refType: string | null;
+  refId: UUID | null;
+  locationName: string | null;
+  description: string;
+  status: 'posted' | 'reversed';
+  lines: {
+    lineNo: number;
+    accountCode: string;
+    accountName: string;
+    debit: Money;
+    credit: Money;
+    memo: string | null;
+  }[];
+}
+interface PaymentVerification {
+  id: UUID;
+  pvNumber: string;
+  refType: PaymentVerificationRefType;
+  refId: UUID | null;
+  refNumber: string | null;
+  payeeType: PayeeType;
+  payeeName: string | null;
+  amount: Money;
+  status: PaymentStatus | 'rejected';
+  proofUrl: string | null;
+  referenceNumber: string | null;
+  submittedBy: string;
+  verifiedBy: string | null;
+  verifiedAt: ISODateTime | null;
+  paidBy: string | null;
+  paidAt: ISODateTime | null;
+  paidVia: string | null;
+  locationName: string | null;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/accounting/accounts` | `accounting.coa.read` | `?type=&active=&q=` | `Account[]` (tree-ordered) | D-04 |
-| POST | `/api/accounting/accounts` | `accounting.coa.manage` | `{code; name; type; normalBalance; parentId?; isPostable?}` | `Account` | D-04 |
-| PATCH | `/api/accounting/accounts/:id` | `accounting.coa.manage` | `{name?; isActive?}` (code/type immutable; system rows undeletable) | `Account` | D-04 |
-| GET | `/api/accounting/journal` | `accounting.journal.read` | `?from=&to=&accountCode=&eventType=&locationId=&source=&page=` | `Paginated<JournalEntry>` | JGUD-01..07, JOUT-01..09 |
-| GET | `/api/accounting/journal/:id` | `accounting.journal.read` | – | `JournalEntry` | FR-ACC-* |
-| POST | `/api/accounting/journal` | `accounting.journal.post` | `{entryDate:ISODate; description:string; locationId?:UUID; lines:{accountCode:string; debit?:Money; credit?:Money; memo?}[]}` — must balance (`ERR_UNBALANCED_ENTRY`); period must be open | `JournalEntry` (source `manual`) | D-04 |
-| POST | `/api/accounting/journal/:id/reverse` | `accounting.journal.reverse` | `{reason:string}` | new reversing `JournalEntry` | D-04 |
-| GET | `/api/accounting/posting-rules` | `accounting.coa.read` | `?eventType=` | `{eventType:string; ruleSeq:number; condition:object\|null; debitAccountCode:string; creditAccountCode:string; amountSource:string; isActive:boolean}[]` (§6.2 as data) | JGUD-*, JOUT-* |
-| GET | `/api/accounting/periods` | `accounting.coa.read` | – | `{id; periodCode; startDate; endDate; status:FiscalPeriodStatus}[]` | D-04 |
-| POST | `/api/accounting/periods/:id/close` | `accounting.period.close` | `{note?}` — blocks when unposted applied events exist for the period | period (closed) | D-04 |
-| POST | `/api/accounting/periods/:id/reopen` | `accounting.period.close` | `{reason:string}` (closed→open; locked never reopens) | period | D-04 |
-| GET | `/api/accounting/trial-balance` | `accounting.report.read` | `?periodCode=` | `{accountCode; accountName; type; debit:Money; credit:Money}[] & {totalDebit:Money; totalCredit:Money; balanced:boolean}` | D-04 |
-| GET | `/api/accounting/profit-loss` | `accounting.report.read` | `?from=&to=&locationId=` | `{revenue:{accountCode; name; amount:Money}[]; expenses:{...}[]; totalRevenue:Money; totalExpense:Money; netProfit:Money}` | FR-DASH-01, D-04 |
-| GET | `/api/accounting/balance-sheet` | `accounting.report.read` | `?asOf=ISODate` | `{assets:[...]; liabilities:[...]; equity:[...]; balanced:boolean}` | D-04 |
-| GET | `/api/accounting/stock-value` | `accounting.report.read` | `?asOf=&locationId=` | `{locationId:UUID; locationName:string; value:Money; byCategory:{categoryName:string; value:Money}[]}[]` (nilai barang/stok) | JGUD-07 |
-| GET | `/api/accounting/payments` | `payment.read` | `?status=&refType=&locationId=&from=&to=&page=` | `Paginated<PaymentVerification>` — the verification queue (F07) | FR-ACCT-01..04 |
-| GET | `/api/accounting/payments/:id` | `payment.read` | – | `PaymentVerification & {history: AuditRow[]}` | FR-ACCT-02 |
-| POST | `/api/accounting/payments` | `payment.proof.upload` | `{refType:PaymentVerificationRefType; refId?:UUID; payeeType:PayeeType; payeeId?:UUID; amount:Money; proofAttachmentId?:UUID; referenceNumber?; locationId?; notes?}` (manual/other payments — THR, insentif, biaya lain) | `PaymentVerification` (pending) | FR-ACCT-04 |
-| POST | `/api/accounting/payments/:id/proof` | `payment.proof.upload` | `{proofAttachmentId:UUID; referenceNumber?:string}` | `PaymentVerification` | FR-ACCT-01, NFR-09 |
-| POST | `/api/accounting/payments/:id/verify` | `payment.verify` | `{note?}` — requires proof attached (`ERR_PROOF_REQUIRED`); records verifier + time | `PaymentVerification` (verified) | FR-ACCT-02/03, APR-05 |
-| POST | `/api/accounting/payments/:id/pay` | `payment.pay` | `{paidVia:'cash'\|'bank_transfer'\|'qris'; paidAt?:ISODateTime}` — amounts ≥ `approval.threshold.payment` need the Owner approval step first (§5.8); posts the §6 payment journal for the ref type | `PaymentVerification` (paid) | FR-ACCT-03/04, APR-08 |
-| POST | `/api/accounting/payments/:id/reject` | `payment.reject` | `{reason:string}` | `PaymentVerification` (rejected) | FR-ACCT-02 |
-| GET | `/api/accounting/exceptions` | `sync.exception.review` | `?status=&class=&page=` | `Paginated<OfflineAuthCase>` where `OfflineAuthCase = {id; class:'offline_auth_failed'\|'offline_auth_unprovable'; documentType; documentId; amount:Money\|null; approverName; deviceName; outletName; occurredAt; relayReceivedAt; evidence:{selfieUrl:string\|null; pinAttempts:number\|null}; physicalEffectSuspected:boolean; outcome:OfflineAuthOutcome; verdict:'upheld'\|'rejected'\|null}` — the D-17 finance exception queue (SYNC-PROTOCOL §7.5) | D-17, OBJ-03 |
-| POST | `/api/accounting/exceptions/:id/verdict` | `sync.exception.review` | `{verdict:'upheld'\|'rejected'; reason:string; routeToPayrollDeduction?:boolean}` — `rejected`+physical effect posts `OFFLINE_AUTH_REJECTED` (§6.3) to Piutang Klaim; optional kasbon-style recovery | `OfflineAuthCase` | D-17, §6.3-X7 |
+| Method | Path                                     | Permission                   | Request                                                                                                                                                                                                                   | Response                                                                                                                                                                                                                                                                                                                                                                                                                                                   | FR                       |
+| ------ | ---------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| GET    | `/api/accounting/accounts`               | `accounting.coa.read`        | `?type=&active=&q=`                                                                                                                                                                                                       | `Account[]` (tree-ordered)                                                                                                                                                                                                                                                                                                                                                                                                                                 | D-04                     |
+| POST   | `/api/accounting/accounts`               | `accounting.coa.manage`      | `{code; name; type; normalBalance; parentId?; isPostable?}`                                                                                                                                                               | `Account`                                                                                                                                                                                                                                                                                                                                                                                                                                                  | D-04                     |
+| PATCH  | `/api/accounting/accounts/:id`           | `accounting.coa.manage`      | `{name?; isActive?}` (code/type immutable; system rows undeletable)                                                                                                                                                       | `Account`                                                                                                                                                                                                                                                                                                                                                                                                                                                  | D-04                     |
+| GET    | `/api/accounting/journal`                | `accounting.journal.read`    | `?from=&to=&accountCode=&eventType=&locationId=&source=&page=`                                                                                                                                                            | `Paginated<JournalEntry>`                                                                                                                                                                                                                                                                                                                                                                                                                                  | JGUD-01..07, JOUT-01..09 |
+| GET    | `/api/accounting/journal/:id`            | `accounting.journal.read`    | –                                                                                                                                                                                                                         | `JournalEntry`                                                                                                                                                                                                                                                                                                                                                                                                                                             | FR-ACC-*                 |
+| POST   | `/api/accounting/journal`                | `accounting.journal.post`    | `{entryDate:ISODate; description:string; locationId?:UUID; lines:{accountCode:string; debit?:Money; credit?:Money; memo?}[]}` — must balance (`ERR_UNBALANCED_ENTRY`); period must be open                                | `JournalEntry` (source `manual`)                                                                                                                                                                                                                                                                                                                                                                                                                           | D-04                     |
+| POST   | `/api/accounting/journal/:id/reverse`    | `accounting.journal.reverse` | `{reason:string}`                                                                                                                                                                                                         | new reversing `JournalEntry`                                                                                                                                                                                                                                                                                                                                                                                                                               | D-04                     |
+| GET    | `/api/accounting/posting-rules`          | `accounting.coa.read`        | `?eventType=`                                                                                                                                                                                                             | `{eventType:string; ruleSeq:number; condition:object\|null; debitAccountCode:string; creditAccountCode:string; amountSource:string; isActive:boolean}[]` (§6.2 as data)                                                                                                                                                                                                                                                                                    | JGUD-_, JOUT-_           |
+| GET    | `/api/accounting/periods`                | `accounting.coa.read`        | –                                                                                                                                                                                                                         | `{id; periodCode; startDate; endDate; status:FiscalPeriodStatus}[]`                                                                                                                                                                                                                                                                                                                                                                                        | D-04                     |
+| POST   | `/api/accounting/periods/:id/close`      | `accounting.period.close`    | `{note?}` — blocks when unposted applied events exist for the period                                                                                                                                                      | period (closed)                                                                                                                                                                                                                                                                                                                                                                                                                                            | D-04                     |
+| POST   | `/api/accounting/periods/:id/reopen`     | `accounting.period.close`    | `{reason:string}` (closed→open; locked never reopens)                                                                                                                                                                     | period                                                                                                                                                                                                                                                                                                                                                                                                                                                     | D-04                     |
+| GET    | `/api/accounting/trial-balance`          | `accounting.report.read`     | `?periodCode=`                                                                                                                                                                                                            | `{accountCode; accountName; type; debit:Money; credit:Money}[] & {totalDebit:Money; totalCredit:Money; balanced:boolean}`                                                                                                                                                                                                                                                                                                                                  | D-04                     |
+| GET    | `/api/accounting/profit-loss`            | `accounting.report.read`     | `?from=&to=&locationId=`                                                                                                                                                                                                  | `{revenue:{accountCode; name; amount:Money}[]; expenses:{...}[]; totalRevenue:Money; totalExpense:Money; netProfit:Money}`                                                                                                                                                                                                                                                                                                                                 | FR-DASH-01, D-04         |
+| GET    | `/api/accounting/balance-sheet`          | `accounting.report.read`     | `?asOf=ISODate`                                                                                                                                                                                                           | `{assets:[...]; liabilities:[...]; equity:[...]; balanced:boolean}`                                                                                                                                                                                                                                                                                                                                                                                        | D-04                     |
+| GET    | `/api/accounting/stock-value`            | `accounting.report.read`     | `?asOf=&locationId=`                                                                                                                                                                                                      | `{locationId:UUID; locationName:string; value:Money; byCategory:{categoryName:string; value:Money}[]}[]` (nilai barang/stok)                                                                                                                                                                                                                                                                                                                               | JGUD-07                  |
+| GET    | `/api/accounting/payments`               | `payment.read`               | `?status=&refType=&locationId=&from=&to=&page=`                                                                                                                                                                           | `Paginated<PaymentVerification>` — the verification queue (F07)                                                                                                                                                                                                                                                                                                                                                                                            | FR-ACCT-01..04           |
+| GET    | `/api/accounting/payments/:id`           | `payment.read`               | –                                                                                                                                                                                                                         | `PaymentVerification & {history: AuditRow[]}`                                                                                                                                                                                                                                                                                                                                                                                                              | FR-ACCT-02               |
+| POST   | `/api/accounting/payments`               | `payment.proof.upload`       | `{refType:PaymentVerificationRefType; refId?:UUID; payeeType:PayeeType; payeeId?:UUID; amount:Money; proofAttachmentId?:UUID; referenceNumber?; locationId?; notes?}` (manual/other payments — THR, insentif, biaya lain) | `PaymentVerification` (pending)                                                                                                                                                                                                                                                                                                                                                                                                                            | FR-ACCT-04               |
+| POST   | `/api/accounting/payments/:id/proof`     | `payment.proof.upload`       | `{proofAttachmentId:UUID; referenceNumber?:string}`                                                                                                                                                                       | `PaymentVerification`                                                                                                                                                                                                                                                                                                                                                                                                                                      | FR-ACCT-01, NFR-09       |
+| POST   | `/api/accounting/payments/:id/verify`    | `payment.verify`             | `{note?}` — requires proof attached (`ERR_PROOF_REQUIRED`); records verifier + time                                                                                                                                       | `PaymentVerification` (verified)                                                                                                                                                                                                                                                                                                                                                                                                                           | FR-ACCT-02/03, APR-05    |
+| POST   | `/api/accounting/payments/:id/pay`       | `payment.pay`                | `{paidVia:'cash'\|'bank_transfer'\|'qris'; paidAt?:ISODateTime}` — amounts ≥ `approval.threshold.payment` need the Owner approval step first (§5.8); posts the §6 payment journal for the ref type                        | `PaymentVerification` (paid)                                                                                                                                                                                                                                                                                                                                                                                                                               | FR-ACCT-03/04, APR-08    |
+| POST   | `/api/accounting/payments/:id/reject`    | `payment.reject`             | `{reason:string}`                                                                                                                                                                                                         | `PaymentVerification` (rejected)                                                                                                                                                                                                                                                                                                                                                                                                                           | FR-ACCT-02               |
+| GET    | `/api/accounting/exceptions`             | `sync.exception.review`      | `?status=&class=&page=`                                                                                                                                                                                                   | `Paginated<OfflineAuthCase>` where `OfflineAuthCase = {id; class:'offline_auth_failed'\|'offline_auth_unprovable'; documentType; documentId; amount:Money\|null; approverName; deviceName; outletName; occurredAt; relayReceivedAt; evidence:{selfieUrl:string\|null; pinAttempts:number\|null}; physicalEffectSuspected:boolean; outcome:OfflineAuthOutcome; verdict:'upheld'\|'rejected'\|null}` — the D-17 finance exception queue (SYNC-PROTOCOL §7.5) | D-17, OBJ-03             |
+| POST   | `/api/accounting/exceptions/:id/verdict` | `sync.exception.review`      | `{verdict:'upheld'\|'rejected'; reason:string; routeToPayrollDeduction?:boolean}` — `rejected`+physical effect posts `OFFLINE_AUTH_REJECTED` (§6.3) to Piutang Klaim; optional kasbon-style recovery                      | `OfflineAuthCase`                                                                                                                                                                                                                                                                                                                                                                                                                                          | D-17, §6.3-X7            |
 
 ### 4.18 M18 `dashboard` (FR-DASH-01..04)
 
 All read-only, sourced from `mv_*` views + live counters; realtime tiles push over socket.io channel `dashboard:<scope>`.
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/dashboard/overview` | `dashboard.view` | `?from=&to=` | `{revenue:Money; revenueOnline:Money; profitEstimate:Money; txCount:number; avgTicket:Money; activeOutlets:number; vs:{revenuePct:string; txPct:string} /* vs previous period */}` | FR-DASH-01 |
-| GET | `/api/dashboard/outlets` | `dashboard.view` | `?date=` | `{locationId:UUID; name:string; city:string; revenue:Money; txCount:number; onlineNet:Money; openShifts:number; lowStockCount:number; offlineDevices:number; syncQueueDepth:number}[]` — all 15–20 outlets, one view | FR-DASH-02/04 |
-| GET | `/api/dashboard/outlet/:locationId` | `dashboard.outlet.view` | `?date=` | outlet drill-down: same tile + hourly trend + top products + staff on shift | FR-DASH-02, 14.4 |
-| GET | `/api/dashboard/top-products` | `dashboard.view` | `?from=&to=&locationId=&limit=10` | `{productId:UUID; name:string; qty:Qty; revenue:Money}[]` | FR-DASH-03 |
-| GET | `/api/dashboard/staff-kpi` | `dashboard.view` | `?from=&to=&locationId=` | `{employeeId:UUID; name:string; role:string; salesCount:number; salesAmount:Money; attendanceRate:string; lateCount:number}[]` | FR-DASH-03 |
-| GET | `/api/dashboard/trend` | `dashboard.view` | `?metric=revenue\|tx\|usage&granularity=daily\|weekly&from=&to=&locationId=` | `{t:ISODate; value:string}[]` | FR-DASH-03 |
-| GET | `/api/dashboard/ops-status` | `dashboard.view` | – | `{lowStockOutlets:number; sjInTransit:number; pendingApprovals:number; pendingPayments:number; offlineOutlets:number; openConflicts:number; coldChainBreaches24h:number; maintenanceDue:number}` | FR-DASH-04 |
+| Method | Path                                | Permission              | Request                                                                      | Response                                                                                                                                                                                                             | FR               |
+| ------ | ----------------------------------- | ----------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| GET    | `/api/dashboard/overview`           | `dashboard.view`        | `?from=&to=`                                                                 | `{revenue:Money; revenueOnline:Money; profitEstimate:Money; txCount:number; avgTicket:Money; activeOutlets:number; vs:{revenuePct:string; txPct:string} /* vs previous period */}`                                   | FR-DASH-01       |
+| GET    | `/api/dashboard/outlets`            | `dashboard.view`        | `?date=`                                                                     | `{locationId:UUID; name:string; city:string; revenue:Money; txCount:number; onlineNet:Money; openShifts:number; lowStockCount:number; offlineDevices:number; syncQueueDepth:number}[]` — all 15–20 outlets, one view | FR-DASH-02/04    |
+| GET    | `/api/dashboard/outlet/:locationId` | `dashboard.outlet.view` | `?date=`                                                                     | outlet drill-down: same tile + hourly trend + top products + staff on shift                                                                                                                                          | FR-DASH-02, 14.4 |
+| GET    | `/api/dashboard/top-products`       | `dashboard.view`        | `?from=&to=&locationId=&limit=10`                                            | `{productId:UUID; name:string; qty:Qty; revenue:Money}[]`                                                                                                                                                            | FR-DASH-03       |
+| GET    | `/api/dashboard/staff-kpi`          | `dashboard.view`        | `?from=&to=&locationId=`                                                     | `{employeeId:UUID; name:string; role:string; salesCount:number; salesAmount:Money; attendanceRate:string; lateCount:number}[]`                                                                                       | FR-DASH-03       |
+| GET    | `/api/dashboard/trend`              | `dashboard.view`        | `?metric=revenue\|tx\|usage&granularity=daily\|weekly&from=&to=&locationId=` | `{t:ISODate; value:string}[]`                                                                                                                                                                                        | FR-DASH-03       |
+| GET    | `/api/dashboard/ops-status`         | `dashboard.view`        | –                                                                            | `{lowStockOutlets:number; sjInTransit:number; pendingApprovals:number; pendingPayments:number; offlineOutlets:number; openConflicts:number; coldChainBreaches24h:number; maintenanceDue:number}`                     | FR-DASH-04       |
 
 ### 4.19 M19 `report` (exports; rekap pengiriman FR-LOG-04; laporan shift)
 
 All exports honor `?format=json|csv|xlsx` (xlsx via server-side generation; response = file stream or `{url}` to a stored attachment). `format=json` needs only the row's read permission; `format=csv|xlsx` additionally requires `report.export`.
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/reports/sales` | `report.sales.read` | `?from=&to=&locationId=&groupBy=day\|outlet\|product\|method&format=` | grouped sales report incl. online orders (gross, discount, platform fees, net) | FR-POS-07, FR-DASH-03 |
-| GET | `/api/reports/shift/:shiftId` | `report.sales.read` | `?format=` | `ShiftReport` (see M13) + sales list — laporan shift | F-POS-01 |
-| GET | `/api/reports/delivery-daily` | `report.logistics.read` | `?date=&format=` | the M10 recap shape, printable — rekap harian tim logistik | FR-LOG-04/08 |
-| GET | `/api/reports/stock-usage` | `report.logistics.read` | `?locationId=&from=&to=&format=` | `{itemId; itemName; opening:Qty; in:Qty; usage:Qty; waste:Qty; adjustment:Qty; closing:Qty}[]` | FR-POS-06, FR-LOG-21 |
-| GET | `/api/reports/stock-movements` | `report.logistics.read` | `?locationId=&from=&to=&movementType=&format=` | movement export | FR-LOG-21, FR-SO-04 |
-| GET | `/api/reports/waste` | `report.sales.read` | `?from=&to=&locationId=&format=` | waste by reason/location with values | FR-WST-04 |
-| GET | `/api/reports/attendance` | `report.hr.read` | `?periodCode=&locationId=&format=` | attendance matrix per employee per day | FR-HR-03 |
-| GET | `/api/reports/payroll/:runId` | `report.hr.read` | `?format=` | payroll register (all employees × components) | FR-HR-04 |
-| GET | `/api/reports/opname/:opnameId` | `report.logistics.read` | `?format=` | opname variance report | FR-SO-02 |
-| GET | `/api/reports/online-orders` | `report.sales.read` | `?from=&to=&platform=&locationId=&format=` | platform reconciliation report (gross→net walk) | FR-POS-05/07 |
+| Method | Path                            | Permission              | Request                                                               | Response                                                                                       | FR                    |
+| ------ | ------------------------------- | ----------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------- |
+| GET    | `/api/reports/sales`            | `report.sales.read`     | `?from=&to=&locationId=&groupBy=day\|outlet\|product\|method&format=` | grouped sales report incl. online orders (gross, discount, platform fees, net)                 | FR-POS-07, FR-DASH-03 |
+| GET    | `/api/reports/shift/:shiftId`   | `report.sales.read`     | `?format=`                                                            | `ShiftReport` (see M13) + sales list — laporan shift                                           | F-POS-01              |
+| GET    | `/api/reports/delivery-daily`   | `report.logistics.read` | `?date=&format=`                                                      | the M10 recap shape, printable — rekap harian tim logistik                                     | FR-LOG-04/08          |
+| GET    | `/api/reports/stock-usage`      | `report.logistics.read` | `?locationId=&from=&to=&format=`                                      | `{itemId; itemName; opening:Qty; in:Qty; usage:Qty; waste:Qty; adjustment:Qty; closing:Qty}[]` | FR-POS-06, FR-LOG-21  |
+| GET    | `/api/reports/stock-movements`  | `report.logistics.read` | `?locationId=&from=&to=&movementType=&format=`                        | movement export                                                                                | FR-LOG-21, FR-SO-04   |
+| GET    | `/api/reports/waste`            | `report.sales.read`     | `?from=&to=&locationId=&format=`                                      | waste by reason/location with values                                                           | FR-WST-04             |
+| GET    | `/api/reports/attendance`       | `report.hr.read`        | `?periodCode=&locationId=&format=`                                    | attendance matrix per employee per day                                                         | FR-HR-03              |
+| GET    | `/api/reports/payroll/:runId`   | `report.hr.read`        | `?format=`                                                            | payroll register (all employees × components)                                                  | FR-HR-04              |
+| GET    | `/api/reports/opname/:opnameId` | `report.logistics.read` | `?format=`                                                            | opname variance report                                                                         | FR-SO-02              |
+| GET    | `/api/reports/online-orders`    | `report.sales.read`     | `?from=&to=&platform=&locationId=&format=`                            | platform reconciliation report (gross→net walk)                                                | FR-POS-05/07          |
 
 Reporting date rule (shared with SYNC-PROTOCOL §6.4): business date = `occurred_at` in `Asia/Makassar`; a shift spanning midnight belongs to its **opening** date; `time_suspect` rows use `defensible_at`.
 
@@ -2943,60 +3657,73 @@ Reporting date rule (shared with SYNC-PROTOCOL §6.4): business date = `occurred
 
 Settings are namespaced keys (table §1.1). Seed keys + defaults (contract for every module that reads them):
 
-| Key | Default | Used by |
-|---|---|---|
-| `company.profile` | `{name:'Mimi Chicken', address:…, city:'Balikpapan', logoAttachmentId:null}` | print layer, slips |
-| `approval.threshold.void` | `{managerAboveIdr:"200000.00"}` | §5.2 |
-| `approval.threshold.po` | `{ownerAboveIdr:"10000000.00"}` | §5.3 |
-| `approval.threshold.payment` | `{ownerAboveIdr:"20000000.00"}` | §5.8 |
-| `approval.threshold.opname` | `{managerAboveIdr:"2000000.00"}` | §5.4 |
-| `hr.geofence_radius_m` | `100` (per-location override on `locations`) | M14 (FR-HR-01) |
-| `hr.late_grace_minutes` | `5` | M14/M15 (POUT-07) |
-| `hr.overtime` | `{ratePerHour:"15000.00", minMinutes:30}` | M15 (PIN-02) |
-| `hr.deduction_rates` | `{perAbsentDay:'daily_rate', perLateMinute:"500.00", sickPaid:true, permissionPaid:false}` | M15 (POUT-01..03/07) |
-| `leave.quotas` | `{annual:12, marriage:3}` | M14 (POUT-04) |
-| `payroll.so_shortfall` | `{mode:'attributable_only', splitRule:'equal_among_on_shift'}` | M15 (POUT-05) |
-| `payroll.statutory` | `{enabled:false, enabledAt:null, enabledBy:null}` — **Amendment 1 gate**; flipped ONLY via the §4.15 enable/disable endpoints (wizard), never by raw settings PUT (`ERR_USE_WIZARD`) | M15/M20 |
-| `pos.cash_variance_propose_above` | `"0.00"` — shift-close shortfall beyond this auto-creates a pending deduction proposal (Amendment 2) | M13/M15 |
-| `coldchain.frozen` | `{minC:"-25.0", maxC:"-15.0"}` (mirrors `shipment_types`) | M10 (D-14) |
-| `auth.offline_credential_ttl_h` | `24` | M01 (D-17) |
-| `offline.selfie_required_above` | `"200000.00"` | §7 flows |
-| `offline.approval_volume_cap` | `20` | SYNC-PROTOCOL §7.4 |
-| `sync.max_offline_window_h` | `24` | SYNC-PROTOCOL §6.4 |
-| `sync.price_variance_tolerance` | `{pct:"1.0"}` | R4 |
-| `pos.qris` | `{mode:'static'}` | M13 |
-| `wa.enabled` | `false` (flips when D-03 credentials arrive; outbox mock until then) | kernel notification |
+| Key                               | Default                                                                                                                                                                              | Used by              |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| `company.profile`                 | `{name:'Mimi Chicken', address:…, city:'Balikpapan', logoAttachmentId:null}`                                                                                                         | print layer, slips   |
+| `approval.threshold.void`         | `{managerAboveIdr:"200000.00"}`                                                                                                                                                      | §5.2                 |
+| `approval.threshold.po`           | `{ownerAboveIdr:"10000000.00"}`                                                                                                                                                      | §5.3                 |
+| `approval.threshold.payment`      | `{ownerAboveIdr:"20000000.00"}`                                                                                                                                                      | §5.8                 |
+| `approval.threshold.opname`       | `{managerAboveIdr:"2000000.00"}`                                                                                                                                                     | §5.4                 |
+| `hr.geofence_radius_m`            | `100` (per-location override on `locations`)                                                                                                                                         | M14 (FR-HR-01)       |
+| `hr.late_grace_minutes`           | `5`                                                                                                                                                                                  | M14/M15 (POUT-07)    |
+| `hr.overtime`                     | `{ratePerHour:"15000.00", minMinutes:30}`                                                                                                                                            | M15 (PIN-02)         |
+| `hr.deduction_rates`              | `{perAbsentDay:'daily_rate', perLateMinute:"500.00", sickPaid:true, permissionPaid:false}`                                                                                           | M15 (POUT-01..03/07) |
+| `leave.quotas`                    | `{annual:12, marriage:3}`                                                                                                                                                            | M14 (POUT-04)        |
+| `payroll.so_shortfall`            | `{mode:'attributable_only', splitRule:'equal_among_on_shift'}`                                                                                                                       | M15 (POUT-05)        |
+| `payroll.statutory`               | `{enabled:false, enabledAt:null, enabledBy:null}` — **Amendment 1 gate**; flipped ONLY via the §4.15 enable/disable endpoints (wizard), never by raw settings PUT (`ERR_USE_WIZARD`) | M15/M20              |
+| `pos.cash_variance_propose_above` | `"0.00"` — shift-close shortfall beyond this auto-creates a pending deduction proposal (Amendment 2)                                                                                 | M13/M15              |
+| `coldchain.frozen`                | `{minC:"-25.0", maxC:"-15.0"}` (mirrors `shipment_types`)                                                                                                                            | M10 (D-14)           |
+| `auth.offline_credential_ttl_h`   | `24`                                                                                                                                                                                 | M01 (D-17)           |
+| `offline.selfie_required_above`   | `"200000.00"`                                                                                                                                                                        | §7 flows             |
+| `offline.approval_volume_cap`     | `20`                                                                                                                                                                                 | SYNC-PROTOCOL §7.4   |
+| `sync.max_offline_window_h`       | `24`                                                                                                                                                                                 | SYNC-PROTOCOL §6.4   |
+| `sync.price_variance_tolerance`   | `{pct:"1.0"}`                                                                                                                                                                        | R4                   |
+| `pos.qris`                        | `{mode:'static'}`                                                                                                                                                                    | M13                  |
+| `wa.enabled`                      | `false` (flips when D-03 credentials arrive; outbox mock until then)                                                                                                                 | kernel notification  |
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/settings` | `settings.read` | `?prefix=` | `{key:string; value:object; description:string; updatedBy:string\|null; updatedAt:ISODateTime}[]` | SCOPE-IN-10 |
-| GET | `/api/settings/:key` | `settings.read` | – | one setting | – |
-| PUT | `/api/settings/:key` | `settings.manage` | `{value:object}` (schema-validated per key in `packages/shared`) | setting — emits `settings.updated` master event | – |
-| GET | `/api/settings/approval-chains` | `settings.read` | – | `{documentType:string; steps:{stepNo:number; approverRole:string; minAmount:Money\|null; maxAmount:Money\|null}[]}[]` (§5 as data) | SCOPE-IN-10 |
-| PUT | `/api/settings/approval-chains/:documentType` | `settings.approval_chain.manage` | `{steps:[...]}` — validated against §5 invariants (first step role fixed per doc type) | chain | APR-01..08 |
+| Method | Path                                          | Permission                       | Request                                                                                | Response                                                                                                                           | FR          |
+| ------ | --------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| GET    | `/api/settings`                               | `settings.read`                  | `?prefix=`                                                                             | `{key:string; value:object; description:string; updatedBy:string\|null; updatedAt:ISODateTime}[]`                                  | SCOPE-IN-10 |
+| GET    | `/api/settings/:key`                          | `settings.read`                  | –                                                                                      | one setting                                                                                                                        | –           |
+| PUT    | `/api/settings/:key`                          | `settings.manage`                | `{value:object}` (schema-validated per key in `packages/shared`)                       | setting — emits `settings.updated` master event                                                                                    | –           |
+| GET    | `/api/settings/approval-chains`               | `settings.read`                  | –                                                                                      | `{documentType:string; steps:{stepNo:number; approverRole:string; minAmount:Money\|null; maxAmount:Money\|null}[]}[]` (§5 as data) | SCOPE-IN-10 |
+| PUT    | `/api/settings/approval-chains/:documentType` | `settings.approval_chain.manage` | `{steps:[...]}` — validated against §5 invariants (first step role fixed per doc type) | chain                                                                                                                              | APR-01..08  |
 
 ### 4.21 M21 `device-registry` (D-13)
 
 ```ts
-interface Device { id: UUID; locationId: UUID; locationName: string; nodeId: UUID|null;
-                   category: DeviceCategory; name: string; status: DeviceStatus; appVersion: string|null;
-                   queueDepth: number; lastSeenAt: ISODateTime|null; lastSyncAt: ISODateTime|null;
-                   replacesDeviceId: UUID|null; ipAddress: string|null; vendor: string|null; model: string|null;
-                   pairedAt: ISODateTime|null }
+interface Device {
+  id: UUID;
+  locationId: UUID;
+  locationName: string;
+  nodeId: UUID | null;
+  category: DeviceCategory;
+  name: string;
+  status: DeviceStatus;
+  appVersion: string | null;
+  queueDepth: number;
+  lastSeenAt: ISODateTime | null;
+  lastSyncAt: ISODateTime | null;
+  replacesDeviceId: UUID | null;
+  ipAddress: string | null;
+  vendor: string | null;
+  model: string | null;
+  pairedAt: ISODateTime | null;
+}
 ```
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| POST | `/api/devices/pairing-tokens` | `device.pair` | `{locationId:UUID; targetType:'device'; suggestedCategory?:DeviceCategory}` | `{tokenId:UUID; token:string; displayCode:string; qrPayload:string; expiresAt:ISODateTime /* +15 min, single-use */}` | D-13, §7.2 |
-| POST | `/api/devices/register` | (public + pairing token in body) | `{token:string; fingerprint:string; name?:string; category:DeviceCategory; appVersion:string; osInfo?:object; replacesDeviceId?:UUID}` | `{deviceId:UUID; deviceToken:string /* long-lived, scope: heartbeat+sync */; location:{id; code; name}; nodeLanUrl:string\|null; syncConfig:{cloudUrl:string; protocolV:number}}` | D-13, SYNC-PROTOCOL §1.5 |
-| POST | `/api/devices/heartbeat` | (device-token) | `DeviceHeartbeat` (§7.3 shape) — also accepted over socket per SYNC-PROTOCOL §4.6 | `{ok:true; serverTime:ISODateTime; confirmedThrough?:object}` | D-13 |
-| GET | `/api/devices` | `device.read` | `?locationId=&category=&status=&page=` | `Paginated<Device>` | D-13 |
-| GET | `/api/devices/:id` | `device.read` | – | `Device & {recentHeartbeats:{at; queueDepth; appVersion; batteryPct}[]; events: {type; detail; createdAt}[]}` | D-13 |
-| PATCH | `/api/devices/:id` | `device.manage` | `{name?; category?; locationId?}` | `Device` | D-13 |
-| POST | `/api/devices/:id/unpair` | `device.manage` | `{reason?:string}` — revokes device token, status `unpaired`; un-synced queue stays attributable via registry | `Device` | D-13 |
-| POST | `/api/devices/:id/retire` | `device.manage` | `{replacedByDeviceId?:UUID}` | `Device` (retired) | SYNC-PROTOCOL §1.5 |
-| GET | `/api/topology` | `topology.read` | – | `TopologyTree` (§7.5 shape) | D-13 |
-| GET | `/api/topology/summary` | `topology.read` | – | `{totals:TopologyCounts; byCity:{city:string; counts:TopologyCounts; outletsOffline:number}[]}` | D-13, FR-DASH-04 |
+| Method | Path                          | Permission                       | Request                                                                                                                                | Response                                                                                                                                                                          | FR                       |
+| ------ | ----------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| POST   | `/api/devices/pairing-tokens` | `device.pair`                    | `{locationId:UUID; targetType:'device'; suggestedCategory?:DeviceCategory}`                                                            | `{tokenId:UUID; token:string; displayCode:string; qrPayload:string; expiresAt:ISODateTime /* +15 min, single-use */}`                                                             | D-13, §7.2               |
+| POST   | `/api/devices/register`       | (public + pairing token in body) | `{token:string; fingerprint:string; name?:string; category:DeviceCategory; appVersion:string; osInfo?:object; replacesDeviceId?:UUID}` | `{deviceId:UUID; deviceToken:string /* long-lived, scope: heartbeat+sync */; location:{id; code; name}; nodeLanUrl:string\|null; syncConfig:{cloudUrl:string; protocolV:number}}` | D-13, SYNC-PROTOCOL §1.5 |
+| POST   | `/api/devices/heartbeat`      | (device-token)                   | `DeviceHeartbeat` (§7.3 shape) — also accepted over socket per SYNC-PROTOCOL §4.6                                                      | `{ok:true; serverTime:ISODateTime; confirmedThrough?:object}`                                                                                                                     | D-13                     |
+| GET    | `/api/devices`                | `device.read`                    | `?locationId=&category=&status=&page=`                                                                                                 | `Paginated<Device>`                                                                                                                                                               | D-13                     |
+| GET    | `/api/devices/:id`            | `device.read`                    | –                                                                                                                                      | `Device & {recentHeartbeats:{at; queueDepth; appVersion; batteryPct}[]; events: {type; detail; createdAt}[]}`                                                                     | D-13                     |
+| PATCH  | `/api/devices/:id`            | `device.manage`                  | `{name?; category?; locationId?}`                                                                                                      | `Device`                                                                                                                                                                          | D-13                     |
+| POST   | `/api/devices/:id/unpair`     | `device.manage`                  | `{reason?:string}` — revokes device token, status `unpaired`; un-synced queue stays attributable via registry                          | `Device`                                                                                                                                                                          | D-13                     |
+| POST   | `/api/devices/:id/retire`     | `device.manage`                  | `{replacedByDeviceId?:UUID}`                                                                                                           | `Device` (retired)                                                                                                                                                                | SYNC-PROTOCOL §1.5       |
+| GET    | `/api/topology`               | `topology.read`                  | –                                                                                                                                      | `TopologyTree` (§7.5 shape)                                                                                                                                                       | D-13                     |
+| GET    | `/api/topology/summary`       | `topology.read`                  | –                                                                                                                                      | `{totals:TopologyCounts; byCity:{city:string; counts:TopologyCounts; outletsOffline:number}[]}`                                                                                   | D-13, FR-DASH-04         |
 
 Status sweep (M21 owns): every 30 s, recompute device/node status from `last_seen_at` vs §7.4 thresholds; on transition write `device_events` + emit socket `topology:update`; **outlet-offline alert** fires only when ALL of an outlet's devices AND its node (if any) are offline for > 10 min (alert precision, W6-06).
 
@@ -3004,49 +3731,50 @@ Status sweep (M21 owns): every 30 s, recompute device/node status from `last_see
 
 Socket namespace `/bridge` (node ↔ cloud; AIRE pattern: node connects outbound, authenticates with its node token). Events: `node:register`, `node:heartbeat` (30 s), `discovery:report`, `command:ack`, `logs:chunk`. The `/sync` namespace (M23) is separate — a node holds both.
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| POST | `/api/nodes/pairing-tokens` | `node.manage` | `{locationId:UUID}` | same shape as device pairing token (`targetType:'node'`) | D-12 |
-| POST | `/api/nodes/register` | (public + pairing token) | `{token:string; hostname:string; version:string; osInfo?:object}` | `{nodeId:UUID; nodeToken:string; lanCert:{dnsName:string; pem:string; keyPem:string; expiresAt} /* SYNC-PROTOCOL §1.3 */; config:object}` | D-12 |
-| GET | `/api/nodes` | `node.read` | `?locationId=&status=` | `{id; locationId; locationName; name; status:DeviceStatus; version; ipAddress; lastSeenAt; deviceCount:number; relayQueueDepth:number}[]` | D-13 |
-| GET | `/api/nodes/:id` | `node.read` | – | node detail + recent heartbeats + discovered device counts | D-13 |
-| PATCH | `/api/nodes/:id` | `node.manage` | `{name?}` | node | – |
-| POST | `/api/nodes/:id/command` | `node.manage` | `{type:'restart'\|'update'\|'log_pull'\|'discovery_scan'; params?:object}` | `{commandId:UUID; status:'sent'}` (ack via socket → `device_events`) | D-13, W5-07 |
-| POST | `/api/nodes/:id/unpair` | `node.manage` | `{reason?}` — revokes token; location devices fall back to cloud-direct | node (unpaired) | D-12 |
-| GET | `/api/nodes/:id/discovered-devices` | `node.read` | `?status=new\|confirmed\|ignored` | `{id; source:DiscoverySource; ipAddress; macAddress; vendor; model; suggestedCategory; suggestedName; firstSeenAt; lastSeenAt; status}[]` | D-13 |
-| POST | `/api/nodes/discovered/:id/confirm` | `device.pair` | `{category:DeviceCategory; name:string}` — creates a `devices` row (status from node reachability), links `confirmed_device_id` | `Device` | D-13 |
-| POST | `/api/nodes/discovered/:id/ignore` | `device.pair` | – | `{ok:true}` | D-13 |
+| Method | Path                                | Permission               | Request                                                                                                                         | Response                                                                                                                                  | FR          |
+| ------ | ----------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| POST   | `/api/nodes/pairing-tokens`         | `node.manage`            | `{locationId:UUID}`                                                                                                             | same shape as device pairing token (`targetType:'node'`)                                                                                  | D-12        |
+| POST   | `/api/nodes/register`               | (public + pairing token) | `{token:string; hostname:string; version:string; osInfo?:object}`                                                               | `{nodeId:UUID; nodeToken:string; lanCert:{dnsName:string; pem:string; keyPem:string; expiresAt} /* SYNC-PROTOCOL §1.3 */; config:object}` | D-12        |
+| GET    | `/api/nodes`                        | `node.read`              | `?locationId=&status=`                                                                                                          | `{id; locationId; locationName; name; status:DeviceStatus; version; ipAddress; lastSeenAt; deviceCount:number; relayQueueDepth:number}[]` | D-13        |
+| GET    | `/api/nodes/:id`                    | `node.read`              | –                                                                                                                               | node detail + recent heartbeats + discovered device counts                                                                                | D-13        |
+| PATCH  | `/api/nodes/:id`                    | `node.manage`            | `{name?}`                                                                                                                       | node                                                                                                                                      | –           |
+| POST   | `/api/nodes/:id/command`            | `node.manage`            | `{type:'restart'\|'update'\|'log_pull'\|'discovery_scan'; params?:object}`                                                      | `{commandId:UUID; status:'sent'}` (ack via socket → `device_events`)                                                                      | D-13, W5-07 |
+| POST   | `/api/nodes/:id/unpair`             | `node.manage`            | `{reason?}` — revokes token; location devices fall back to cloud-direct                                                         | node (unpaired)                                                                                                                           | D-12        |
+| GET    | `/api/nodes/:id/discovered-devices` | `node.read`              | `?status=new\|confirmed\|ignored`                                                                                               | `{id; source:DiscoverySource; ipAddress; macAddress; vendor; model; suggestedCategory; suggestedName; firstSeenAt; lastSeenAt; status}[]` | D-13        |
+| POST   | `/api/nodes/discovered/:id/confirm` | `device.pair`            | `{category:DeviceCategory; name:string}` — creates a `devices` row (status from node reachability), links `confirmed_device_id` | `Device`                                                                                                                                  | D-13        |
+| POST   | `/api/nodes/discovered/:id/ignore`  | `device.pair`            | –                                                                                                                               | `{ok:true}`                                                                                                                               | D-13        |
 
 ### 4.23 M23 `sync` (D-12; wire contract = SYNC-PROTOCOL §4 — paths verbatim)
 
 Device/node-facing (device-token auth; socket namespace `/sync` primary, HTTP fallback identical bodies):
 
-| Method | Path | Auth | Request / Response | FR |
-|---|---|---|---|---|
-| GET | `/sync/v1/health` | (public) | → `{ok:boolean; protocol_v:number; server_time:ISODateTime; tier:'cloud'\|'node'}` | D-12 |
-| POST | `/sync/v1/hello` | device-token | SYNC-PROTOCOL §4.2 handshake body → `hello:ack` (resume_cursor, confirmed_through, scope) | D-12 |
-| POST | `/sync/v1/push` | device-token | §4.3 `{batch_id; sent_at; events[≤200, ≤1MB]}` → `{accepted_through; confirmed_through; rejected[]; resend_from?}` | D-12, D-02 |
-| GET | `/sync/v1/pull` | device-token | `?cursor=&limit≤500` → `{events; next_cursor; has_more}` | D-12 |
-| POST | `/sync/v1/bootstrap` | device-token | `{scope}` → chunked snapshot pages + `starting_cursor` (§4.6) | D-12 |
-| PUT | `/sync/v1/attachments/:sha256` | device-token | binary body (resumable) → `{ok:true; attachmentId:UUID}` (cloud only; §4.7) | NFR-09 |
+| Method | Path                           | Auth         | Request / Response                                                                                                 | FR         |
+| ------ | ------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------ | ---------- |
+| GET    | `/sync/v1/health`              | (public)     | → `{ok:boolean; protocol_v:number; server_time:ISODateTime; tier:'cloud'\|'node'}`                                 | D-12       |
+| POST   | `/sync/v1/hello`               | device-token | SYNC-PROTOCOL §4.2 handshake body → `hello:ack` (resume_cursor, confirmed_through, scope)                          | D-12       |
+| POST   | `/sync/v1/push`                | device-token | §4.3 `{batch_id; sent_at; events[≤200, ≤1MB]}` → `{accepted_through; confirmed_through; rejected[]; resend_from?}` | D-12, D-02 |
+| GET    | `/sync/v1/pull`                | device-token | `?cursor=&limit≤500` → `{events; next_cursor; has_more}`                                                           | D-12       |
+| POST   | `/sync/v1/bootstrap`           | device-token | `{scope}` → chunked snapshot pages + `starting_cursor` (§4.6)                                                      | D-12       |
+| PUT    | `/sync/v1/attachments/:sha256` | device-token | binary body (resumable) → `{ok:true; attachmentId:UUID}` (cloud only; §4.7)                                        | NFR-09     |
 
 Admin/monitoring (user JWT):
 
-| Method | Path | Permission | Request | Response | FR |
-|---|---|---|---|---|---|
-| GET | `/api/sync/status` | `sync.status.read` | `?locationId=` | `{locationId:UUID; locationName:string; devices:{deviceId:UUID; name:string; queueDepth:number; quarantineDepth:number; lastSyncAt:ISODateTime\|null; cursorLag:number; status:DeviceStatus}[]; node:{nodeId:UUID; relayQueueDepth:number; lastSyncAt}\|null; openConflicts:number; openExceptions:number}[]` | D-12/13, F12 |
-| GET | `/api/sync/conflicts` | `sync.conflict.resolve` | `?kind=&queue=&status=&locationId=&page=` | `Paginated<{id; kind:SyncConflictKind; queue:SyncQueue; entity:string; entityId:UUID; locationName:string; winnerEventId:UUID\|null; loserEventId:UUID\|null; detail:object; physicalEffectSuspected:boolean; status; createdAt; resolveInUrl:string /* deep link to owning domain UI per §5.4 */}>` | D-12 |
-| POST | `/api/sync/conflicts/:id/dismiss` | `sync.conflict.resolve` | `{reason:string}` (visibility-only entries; entries requiring domain resolution reject with `ERR_RESOLVE_IN_DOMAIN`) | conflict | D-12 |
-| GET | `/api/sync/reconciliations` | `sync.status.read` | `?status=&locationId=&page=` | `Paginated<{id; locationName; storageAreaName; itemName; tier; expectedQty:Qty; storedQty:Qty; divergence:Qty; status; detectedAt}>` (D-16 exceptions) | D-16 |
-| POST | `/api/sync/reconciliations/:id/resolve` | `sync.conflict.resolve` | `{resolution:string; adjustmentId?:UUID}` | row | D-16 |
-| POST | `/api/sync/reconcile/:locationId` | `sync.conflict.resolve` | – (trigger R1/R2 recompute now) | `{jobId:UUID; started:true}` | D-16 |
-| GET | `/api/sync/events` | `sync.status.read` | `?originDeviceId=&entity=&applyStatus=&from=&page=` | `Paginated<sync_event row (§1.13, payload truncated)>` — debugging/forensics | OBJ-03 |
+| Method | Path                                    | Permission              | Request                                                                                                              | Response                                                                                                                                                                                                                                                                                                      | FR           |
+| ------ | --------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| GET    | `/api/sync/status`                      | `sync.status.read`      | `?locationId=`                                                                                                       | `{locationId:UUID; locationName:string; devices:{deviceId:UUID; name:string; queueDepth:number; quarantineDepth:number; lastSyncAt:ISODateTime\|null; cursorLag:number; status:DeviceStatus}[]; node:{nodeId:UUID; relayQueueDepth:number; lastSyncAt}\|null; openConflicts:number; openExceptions:number}[]` | D-12/13, F12 |
+| GET    | `/api/sync/conflicts`                   | `sync.conflict.resolve` | `?kind=&queue=&status=&locationId=&page=`                                                                            | `Paginated<{id; kind:SyncConflictKind; queue:SyncQueue; entity:string; entityId:UUID; locationName:string; winnerEventId:UUID\|null; loserEventId:UUID\|null; detail:object; physicalEffectSuspected:boolean; status; createdAt; resolveInUrl:string /* deep link to owning domain UI per §5.4 */}>`          | D-12         |
+| POST   | `/api/sync/conflicts/:id/dismiss`       | `sync.conflict.resolve` | `{reason:string}` (visibility-only entries; entries requiring domain resolution reject with `ERR_RESOLVE_IN_DOMAIN`) | conflict                                                                                                                                                                                                                                                                                                      | D-12         |
+| GET    | `/api/sync/reconciliations`             | `sync.status.read`      | `?status=&locationId=&page=`                                                                                         | `Paginated<{id; locationName; storageAreaName; itemName; tier; expectedQty:Qty; storedQty:Qty; divergence:Qty; status; detectedAt}>` (D-16 exceptions)                                                                                                                                                        | D-16         |
+| POST   | `/api/sync/reconciliations/:id/resolve` | `sync.conflict.resolve` | `{resolution:string; adjustmentId?:UUID}`                                                                            | row                                                                                                                                                                                                                                                                                                           | D-16         |
+| POST   | `/api/sync/reconcile/:locationId`       | `sync.conflict.resolve` | – (trigger R1/R2 recompute now)                                                                                      | `{jobId:UUID; started:true}`                                                                                                                                                                                                                                                                                  | D-16         |
+| GET    | `/api/sync/events`                      | `sync.status.read`      | `?originDeviceId=&entity=&applyStatus=&from=&page=`                                                                  | `Paginated<sync_event row (§1.13, payload truncated)>` — debugging/forensics                                                                                                                                                                                                                                  | OBJ-03       |
 
 ---
 
 ## 5. Approval state machines (kernel engine D-08; chains seeded in `approval_chain_steps`)
 
 Global rules:
+
 - **Reason is MANDATORY** on every `reject` and every `amend` (FR-LOG-13, FR-SO-02, FR-AUDIT-02) — the engine refuses the transition without it (`ERR_REASON_REQUIRED`).
 - **Offline-provisional (D-17)** is allowed ONLY where the table says so — the closed list from SYNC-PROTOCOL §7.6: `void_refund.approve`, `replenishment` supervisor step, `waste.approve` outlet step. Everything else attempted offline is UI-blocked and cloud-rejected (`authority_violation`) — explicitly including opname adjudication, payment verification, and **cash-variance proposal decisions (§5.9, Amendment 2)**. Offline approvals write `offline_authorized=true` and re-verify per SYNC-PROTOCOL §7.4 (outcomes `verified/failed/unprovable`); an online decision always supersedes an offline-provisional one (§5.3 precedence there).
 - Threshold steps read `settings.approval.threshold.*`; a step whose `[min_amount, max_amount)` window excludes the document amount is auto-`skipped`.
@@ -3055,110 +3783,110 @@ Global rules:
 
 ### 5.1 Replenishment request (FR-LOG-10/11; chain: SPV → KGD)
 
-| Current | Action | Role | Next | Reason req. | Offline (D-17) |
-|---|---|---|---|---|---|
-| `draft` | submit | LDR/SPV (`replenishment.submit`) | `submitted` | – | queued as event (capture, not approval) |
-| `draft` | delete | creator | *(gone)* | – | yes |
-| `submitted` | approve (± amend qty) | SPV (`replenishment.approve.supervisor`) | `awaiting_approval` | amend ⇒ per-line reason | **YES — provisional** (§7.6) |
-| `submitted` | reject | SPV | `rejected` | **yes** | no (reject waits for online) |
-| `awaiting_approval` | approve (± amend qty) | KGD (`replenishment.approve.warehouse`) | `approved` | amend ⇒ per-line reason | **no** (warehouse = online, §7.6) |
-| `awaiting_approval` | reject | KGD | `rejected` | **yes** | no |
-| `approved` | process (picking) | KGD | `processing` | – | no |
-| `processing` | dispatch (via SJ) | KGD (M10 event) | `shipped` | – | no |
-| `shipped` | receive (drop received) | LDR/SPV (M10 event) | `received` | discrepancy ⇒ per-line reason | receiving is a fact — queued offline, yes |
-| `received` | auto-complete (lines reconciled) | system | `completed` | – | – |
+| Current             | Action                           | Role                                     | Next                | Reason req.                   | Offline (D-17)                            |
+| ------------------- | -------------------------------- | ---------------------------------------- | ------------------- | ----------------------------- | ----------------------------------------- |
+| `draft`             | submit                           | LDR/SPV (`replenishment.submit`)         | `submitted`         | –                             | queued as event (capture, not approval)   |
+| `draft`             | delete                           | creator                                  | _(gone)_            | –                             | yes                                       |
+| `submitted`         | approve (± amend qty)            | SPV (`replenishment.approve.supervisor`) | `awaiting_approval` | amend ⇒ per-line reason       | **YES — provisional** (§7.6)              |
+| `submitted`         | reject                           | SPV                                      | `rejected`          | **yes**                       | no (reject waits for online)              |
+| `awaiting_approval` | approve (± amend qty)            | KGD (`replenishment.approve.warehouse`)  | `approved`          | amend ⇒ per-line reason       | **no** (warehouse = online, §7.6)         |
+| `awaiting_approval` | reject                           | KGD                                      | `rejected`          | **yes**                       | no                                        |
+| `approved`          | process (picking)                | KGD                                      | `processing`        | –                             | no                                        |
+| `processing`        | dispatch (via SJ)                | KGD (M10 event)                          | `shipped`           | –                             | no                                        |
+| `shipped`           | receive (drop received)          | LDR/SPV (M10 event)                      | `received`          | discrepancy ⇒ per-line reason | receiving is a fact — queued offline, yes |
+| `received`          | auto-complete (lines reconciled) | system                                   | `completed`         | –                             | –                                         |
 
 ### 5.2 Void / refund (FR-POS-03, APR-02; chain: SPV → MGR above threshold)
 
-| Current | Action | Role | Next | Reason req. | Offline (D-17) |
-|---|---|---|---|---|---|
-| *(sale completed)* | request void/refund | KSR (`pos.void.request`) | `pending` | **yes** (alasan void) | yes (fact capture) |
-| `pending` | approve | SPV (`pos.void.approve`) + PIN; MGR step if amount ≥ `approval.threshold.void.managerAboveIdr` | `approved` → sale `voided/refunded`, payments + usage reversed, journal `SALE_VOID_REVERSAL` | – | **YES — provisional**, PIN + selfie ≥ `offline.selfie_required_above`; re-verified §7.4; failed+cash-gone ⇒ finance queue + `OFFLINE_AUTH_REJECTED` posting (§6.3) |
-| `pending` | reject | SPV/MGR | `rejected` | **yes** | no |
+| Current            | Action              | Role                                                                                           | Next                                                                                         | Reason req.           | Offline (D-17)                                                                                                                                                     |
+| ------------------ | ------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| _(sale completed)_ | request void/refund | KSR (`pos.void.request`)                                                                       | `pending`                                                                                    | **yes** (alasan void) | yes (fact capture)                                                                                                                                                 |
+| `pending`          | approve             | SPV (`pos.void.approve`) + PIN; MGR step if amount ≥ `approval.threshold.void.managerAboveIdr` | `approved` → sale `voided/refunded`, payments + usage reversed, journal `SALE_VOID_REVERSAL` | –                     | **YES — provisional**, PIN + selfie ≥ `offline.selfie_required_above`; re-verified §7.4; failed+cash-gone ⇒ finance queue + `OFFLINE_AUTH_REJECTED` posting (§6.3) |
+| `pending`          | reject              | SPV/MGR                                                                                        | `rejected`                                                                                   | **yes**               | no                                                                                                                                                                 |
 
 Note: the MGR threshold step cannot be satisfied offline — an offline approval above the supervisor's scope cap (`scopes['void_refund.approve'].max_idr`) is impossible to record (client blocks; cloud would fail §7.4 check 5).
 
 ### 5.3 Purchase request → purchase order (FR-PO, F-PUR-01; PR chain: MGR; PO chain: MGR → OWN above threshold)
 
-| Current | Action | Role | Next | Reason req. | Offline |
-|---|---|---|---|---|---|
-| PR `draft` | submit | KGD/SPV (`purchasing.pr.create`) | PR `submitted` | – | no (class X — online surfaces) |
-| PR `submitted` | approve | MGR (`purchasing.pr.approve`) | PR `approved` | – | no |
-| PR `submitted` | reject | MGR | PR `rejected` | **yes** | no |
-| PR `approved` | convert (create PO) | KGD/MGR (`purchasing.po.create`) | PR `converted`, PO `draft` | – | no |
-| PO `draft` | submit | KGD/MGR | PO `pending_approval` | – | no |
-| PO `pending_approval` | approve step 1 | MGR (`purchasing.po.approve`), total < `ownerAboveIdr` ⇒ chain ends | PO `approved` | – | no |
-| PO `pending_approval` | approve step 2 | OWN, total ≥ `ownerAboveIdr` | PO `approved` | – | no |
-| PO `pending_approval` | reject | MGR/OWN | PO `draft` (with reason, editable) | **yes** | no |
-| PO `approved` | issue | KGD/MGR | `issued` | – | no |
-| `issued`/`partially_received` | receive (po_receipts verify) | KGD/LDR (`purchasing.po.receive`) | `partially_received` → `received` when all lines full | short/over ⇒ condition notes (FR-PO-03) | no |
-| `received` | close | FIN (`purchasing.po.close`; requires payment `paid`) | `closed` | – | no |
-| any pre-`received` | cancel | MGR/OWN | `cancelled` | **yes** | no |
+| Current                       | Action                       | Role                                                                | Next                                                  | Reason req.                             | Offline                        |
+| ----------------------------- | ---------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------- | ------------------------------ |
+| PR `draft`                    | submit                       | KGD/SPV (`purchasing.pr.create`)                                    | PR `submitted`                                        | –                                       | no (class X — online surfaces) |
+| PR `submitted`                | approve                      | MGR (`purchasing.pr.approve`)                                       | PR `approved`                                         | –                                       | no                             |
+| PR `submitted`                | reject                       | MGR                                                                 | PR `rejected`                                         | **yes**                                 | no                             |
+| PR `approved`                 | convert (create PO)          | KGD/MGR (`purchasing.po.create`)                                    | PR `converted`, PO `draft`                            | –                                       | no                             |
+| PO `draft`                    | submit                       | KGD/MGR                                                             | PO `pending_approval`                                 | –                                       | no                             |
+| PO `pending_approval`         | approve step 1               | MGR (`purchasing.po.approve`), total < `ownerAboveIdr` ⇒ chain ends | PO `approved`                                         | –                                       | no                             |
+| PO `pending_approval`         | approve step 2               | OWN, total ≥ `ownerAboveIdr`                                        | PO `approved`                                         | –                                       | no                             |
+| PO `pending_approval`         | reject                       | MGR/OWN                                                             | PO `draft` (with reason, editable)                    | **yes**                                 | no                             |
+| PO `approved`                 | issue                        | KGD/MGR                                                             | `issued`                                              | –                                       | no                             |
+| `issued`/`partially_received` | receive (po_receipts verify) | KGD/LDR (`purchasing.po.receive`)                                   | `partially_received` → `received` when all lines full | short/over ⇒ condition notes (FR-PO-03) | no                             |
+| `received`                    | close                        | FIN (`purchasing.po.close`; requires payment `paid`)                | `closed`                                              | –                                       | no                             |
+| any pre-`received`            | cancel                       | MGR/OWN                                                             | `cancelled`                                           | **yes**                                 | no                             |
 
 ### 5.4 Stock opname adjustment (FR-SO-02/03/04; chain: SPV [outlet] / KGD [warehouse] → MGR above threshold)
 
-| Current | Action | Role | Next | Reason req. | Offline |
-|---|---|---|---|---|---|
-| `counting` | record counts | LDR/SPV/KGD (`opname.create`) | `counting` | diff ≠ 0 ⇒ variance reason per line | yes (counting is fact capture, §8 row 8) |
-| `counting` | submit | same (`opname.submit`) | `submitted` | blocked while C1 disputes open | yes (queued) |
-| `submitted` | approve step 1 | SPV (outlet) / KGD (warehouse) (`opname.approve`) | step 2 if `|variance value|` ≥ `approval.threshold.opname.managerAboveIdr`, else `approved`→`adjusted` | – | **no — adjudication is online-only** (SYNC-PROTOCOL §7.6/§8 row 9) |
-| `submitted` (step 2) | approve | MGR | `approved` → `adjusted` (ledger posts `adjustment_in/out`; journal JGUD-06/JOUT-06; attributable shortfall → POUT-05 source) | – | no |
-| `submitted` | reject | approver | `rejected` | **yes** | no |
-| `draft`/`counting` | cancel | creator | `cancelled` | – | yes |
+| Current              | Action         | Role                                              | Next                                                                                                                         | Reason req.                         | Offline                                                                   |
+| -------------------- | -------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------- |
+| `counting`           | record counts  | LDR/SPV/KGD (`opname.create`)                     | `counting`                                                                                                                   | diff ≠ 0 ⇒ variance reason per line | yes (counting is fact capture, §8 row 8)                                  |
+| `counting`           | submit         | same (`opname.submit`)                            | `submitted`                                                                                                                  | blocked while C1 disputes open      | yes (queued)                                                              |
+| `submitted`          | approve step 1 | SPV (outlet) / KGD (warehouse) (`opname.approve`) | step 2 if `                                                                                                                  | variance value                      | `≥`approval.threshold.opname.managerAboveIdr`, else `approved`→`adjusted` | –   | **no — adjudication is online-only** (SYNC-PROTOCOL §7.6/§8 row 9) |
+| `submitted` (step 2) | approve        | MGR                                               | `approved` → `adjusted` (ledger posts `adjustment_in/out`; journal JGUD-06/JOUT-06; attributable shortfall → POUT-05 source) | –                                   | no                                                                        |
+| `submitted`          | reject         | approver                                          | `rejected`                                                                                                                   | **yes**                             | no                                                                        |
+| `draft`/`counting`   | cancel         | creator                                           | `cancelled`                                                                                                                  | –                                   | yes                                                                       |
 
 ### 5.5 Retur outlet → gudang (8.8.1; chain: SPV approve, KGD receive-accept)
 
-| Current | Action | Role | Next | Reason req. | Offline |
-|---|---|---|---|---|---|
-| `draft` | submit (+photos wajib) | LDR/SPV (`return.create`) | `submitted` | line reasons required (FR-WST-01) | yes (fact capture) |
-| `submitted` | approve | SPV (`return.approve`) | `approved` | – | no (not in §7.6 — only *waste* has an offline outlet step) |
-| `submitted` | reject | SPV | `rejected` | **yes** | no |
-| `approved` | ship (+proof wajib) | LDR/SPV (`return.ship`) | `in_transit` (ledger `return_out`; journal JOUT-05) | – | yes (fact) |
-| `in_transit` | receive (+proof wajib) | KGD (`return.receive`) | `received` (ledger `return_in` at gudang; journal JGUD-02) | qty mismatch ⇒ per-line reason | no (warehouse online) |
-| `received` | complete | KGD/MGR (`return.approve`) | `completed` | – | no |
+| Current      | Action                 | Role                       | Next                                                       | Reason req.                       | Offline                                                    |
+| ------------ | ---------------------- | -------------------------- | ---------------------------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
+| `draft`      | submit (+photos wajib) | LDR/SPV (`return.create`)  | `submitted`                                                | line reasons required (FR-WST-01) | yes (fact capture)                                         |
+| `submitted`  | approve                | SPV (`return.approve`)     | `approved`                                                 | –                                 | no (not in §7.6 — only _waste_ has an offline outlet step) |
+| `submitted`  | reject                 | SPV                        | `rejected`                                                 | **yes**                           | no                                                         |
+| `approved`   | ship (+proof wajib)    | LDR/SPV (`return.ship`)    | `in_transit` (ledger `return_out`; journal JOUT-05)        | –                                 | yes (fact)                                                 |
+| `in_transit` | receive (+proof wajib) | KGD (`return.receive`)     | `received` (ledger `return_in` at gudang; journal JGUD-02) | qty mismatch ⇒ per-line reason    | no (warehouse online)                                      |
+| `received`   | complete               | KGD/MGR (`return.approve`) | `completed`                                                | –                                 | no                                                         |
 
 ### 5.6 Retur gudang → supplier (8.8.2; chain: KGD; class X — online only)
 
-| Current | Action | Role | Next | Reason req. | Offline |
-|---|---|---|---|---|---|
-| `draft` | submit (+photos) | KGD (`return.create`) | `submitted` | line reasons | no |
-| `submitted` | approve | KGD…MGR (`return.approve`) | `approved` | – | no |
-| `submitted` | reject | KGD/MGR | `rejected` | **yes** | no |
-| `approved` | ship to supplier (+proof) | KGD (`return.ship`) | `in_transit` (ledger `return_out`; journal JGUD-04 — AP debit) | – | no |
-| `in_transit` | supplier accepted | KGD (`return.approve` via `/complete`) | `completed` (credit note ref recorded) | – | no |
+| Current      | Action                    | Role                                   | Next                                                           | Reason req.  | Offline |
+| ------------ | ------------------------- | -------------------------------------- | -------------------------------------------------------------- | ------------ | ------- |
+| `draft`      | submit (+photos)          | KGD (`return.create`)                  | `submitted`                                                    | line reasons | no      |
+| `submitted`  | approve                   | KGD…MGR (`return.approve`)             | `approved`                                                     | –            | no      |
+| `submitted`  | reject                    | KGD/MGR                                | `rejected`                                                     | **yes**      | no      |
+| `approved`   | ship to supplier (+proof) | KGD (`return.ship`)                    | `in_transit` (ledger `return_out`; journal JGUD-04 — AP debit) | –            | no      |
+| `in_transit` | supplier accepted         | KGD (`return.approve` via `/complete`) | `completed` (credit note ref recorded)                         | –            | no      |
 
 ### 5.7 Payroll run (FR-HR-04; chain: FIN → OWN; never offline)
 
-| Current | Action | Role | Next | Reason req. | Offline |
-|---|---|---|---|---|---|
-| `draft` | calculate | HRA (`payroll.run.calculate`) | `calculated` | – | no |
-| `calculated` | edit line | HRA | `calculated` | override reason **required** | no |
-| `calculated` | submit | HRA (`payroll.run.submit`) | `pending_approval` | – | no |
-| `pending_approval` | approve step 1 | FIN (`payroll.run.approve`) | step 2 | – | no |
-| `pending_approval` | approve step 2 | OWN | `approved` (journal `PAYROLL_ACCRUAL`; PV row pending; loans amortized POUT-06) | – | no |
-| `pending_approval` | reject | FIN/OWN | `calculated` | **yes** | no |
-| `approved` | mark paid | FIN/OWN (`payroll.run.pay`; PV must be `paid`) | `paid` (journal `PAYROLL_PAYMENT`; slips sendable 8.3.3) | – | no |
-| `draft`/`calculated` | cancel | HRA | `cancelled` | **yes** | no |
+| Current              | Action         | Role                                           | Next                                                                            | Reason req.                  | Offline |
+| -------------------- | -------------- | ---------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------- | ------- |
+| `draft`              | calculate      | HRA (`payroll.run.calculate`)                  | `calculated`                                                                    | –                            | no      |
+| `calculated`         | edit line      | HRA                                            | `calculated`                                                                    | override reason **required** | no      |
+| `calculated`         | submit         | HRA (`payroll.run.submit`)                     | `pending_approval`                                                              | –                            | no      |
+| `pending_approval`   | approve step 1 | FIN (`payroll.run.approve`)                    | step 2                                                                          | –                            | no      |
+| `pending_approval`   | approve step 2 | OWN                                            | `approved` (journal `PAYROLL_ACCRUAL`; PV row pending; loans amortized POUT-06) | –                            | no      |
+| `pending_approval`   | reject         | FIN/OWN                                        | `calculated`                                                                    | **yes**                      | no      |
+| `approved`           | mark paid      | FIN/OWN (`payroll.run.pay`; PV must be `paid`) | `paid` (journal `PAYROLL_PAYMENT`; slips sendable 8.3.3)                        | –                            | no      |
+| `draft`/`calculated` | cancel         | HRA                                            | `cancelled`                                                                     | **yes**                      | no      |
 
 ### 5.8 Payment verification (8.9.1 Pending → Verified → Paid; FR-ACCT-01..04; never offline)
 
-| Current | Action | Role | Next | Reason req. | Offline |
-|---|---|---|---|---|---|
-| *(created by flow: PO receipt, payroll approve, petty cash verify, maintenance complete, transfer sale, manual)* | – | system/`payment.proof.upload` | `pending` | – | proof upload may originate offline (attachment side-channel); status stays `pending` |
-| `pending` | attach proof + ref | any `payment.proof.upload` | `pending` (proof recorded, FR-ACCT-01) | – | – |
-| `pending` | verify | FIN (`payment.verify`; proof required) | `verified` (verifier + time recorded, FR-ACCT-02) | – | **no — never offline** (§7.6) |
-| `pending` | reject | FIN (`payment.reject`) | `rejected` | **yes** | no |
-| `verified` | pay | FIN (`payment.pay`); OWN approval step first when amount ≥ `approval.threshold.payment.ownerAboveIdr` | `paid` (journal per ref type §6) | – | no |
-| `verified` | reject | FIN | `rejected` | **yes** | no |
+| Current                                                                                                          | Action             | Role                                                                                                  | Next                                              | Reason req. | Offline                                                                              |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------ |
+| _(created by flow: PO receipt, payroll approve, petty cash verify, maintenance complete, transfer sale, manual)_ | –                  | system/`payment.proof.upload`                                                                         | `pending`                                         | –           | proof upload may originate offline (attachment side-channel); status stays `pending` |
+| `pending`                                                                                                        | attach proof + ref | any `payment.proof.upload`                                                                            | `pending` (proof recorded, FR-ACCT-01)            | –           | –                                                                                    |
+| `pending`                                                                                                        | verify             | FIN (`payment.verify`; proof required)                                                                | `verified` (verifier + time recorded, FR-ACCT-02) | –           | **no — never offline** (§7.6)                                                        |
+| `pending`                                                                                                        | reject             | FIN (`payment.reject`)                                                                                | `rejected`                                        | **yes**     | no                                                                                   |
+| `verified`                                                                                                       | pay                | FIN (`payment.pay`); OWN approval step first when amount ≥ `approval.threshold.payment.ownerAboveIdr` | `paid` (journal per ref type §6)                  | –           | no                                                                                   |
+| `verified`                                                                                                       | reject             | FIN                                                                                                   | `rejected`                                        | **yes**     | no                                                                                   |
 
 ### 5.9 Cash variance proposal (Amendment 2 — auto-propose, human-approve; supersedes A-17)
 
-| Current | Action | Role | Next | Reason req. | Offline |
-|---|---|---|---|---|---|
-| *(shift closed with shortfall > `pos.cash_variance_propose_above`)* | auto-create | system (R7 / shift-close apply) | `pending` — linked to `shift_id` + kasir; notification to SPV of the location | – | proposal creation is cloud-side; the closing itself queues offline as a fact |
-| `pending` | approve | SPV (`pos.cash_variance.approve`; MGR/OWN override) | `approved` — becomes a `deduction_cash_variance` payroll line in the employee's next run (`source_ref_type='cash_variance_proposal'`) | **yes — reason REQUIRED on approve too** | **NO — excluded from D-17** (consistent with SYNC-PROTOCOL §7.6: money-finalizing decisions converge on the cloud) |
-| `pending` | reject | SPV/MGR/OWN | `rejected` — stays visible as an R7 exception trail | **yes** | no |
-| `pending` | cancel | MGR/OWN | `cancelled` (e.g. shift close corrected/recounted) | **yes** | no |
+| Current                                                             | Action      | Role                                                | Next                                                                                                                                  | Reason req.                              | Offline                                                                                                            |
+| ------------------------------------------------------------------- | ----------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| _(shift closed with shortfall > `pos.cash_variance_propose_above`)_ | auto-create | system (R7 / shift-close apply)                     | `pending` — linked to `shift_id` + kasir; notification to SPV of the location                                                         | –                                        | proposal creation is cloud-side; the closing itself queues offline as a fact                                       |
+| `pending`                                                           | approve     | SPV (`pos.cash_variance.approve`; MGR/OWN override) | `approved` — becomes a `deduction_cash_variance` payroll line in the employee's next run (`source_ref_type='cash_variance_proposal'`) | **yes — reason REQUIRED on approve too** | **NO — excluded from D-17** (consistent with SYNC-PROTOCOL §7.6: money-finalizing decisions converge on the cloud) |
+| `pending`                                                           | reject      | SPV/MGR/OWN                                         | `rejected` — stays visible as an R7 exception trail                                                                                   | **yes**                                  | no                                                                                                                 |
+| `pending`                                                           | cancel      | MGR/OWN                                             | `cancelled` (e.g. shift close corrected/recounted)                                                                                    | **yes**                                  | no                                                                                                                 |
 
 A proposal never reaches payroll while `pending`; M15's calculate consumes only `approved` proposals not yet linked to a run.
 
@@ -3176,73 +3904,73 @@ The posting engine (M17) subscribes to **applied** domain events (an event in sy
 
 ### 6.1 Seed chart of accounts (`is_system=true`; W1-C seeds; codes are contract)
 
-| Code | Name (id-ID) | Type | Normal |
-|---|---|---|---|
-| 1000 | Kas Outlet | asset | debit |
-| 1010 | Kas Kecil (Petty Cash) | asset | debit |
-| 1020 | Bank | asset | debit |
-| 1030 | Piutang Platform Online | asset | debit |
-| 1031 | Piutang QRIS | asset | debit |
-| 1032 | Piutang Transfer | asset | debit |
-| 1100 | Persediaan Gudang | asset | debit |
-| 1110 | Persediaan Outlet | asset | debit |
-| 1120 | Persediaan Dalam Perjalanan | asset | debit |
-| 1210 | Piutang Karyawan (Kasbon) | asset | debit |
-| 1220 | Piutang Klaim Karyawan | asset | debit |
-| 1500 | Aset Tetap | asset | debit |
-| 2000 | Hutang Supplier | liability | credit |
-| 2100 | Hutang Gaji | liability | credit |
-| 2110 | Hutang BPJS | liability | credit |
-| 2120 | Hutang PPh21 | liability | credit |
-| 2200 | Hutang Lainnya | liability | credit |
-| 3000 | Modal | equity | credit |
-| 3100 | Laba Ditahan | equity | credit |
-| 4000 | Pendapatan Penjualan | revenue | credit |
-| 4100 | Pendapatan Lainnya | revenue | credit |
-| 5000 | Beban Pokok Penjualan (HPP) | expense | debit |
-| 5090 | Penyesuaian Nilai Persediaan | expense | debit |
-| 5100 | Beban Waste/Rusak/Expired | expense | debit |
-| 6000 | Beban Gaji | expense | debit |
-| 6010 | Beban BPJS (Perusahaan) | expense | debit |
-| 6100 | Beban Operasional Outlet | expense | debit |
-| 6200 | Beban Maintenance | expense | debit |
-| 6300 | Beban Komisi Platform | expense | debit |
-| 6400 | Beban Selisih Stok | expense | debit |
+| Code | Name (id-ID)                 | Type      | Normal |
+| ---- | ---------------------------- | --------- | ------ |
+| 1000 | Kas Outlet                   | asset     | debit  |
+| 1010 | Kas Kecil (Petty Cash)       | asset     | debit  |
+| 1020 | Bank                         | asset     | debit  |
+| 1030 | Piutang Platform Online      | asset     | debit  |
+| 1031 | Piutang QRIS                 | asset     | debit  |
+| 1032 | Piutang Transfer             | asset     | debit  |
+| 1100 | Persediaan Gudang            | asset     | debit  |
+| 1110 | Persediaan Outlet            | asset     | debit  |
+| 1120 | Persediaan Dalam Perjalanan  | asset     | debit  |
+| 1210 | Piutang Karyawan (Kasbon)    | asset     | debit  |
+| 1220 | Piutang Klaim Karyawan       | asset     | debit  |
+| 1500 | Aset Tetap                   | asset     | debit  |
+| 2000 | Hutang Supplier              | liability | credit |
+| 2100 | Hutang Gaji                  | liability | credit |
+| 2110 | Hutang BPJS                  | liability | credit |
+| 2120 | Hutang PPh21                 | liability | credit |
+| 2200 | Hutang Lainnya               | liability | credit |
+| 3000 | Modal                        | equity    | credit |
+| 3100 | Laba Ditahan                 | equity    | credit |
+| 4000 | Pendapatan Penjualan         | revenue   | credit |
+| 4100 | Pendapatan Lainnya           | revenue   | credit |
+| 5000 | Beban Pokok Penjualan (HPP)  | expense   | debit  |
+| 5090 | Penyesuaian Nilai Persediaan | expense   | debit  |
+| 5100 | Beban Waste/Rusak/Expired    | expense   | debit  |
+| 6000 | Beban Gaji                   | expense   | debit  |
+| 6010 | Beban BPJS (Perusahaan)      | expense   | debit  |
+| 6100 | Beban Operasional Outlet     | expense   | debit  |
+| 6200 | Beban Maintenance            | expense   | debit  |
+| 6300 | Beban Komisi Platform        | expense   | debit  |
+| 6400 | Beban Selisih Stok           | expense   | debit  |
 
 ### 6.2 The 16 PRD journal event types (FR-ACC-JGUD-01..07, FR-ACC-JOUT-01..09)
 
-| # | JournalEventType | Trigger (domain event, applied) | Debit | Credit | Amount source |
-|---|---|---|---|---|---|
-| JGUD-01 | `GUDANG_PURCHASE` | `po_receipts` verified (M11) | 1100 Persediaan Gudang | 2000 Hutang Supplier | `Σ receipt_line.qty_received × po_line.unit_price` |
-| JGUD-02 | `GUDANG_GOODS_IN` | `returns.received_at_warehouse` (outlet→gudang leg) | 1100 Persediaan Gudang | 1120 Dalam Perjalanan | `Σ line.qty_received × line.unit_cost` |
-| JGUD-03 | `GUDANG_GOODS_OUT_TO_OUTLET` | `surat_jalan` dispatched (M10) | 1120 Dalam Perjalanan | 1100 Persediaan Gudang | `Σ sj_line.qty × items.avg_cost` at dispatch |
-| JGUD-04 | `GUDANG_RETURN_TO_SUPPLIER` | `returns.shipped` (gudang→supplier leg) | 2000 Hutang Supplier | 1100 Persediaan Gudang | `Σ line.qty × line.unit_cost` |
-| JGUD-05 | `GUDANG_WASTE` | `waste_records` approved at warehouse | 5100 Beban Waste | 1100 Persediaan Gudang | `Σ qty × unit_cost` (at approval) |
-| JGUD-06 | `GUDANG_STOCK_ADJUSTMENT` | `stock_adjustments` applied at warehouse — condition `{direction:'shortage'}` / `{direction:'overage'}` | shortage: 6400 Beban Selisih · overage: 1100 | shortage: 1100 · overage: 4100 Pendapatan Lainnya | `|qty_delta| × unit_cost` |
-| JGUD-07 | `GUDANG_STOCK_REVALUATION` | manual cost revaluation (M17, FIN) — condition `{direction:'up'/'down'}` | up: 1100 · down: 5090 | up: 5090 · down: 1100 | `Σ qty_on_hand × Δcost` (see Appendix A-8: primarily a report; rule exists for the manual event) |
-| JOUT-01 | `OUTLET_GOODS_IN_FROM_WAREHOUSE` | `sj_drops.received` — rule 1 (received value) | 1110 Persediaan Outlet | 1120 Dalam Perjalanan | `Σ line.qty_received × cost` |
-| JOUT-01b | 〃 — rule 2, condition `{discrepancy:true}` (shortfall in transit) | 6400 Beban Selisih Stok | 1120 Dalam Perjalanan | `Σ (qty − qty_received) × cost` — pending C2/C6 investigation outcome |
-| JOUT-02 | `OUTLET_INGREDIENT_USAGE` | daily aggregate of applied `sales.completed` recipe explosions | 5000 HPP | 1110 Persediaan Outlet | `Σ usage_out.qty × unit_cost` for the day |
-| JOUT-03 | `OUTLET_SALES` | daily aggregate of applied `sales.completed` — one rule per payment method: `{method:'cash'}`→1000 · `{method:'qris'}`→1031 · `{method:'bank_transfer'}`→1032; plus online orders: `{platform:any}`→ Dr 1030 net + Dr 6300 fees | 1000/1031/1032/1030 (+6300) | 4000 Pendapatan Penjualan | POS: `Σ payments.amount` by method · online: `gross` to 4000, `fees+discount` to 6300, `net` to 1030 |
-| JOUT-04 | `OUTLET_WASTE` | `waste_records` approved at outlet | 5100 Beban Waste | 1110 Persediaan Outlet | `Σ qty × unit_cost` |
-| JOUT-05 | `OUTLET_RETURN_TO_WAREHOUSE` | `returns.shipped` (outlet→gudang leg) | 1120 Dalam Perjalanan | 1110 Persediaan Outlet | `Σ qty × unit_cost` |
-| JOUT-06 | `OUTLET_STOCK_ADJUSTMENT` | `stock_adjustments` applied at outlet — conditions as JGUD-06, plus `{attributable:true}` variant | shortage: 6400 (or 1210 Piutang Karyawan when attributable → POUT-05) · overage: 1110 | shortage: 1110 · overage: 4100 | `|qty_delta| × unit_cost` |
-| JOUT-07 | `OUTLET_DIRECT_PURCHASE` | `petty_cash` verified with stockable lines / `po_receipts` at outlet | 1110 Persediaan Outlet | 1010 Kas Kecil (petty) / 2000 (PO) | `Σ stockable line amount` |
-| JOUT-08 | `OUTLET_PETTY_CASH` | `petty_cash` verified, non-stockable lines | 6100 Beban Operasional Outlet (per `expense_category` mapping) | 1010 Kas Kecil | `Σ non-stockable line amount` |
-| JOUT-09 | `OUTLET_OPERATING_EXPENSE` | `payment_verifications.paid` with `ref_type='other'` + outlet location | 6100 Beban Operasional Outlet | 1020 Bank / 1000 Kas (per `paid_via`) | `pv.amount` |
+| #        | JournalEventType                                                   | Trigger (domain event, applied)                                                                                                                                                                                                 | Debit                                                                                 | Credit                                                                | Amount source                                                                                        |
+| -------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| JGUD-01  | `GUDANG_PURCHASE`                                                  | `po_receipts` verified (M11)                                                                                                                                                                                                    | 1100 Persediaan Gudang                                                                | 2000 Hutang Supplier                                                  | `Σ receipt_line.qty_received × po_line.unit_price`                                                   |
+| JGUD-02  | `GUDANG_GOODS_IN`                                                  | `returns.received_at_warehouse` (outlet→gudang leg)                                                                                                                                                                             | 1100 Persediaan Gudang                                                                | 1120 Dalam Perjalanan                                                 | `Σ line.qty_received × line.unit_cost`                                                               |
+| JGUD-03  | `GUDANG_GOODS_OUT_TO_OUTLET`                                       | `surat_jalan` dispatched (M10)                                                                                                                                                                                                  | 1120 Dalam Perjalanan                                                                 | 1100 Persediaan Gudang                                                | `Σ sj_line.qty × items.avg_cost` at dispatch                                                         |
+| JGUD-04  | `GUDANG_RETURN_TO_SUPPLIER`                                        | `returns.shipped` (gudang→supplier leg)                                                                                                                                                                                         | 2000 Hutang Supplier                                                                  | 1100 Persediaan Gudang                                                | `Σ line.qty × line.unit_cost`                                                                        |
+| JGUD-05  | `GUDANG_WASTE`                                                     | `waste_records` approved at warehouse                                                                                                                                                                                           | 5100 Beban Waste                                                                      | 1100 Persediaan Gudang                                                | `Σ qty × unit_cost` (at approval)                                                                    |
+| JGUD-06  | `GUDANG_STOCK_ADJUSTMENT`                                          | `stock_adjustments` applied at warehouse — condition `{direction:'shortage'}` / `{direction:'overage'}`                                                                                                                         | shortage: 6400 Beban Selisih · overage: 1100                                          | shortage: 1100 · overage: 4100 Pendapatan Lainnya                     | `                                                                                                    | qty_delta | × unit_cost` |
+| JGUD-07  | `GUDANG_STOCK_REVALUATION`                                         | manual cost revaluation (M17, FIN) — condition `{direction:'up'/'down'}`                                                                                                                                                        | up: 1100 · down: 5090                                                                 | up: 5090 · down: 1100                                                 | `Σ qty_on_hand × Δcost` (see Appendix A-8: primarily a report; rule exists for the manual event)     |
+| JOUT-01  | `OUTLET_GOODS_IN_FROM_WAREHOUSE`                                   | `sj_drops.received` — rule 1 (received value)                                                                                                                                                                                   | 1110 Persediaan Outlet                                                                | 1120 Dalam Perjalanan                                                 | `Σ line.qty_received × cost`                                                                         |
+| JOUT-01b | 〃 — rule 2, condition `{discrepancy:true}` (shortfall in transit) | 6400 Beban Selisih Stok                                                                                                                                                                                                         | 1120 Dalam Perjalanan                                                                 | `Σ (qty − qty_received) × cost` — pending C2/C6 investigation outcome |
+| JOUT-02  | `OUTLET_INGREDIENT_USAGE`                                          | daily aggregate of applied `sales.completed` recipe explosions                                                                                                                                                                  | 5000 HPP                                                                              | 1110 Persediaan Outlet                                                | `Σ usage_out.qty × unit_cost` for the day                                                            |
+| JOUT-03  | `OUTLET_SALES`                                                     | daily aggregate of applied `sales.completed` — one rule per payment method: `{method:'cash'}`→1000 · `{method:'qris'}`→1031 · `{method:'bank_transfer'}`→1032; plus online orders: `{platform:any}`→ Dr 1030 net + Dr 6300 fees | 1000/1031/1032/1030 (+6300)                                                           | 4000 Pendapatan Penjualan                                             | POS: `Σ payments.amount` by method · online: `gross` to 4000, `fees+discount` to 6300, `net` to 1030 |
+| JOUT-04  | `OUTLET_WASTE`                                                     | `waste_records` approved at outlet                                                                                                                                                                                              | 5100 Beban Waste                                                                      | 1110 Persediaan Outlet                                                | `Σ qty × unit_cost`                                                                                  |
+| JOUT-05  | `OUTLET_RETURN_TO_WAREHOUSE`                                       | `returns.shipped` (outlet→gudang leg)                                                                                                                                                                                           | 1120 Dalam Perjalanan                                                                 | 1110 Persediaan Outlet                                                | `Σ qty × unit_cost`                                                                                  |
+| JOUT-06  | `OUTLET_STOCK_ADJUSTMENT`                                          | `stock_adjustments` applied at outlet — conditions as JGUD-06, plus `{attributable:true}` variant                                                                                                                               | shortage: 6400 (or 1210 Piutang Karyawan when attributable → POUT-05) · overage: 1110 | shortage: 1110 · overage: 4100                                        | `                                                                                                    | qty_delta | × unit_cost` |
+| JOUT-07  | `OUTLET_DIRECT_PURCHASE`                                           | `petty_cash` verified with stockable lines / `po_receipts` at outlet                                                                                                                                                            | 1110 Persediaan Outlet                                                                | 1010 Kas Kecil (petty) / 2000 (PO)                                    | `Σ stockable line amount`                                                                            |
+| JOUT-08  | `OUTLET_PETTY_CASH`                                                | `petty_cash` verified, non-stockable lines                                                                                                                                                                                      | 6100 Beban Operasional Outlet (per `expense_category` mapping)                        | 1010 Kas Kecil                                                        | `Σ non-stockable line amount`                                                                        |
+| JOUT-09  | `OUTLET_OPERATING_EXPENSE`                                         | `payment_verifications.paid` with `ref_type='other'` + outlet location                                                                                                                                                          | 6100 Beban Operasional Outlet                                                         | 1020 Bank / 1000 Kas (per `paid_via`)                                 | `pv.amount`                                                                                          |
 
 ### 6.3 System extension rules (D-04 beyond the PRD's 16 — each marked with its rationale)
 
-| # | Event | Trigger | Debit | Credit | Amount | Why beyond PRD |
-|---|---|---|---|---|---|---|
-| X1 | `PAYROLL_ACCRUAL` | payroll run approved | 6000 Beban Gaji (gross) | 2100 Hutang Gaji (net) + 1210 Piutang Karyawan (loan installments) + 1220/6400 (SO shortfall recovery) | run totals | full GL needs the liability leg the PRD's cash-journal wording skips |
-| X1s | `PAYROLL_ACCRUAL` — statutory legs, condition `{statutoryMode:true}` (Amendment 1) | same trigger, only on `statutory_mode=true` runs | 6010 Beban BPJS (employer_cost lines); employee deductions reduce the 2100 net leg | 2110 Hutang BPJS (all BPJS shares) + 2120 Hutang PPh21 (PPh21 lines) | Σ statutory lines by component | statutory withholdings are liabilities to BPJS/DJP until remitted |
-| X2 | `PAYROLL_PAYMENT` | payroll PV `paid` | 2100 Hutang Gaji | 1020 Bank | `total_net` | 〃 — BPJS/PPh21 remittances post separately as PV `paid` with `ref_type='other'` (Dr 2110/2120, Cr 1020) |
-| X3 | `QRIS_SETTLEMENT` | finance records QRIS settlement (PV `paid`, ref `sale_payment`) | 1020 Bank | 1031 Piutang QRIS | settled amount | QRIS settles T+1; receivable must clear |
-| X4 | `TRANSFER_VERIFIED` | transfer sale payment verified→paid | 1020 Bank | 1032 Piutang Transfer | payment amount | NFR-09 Pending→Verified→Paid made ledger-real |
-| X5 | `PLATFORM_SETTLEMENT` | platform payout recorded (PV `paid`, ref `online_order`) | 1020 Bank | 1030 Piutang Platform | payout amount | FR-POS-07 net-received completion |
-| X6 | `SALE_VOID_REVERSAL` | void/refund effectively approved | 4000 Pendapatan (Dr, reversal) + 1110 (Dr, usage back) | 1000/1031/1032 (payment back) + 5000 HPP (Cr) | sale amounts | voids must unwind both revenue and HPP |
-| **X7** | **`OFFLINE_AUTH_REJECTED`** | **finance verdict `rejected` on an offline-authorized action whose physical effect already happened (SYNC-PROTOCOL §7.5)** | **1220 Piutang Klaim Karyawan** | refund/void: 4000 Pendapatan (re-recognized) · waste: 5100 Beban Waste (reversal) | document amount | **AMENDMENT beyond the PRD's 16 (coordinator-directed): the ledger is append-only and the cash/goods are already gone — the unwind is a *claim receivable* against the responsible parties (recoverable via payroll deduction or write-off), never a deletion or silent reversal** |
+| #      | Event                                                                              | Trigger                                                                                                                    | Debit                                                                              | Credit                                                                                                 | Amount                         | Why beyond PRD                                                                                                                                                                                                                                                                     |
+| ------ | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| X1     | `PAYROLL_ACCRUAL`                                                                  | payroll run approved                                                                                                       | 6000 Beban Gaji (gross)                                                            | 2100 Hutang Gaji (net) + 1210 Piutang Karyawan (loan installments) + 1220/6400 (SO shortfall recovery) | run totals                     | full GL needs the liability leg the PRD's cash-journal wording skips                                                                                                                                                                                                               |
+| X1s    | `PAYROLL_ACCRUAL` — statutory legs, condition `{statutoryMode:true}` (Amendment 1) | same trigger, only on `statutory_mode=true` runs                                                                           | 6010 Beban BPJS (employer_cost lines); employee deductions reduce the 2100 net leg | 2110 Hutang BPJS (all BPJS shares) + 2120 Hutang PPh21 (PPh21 lines)                                   | Σ statutory lines by component | statutory withholdings are liabilities to BPJS/DJP until remitted                                                                                                                                                                                                                  |
+| X2     | `PAYROLL_PAYMENT`                                                                  | payroll PV `paid`                                                                                                          | 2100 Hutang Gaji                                                                   | 1020 Bank                                                                                              | `total_net`                    | 〃 — BPJS/PPh21 remittances post separately as PV `paid` with `ref_type='other'` (Dr 2110/2120, Cr 1020)                                                                                                                                                                           |
+| X3     | `QRIS_SETTLEMENT`                                                                  | finance records QRIS settlement (PV `paid`, ref `sale_payment`)                                                            | 1020 Bank                                                                          | 1031 Piutang QRIS                                                                                      | settled amount                 | QRIS settles T+1; receivable must clear                                                                                                                                                                                                                                            |
+| X4     | `TRANSFER_VERIFIED`                                                                | transfer sale payment verified→paid                                                                                        | 1020 Bank                                                                          | 1032 Piutang Transfer                                                                                  | payment amount                 | NFR-09 Pending→Verified→Paid made ledger-real                                                                                                                                                                                                                                      |
+| X5     | `PLATFORM_SETTLEMENT`                                                              | platform payout recorded (PV `paid`, ref `online_order`)                                                                   | 1020 Bank                                                                          | 1030 Piutang Platform                                                                                  | payout amount                  | FR-POS-07 net-received completion                                                                                                                                                                                                                                                  |
+| X6     | `SALE_VOID_REVERSAL`                                                               | void/refund effectively approved                                                                                           | 4000 Pendapatan (Dr, reversal) + 1110 (Dr, usage back)                             | 1000/1031/1032 (payment back) + 5000 HPP (Cr)                                                          | sale amounts                   | voids must unwind both revenue and HPP                                                                                                                                                                                                                                             |
+| **X7** | **`OFFLINE_AUTH_REJECTED`**                                                        | **finance verdict `rejected` on an offline-authorized action whose physical effect already happened (SYNC-PROTOCOL §7.5)** | **1220 Piutang Klaim Karyawan**                                                    | refund/void: 4000 Pendapatan (re-recognized) · waste: 5100 Beban Waste (reversal)                      | document amount                | **AMENDMENT beyond the PRD's 16 (coordinator-directed): the ledger is append-only and the cash/goods are already gone — the unwind is a _claim receivable_ against the responsible parties (recoverable via payroll deduction or write-off), never a deletion or silent reversal** |
 
 Petty-cash float top-up (`Dr 1010 / Cr 1020`) and loan disbursement (`Dr 1210 / Cr 1020`) post from their PV `paid` events under X-family rules (`ref_type='petty_cash_topup'|'employee_loan'`).
 
@@ -3259,29 +3987,31 @@ Petty-cash float top-up (`Dr 1010 / Cr 1020`) and loan disbursement (`Dr 1210 / 
 ### 7.2 Heartbeat payloads (wire shapes; SYNC-PROTOCOL §4.6 channel — lossy, not sync events)
 
 ```ts
-interface DeviceHeartbeat {            // every 60 s while the PWA is awake; also on visibility/connectivity change
+interface DeviceHeartbeat {
+  // every 60 s while the PWA is awake; also on visibility/connectivity change
   deviceId: UUID;
-  at: ISODateTime;                     // client clock (skew measurement input)
-  appVersion: string;                  // D-13
-  queueDepth: number;                  // D-13: outbox events not yet confirmed
-  quarantineDepth: number;             // poison events held locally
-  pullLag: number;                     // upstream server_seq − local cursor
+  at: ISODateTime; // client clock (skew measurement input)
+  appVersion: string; // D-13
+  queueDepth: number; // D-13: outbox events not yet confirmed
+  quarantineDepth: number; // poison events held locally
+  pullLag: number; // upstream server_seq − local cursor
   lastSyncAt: ISODateTime | null;
   storage: { usedMb: number; quotaMb: number };
-  clockOffsetMs: number;               // last measured vs upstream
+  clockOffsetMs: number; // last measured vs upstream
   batteryPct?: number;
   networkType?: 'wifi' | 'cellular' | 'ethernet' | 'unknown';
-  activeUserId?: UUID | null;          // who is logged in (POS attribution)
-  shiftOpen?: boolean;                 // POS devices
+  activeUserId?: UUID | null; // who is logged in (POS attribution)
+  shiftOpen?: boolean; // POS devices
 }
-interface NodeHeartbeat {              // every 30 s (socket /bridge)
+interface NodeHeartbeat {
+  // every 30 s (socket /bridge)
   nodeId: UUID;
   at: ISODateTime;
   version: string;
   uptimeSec: number;
-  relayQueueDepth: number;             // device events not yet cloud-confirmed
-  deviceCount: number;                 // LAN devices currently connected to the node
-  deviceSummaries: { deviceId: UUID; lastSeenAt: ISODateTime; queueDepth: number }[];  // aggregated LAN view
+  relayQueueDepth: number; // device events not yet cloud-confirmed
+  deviceCount: number; // LAN devices currently connected to the node
+  deviceSummaries: { deviceId: UUID; lastSeenAt: ISODateTime; queueDepth: number }[]; // aggregated LAN view
   discoveryLastRunAt: ISODateTime | null;
   db: { ok: boolean; sizeMb: number };
   system: { cpuPct: number; memPct: number; diskFreePct: number };
@@ -3293,11 +4023,11 @@ Heartbeat ingest updates `devices/branch_nodes` (`last_seen_at`, `app_version`, 
 
 ### 7.3 Staleness thresholds & status rules (M21 sweep every 30 s; single source of truth)
 
-| Subject | Beat interval | → `stale` after | → `offline` after | Notes |
-|---|---|---|---|---|
-| Device (PWA) | 60 s awake | 180 s (3 missed) | 600 s | a closed/slept tablet drifts stale→offline naturally; that is expected outside opening hours |
-| Branch node | 30 s | 90 s | 300 s | AIRE liveness constant preserved |
-| Outlet (derived) | – | – | ALL its devices offline AND node offline (or absent) for > 10 min | the only condition that fires the **outlet-offline alert** (notification `outlet_offline` to MGR/OWN + `device_events.outlet_offline`) — a single tablet sleeping never pages anyone (W6-06 alert precision) |
+| Subject          | Beat interval | → `stale` after  | → `offline` after                                                 | Notes                                                                                                                                                                                                        |
+| ---------------- | ------------- | ---------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Device (PWA)     | 60 s awake    | 180 s (3 missed) | 600 s                                                             | a closed/slept tablet drifts stale→offline naturally; that is expected outside opening hours                                                                                                                 |
+| Branch node      | 30 s          | 90 s             | 300 s                                                             | AIRE liveness constant preserved                                                                                                                                                                             |
+| Outlet (derived) | –             | –                | ALL its devices offline AND node offline (or absent) for > 10 min | the only condition that fires the **outlet-offline alert** (notification `outlet_offline` to MGR/OWN + `device_events.outlet_offline`) — a single tablet sleeping never pages anyone (W6-06 alert precision) |
 
 Transitions (never repeats, only edges): `online→stale→offline` and any `→online` recovery emit `device_events` + socket `topology:update` + (for offline/online of nodes and outlets) notifications. First sighting is silent (AIRE rule). `unpaired`/`retired` are administrative and excluded from sweeps.
 
@@ -3306,31 +4036,57 @@ Transitions (never repeats, only edges): `online→stale→offline` and any `→
 ```ts
 interface TopologyTree {
   generatedAt: ISODateTime;
-  pusat: TopologyLocation;                       // the warehouse (Balikpapan)
+  pusat: TopologyLocation; // the warehouse (Balikpapan)
   cities: { city: string; counts: TopologyCounts; outlets: TopologyLocation[] }[];
-  totals: TopologyCounts & { outletsOffline: number; openConflicts: number; openExceptions: number };
+  totals: TopologyCounts & {
+    outletsOffline: number;
+    openConflicts: number;
+    openExceptions: number;
+  };
 }
 interface TopologyLocation {
-  location: { id: UUID; code: string; name: string; type: 'warehouse'|'outlet'; city: string };
-  node: TopologyNode | null;                     // null = no branch node installed (default deployment)
-  devices: TopologyDevice[];                     // UI groups by category
+  location: { id: UUID; code: string; name: string; type: 'warehouse' | 'outlet'; city: string };
+  node: TopologyNode | null; // null = no branch node installed (default deployment)
+  devices: TopologyDevice[]; // UI groups by category
   counts: TopologyCounts;
-  syncHealth: {                                  // D-12/D-13 per-outlet sync visibility
-    queueDepth: number;                          // Σ device outboxes + node relay queue
+  syncHealth: {
+    // D-12/D-13 per-outlet sync visibility
+    queueDepth: number; // Σ device outboxes + node relay queue
     quarantineDepth: number;
-    lastSyncAt: ISODateTime | null;              // max over devices
+    lastSyncAt: ISODateTime | null; // max over devices
     conflictsOpen: number;
     exceptionsOpen: number;
-    offlineAuthPending: number;                  // D-17 pending re-verification/verdict
+    offlineAuthPending: number; // D-17 pending re-verification/verdict
   };
-  outletStatus: 'online' | 'degraded' | 'offline';   // degraded = some devices offline / queue growing
+  outletStatus: 'online' | 'degraded' | 'offline'; // degraded = some devices offline / queue growing
 }
-interface TopologyNode { id: UUID; name: string; status: 'online'|'stale'|'offline'; version: string | null;
-                         lastSeenAt: ISODateTime | null; relayQueueDepth: number; discoveredNewCount: number }
-interface TopologyDevice { id: UUID; name: string; category: DeviceCategory; status: DeviceStatus;
-                           appVersion: string | null; queueDepth: number; lastSeenAt: ISODateTime | null;
-                           ipAddress: string | null; activeUserName?: string | null; shiftOpen?: boolean }
-interface TopologyCounts { online: number; stale: number; offline: number; total: number }
+interface TopologyNode {
+  id: UUID;
+  name: string;
+  status: 'online' | 'stale' | 'offline';
+  version: string | null;
+  lastSeenAt: ISODateTime | null;
+  relayQueueDepth: number;
+  discoveredNewCount: number;
+}
+interface TopologyDevice {
+  id: UUID;
+  name: string;
+  category: DeviceCategory;
+  status: DeviceStatus;
+  appVersion: string | null;
+  queueDepth: number;
+  lastSeenAt: ISODateTime | null;
+  ipAddress: string | null;
+  activeUserName?: string | null;
+  shiftOpen?: boolean;
+}
+interface TopologyCounts {
+  online: number;
+  stale: number;
+  offline: number;
+  total: number;
+}
 ```
 
 Category presentation (F12; lucide icons, port of AIRE `CATEGORY_META`): `tablet`→Tablet, `pos_terminal`→Smartphone, `printer`→Printer, `laptop`→Laptop, `router`→Router, `branch_node`→Waypoints, `other`→HardDrive. Status tokens: `online`→success/animated, `stale`→warning, `offline`→muted, `unpaired`→outline, `retired`→hidden by default.
@@ -3343,68 +4099,68 @@ Realtime: F12 subscribes to socket channel `topology` (`topology:update {locatio
 
 ### 8.1 Migration block allocation (one author: W1-C; post-G1 fixes as `2NN_<agent-id>_<slug>.sql`)
 
-| Block | Contents |
-|---|---|
-| `001–009` | extensions, `locations`, **`storage_areas`**, `users`, `roles`, `permissions`, `role_permissions`, `user_locations`, `sessions`, `audit_log`, `attachments`, `notifications`(+`notification_outbox`), `settings`(+`document_counters`), approval engine (`approval_chain_steps`, `approvals`, `approval_steps`), `updated_at` trigger, RLS policies |
-| `010–019` | `item_categories`, `units`, `unit_conversions`, `items`, `products`, `recipes`/`recipe_lines`, `suppliers`, `supplier_items`, `supplier_price_history` |
-| `020–029` | `stock_balances` (location + **storage_area** + item), `stock_movements`, `min_stock_rules`, `stock_opname`, `stock_opname_lines`, `stock_adjustments`, `stock_reconciliations` |
-| `030–039` | `replenishment_requests`, `replenishment_request_lines`, **`surat_jalan`**, `sj_drops`, `sj_lines`, `sj_temperature_logs`, `sj_seals`, `drivers`, `vehicles`, `goods_receipts`, `goods_receipt_lines`, `shipment_types` |
-| `040–049` | `purchase_requests`, `purchase_request_lines`, `purchase_orders`, `po_lines`, `po_receipts`, `po_receipt_lines`, `petty_cash`, `petty_cash_lines` |
-| `050–059` | `pos_shifts`, `sales`, `sale_lines`, `sale_payments`, `void_refunds`, `online_orders`, `cash_variance_proposals` (Amendment 2) |
+| Block     | Contents                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `001–009` | extensions, `locations`, **`storage_areas`**, `users`, `roles`, `permissions`, `role_permissions`, `user_locations`, `sessions`, `audit_log`, `attachments`, `notifications`(+`notification_outbox`), `settings`(+`document_counters`), approval engine (`approval_chain_steps`, `approvals`, `approval_steps`), `updated_at` trigger, RLS policies                                                          |
+| `010–019` | `item_categories`, `units`, `unit_conversions`, `items`, `products`, `recipes`/`recipe_lines`, `suppliers`, `supplier_items`, `supplier_price_history`                                                                                                                                                                                                                                                       |
+| `020–029` | `stock_balances` (location + **storage_area** + item), `stock_movements`, `min_stock_rules`, `stock_opname`, `stock_opname_lines`, `stock_adjustments`, `stock_reconciliations`                                                                                                                                                                                                                              |
+| `030–039` | `replenishment_requests`, `replenishment_request_lines`, **`surat_jalan`**, `sj_drops`, `sj_lines`, `sj_temperature_logs`, `sj_seals`, `drivers`, `vehicles`, `goods_receipts`, `goods_receipt_lines`, `shipment_types`                                                                                                                                                                                      |
+| `040–049` | `purchase_requests`, `purchase_request_lines`, `purchase_orders`, `po_lines`, `po_receipts`, `po_receipt_lines`, `petty_cash`, `petty_cash_lines`                                                                                                                                                                                                                                                            |
+| `050–059` | `pos_shifts`, `sales`, `sale_lines`, `sale_payments`, `void_refunds`, `online_orders`, `cash_variance_proposals` (Amendment 2)                                                                                                                                                                                                                                                                               |
 | `060–069` | `employees`, `employments`, `work_shifts`, `shift_assignments`, `attendance`, `leave_requests`, `salary_components`, `employee_salary_components`, `employee_loans`, `employee_loan_payments`, `payroll_periods`, `payroll_runs`, `payroll_lines`, + statutory (Amendment 1): `bpjs_configs`, `pph21_ter_rates`, `pph21_ptkp`, `pph21_article17_brackets`, `employee_tax_profiles` (+ Amendment 2 retro-FKs) |
-| `070–079` | `assets`, `maintenance_schedules`, `maintenance_jobs`, `service_history` |
-| `080–089` | `waste_records`, `returns`, `return_lines` |
-| `090–099` | `chart_of_accounts`, `fiscal_periods`, `journal_entries`, `journal_lines`, `posting_rules`, `payment_verifications` |
-| `100–109` | `mv_sales_daily`, `mv_item_usage_daily`, `mv_employee_kpi_daily`, `mv_delivery_recap_daily` |
-| `110–119` | **`branch_nodes`, `devices`, `device_heartbeats`, `device_events`, `pairing_tokens`, `discovered_devices`** (+ retro-FKs for `device_id` columns) |
-| `120–129` | **`sync_events`, `sync_batches`, `sync_cursors`, `sync_conflicts`, `offline_credentials`, `offline_authorizations`** |
-| `2xx` | per-agent fix blocks: `2NN_<agent-id>_<slug>.sql`. Never renumber, never edit an applied migration. |
+| `070–079` | `assets`, `maintenance_schedules`, `maintenance_jobs`, `service_history`                                                                                                                                                                                                                                                                                                                                     |
+| `080–089` | `waste_records`, `returns`, `return_lines`                                                                                                                                                                                                                                                                                                                                                                   |
+| `090–099` | `chart_of_accounts`, `fiscal_periods`, `journal_entries`, `journal_lines`, `posting_rules`, `payment_verifications`                                                                                                                                                                                                                                                                                          |
+| `100–109` | `mv_sales_daily`, `mv_item_usage_daily`, `mv_employee_kpi_daily`, `mv_delivery_recap_daily`                                                                                                                                                                                                                                                                                                                  |
+| `110–119` | **`branch_nodes`, `devices`, `device_heartbeats`, `device_events`, `pairing_tokens`, `discovered_devices`** (+ retro-FKs for `device_id` columns)                                                                                                                                                                                                                                                            |
+| `120–129` | **`sync_events`, `sync_batches`, `sync_cursors`, `sync_conflicts`, `offline_credentials`, `offline_authorizations`**                                                                                                                                                                                                                                                                                         |
+| `2xx`     | per-agent fix blocks: `2NN_<agent-id>_<slug>.sql`. Never renumber, never edit an applied migration.                                                                                                                                                                                                                                                                                                          |
 
 ### 8.2 Backend modules (one agent, one directory, exclusive — BUILD-PLAN §4.2)
 
-| # | `modules/<dir>` | Coverage | Contract section |
-|---|---|---|---|
-| M01 | `auth` | login, JWT, refresh, PIN, offline credential minting (D-17) | §4.1 |
-| M02 | `users` | user CRUD, role + location assignment | §4.2 |
-| M03 | `location` | outlets, gudang, cities, storage areas (D-15) | §4.3 |
-| M04 | `item` | items, categories, units, conversions | §4.4 |
-| M05 | `product` | menu products, recipes/BOM (FR-POS-06) | §4.5 |
-| M06 | `supplier` | FR-SUP-01..06, price history, role-locked pricing | §4.6 |
-| M07 | `inventory` | balances per area, movements, min-stock, low stock (FR-LOG-06/07/17..21) | §4.7 |
-| M08 | `stock-opname` | FR-SO-01..04 per storage area | §4.8 |
-| M09 | `replenishment` | FR-LOG-06..13 | §4.9 |
-| M10 | `delivery` | D-14 Surat Jalan, drops, cold chain, receiving (FR-LOG-01..05, 08, 14..16) | §4.10 |
-| M11 | `purchasing` | FR-PO-01..04, F-PUR-01..05, petty cash | §4.11 |
-| M12 | `waste-return` | FR-WST-01..04, both retur directions | §4.12 |
-| M13 | `pos` | FR-POS-01..07 | §4.13 |
-| M14 | `hr` | FR-HR-01/02, attendance GPS+selfie, shifts, cuti | §4.14 |
-| M15 | `payroll` | FR-HR-03/04, PIN-01..07, POUT-01..09, slip gaji | §4.15 |
-| M16 | `asset` | FR-PMS-01..04 | §4.16 |
-| M17 | `accounting` | D-04 GL, COA, posting engine, FR-ACCT-01..04 | §4.17, §6 |
-| M18 | `dashboard` | FR-DASH-01..04 | §4.18 |
-| M19 | `report` | exports, rekap pengiriman (FR-LOG-04), laporan shift | §4.19 |
-| M20 | `settings` | thresholds, geofence, cold-chain limits, payroll rules | §4.20 |
-| M21 | `device-registry` | D-13 devices, pairing, heartbeat, topology, stale sweep | §4.21, §7 |
-| M22 | `node-gateway` | D-12/13 node socket gateway, discovery ingest, commands | §4.22 |
-| M23 | `sync` | D-12 event ingest, cursors, authority, conflicts, reconciliation | §4.23, SYNC-PROTOCOL |
+| #   | `modules/<dir>`   | Coverage                                                                   | Contract section     |
+| --- | ----------------- | -------------------------------------------------------------------------- | -------------------- |
+| M01 | `auth`            | login, JWT, refresh, PIN, offline credential minting (D-17)                | §4.1                 |
+| M02 | `users`           | user CRUD, role + location assignment                                      | §4.2                 |
+| M03 | `location`        | outlets, gudang, cities, storage areas (D-15)                              | §4.3                 |
+| M04 | `item`            | items, categories, units, conversions                                      | §4.4                 |
+| M05 | `product`         | menu products, recipes/BOM (FR-POS-06)                                     | §4.5                 |
+| M06 | `supplier`        | FR-SUP-01..06, price history, role-locked pricing                          | §4.6                 |
+| M07 | `inventory`       | balances per area, movements, min-stock, low stock (FR-LOG-06/07/17..21)   | §4.7                 |
+| M08 | `stock-opname`    | FR-SO-01..04 per storage area                                              | §4.8                 |
+| M09 | `replenishment`   | FR-LOG-06..13                                                              | §4.9                 |
+| M10 | `delivery`        | D-14 Surat Jalan, drops, cold chain, receiving (FR-LOG-01..05, 08, 14..16) | §4.10                |
+| M11 | `purchasing`      | FR-PO-01..04, F-PUR-01..05, petty cash                                     | §4.11                |
+| M12 | `waste-return`    | FR-WST-01..04, both retur directions                                       | §4.12                |
+| M13 | `pos`             | FR-POS-01..07                                                              | §4.13                |
+| M14 | `hr`              | FR-HR-01/02, attendance GPS+selfie, shifts, cuti                           | §4.14                |
+| M15 | `payroll`         | FR-HR-03/04, PIN-01..07, POUT-01..09, slip gaji                            | §4.15                |
+| M16 | `asset`           | FR-PMS-01..04                                                              | §4.16                |
+| M17 | `accounting`      | D-04 GL, COA, posting engine, FR-ACCT-01..04                               | §4.17, §6            |
+| M18 | `dashboard`       | FR-DASH-01..04                                                             | §4.18                |
+| M19 | `report`          | exports, rekap pengiriman (FR-LOG-04), laporan shift                       | §4.19                |
+| M20 | `settings`        | thresholds, geofence, cold-chain limits, payroll rules                     | §4.20                |
+| M21 | `device-registry` | D-13 devices, pairing, heartbeat, topology, stale sweep                    | §4.21, §7            |
+| M22 | `node-gateway`    | D-12/13 node socket gateway, discovery ingest, commands                    | §4.22                |
+| M23 | `sync`            | D-12 event ingest, cursors, authority, conflicts, reconciliation           | §4.23, SYNC-PROTOCOL |
 
 ### 8.3 Frontend surfaces (one agent, one route group, exclusive — BUILD-PLAN §4.3)
 
-| # | `app/<route>` | Roles | Device | Builds against |
-|---|---|---|---|---|
-| F01 | `(auth)/` | all | any | §4.1 |
-| F02 | `pos/` | Kasir | tablet, **offline-first** | §4.13, §4.5, SYNC-PROTOCOL §8 rows 1–3, 16–17 |
-| F03 | `dashboard/` | Owner, Manager | laptop | §4.18 |
-| F04 | `outlet/` | Leader/Staff, Supervisor | tablet + laptop | §4.7–4.9, §4.11 (petty cash), §4.12, SYNC-PROTOCOL §8 rows 4, 6, 8, 11, 18–19 |
-| F05 | `warehouse/` | Kepala Gudang | laptop | §4.7–4.10, §4.12 |
-| F06 | `purchasing/` | Purchasing (=KGD/MGR) | laptop | §4.11, §4.6 |
-| F07 | `finance/` | Finance, Owner | laptop | §4.17, §6 |
-| F08 | `hr/` | HR Admin, Supervisor | laptop | §4.14, §4.15 |
-| F09 | `assets/` | Manager, PIC | laptop + mobile | §4.16 |
-| F10 | `admin/` | Owner, Manager | laptop | §4.2–4.4, §4.20, audit §4.0 |
-| F11 | `me/` | every employee | **mobile** | §4.14 (absen, cuti), §4.15 (slips) |
-| F12 | `topology/` | Owner, Manager, IT | laptop + wallboard | §4.21–4.23, §7 |
-| F13 | `driver/` | Driver | **mobile, offline-first** | §4.10 (`my-jobs`, drop actions), SYNC-PROTOCOL §8 row 7 |
+| #   | `app/<route>` | Roles                    | Device                    | Builds against                                                                |
+| --- | ------------- | ------------------------ | ------------------------- | ----------------------------------------------------------------------------- |
+| F01 | `(auth)/`     | all                      | any                       | §4.1                                                                          |
+| F02 | `pos/`        | Kasir                    | tablet, **offline-first** | §4.13, §4.5, SYNC-PROTOCOL §8 rows 1–3, 16–17                                 |
+| F03 | `dashboard/`  | Owner, Manager           | laptop                    | §4.18                                                                         |
+| F04 | `outlet/`     | Leader/Staff, Supervisor | tablet + laptop           | §4.7–4.9, §4.11 (petty cash), §4.12, SYNC-PROTOCOL §8 rows 4, 6, 8, 11, 18–19 |
+| F05 | `warehouse/`  | Kepala Gudang            | laptop                    | §4.7–4.10, §4.12                                                              |
+| F06 | `purchasing/` | Purchasing (=KGD/MGR)    | laptop                    | §4.11, §4.6                                                                   |
+| F07 | `finance/`    | Finance, Owner           | laptop                    | §4.17, §6                                                                     |
+| F08 | `hr/`         | HR Admin, Supervisor     | laptop                    | §4.14, §4.15                                                                  |
+| F09 | `assets/`     | Manager, PIC             | laptop + mobile           | §4.16                                                                         |
+| F10 | `admin/`      | Owner, Manager           | laptop                    | §4.2–4.4, §4.20, audit §4.0                                                   |
+| F11 | `me/`         | every employee           | **mobile**                | §4.14 (absen, cuti), §4.15 (slips)                                            |
+| F12 | `topology/`   | Owner, Manager, IT       | laptop + wallboard        | §4.21–4.23, §7                                                                |
+| F13 | `driver/`     | Driver                   | **mobile, offline-first** | §4.10 (`my-jobs`, drop actions), SYNC-PROTOCOL §8 row 7                       |
 
 Kernel ownership (BUILD-PLAN Wave 2): W2-A `kernel/stock-ledger` (dual-mode per SYNC-PROTOCOL §5.2-C5), W2-B `kernel/approvals` (§5), W2-C `kernel/{audit,notification,storage,events}` (§4.0), W2-D `kernel/sync` (§4.23), W2-E `frontend/src/lib/local`, W2-F `apps/branch-node`.
 
@@ -3412,26 +4168,26 @@ Kernel ownership (BUILD-PLAN Wave 2): W2-A `kernel/stock-ledger` (dual-mode per 
 
 ## Appendix A — Resolved gaps, conflicts, and assumptions (architect decisions; owner may overrule)
 
-| # | Gap / conflict | Resolution recorded here |
-|---|---|---|
-| A-1 | **PRD has 8 roles; purchasing/F06 names a "Purchasing" actor (ACT-05)** | No 9th purchasing role: purchasing is performed by `kepala_gudang` (PO create/receive) and `manager` (approve). If the client later hires a dedicated purchaser, add a role via `roles`+matrix amendment. |
-| A-2 | **Drivers (D-14/F13) are not one of the PRD's 8 roles** | Added role `driver` (9th column in §3) with the minimal key set (delivery.read/drop.execute, attendance, slips, leave). A driver logging in as leader_outlet would leak outlet permissions — unacceptable for OBJ-03. Flagged as amendment-derived. |
-| A-3 | **"PIC Maintenance" (ACT-10) is not a role** | Data-level assignment (`assets.assigned_to`, `maintenance_jobs.assigned_to`); execution permission `asset.job.execute` held by LDR/SPV/KGD/MGR. |
-| A-4 | **BUILD-PLAN §4.1 doesn't name approval-engine tables** | `approval_chain_steps`/`approvals`/`approval_steps` allocated to block 001–009 (file 008) — D-08 needs storage before every approvable module. Also added `document_counters` (007) and `notification_outbox` (006, the RISK-P4 WA mock target). |
-| A-5 | **`waste_lines` not in §4.1's block 080 list** | Kept the block's exact table set: `waste_records` is one row per wasted item, grouped by `batch_id` — no extra table needed. |
-| A-6 | **POUT-08 "Data fingerprint/absensi" is a data source, not a deduction** | Mapped to `DEDUCTION_LATE`/absence family: attendance data is the calculation basis (there is no fingerprint hardware in scope — attendance is GPS+selfie per FR-HR-01). No separate component. |
-| A-7 | **FR-POS-07 online orders carry no line items → ingredient usage unknowable** | `online_orders.items JSONB` optional `{productId, qty}[]`: when present, usage posts (JOUT-02 includes it); when absent, revenue-only. Recommend outlets record items; not enforced in v1. |
-| A-8 | **JGUD-07 "Nilai barang/stok" is a valuation statement, not an event** | Served two ways: report `GET /api/accounting/stock-value` (primary) + a manual revaluation event/rule for FIN (§6.2 JGUD-07). Moving-average cost updates from PO receipts do NOT auto-post revaluation entries in v1. |
-| A-9 | **Payment status of QRIS vs transfer (FR-ACCT-03 vs POS reality)** | cash=`paid` immediately; QRIS (static)=`verified` at sale, `paid` on settlement (X3); transfer=`pending` until Finance verifies proof (X4). Matches NFR-09 without blocking the sale (SYNC-PROTOCOL §8 row 2). |
-| A-10 | **Frozen/dry separation semantics (FR-LOG-02)** | Hard rule: one SJ = one shipment type; frozen SJ requires freezer vehicle; item `storage_type` drives which SJ it may join and which storage-area types may hold it (warned, not blocked, at putaway). |
-| A-11 | **Single role per user** | `users.role_id` is single-valued in v1 (PRD's role model is exclusive). Multi-role users = create a second account; revisit only if the client demands it. |
-| A-12 | **PPh21/BPJS not in PRD** | **SUPERSEDED by Amendment 1 (owner decision, 17 Aug).** Full PPh21 (TER monthly + Article-17 December true-up) and BPJS (Kesehatan/JHT/JKK/JKM/JP) are implemented as an **optional, wizard-gated capability**: settings flag `payroll.statutory` (default OFF), Owner/Manager-run setup wizard, effective-dated rate tables maintained by the client (§1.7 files 067–068, §2.6, §4.15). Runs snapshot `statutory_mode` so history stays reproducible across toggles. When OFF, payroll is exactly the PRD's 7 PIN + 9 POUT. Annual rate/PTKP maintenance is the client's operational responsibility; the December recalculation is in calculator scope. |
-| A-13 | **SYNC-PROTOCOL naming nuance** | The credential mint registry is `offline_credentials`; the per-use log is `offline_authorizations` (both block 120–129). SYNC-PROTOCOL §7.4-check-1's "exists in offline_authorizations" resolves against the mint registry (`offline_credentials`) — same semantics, two tables so a credential's N uses each get their own three-valued outcome. |
-| A-14 | **Stock ledger dual mode** | Adopted SYNC-PROTOCOL §5.2-C5's amendment: `StockLedgerService.post(tx, movements, mode: 'strict'|'fact')`. W2-A must implement both; BUILD-PLAN §5 W2-A's "non-negative-unless-adjustment" holds for `strict` only. |
-| A-15 | **Feature-code aliases** | PRD §14 feature codes map onto FR IDs: F-LOG-*→FR-LOG-*, F-POS-01..08→FR-POS-01..07+FR-SO (POS-08=outlet opname), F-HR-01..06→FR-HR-*/PIN/POUT, F-DASH→FR-DASH, F-PMS→FR-PMS, F-PUR-01..05→FR-PO/FR-SUP/petty cash, F-INV-01..05→FR-SO/FR-WST/FR-AUDIT, F-ACC-01..03→FR-ACCT/JGUD/JOUT. BUILD-PLAN's "FR-PUR-*" ≡ PRD's "F-PUR-*". |
-| A-16 | **Employee self-service scope (F11)** | Every employee with a login can check in, view own slips, request leave — regardless of role (§3 all-✓ rows). Employees without users rows are payroll-only (no self-service). |
-| A-18 | **Supplier visibility for outlet roles (Amendment 3 — owner decision, 17 Aug; overrules the original §1.14/§3 full-row hide)** | Fully hiding supplier rows from SPV/LDR broke PRD 8.6.1 (outlet staff record *nama supplier/toko* on petty cash). Now: `suppliers.outlet_visible` flag; outlet roles read flagged rows via `GET /api/suppliers/directory` in the `SupplierDirectoryEntry` projection (name + contact only). The FR-SUP-06 lock moves to **column level**: `harga beli` (all of `supplier_items`/`supplier_price_history`), `payment_terms_days`, bank fields, and purchase history remain invisible to outlet roles — row-hidden for the price tables, API-projection-stripped on `suppliers`. Directory is online-only (suppliers stay sync class X); offline petty cash uses free-text store name. |
-| A-17 | **Shift-close cash variance → POUT** | **SUPERSEDED by Amendment 2 (owner decision, 17 Aug): auto-propose, human-approve.** A drawer shortfall auto-creates a **pending** `cash_variance_proposals` row linked to the shift + cashier (§1.6-054); it reaches payroll only after supervisor approval with a mandatory reason (§5.9), landing as a `deduction_cash_variance` line. Rejection also requires a reason. Not offline-authorizable. Overage remains an R7 finance exception with no proposal. |
+| #    | Gap / conflict                                                                                                                 | Resolution recorded here                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A-1  | **PRD has 8 roles; purchasing/F06 names a "Purchasing" actor (ACT-05)**                                                        | No 9th purchasing role: purchasing is performed by `kepala_gudang` (PO create/receive) and `manager` (approve). If the client later hires a dedicated purchaser, add a role via `roles`+matrix amendment.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| A-2  | **Drivers (D-14/F13) are not one of the PRD's 8 roles**                                                                        | Added role `driver` (9th column in §3) with the minimal key set (delivery.read/drop.execute, attendance, slips, leave). A driver logging in as leader_outlet would leak outlet permissions — unacceptable for OBJ-03. Flagged as amendment-derived.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| A-3  | **"PIC Maintenance" (ACT-10) is not a role**                                                                                   | Data-level assignment (`assets.assigned_to`, `maintenance_jobs.assigned_to`); execution permission `asset.job.execute` held by LDR/SPV/KGD/MGR.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| A-4  | **BUILD-PLAN §4.1 doesn't name approval-engine tables**                                                                        | `approval_chain_steps`/`approvals`/`approval_steps` allocated to block 001–009 (file 008) — D-08 needs storage before every approvable module. Also added `document_counters` (007) and `notification_outbox` (006, the RISK-P4 WA mock target).                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| A-5  | **`waste_lines` not in §4.1's block 080 list**                                                                                 | Kept the block's exact table set: `waste_records` is one row per wasted item, grouped by `batch_id` — no extra table needed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| A-6  | **POUT-08 "Data fingerprint/absensi" is a data source, not a deduction**                                                       | Mapped to `DEDUCTION_LATE`/absence family: attendance data is the calculation basis (there is no fingerprint hardware in scope — attendance is GPS+selfie per FR-HR-01). No separate component.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| A-7  | **FR-POS-07 online orders carry no line items → ingredient usage unknowable**                                                  | `online_orders.items JSONB` optional `{productId, qty}[]`: when present, usage posts (JOUT-02 includes it); when absent, revenue-only. Recommend outlets record items; not enforced in v1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| A-8  | **JGUD-07 "Nilai barang/stok" is a valuation statement, not an event**                                                         | Served two ways: report `GET /api/accounting/stock-value` (primary) + a manual revaluation event/rule for FIN (§6.2 JGUD-07). Moving-average cost updates from PO receipts do NOT auto-post revaluation entries in v1.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| A-9  | **Payment status of QRIS vs transfer (FR-ACCT-03 vs POS reality)**                                                             | cash=`paid` immediately; QRIS (static)=`verified` at sale, `paid` on settlement (X3); transfer=`pending` until Finance verifies proof (X4). Matches NFR-09 without blocking the sale (SYNC-PROTOCOL §8 row 2).                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| A-10 | **Frozen/dry separation semantics (FR-LOG-02)**                                                                                | Hard rule: one SJ = one shipment type; frozen SJ requires freezer vehicle; item `storage_type` drives which SJ it may join and which storage-area types may hold it (warned, not blocked, at putaway).                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| A-11 | **Single role per user**                                                                                                       | `users.role_id` is single-valued in v1 (PRD's role model is exclusive). Multi-role users = create a second account; revisit only if the client demands it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| A-12 | **PPh21/BPJS not in PRD**                                                                                                      | **SUPERSEDED by Amendment 1 (owner decision, 17 Aug).** Full PPh21 (TER monthly + Article-17 December true-up) and BPJS (Kesehatan/JHT/JKK/JKM/JP) are implemented as an **optional, wizard-gated capability**: settings flag `payroll.statutory` (default OFF), Owner/Manager-run setup wizard, effective-dated rate tables maintained by the client (§1.7 files 067–068, §2.6, §4.15). Runs snapshot `statutory_mode` so history stays reproducible across toggles. When OFF, payroll is exactly the PRD's 7 PIN + 9 POUT. Annual rate/PTKP maintenance is the client's operational responsibility; the December recalculation is in calculator scope.                             |
+| A-13 | **SYNC-PROTOCOL naming nuance**                                                                                                | The credential mint registry is `offline_credentials`; the per-use log is `offline_authorizations` (both block 120–129). SYNC-PROTOCOL §7.4-check-1's "exists in offline_authorizations" resolves against the mint registry (`offline_credentials`) — same semantics, two tables so a credential's N uses each get their own three-valued outcome.                                                                                                                                                                                                                                                                                                                                   |
+| A-14 | **Stock ledger dual mode**                                                                                                     | Adopted SYNC-PROTOCOL §5.2-C5's amendment: `StockLedgerService.post(tx, movements, mode: 'strict'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 'fact')`. W2-A must implement both; BUILD-PLAN §5 W2-A's "non-negative-unless-adjustment" holds for `strict` only. |
+| A-15 | **Feature-code aliases**                                                                                                       | PRD §14 feature codes map onto FR IDs: F-LOG-_→FR-LOG-_, F-POS-01..08→FR-POS-01..07+FR-SO (POS-08=outlet opname), F-HR-01..06→FR-HR-_/PIN/POUT, F-DASH→FR-DASH, F-PMS→FR-PMS, F-PUR-01..05→FR-PO/FR-SUP/petty cash, F-INV-01..05→FR-SO/FR-WST/FR-AUDIT, F-ACC-01..03→FR-ACCT/JGUD/JOUT. BUILD-PLAN's "FR-PUR-_" ≡ PRD's "F-PUR-*".                                                                                                                                                                                                                                                                                                                                                   |
+| A-16 | **Employee self-service scope (F11)**                                                                                          | Every employee with a login can check in, view own slips, request leave — regardless of role (§3 all-✓ rows). Employees without users rows are payroll-only (no self-service).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| A-18 | **Supplier visibility for outlet roles (Amendment 3 — owner decision, 17 Aug; overrules the original §1.14/§3 full-row hide)** | Fully hiding supplier rows from SPV/LDR broke PRD 8.6.1 (outlet staff record _nama supplier/toko_ on petty cash). Now: `suppliers.outlet_visible` flag; outlet roles read flagged rows via `GET /api/suppliers/directory` in the `SupplierDirectoryEntry` projection (name + contact only). The FR-SUP-06 lock moves to **column level**: `harga beli` (all of `supplier_items`/`supplier_price_history`), `payment_terms_days`, bank fields, and purchase history remain invisible to outlet roles — row-hidden for the price tables, API-projection-stripped on `suppliers`. Directory is online-only (suppliers stay sync class X); offline petty cash uses free-text store name. |
+| A-17 | **Shift-close cash variance → POUT**                                                                                           | **SUPERSEDED by Amendment 2 (owner decision, 17 Aug): auto-propose, human-approve.** A drawer shortfall auto-creates a **pending** `cash_variance_proposals` row linked to the shift + cashier (§1.6-054); it reaches payroll only after supervisor approval with a mandatory reason (§5.9), landing as a `deduction_cash_variance` line. Rejection also requires a reason. Not offline-authorizable. Overage remains an R7 finance exception with no proposal.                                                                                                                                                                                                                      |
 
 ## Appendix B — FR coverage index
 
@@ -3439,16 +4195,4 @@ Every PRD FR ID appears in §4's "FR" columns, §5, or §6 as follows: FR-LOG-01
 
 ---
 
-*End of CONTRACTS.md v1.0 (Wave 0A). Amendments only via the architect; the integrator broadcasts (BUILD-PLAN §6 rule 7). Where this file and SYNC-PROTOCOL.md describe the same thing: SYNC-PROTOCOL wins on wire/sync behavior, CONTRACTS wins on DDL, RBAC, endpoints, and posting rules.*
-
-
-
-
-
-
-
-
-
-
-
-
+_End of CONTRACTS.md v1.0 (Wave 0A). Amendments only via the architect; the integrator broadcasts (BUILD-PLAN §6 rule 7). Where this file and SYNC-PROTOCOL.md describe the same thing: SYNC-PROTOCOL wins on wire/sync behavior, CONTRACTS wins on DDL, RBAC, endpoints, and posting rules._

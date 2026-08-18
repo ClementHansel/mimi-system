@@ -57,7 +57,10 @@ export async function closePool(): Promise<void> {
  * leave_requests, employees, work_shifts, shift_assignments, approvals,
  * settings) ever persists across tests.
  */
-export async function withRollbackAs<T>(user: RlsUser, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function withRollbackAs<T>(
+  user: RlsUser,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
@@ -135,7 +138,10 @@ export const asRequest = withRollbackAs;
  * caller's own `finally` — it durably outlives the test, unlike everything
  * `withRollbackAs` touches.
  */
-export async function asCommittedRequest<T>(user: RlsUser, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+export async function asCommittedRequest<T>(
+  user: RlsUser,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
   const client = await getAppPool().connect();
   try {
     await client.query('BEGIN');
@@ -167,14 +173,20 @@ export interface HrFixtures {
 export async function loadHrFixtures(): Promise<HrFixtures> {
   const pool = getOwnerPool();
 
-  const outlet = await pool.query<{ id: string; latitude: string; longitude: string; geofence_radius_m: number }>(
+  const outlet = await pool.query<{
+    id: string;
+    latitude: string;
+    longitude: string;
+    geofence_radius_m: number;
+  }>(
     `SELECT id, latitude, longitude, geofence_radius_m FROM locations WHERE type = 'outlet' AND latitude IS NOT NULL LIMIT 1`,
   );
   const outletRow = outlet.rows[0];
   if (!outletRow) throw new Error('Seed data has no outlet with a geofence center configured.');
 
   const attachment = await pool.query<{ id: string }>('SELECT id FROM attachments LIMIT 1');
-  if (!attachment.rows[0]) throw new Error('Seed data has no attachments — required as a stand-in selfie reference.');
+  if (!attachment.rows[0])
+    throw new Error('Seed data has no attachments — required as a stand-in selfie reference.');
 
   const usersByRole: HrFixtures['usersByRole'] = {};
   for (const roleKey of Object.values(RoleKey)) {
@@ -221,7 +233,10 @@ export async function loadHrFixtures(): Promise<HrFixtures> {
 }
 
 /** A DIFFERENT employee at the SAME outlet — proves RLS is self-only, not location-wide, for a Kasir. */
-export async function loadCoworkerEmployeeId(locationId: string, excludeEmployeeId: string): Promise<string | null> {
+export async function loadCoworkerEmployeeId(
+  locationId: string,
+  excludeEmployeeId: string,
+): Promise<string | null> {
   const res = await getOwnerPool().query<{ id: string }>(
     `SELECT id FROM employees WHERE location_id = $1 AND id <> $2 LIMIT 1`,
     [locationId, excludeEmployeeId],
@@ -230,7 +245,9 @@ export async function loadCoworkerEmployeeId(locationId: string, excludeEmployee
 }
 
 /** A second outlet's kasir — used to prove RLS isolation (a Kasir sees only their OWN outlet's rows). */
-export async function loadOtherOutletKasir(excludeOutletId: string): Promise<{ userId: string; employeeId: string; locationId: string } | null> {
+export async function loadOtherOutletKasir(
+  excludeOutletId: string,
+): Promise<{ userId: string; employeeId: string; locationId: string } | null> {
   const pool = getOwnerPool();
   const res = await pool.query<{ user_id: string; employee_id: string; location_id: string }>(
     `SELECT u.id AS user_id, e.id AS employee_id, e.location_id
@@ -241,7 +258,13 @@ export async function loadOtherOutletKasir(excludeOutletId: string): Promise<{ u
       LIMIT 1`,
     [excludeOutletId],
   );
-  return res.rows[0] ? { userId: res.rows[0].user_id, employeeId: res.rows[0].employee_id, locationId: res.rows[0].location_id } : null;
+  return res.rows[0]
+    ? {
+        userId: res.rows[0].user_id,
+        employeeId: res.rows[0].employee_id,
+        locationId: res.rows[0].location_id,
+      }
+    : null;
 }
 
 /**
@@ -271,7 +294,13 @@ export async function deleteWorkShift(id: string): Promise<void> {
   await getOwnerPool().query('DELETE FROM work_shifts WHERE id = $1', [id]);
 }
 
-export async function assignShift(employeeId: string, workShiftId: string, locationId: string, date: string, assignedBy: string): Promise<void> {
+export async function assignShift(
+  employeeId: string,
+  workShiftId: string,
+  locationId: string,
+  date: string,
+  assignedBy: string,
+): Promise<void> {
   await getOwnerPool().query(
     `INSERT INTO shift_assignments (employee_id, work_shift_id, location_id, date, assigned_by)
      VALUES ($1,$2,$3,$4,$5)
@@ -281,10 +310,19 @@ export async function assignShift(employeeId: string, workShiftId: string, locat
 }
 
 /** Deletes any real attendance row for (employee, date) OVER THE OWNER POOL, restored automatically because the caller only ever reads it back inside a rolled-back app-pool transaction that never commits this deletion itself — used to give a test a clean slate when seed data already has today's punch. Since this runs on a genuinely separate connection/transaction that DOES commit, tests that use it must recreate what they delete via the same owner pool in a `finally`. */
-export async function deleteAttendanceForDate(employeeId: string, date: string): Promise<Record<string, any> | null> {
-  const existing = await getOwnerPool().query('SELECT * FROM attendance WHERE employee_id = $1 AND date = $2', [employeeId, date]);
+export async function deleteAttendanceForDate(
+  employeeId: string,
+  date: string,
+): Promise<Record<string, any> | null> {
+  const existing = await getOwnerPool().query(
+    'SELECT * FROM attendance WHERE employee_id = $1 AND date = $2',
+    [employeeId, date],
+  );
   if (existing.rows.length === 0) return null;
-  await getOwnerPool().query('DELETE FROM attendance WHERE employee_id = $1 AND date = $2', [employeeId, date]);
+  await getOwnerPool().query('DELETE FROM attendance WHERE employee_id = $1 AND date = $2', [
+    employeeId,
+    date,
+  ]);
   return existing.rows[0];
 }
 
@@ -303,11 +341,17 @@ export async function deleteAttendanceForDate(employeeId: string, date: string):
  * pre-BE-TXN-ROLLBACK world did) that nothing could ever be there.
  */
 export async function restoreAttendanceRow(row: Record<string, any>): Promise<void> {
-  await getOwnerPool().query('DELETE FROM attendance WHERE employee_id = $1 AND date = $2', [row.employee_id, row.date]);
+  await getOwnerPool().query('DELETE FROM attendance WHERE employee_id = $1 AND date = $2', [
+    row.employee_id,
+    row.date,
+  ]);
   const cols = Object.keys(row);
   const values = cols.map((c) => row[c]);
   const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
-  await getOwnerPool().query(`INSERT INTO attendance (${cols.join(',')}) VALUES (${placeholders})`, values);
+  await getOwnerPool().query(
+    `INSERT INTO attendance (${cols.join(',')}) VALUES (${placeholders})`,
+    values,
+  );
 }
 
 let seq = 0;

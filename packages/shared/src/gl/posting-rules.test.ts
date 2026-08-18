@@ -9,13 +9,19 @@ describe('posting-rule coverage — every journal event type has at least one ru
   // before a third/fourth party has to rediscover it).
   it('every JournalEventType (the 16 PRD event types) has at least one posting rule', () => {
     for (const eventType of Object.values(JournalEventType)) {
-      expect(postingRulesFor(eventType).length, `no posting rule for JournalEventType.${eventType}`).toBeGreaterThan(0);
+      expect(
+        postingRulesFor(eventType).length,
+        `no posting rule for JournalEventType.${eventType}`,
+      ).toBeGreaterThan(0);
     }
   });
 
   it('every JournalSystemEventType (D-04 extensions, incl. petty-cash top-up and loan disbursement) has at least one posting rule', () => {
     for (const eventType of Object.values(JournalSystemEventType)) {
-      expect(postingRulesFor(eventType).length, `no posting rule for JournalSystemEventType.${eventType}`).toBeGreaterThan(0);
+      expect(
+        postingRulesFor(eventType).length,
+        `no posting rule for JournalSystemEventType.${eventType}`,
+      ).toBeGreaterThan(0);
     }
   });
 
@@ -42,7 +48,9 @@ describe('the two newly-added event types (§6.3 closing paragraph)', () => {
   it('are distinct from the payroll-installment leg already folded into PAYROLL_ACCRUAL', () => {
     const loanDisbursement = postingRulesFor(JournalSystemEventType.EMPLOYEE_LOAN_DISBURSEMENT);
     const payrollAccrual = postingRulesFor(JournalSystemEventType.PAYROLL_ACCRUAL);
-    expect(loanDisbursement.every((r) => r.eventType !== JournalSystemEventType.PAYROLL_ACCRUAL)).toBe(true);
+    expect(
+      loanDisbursement.every((r) => r.eventType !== JournalSystemEventType.PAYROLL_ACCRUAL),
+    ).toBe(true);
     expect(payrollAccrual.length).toBeGreaterThan(0);
   });
 });

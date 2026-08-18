@@ -107,20 +107,32 @@ export class StatutoryRepository {
     }
     if (asOf) {
       params.push(asOf);
-      conditions.push(`effective_from <= $${params.length} AND (effective_to IS NULL OR effective_to > $${params.length})`);
+      conditions.push(
+        `effective_from <= $${params.length} AND (effective_to IS NULL OR effective_to > $${params.length})`,
+      );
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const res = await client.query<BpjsRow>(`SELECT ${BPJS_COLUMNS} FROM bpjs_configs ${where} ORDER BY program, effective_from`, params);
+    const res = await client.query<BpjsRow>(
+      `SELECT ${BPJS_COLUMNS} FROM bpjs_configs ${where} ORDER BY program, effective_from`,
+      params,
+    );
     return res.rows;
   }
 
   async findOpenBpjs(client: PoolClient, program: string): Promise<BpjsRow | undefined> {
-    const res = await client.query<BpjsRow>(`SELECT ${BPJS_COLUMNS} FROM bpjs_configs WHERE program = $1 AND effective_to IS NULL`, [program]);
+    const res = await client.query<BpjsRow>(
+      `SELECT ${BPJS_COLUMNS} FROM bpjs_configs WHERE program = $1 AND effective_to IS NULL`,
+      [program],
+    );
     return res.rows[0];
   }
 
   /** Any row (open or historical) for `program` whose window contains `effectiveFrom` — used for the ERR_EFFECTIVE_OVERLAP check. */
-  async findOverlappingBpjs(client: PoolClient, program: string, effectiveFrom: string): Promise<BpjsRow | undefined> {
+  async findOverlappingBpjs(
+    client: PoolClient,
+    program: string,
+    effectiveFrom: string,
+  ): Promise<BpjsRow | undefined> {
     const res = await client.query<BpjsRow>(
       `SELECT ${BPJS_COLUMNS} FROM bpjs_configs
         WHERE program = $1 AND effective_from <= $2 AND (effective_to IS NULL OR effective_to > $2)`,
@@ -130,17 +142,34 @@ export class StatutoryRepository {
   }
 
   async closeBpjs(client: PoolClient, id: UUID, effectiveTo: string): Promise<void> {
-    await client.query(`UPDATE bpjs_configs SET effective_to = $2 WHERE id = $1`, [id, effectiveTo]);
+    await client.query(`UPDATE bpjs_configs SET effective_to = $2 WHERE id = $1`, [
+      id,
+      effectiveTo,
+    ]);
   }
 
   async insertBpjs(
     client: PoolClient,
-    row: { program: string; employerPct: string; employeePct: string; salaryFloor: Money | null; salaryCap: Money | null; effectiveFrom: string },
+    row: {
+      program: string;
+      employerPct: string;
+      employeePct: string;
+      salaryFloor: Money | null;
+      salaryCap: Money | null;
+      effectiveFrom: string;
+    },
   ): Promise<void> {
     await client.query(
       `INSERT INTO bpjs_configs (program, employer_pct, employee_pct, salary_floor, salary_cap, effective_from)
        VALUES ($1,$2,$3,$4,$5,$6)`,
-      [row.program, row.employerPct, row.employeePct, row.salaryFloor, row.salaryCap, row.effectiveFrom],
+      [
+        row.program,
+        row.employerPct,
+        row.employeePct,
+        row.salaryFloor,
+        row.salaryCap,
+        row.effectiveFrom,
+      ],
     );
   }
 
@@ -164,10 +193,15 @@ export class StatutoryRepository {
     }
     if (asOf) {
       params.push(asOf);
-      conditions.push(`effective_from <= $${params.length} AND (effective_to IS NULL OR effective_to > $${params.length})`);
+      conditions.push(
+        `effective_from <= $${params.length} AND (effective_to IS NULL OR effective_to > $${params.length})`,
+      );
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const res = await client.query<TerRow>(`SELECT ${TER_COLUMNS} FROM pph21_ter_rates ${where} ORDER BY category, bracket_min`, params);
+    const res = await client.query<TerRow>(
+      `SELECT ${TER_COLUMNS} FROM pph21_ter_rates ${where} ORDER BY category, bracket_min`,
+      params,
+    );
     return res.rows;
   }
 
@@ -181,7 +215,9 @@ export class StatutoryRepository {
   }
 
   async closeOpenTer(client: PoolClient, effectiveTo: string): Promise<void> {
-    await client.query(`UPDATE pph21_ter_rates SET effective_to = $1 WHERE effective_to IS NULL`, [effectiveTo]);
+    await client.query(`UPDATE pph21_ter_rates SET effective_to = $1 WHERE effective_to IS NULL`, [
+      effectiveTo,
+    ]);
   }
 
   async insertTerRows(
@@ -198,7 +234,9 @@ export class StatutoryRepository {
   }
 
   async terOpenCategoryCount(client: PoolClient): Promise<number> {
-    const res = await client.query<{ n: string }>(`SELECT COUNT(DISTINCT category)::text AS n FROM pph21_ter_rates WHERE effective_to IS NULL`);
+    const res = await client.query<{ n: string }>(
+      `SELECT COUNT(DISTINCT category)::text AS n FROM pph21_ter_rates WHERE effective_to IS NULL`,
+    );
     return Number(res.rows[0]?.n ?? '0');
   }
 
@@ -211,14 +249,22 @@ export class StatutoryRepository {
     const params: unknown[] = [];
     if (asOf) {
       params.push(asOf);
-      conditions.push(`effective_from <= $${params.length} AND (effective_to IS NULL OR effective_to > $${params.length})`);
+      conditions.push(
+        `effective_from <= $${params.length} AND (effective_to IS NULL OR effective_to > $${params.length})`,
+      );
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const res = await client.query<PtkpRow>(`SELECT ${PTKP_COLUMNS} FROM pph21_ptkp ${where} ORDER BY ptkp_code`, params);
+    const res = await client.query<PtkpRow>(
+      `SELECT ${PTKP_COLUMNS} FROM pph21_ptkp ${where} ORDER BY ptkp_code`,
+      params,
+    );
     return res.rows;
   }
 
-  async findOverlappingPtkp(client: PoolClient, effectiveFrom: string): Promise<PtkpRow | undefined> {
+  async findOverlappingPtkp(
+    client: PoolClient,
+    effectiveFrom: string,
+  ): Promise<PtkpRow | undefined> {
     const res = await client.query<PtkpRow>(
       `SELECT ${PTKP_COLUMNS} FROM pph21_ptkp WHERE effective_from <= $1 AND (effective_to IS NULL OR effective_to > $1) LIMIT 1`,
       [effectiveFrom],
@@ -227,27 +273,36 @@ export class StatutoryRepository {
   }
 
   async closeOpenPtkp(client: PoolClient, effectiveTo: string): Promise<void> {
-    await client.query(`UPDATE pph21_ptkp SET effective_to = $1 WHERE effective_to IS NULL`, [effectiveTo]);
+    await client.query(`UPDATE pph21_ptkp SET effective_to = $1 WHERE effective_to IS NULL`, [
+      effectiveTo,
+    ]);
   }
 
-  async insertPtkpRows(client: PoolClient, effectiveFrom: string, rows: { ptkpCode: string; annualAmount: Money; terCategory: string }[]): Promise<void> {
+  async insertPtkpRows(
+    client: PoolClient,
+    effectiveFrom: string,
+    rows: { ptkpCode: string; annualAmount: Money; terCategory: string }[],
+  ): Promise<void> {
     for (const row of rows) {
-      await client.query(`INSERT INTO pph21_ptkp (ptkp_code, annual_amount, ter_category, effective_from) VALUES ($1,$2,$3,$4)`, [
-        row.ptkpCode,
-        row.annualAmount,
-        row.terCategory,
-        effectiveFrom,
-      ]);
+      await client.query(
+        `INSERT INTO pph21_ptkp (ptkp_code, annual_amount, ter_category, effective_from) VALUES ($1,$2,$3,$4)`,
+        [row.ptkpCode, row.annualAmount, row.terCategory, effectiveFrom],
+      );
     }
   }
 
   async ptkpOpenCount(client: PoolClient): Promise<number> {
-    const res = await client.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM pph21_ptkp WHERE effective_to IS NULL`);
+    const res = await client.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM pph21_ptkp WHERE effective_to IS NULL`,
+    );
     return Number(res.rows[0]?.n ?? '0');
   }
 
   async ptkpCodeIsValid(client: PoolClient, ptkpCode: string): Promise<boolean> {
-    const res = await client.query(`SELECT 1 FROM pph21_ptkp WHERE ptkp_code = $1 AND effective_to IS NULL`, [ptkpCode]);
+    const res = await client.query(
+      `SELECT 1 FROM pph21_ptkp WHERE ptkp_code = $1 AND effective_to IS NULL`,
+      [ptkpCode],
+    );
     return (res.rowCount ?? 0) > 0;
   }
 
@@ -258,14 +313,22 @@ export class StatutoryRepository {
     const params: unknown[] = [];
     if (asOf) {
       params.push(asOf);
-      conditions.push(`effective_from <= $${params.length} AND (effective_to IS NULL OR effective_to > $${params.length})`);
+      conditions.push(
+        `effective_from <= $${params.length} AND (effective_to IS NULL OR effective_to > $${params.length})`,
+      );
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const res = await client.query<Article17Row>(`SELECT ${ARTICLE17_COLUMNS} FROM pph21_article17_brackets ${where} ORDER BY bracket_min`, params);
+    const res = await client.query<Article17Row>(
+      `SELECT ${ARTICLE17_COLUMNS} FROM pph21_article17_brackets ${where} ORDER BY bracket_min`,
+      params,
+    );
     return res.rows;
   }
 
-  async findOverlappingArticle17(client: PoolClient, effectiveFrom: string): Promise<Article17Row | undefined> {
+  async findOverlappingArticle17(
+    client: PoolClient,
+    effectiveFrom: string,
+  ): Promise<Article17Row | undefined> {
     const res = await client.query<Article17Row>(
       `SELECT ${ARTICLE17_COLUMNS} FROM pph21_article17_brackets WHERE effective_from <= $1 AND (effective_to IS NULL OR effective_to > $1) LIMIT 1`,
       [effectiveFrom],
@@ -274,22 +337,29 @@ export class StatutoryRepository {
   }
 
   async closeOpenArticle17(client: PoolClient, effectiveTo: string): Promise<void> {
-    await client.query(`UPDATE pph21_article17_brackets SET effective_to = $1 WHERE effective_to IS NULL`, [effectiveTo]);
+    await client.query(
+      `UPDATE pph21_article17_brackets SET effective_to = $1 WHERE effective_to IS NULL`,
+      [effectiveTo],
+    );
   }
 
-  async insertArticle17Rows(client: PoolClient, effectiveFrom: string, rows: { bracketMin: Money; bracketMax: Money | null; ratePct: string }[]): Promise<void> {
+  async insertArticle17Rows(
+    client: PoolClient,
+    effectiveFrom: string,
+    rows: { bracketMin: Money; bracketMax: Money | null; ratePct: string }[],
+  ): Promise<void> {
     for (const row of rows) {
-      await client.query(`INSERT INTO pph21_article17_brackets (bracket_min, bracket_max, rate_pct, effective_from) VALUES ($1,$2,$3,$4)`, [
-        row.bracketMin,
-        row.bracketMax,
-        row.ratePct,
-        effectiveFrom,
-      ]);
+      await client.query(
+        `INSERT INTO pph21_article17_brackets (bracket_min, bracket_max, rate_pct, effective_from) VALUES ($1,$2,$3,$4)`,
+        [row.bracketMin, row.bracketMax, row.ratePct, effectiveFrom],
+      );
     }
   }
 
   async article17OpenCount(client: PoolClient): Promise<number> {
-    const res = await client.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM pph21_article17_brackets WHERE effective_to IS NULL`);
+    const res = await client.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM pph21_article17_brackets WHERE effective_to IS NULL`,
+    );
     return Number(res.rows[0]?.n ?? '0');
   }
 
@@ -323,7 +393,15 @@ export class StatutoryRepository {
          npwp = EXCLUDED.npwp, ptkp_code = EXCLUDED.ptkp_code, dependants_count = EXCLUDED.dependants_count,
          bpjs_enrollments = EXCLUDED.bpjs_enrollments, bpjs_salary_base = EXCLUDED.bpjs_salary_base,
          updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
-      [employeeId, row.npwp, row.ptkpCode, row.dependantsCount, JSON.stringify(row.bpjsEnrollments), row.bpjsSalaryBase, row.updatedBy],
+      [
+        employeeId,
+        row.npwp,
+        row.ptkpCode,
+        row.dependantsCount,
+        JSON.stringify(row.bpjsEnrollments),
+        row.bpjsSalaryBase,
+        row.updatedBy,
+      ],
     );
   }
 
@@ -334,10 +412,15 @@ export class StatutoryRepository {
 
   /** `employees` has no `is_active` boolean (found while testing) — active is `employment_status = 'active'` (CHECK constraint: active|probation|resigned|terminated). */
   async profileCoverage(client: PoolClient): Promise<{ withProfile: number; total: number }> {
-    const totalRes = await client.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM employees WHERE employment_status = 'active'`);
+    const totalRes = await client.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM employees WHERE employment_status = 'active'`,
+    );
     const withRes = await client.query<{ n: string }>(
       `SELECT COUNT(*)::text AS n FROM employee_tax_profiles etp JOIN employees e ON e.id = etp.employee_id WHERE e.employment_status = 'active'`,
     );
-    return { withProfile: Number(withRes.rows[0]?.n ?? '0'), total: Number(totalRes.rows[0]?.n ?? '0') };
+    return {
+      withProfile: Number(withRes.rows[0]?.n ?? '0'),
+      total: Number(totalRes.rows[0]?.n ?? '0'),
+    };
   }
 }

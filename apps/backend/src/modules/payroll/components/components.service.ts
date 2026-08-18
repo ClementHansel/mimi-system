@@ -1,7 +1,17 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { ERR_CONFLICT, ERR_NOT_FOUND, ERR_VALIDATION, type Money, type UUID } from '@mimi/shared';
-import type { CreateComponentDto, PutEmployeeComponentsDto, UpdateComponentDto } from '../dto/payroll.dto';
+import type {
+  CreateComponentDto,
+  PutEmployeeComponentsDto,
+  UpdateComponentDto,
+} from '../dto/payroll.dto';
 import { withWrite } from '../db-tx';
 
 export interface ComponentApi {
@@ -32,14 +42,26 @@ export interface EmployeeComponentApi {
 @Injectable()
 export class ComponentsService {
   async list(client: PoolClient): Promise<ComponentApi[]> {
-    const res = await client.query<Record<string, any>>('SELECT * FROM salary_components ORDER BY sort_order ASC, name ASC');
+    const res = await client.query<Record<string, any>>(
+      'SELECT * FROM salary_components ORDER BY sort_order ASC, name ASC',
+    );
     return res.rows.map(this.mapComponent);
   }
 
   async create(client: PoolClient, dto: CreateComponentDto): Promise<ComponentApi> {
-    if (!dto.code?.trim() || !dto.name?.trim()) throw new BadRequestException({ code: ERR_VALIDATION, message: 'code and name are required' });
-    const existing = await client.query('SELECT id FROM salary_components WHERE code = $1', [dto.code]);
-    if (existing.rows.length > 0) throw new ConflictException({ code: ERR_CONFLICT, message: `Component code '${dto.code}' already exists` });
+    if (!dto.code?.trim() || !dto.name?.trim())
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'code and name are required',
+      });
+    const existing = await client.query('SELECT id FROM salary_components WHERE code = $1', [
+      dto.code,
+    ]);
+    if (existing.rows.length > 0)
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `Component code '${dto.code}' already exists`,
+      });
 
     return withWrite(client, async () => {
       const res = await client.query<Record<string, any>>(
@@ -52,11 +74,18 @@ export class ComponentsService {
   }
 
   async update(client: PoolClient, id: UUID, dto: UpdateComponentDto): Promise<ComponentApi> {
-    const existing = await client.query<{ is_system: boolean }>('SELECT is_system FROM salary_components WHERE id = $1', [id]);
-    if (existing.rows.length === 0) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Component not found' });
+    const existing = await client.query<{ is_system: boolean }>(
+      'SELECT is_system FROM salary_components WHERE id = $1',
+      [id],
+    );
+    if (existing.rows.length === 0)
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Component not found' });
 
     if (existing.rows[0]!.is_system && dto.name !== undefined) {
-      throw new ForbiddenException({ code: ERR_VALIDATION, message: "System components may only have 'defaultAmount'/'isActive' edited" });
+      throw new ForbiddenException({
+        code: ERR_VALIDATION,
+        message: "System components may only have 'defaultAmount'/'isActive' edited",
+      });
     }
 
     const sets: string[] = [];
@@ -70,13 +99,19 @@ export class ComponentsService {
     if (dto.name !== undefined) set('name', dto.name);
 
     if (sets.length === 0) {
-      const res = await client.query<Record<string, any>>('SELECT * FROM salary_components WHERE id = $1', [id]);
+      const res = await client.query<Record<string, any>>(
+        'SELECT * FROM salary_components WHERE id = $1',
+        [id],
+      );
       return this.mapComponent(res.rows[0]!);
     }
 
     return withWrite(client, async () => {
       params.push(id);
-      const res = await client.query<Record<string, any>>(`UPDATE salary_components SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`, params);
+      const res = await client.query<Record<string, any>>(
+        `UPDATE salary_components SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params,
+      );
       return this.mapComponent(res.rows[0]!);
     });
   }
@@ -96,7 +131,11 @@ export class ComponentsService {
     }));
   }
 
-  async putForEmployee(client: PoolClient, employeeId: UUID, dto: PutEmployeeComponentsDto): Promise<EmployeeComponentApi[]> {
+  async putForEmployee(
+    client: PoolClient,
+    employeeId: UUID,
+    dto: PutEmployeeComponentsDto,
+  ): Promise<EmployeeComponentApi[]> {
     return withWrite(client, async () => {
       for (const a of dto.assignments) {
         // Close any currently-open window for this component, then insert the new one — same

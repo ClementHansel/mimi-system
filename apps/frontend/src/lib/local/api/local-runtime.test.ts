@@ -7,7 +7,13 @@ import type { OfflineCredentialClaims } from '../types';
 import { encodeOfflineCredentialToken } from '../credentials/offline-credentials';
 
 function noopConnectivity(): ConnectivityReporter {
-  return { setTier() {}, setCloudReachable() {}, setQueueDepth() {}, setLastSyncAt() {}, setSyncing() {} };
+  return {
+    setTier() {},
+    setCloudReachable() {},
+    setQueueDepth() {},
+    setLastSyncAt() {},
+    setSyncing() {},
+  };
 }
 
 /**
@@ -29,7 +35,11 @@ describe('LocalRuntime public API — attachment/credential discovery', () => {
   it('captureEvidence returns an attachmentId usable as an event reference', async () => {
     const runtime = makeRuntime();
     await runtime.init();
-    const ref = await runtime.captureEvidence(new Blob(['photo-bytes']), 'image/jpeg', 'sj_drop_photo');
+    const ref = await runtime.captureEvidence(
+      new Blob(['photo-bytes']),
+      'image/jpeg',
+      'sj_drop_photo',
+    );
     expect(ref.attachmentId).toBeTruthy();
     expect(ref.sha256).toBeTruthy();
     expect(ref.attachmentId).not.toBe(ref.sha256);

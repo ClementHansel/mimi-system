@@ -9,13 +9,28 @@ function loc(overrides: Partial<TopologyLocation> = {}): TopologyLocation {
     node: null,
     devices: [],
     counts: { online: 0, stale: 0, offline: 0, total: 0 },
-    syncHealth: { queueDepth: 0, quarantineDepth: 0, lastSyncAt: null, conflictsOpen: 0, exceptionsOpen: 0, offlineAuthPending: 0 },
+    syncHealth: {
+      queueDepth: 0,
+      quarantineDepth: 0,
+      lastSyncAt: null,
+      conflictsOpen: 0,
+      exceptionsOpen: 0,
+      offlineAuthPending: 0,
+    },
     outletStatus: 'online',
     ...overrides,
   };
 }
 
-const NODE = { id: 'n1', name: 'Node 1', status: 'online' as const, version: '1.0.0', lastSeenAt: null, relayQueueDepth: 0, discoveredNewCount: 0 };
+const NODE = {
+  id: 'n1',
+  name: 'Node 1',
+  status: 'online' as const,
+  version: '1.0.0',
+  lastSeenAt: null,
+  relayQueueDepth: 0,
+  discoveredNewCount: 0,
+};
 
 describe('nodeDisplayState (D-26 no-node read)', () => {
   it('reads as "none" — never supposed to have one — when the Owner never enabled a node for this outlet', () => {
@@ -53,9 +68,18 @@ describe('isDeviceAlarmWorthy (W6-06 alert precision — offline is not always a
 describe('sortOutletsBySeverity', () => {
   it('surfaces offline outlets first, then degraded, then online, so a wallboard reader sees problems immediately', () => {
     const outlets = [
-      loc({ location: { id: 'a', code: 'A', name: 'A', type: 'outlet', city: 'X' }, outletStatus: 'online' }),
-      loc({ location: { id: 'b', code: 'B', name: 'B', type: 'outlet', city: 'X' }, outletStatus: 'offline' }),
-      loc({ location: { id: 'c', code: 'C', name: 'C', type: 'outlet', city: 'X' }, outletStatus: 'degraded' }),
+      loc({
+        location: { id: 'a', code: 'A', name: 'A', type: 'outlet', city: 'X' },
+        outletStatus: 'online',
+      }),
+      loc({
+        location: { id: 'b', code: 'B', name: 'B', type: 'outlet', city: 'X' },
+        outletStatus: 'offline',
+      }),
+      loc({
+        location: { id: 'c', code: 'C', name: 'C', type: 'outlet', city: 'X' },
+        outletStatus: 'degraded',
+      }),
     ];
     const sorted = sortOutletsBySeverity(outlets);
     expect(sorted.map((o) => o.location.id)).toEqual(['b', 'c', 'a']);
@@ -63,8 +87,14 @@ describe('sortOutletsBySeverity', () => {
 
   it('breaks ties within the same severity alphabetically by name, and does not mutate the input array', () => {
     const outlets = [
-      loc({ location: { id: 'z', code: 'Z', name: 'Zebra', type: 'outlet', city: 'X' }, outletStatus: 'offline' }),
-      loc({ location: { id: 'a', code: 'A', name: 'Apple', type: 'outlet', city: 'X' }, outletStatus: 'offline' }),
+      loc({
+        location: { id: 'z', code: 'Z', name: 'Zebra', type: 'outlet', city: 'X' },
+        outletStatus: 'offline',
+      }),
+      loc({
+        location: { id: 'a', code: 'A', name: 'Apple', type: 'outlet', city: 'X' },
+        outletStatus: 'offline',
+      }),
     ];
     const sorted = sortOutletsBySeverity(outlets);
     expect(sorted.map((o) => o.location.id)).toEqual(['a', 'z']);

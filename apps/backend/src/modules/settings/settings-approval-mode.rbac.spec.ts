@@ -37,7 +37,11 @@ type AnyHandler = (...args: any[]) => unknown; // eslint-disable-line @typescrip
 function contextFor(handler: AnyHandler, roleKey: RoleKey): ExecutionContext {
   const request = { user: { sub: 'test-user', roleKey } };
   return {
-    switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}), getNext: () => ({}) }),
+    switchToHttp: () => ({
+      getRequest: () => request,
+      getResponse: () => ({}),
+      getNext: () => ({}),
+    }),
     getHandler: () => handler,
     getClass: () => SettingsController,
   } as unknown as ExecutionContext;
@@ -71,7 +75,10 @@ describe('M20 settings controller — D-23 approval-mode wiring', () => {
 
   it('putApprovalMode is @Audited() with the D-23 entity type + action', () => {
     const handler = methodsOf(SettingsController).putApprovalMode!;
-    expect(auditedOptionsOf(handler)).toEqual({ entityType: 'approval_mode', action: 'settings.approval_mode.manage' });
+    expect(auditedOptionsOf(handler)).toEqual({
+      entityType: 'approval_mode',
+      action: 'settings.approval_mode.manage',
+    });
   });
 
   it("'settings.approval_mode.manage' is Owner-only in the real RBAC matrix (packages/shared/src/rbac.ts)", () => {

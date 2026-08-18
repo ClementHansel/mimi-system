@@ -19,14 +19,33 @@
 import { api } from '@/lib/api';
 import type { Paginated } from '@/lib/shared-types';
 import type {
-  Employee, EmployeeDetail, AttendanceRow, AttendanceSummaryRow, WorkShift, RosterRow, Leave,
-  PayrollPeriod, PayrollRunDetail, PayrollComponent, Loan, BpjsRow, TerBracketRow, PtkpRow,
-  Article17BracketRow, TaxProfile, LocationGeo,
+  Employee,
+  EmployeeDetail,
+  AttendanceRow,
+  AttendanceSummaryRow,
+  WorkShift,
+  RosterRow,
+  Leave,
+  PayrollPeriod,
+  PayrollRunDetail,
+  PayrollComponent,
+  Loan,
+  BpjsRow,
+  TerBracketRow,
+  PtkpRow,
+  Article17BracketRow,
+  TaxProfile,
+  LocationGeo,
 } from './types';
 
 // ── employees (§4.14) ────────────────────────────────────────────────────────
 
-export function listEmployees(params: { locationId?: string; status?: string; q?: string; page?: number }) {
+export function listEmployees(params: {
+  locationId?: string;
+  status?: string;
+  q?: string;
+  page?: number;
+}) {
   const qs = new URLSearchParams({ page: String(params.page ?? 1), pageSize: '50' });
   if (params.locationId) qs.set('locationId', params.locationId);
   if (params.status) qs.set('status', params.status);
@@ -39,23 +58,51 @@ export function getEmployee(id: string) {
 }
 
 export function createEmployee(body: {
-  employeeNumber: string; name: string; nik?: string; phone?: string; email?: string; joinDate: string;
-  position: string; locationId: string; baseSalary: string;
-  bankName?: string; bankAccountNumber?: string; bankAccountName?: string; userId?: string;
+  employeeNumber: string;
+  name: string;
+  nik?: string;
+  phone?: string;
+  email?: string;
+  joinDate: string;
+  position: string;
+  locationId: string;
+  baseSalary: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+  userId?: string;
 }) {
   return api.post<Employee>('/hr/employees', body);
 }
 
-export function updateEmployee(id: string, body: Partial<{
-  name: string; nik: string; phone: string; email: string; position: string;
-  employmentChange: { position: string; locationId: string; baseSalary: string; startDate: string };
-}>) {
+export function updateEmployee(
+  id: string,
+  body: Partial<{
+    name: string;
+    nik: string;
+    phone: string;
+    email: string;
+    position: string;
+    employmentChange: {
+      position: string;
+      locationId: string;
+      baseSalary: string;
+      startDate: string;
+    };
+  }>,
+) {
   return api.patch<Employee>(`/hr/employees/${id}`, body);
 }
 
 // ── attendance (§4.14) ───────────────────────────────────────────────────────
 
-export function listAttendance(params: { locationId?: string; date?: string; employeeId?: string; status?: string; page?: number }) {
+export function listAttendance(params: {
+  locationId?: string;
+  date?: string;
+  employeeId?: string;
+  status?: string;
+  page?: number;
+}) {
   const qs = new URLSearchParams({ page: String(params.page ?? 1), pageSize: '50' });
   if (params.locationId) qs.set('locationId', params.locationId);
   if (params.date) qs.set('date', params.date);
@@ -64,11 +111,18 @@ export function listAttendance(params: { locationId?: string; date?: string; emp
   return api.get<Paginated<AttendanceRow>>(`/hr/attendance?${qs.toString()}`);
 }
 
-export function correctAttendance(id: string, body: { status?: string; checkInAt?: string; checkOutAt?: string; correctionReason: string }) {
+export function correctAttendance(
+  id: string,
+  body: { status?: string; checkInAt?: string; checkOutAt?: string; correctionReason: string },
+) {
   return api.patch<AttendanceRow>(`/hr/attendance/${id}`, body);
 }
 
-export function getAttendanceSummary(params: { periodCode: string; locationId?: string; employeeId?: string }) {
+export function getAttendanceSummary(params: {
+  periodCode: string;
+  locationId?: string;
+  employeeId?: string;
+}) {
   const qs = new URLSearchParams({ periodCode: params.periodCode });
   if (params.locationId) qs.set('locationId', params.locationId);
   if (params.employeeId) qs.set('employeeId', params.employeeId);
@@ -83,23 +137,47 @@ export function listShifts(locationId?: string) {
   return api.get<WorkShift[]>(`/hr/shifts?${qs.toString()}`);
 }
 
-export function createShift(body: { locationId?: string; name: string; startTime: string; endTime: string; breakMinutes?: number }) {
+export function createShift(body: {
+  locationId?: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes?: number;
+}) {
   return api.post<WorkShift>('/hr/shifts', body);
 }
 
-export function getRoster(params: { locationId: string; from: string; to: string; employeeId?: string }) {
-  const qs = new URLSearchParams({ locationId: params.locationId, from: params.from, to: params.to });
+export function getRoster(params: {
+  locationId: string;
+  from: string;
+  to: string;
+  employeeId?: string;
+}) {
+  const qs = new URLSearchParams({
+    locationId: params.locationId,
+    from: params.from,
+    to: params.to,
+  });
   if (params.employeeId) qs.set('employeeId', params.employeeId);
   return api.get<RosterRow[]>(`/hr/roster?${qs.toString()}`);
 }
 
-export function putRoster(body: { locationId: string; assignments: { employeeId: string; date: string; workShiftId: string | null }[] }) {
+export function putRoster(body: {
+  locationId: string;
+  assignments: { employeeId: string; date: string; workShiftId: string | null }[];
+}) {
   return api.put<RosterRow[]>('/hr/roster', body);
 }
 
 // ── leave (§4.14) ────────────────────────────────────────────────────────────
 
-export function listLeaves(params: { locationId?: string; status?: string; type?: string; employeeId?: string; page?: number }) {
+export function listLeaves(params: {
+  locationId?: string;
+  status?: string;
+  type?: string;
+  employeeId?: string;
+  page?: number;
+}) {
   const qs = new URLSearchParams({ page: String(params.page ?? 1), pageSize: '50' });
   if (params.locationId) qs.set('locationId', params.locationId);
   if (params.status) qs.set('status', params.status);
@@ -133,14 +211,22 @@ export function createPayrollPeriod(periodCode: string) {
 }
 
 export function calculatePayrollRun(periodId: string, employeeIds?: string[]) {
-  return api.post<PayrollRunDetail>(`/payroll/periods/${periodId}/calculate`, employeeIds ? { employeeIds } : {});
+  return api.post<PayrollRunDetail>(
+    `/payroll/periods/${periodId}/calculate`,
+    employeeIds ? { employeeIds } : {},
+  );
 }
 
 export function getPayrollRun(id: string) {
   return api.get<PayrollRunDetail>(`/payroll/runs/${id}`);
 }
 
-export function overridePayrollLine(runId: string, lineId: string, amount: string, overrideReason: string) {
+export function overridePayrollLine(
+  runId: string,
+  lineId: string,
+  amount: string,
+  overrideReason: string,
+) {
   return api.patch(`/payroll/runs/${runId}/lines/${lineId}`, { amount, overrideReason });
 }
 
@@ -165,7 +251,10 @@ export function markPayrollRunPaid(runId: string, paymentVerificationId: string)
 }
 
 export function sendPayrollSlips(runId: string, channels: ('email' | 'whatsapp')[]) {
-  return api.post<{ queued: number; skippedNoContact: number }>(`/payroll/runs/${runId}/send-slips`, { channels });
+  return api.post<{ queued: number; skippedNoContact: number }>(
+    `/payroll/runs/${runId}/send-slips`,
+    { channels },
+  );
 }
 
 export function listPayrollComponents() {
@@ -181,7 +270,12 @@ export function listLoans(params: { employeeId?: string; status?: string; page?:
   return api.get<Paginated<Loan>>(`/payroll/loans?${qs.toString()}`);
 }
 
-export function createLoan(body: { employeeId: string; principal: string; monthlyInstallment: string; reason?: string }) {
+export function createLoan(body: {
+  employeeId: string;
+  principal: string;
+  monthlyInstallment: string;
+  reason?: string;
+}) {
   return api.post<Loan>('/payroll/loans', body);
 }
 
@@ -202,7 +296,16 @@ export function getStatutoryBpjs(program?: string, asOf?: string) {
   return api.get<BpjsRow[]>(`/payroll/statutory/bpjs?${qs.toString()}`);
 }
 
-export function putStatutoryBpjs(rows: { program: string; employerPct: string; employeePct: string; salaryFloor?: string; salaryCap?: string; effectiveFrom: string }[]) {
+export function putStatutoryBpjs(
+  rows: {
+    program: string;
+    employerPct: string;
+    employeePct: string;
+    salaryFloor?: string;
+    salaryCap?: string;
+    effectiveFrom: string;
+  }[],
+) {
   return api.put<BpjsRow[]>('/payroll/statutory/bpjs', { rows });
 }
 
@@ -213,7 +316,10 @@ export function getStatutoryTer(category?: string, asOf?: string) {
   return api.get<TerBracketRow[]>(`/payroll/statutory/pph21/ter?${qs.toString()}`);
 }
 
-export function putStatutoryTer(effectiveFrom: string, rows: { category: string; bracketMin: string; bracketMax?: string; ratePct: string }[]) {
+export function putStatutoryTer(
+  effectiveFrom: string,
+  rows: { category: string; bracketMin: string; bracketMax?: string; ratePct: string }[],
+) {
   return api.put<TerBracketRow[]>('/payroll/statutory/pph21/ter', { effectiveFrom, rows });
 }
 
@@ -223,7 +329,10 @@ export function getStatutoryPtkp(asOf?: string) {
   return api.get<PtkpRow[]>(`/payroll/statutory/pph21/ptkp?${qs.toString()}`);
 }
 
-export function putStatutoryPtkp(effectiveFrom: string, rows: { ptkpCode: string; annualAmount: string; terCategory: string }[]) {
+export function putStatutoryPtkp(
+  effectiveFrom: string,
+  rows: { ptkpCode: string; annualAmount: string; terCategory: string }[],
+) {
   return api.put<PtkpRow[]>('/payroll/statutory/pph21/ptkp', { effectiveFrom, rows });
 }
 
@@ -233,14 +342,25 @@ export function getStatutoryArticle17(asOf?: string) {
   return api.get<Article17BracketRow[]>(`/payroll/statutory/pph21/article17?${qs.toString()}`);
 }
 
-export function putStatutoryArticle17(effectiveFrom: string, rows: { bracketMin: string; bracketMax?: string; ratePct: string }[]) {
-  return api.put<Article17BracketRow[]>('/payroll/statutory/pph21/article17', { effectiveFrom, rows });
+export function putStatutoryArticle17(
+  effectiveFrom: string,
+  rows: { bracketMin: string; bracketMax?: string; ratePct: string }[],
+) {
+  return api.put<Article17BracketRow[]>('/payroll/statutory/pph21/article17', {
+    effectiveFrom,
+    rows,
+  });
 }
 
 export function getTaxProfile(employeeId: string) {
-  return api.get<TaxProfile & { employeeId: string }>(`/payroll/employees/${employeeId}/tax-profile`);
+  return api.get<TaxProfile & { employeeId: string }>(
+    `/payroll/employees/${employeeId}/tax-profile`,
+  );
 }
 
 export function putTaxProfile(employeeId: string, profile: TaxProfile) {
-  return api.put<TaxProfile & { employeeId: string }>(`/payroll/employees/${employeeId}/tax-profile`, profile);
+  return api.put<TaxProfile & { employeeId: string }>(
+    `/payroll/employees/${employeeId}/tax-profile`,
+    profile,
+  );
 }

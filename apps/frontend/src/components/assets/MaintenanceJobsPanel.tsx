@@ -61,11 +61,28 @@ export function MaintenanceJobsPanel() {
   const columns: DataTableColumn<Job>[] = [
     { key: 'jobNumber', header: t('assets.jobs.columnNumber') },
     { key: 'assetName', header: t('assets.jobs.columnAsset') },
-    { key: 'type', header: t('assets.jobs.columnType'), render: (r) => t(`assets.jobType.${r.type}`) },
+    {
+      key: 'type',
+      header: t('assets.jobs.columnType'),
+      render: (r) => t(`assets.jobType.${r.type}`),
+    },
     { key: 'dueDate', header: t('assets.due.dueDate'), render: (r) => fmtDate(r.dueDate) },
-    { key: 'assignedToName', header: t('assets.register.columnAssignedTo'), render: (r) => r.assignedToName ?? '—' },
-    { key: 'cost', header: t('assets.jobs.cost'), align: 'right', render: (r) => formatMoney(r.cost) },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="maintenanceJob" status={r.status} /> },
+    {
+      key: 'assignedToName',
+      header: t('assets.register.columnAssignedTo'),
+      render: (r) => r.assignedToName ?? '—',
+    },
+    {
+      key: 'cost',
+      header: t('assets.jobs.cost'),
+      align: 'right',
+      render: (r) => formatMoney(r.cost),
+    },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="maintenanceJob" status={r.status} />,
+    },
     {
       key: 'actions',
       header: t('common.actions'),
@@ -73,17 +90,33 @@ export function MaintenanceJobsPanel() {
         <div className="flex gap-2">
           {r.status === 'due' && (
             <PermissionGate permission="asset.job.execute">
-              <Button size="sm" variant="outline" loading={busyId === r.id} onClick={() => handleStart(r)}>{t('assets.jobs.startButton')}</Button>
+              <Button
+                size="sm"
+                variant="outline"
+                loading={busyId === r.id}
+                onClick={() => handleStart(r)}
+              >
+                {t('assets.jobs.startButton')}
+              </Button>
             </PermissionGate>
           )}
           {(r.status === 'in_progress' || r.status === 'due') && (
             <PermissionGate permission="asset.job.execute">
-              <Button size="sm" onClick={() => setCompleting(r)}>{t('assets.jobs.completeButton')}</Button>
+              <Button size="sm" onClick={() => setCompleting(r)}>
+                {t('assets.jobs.completeButton')}
+              </Button>
             </PermissionGate>
           )}
           {r.status === 'done' && (
             <PermissionGate permission="asset.job.verify">
-              <Button size="sm" variant="outline" loading={busyId === r.id} onClick={() => handleVerify(r)}>{t('assets.jobs.verifyButton')}</Button>
+              <Button
+                size="sm"
+                variant="outline"
+                loading={busyId === r.id}
+                onClick={() => handleVerify(r)}
+              >
+                {t('assets.jobs.verifyButton')}
+              </Button>
             </PermissionGate>
           )}
         </div>
@@ -94,10 +127,22 @@ export function MaintenanceJobsPanel() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
-        <Select label={t('common.location')} value={locationId} onValueChange={setLocationId}
-          options={locations.map((l) => ({ value: l.id, label: l.name }))} placeholder={t('common.all')} wrapperClassName="w-44" />
-        <Select label={t('common.status')} value={status} onValueChange={setStatus}
-          options={STATUSES.map((s) => ({ value: s, label: t(`status.maintenanceJob.${s}`) }))} placeholder={t('common.all')} wrapperClassName="w-44" />
+        <Select
+          label={t('common.location')}
+          value={locationId}
+          onValueChange={setLocationId}
+          options={locations.map((l) => ({ value: l.id, label: l.name }))}
+          placeholder={t('common.all')}
+          wrapperClassName="w-44"
+        />
+        <Select
+          label={t('common.status')}
+          value={status}
+          onValueChange={setStatus}
+          options={STATUSES.map((s) => ({ value: s, label: t(`status.maintenanceJob.${s}`) }))}
+          placeholder={t('common.all')}
+          wrapperClassName="w-44"
+        />
       </div>
 
       <DataTable
@@ -109,7 +154,14 @@ export function MaintenanceJobsPanel() {
       />
 
       {completing && (
-        <CompleteJobModal job={completing} onClose={() => setCompleting(null)} onDone={() => { setCompleting(null); reload(); }} />
+        <CompleteJobModal
+          job={completing}
+          onClose={() => setCompleting(null)}
+          onDone={() => {
+            setCompleting(null);
+            reload();
+          }}
+        />
       )}
     </div>
   );

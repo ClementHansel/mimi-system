@@ -28,7 +28,8 @@ export class NotificationGateway implements OnGatewayConnection {
   constructor(private readonly tokens: TokenService) {}
 
   handleConnection(client: Socket): void {
-    const token = (client.handshake.auth?.token as string | undefined) ?? this.extractBearer(client);
+    const token =
+      (client.handshake.auth?.token as string | undefined) ?? this.extractBearer(client);
     if (!token) {
       client.disconnect(true);
       return;
@@ -52,7 +53,9 @@ export class NotificationGateway implements OnGatewayConnection {
     try {
       this.server?.to(`user:${userId}`).emit('notification:new', payload);
     } catch (err) {
-      this.logger.warn(`Failed to push notification to user ${userId}: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(
+        `Failed to push notification to user ${userId}: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 }

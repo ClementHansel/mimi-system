@@ -27,7 +27,9 @@ export async function registerServiceWorker(runtime: Pick<LocalRuntime, 'syncNow
   // other target), where reconnect-triggered sync instead relies on this
   // page's own `online` event + the SyncEngine's probe timer, both already
   // wired in `getBrowserLocalRuntime()`.
-  const reg = registration as ServiceWorkerRegistration & { sync?: { register(tag: string): Promise<void> } };
+  const reg = registration as ServiceWorkerRegistration & {
+    sync?: { register(tag: string): Promise<void> };
+  };
   if (reg.sync) {
     window.addEventListener('online', () => {
       void reg.sync?.register('mimi-outbox-drain').catch(() => undefined);

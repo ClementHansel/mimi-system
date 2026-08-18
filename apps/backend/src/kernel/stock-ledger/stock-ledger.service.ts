@@ -87,7 +87,11 @@ export class StockLedgerService {
 
       if (!result.skippedAsDuplicate) {
         if (mode === 'fact' && result.wentNegative) {
-          const reconciliationId = await this.openNegativeBalanceReconciliation(client, movement, result.balanceAfter);
+          const reconciliationId = await this.openNegativeBalanceReconciliation(
+            client,
+            movement,
+            result.balanceAfter,
+          );
           reconciliationsOpened.push(reconciliationId);
         }
         events.push({
@@ -113,7 +117,11 @@ export class StockLedgerService {
   }
 
   /** Convenience for the common two-row transfer case (D-15 area transfer, or a cross-location shipment leg) — builds the paired `transfer_out`/`transfer_in` movements with `counterparty_*` set and posts them in one call. */
-  async postTransfer(client: PoolClient, input: TransferInput, mode: LedgerMode): Promise<StockLedgerPostResult> {
+  async postTransfer(
+    client: PoolClient,
+    input: TransferInput,
+    mode: LedgerMode,
+  ): Promise<StockLedgerPostResult> {
     return this.post(client, this.buildTransferMovements(input), mode);
   }
 
@@ -162,7 +170,12 @@ export class StockLedgerService {
    * either way; a matching count writes nothing (D-16: divergence is the
    * event, not agreement).
    */
-  async reconcile(client: PoolClient, key: StockKey, storedQty: Qty, options: ReconcileOptions = {}): Promise<ReconciliationResult> {
+  async reconcile(
+    client: PoolClient,
+    key: StockKey,
+    storedQty: Qty,
+    options: ReconcileOptions = {},
+  ): Promise<ReconciliationResult> {
     const rows = await client.query<{
       id: string;
       movement_type: string;
@@ -201,10 +214,22 @@ export class StockLedgerService {
          (location_id, storage_area_id, item_id, tier, expected_qty, stored_qty, divergence, detail, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'open')
        RETURNING id`,
-      [key.locationId, key.storageAreaId, key.itemId, tier, check.expectedQty, check.storedQty, check.divergence, detailJson],
+      [
+        key.locationId,
+        key.storageAreaId,
+        key.itemId,
+        tier,
+        check.expectedQty,
+        check.storedQty,
+        check.divergence,
+        detailJson,
+      ],
     );
 
-    return { ...check, reconciliationId: this.requireId(inserted.rows, 'stock_reconciliations insert (reconcile)') };
+    return {
+      ...check,
+      reconciliationId: this.requireId(inserted.rows, 'stock_reconciliations insert (reconcile)'),
+    };
   }
 
   // ── Internals ────────────────────────────────────────────────────────────
@@ -249,21 +274,33 @@ export class StockLedgerService {
     mode: LedgerMode,
     safeSyncEventIds: ReadonlySet<string>,
   ): Promise<PostedMovement> {
-    const key: StockKey = { locationId: movement.locationId, storageAreaId: movement.storageAreaId, itemId: movement.itemId };
+    const key: StockKey = {
+      locationId: movement.locationId,
+      storageAreaId: movement.storageAreaId,
+      itemId: movement.itemId,
+    };
 
     if (movement.refId) {
       // Serializes concurrent transactions attempting to apply the SAME
       // fact (same natural key) — closes the race between the existence
       // check below and the insert further down. Released automatically at
       // COMMIT/ROLLBACK of the caller's transaction (xact-scoped lock).
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [this.naturalKeyLockToken(movement)]);
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        this.naturalKeyLockToken(movement),
+      ]);
 
       const existing = await client.query<{ id: string }>(
         `SELECT id FROM stock_movements
           WHERE ref_type = $1 AND ref_id = $2 AND item_id = $3
             AND storage_area_id = $4 AND movement_type = $5
           LIMIT 1`,
-        [movement.refType, movement.refId, movement.itemId, movement.storageAreaId, movement.movementType],
+        [
+          movement.refType,
+          movement.refId,
+          movement.itemId,
+          movement.storageAreaId,
+          movement.movementType,
+        ],
       );
 
       if (existing.rows[0]) {
@@ -294,7 +331,8 @@ export class StockLedgerService {
 
     const fact: MovementFact = {
       ...key,
-      factId: movement.factId ?? `${movement.refType}:${movement.refId ?? 'none'}:${movement.itemId}`,
+      factId:
+        movement.factId ?? `${movement.refType}:${movement.refId ?? 'none'}:${movement.itemId}`,
       movementType: movement.movementType,
       qty: movement.qty,
       unitCost: movement.unitCost,
@@ -322,7 +360,10 @@ export class StockLedgerService {
       );
     }
 
-    const useSyncEventId = movement.syncEventId && safeSyncEventIds.has(movement.syncEventId) ? movement.syncEventId : null;
+    const useSyncEventId =
+      movement.syncEventId && safeSyncEventIds.has(movement.syncEventId)
+        ? movement.syncEventId
+        : null;
 
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO stock_movements
@@ -359,7 +400,11 @@ export class StockLedgerService {
     };
   }
 
-  private async openNegativeBalanceReconciliation(client: PoolClient, movement: PostMovementInput, balanceAfter: Qty): Promise<UUID> {
+  private async openNegativeBalanceReconciliation(
+    client: PoolClient,
+    movement: PostMovementInput,
+    balanceAfter: Qty,
+  ): Promise<UUID> {
     const detail = JSON.stringify({
       reason: 'negative_balance',
       movementType: movement.movementType,
@@ -371,7 +416,14 @@ export class StockLedgerService {
          (location_id, storage_area_id, item_id, tier, expected_qty, stored_qty, divergence, detail, status)
        VALUES ($1, $2, $3, $4, $5, $5, '0.000', $6, 'open')
        RETURNING id`,
-      [movement.locationId, movement.storageAreaId, movement.itemId, ReconciliationTier.CLOUD, balanceAfter, detail],
+      [
+        movement.locationId,
+        movement.storageAreaId,
+        movement.itemId,
+        ReconciliationTier.CLOUD,
+        balanceAfter,
+        detail,
+      ],
     );
     return this.requireId(result.rows, 'stock_reconciliations insert (negative balance)');
   }
@@ -387,4 +439,3 @@ export class StockLedgerService {
     return id;
   }
 }
-

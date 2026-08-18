@@ -19,7 +19,9 @@ export default function ApprovalsInboxPage() {
   return (
     <div className="flex flex-col gap-4 p-4">
       {/* AppShell already owns the single OfflineBanner for this (non-chromeless) route. */}
-      <h1 className="font-display text-2xl font-semibold text-text-primary">{t('approvalsInbox.title')}</h1>
+      <h1 className="font-display text-2xl font-semibold text-text-primary">
+        {t('approvalsInbox.title')}
+      </h1>
       <ApprovalsInboxPanel />
     </div>
   );

@@ -46,7 +46,13 @@ export const dashboardApi = {
   getStaffKpi: (from: ISODate, to: ISODate, locationId?: string) =>
     api.get<StaffKpiRow[]>(`/dashboard/staff-kpi${qs({ from, to, locationId })}`),
 
-  getTrend: (metric: TrendMetric, granularity: TrendGranularity, from: ISODate, to: ISODate, locationId?: string) =>
+  getTrend: (
+    metric: TrendMetric,
+    granularity: TrendGranularity,
+    from: ISODate,
+    to: ISODate,
+    locationId?: string,
+  ) =>
     api.get<TrendPoint[]>(`/dashboard/trend${qs({ metric, granularity, from, to, locationId })}`),
 
   getOpsStatus: () => api.get<OpsStatusResponse>('/dashboard/ops-status'),

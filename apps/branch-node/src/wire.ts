@@ -18,7 +18,14 @@
  * that boundary has one obvious place to live, and so a future field that
  * genuinely needs wire-shape translation has an established seam to join.
  */
-import type { SyncEventEnvelope, SyncHelloAck, SyncHelloRequest, SyncPullResult, SyncPushAck, SyncPushBatch } from '@mimi/sync-protocol';
+import type {
+  SyncEventEnvelope,
+  SyncHelloAck,
+  SyncHelloRequest,
+  SyncPullResult,
+  SyncPushAck,
+  SyncPushBatch,
+} from '@mimi/sync-protocol';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

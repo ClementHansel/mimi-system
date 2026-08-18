@@ -1,4 +1,13 @@
-import { IsArray, IsBoolean, IsIn, IsNumberString, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsNumberString,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+} from 'class-validator';
 
 /** `POST /api/payroll/periods` — CONTRACTS.md §4.15 (dates derived from the code). */
 export class CreatePeriodDto {

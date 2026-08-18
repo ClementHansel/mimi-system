@@ -26,7 +26,13 @@ function unreachableTransport(): SyncTransport {
   const fail = () => {
     throw new Error('network disabled — this transport must never be called by a local commit');
   };
-  return { health: fail, hello: fail, push: fail, pull: fail, heartbeat: fail } as unknown as SyncTransport;
+  return {
+    health: fail,
+    hello: fail,
+    push: fail,
+    pull: fail,
+    heartbeat: fail,
+  } as unknown as SyncTransport;
 }
 
 const noopConnectivity: ConnectivityReporter = {
@@ -39,7 +45,7 @@ const noopConnectivity: ConnectivityReporter = {
 
 const ACTOR = { actorUserId: 'driver-user-1', actorRole: 'driver', appVersion: 'test' };
 
-describe('Driver drop lifecycle — offline queuing via LocalRuntime (this ticket\'s Done-when scenario)', () => {
+describe("Driver drop lifecycle — offline queuing via LocalRuntime (this ticket's Done-when scenario)", () => {
   it('queues depart → temp log → arrive → temp log → serah terima end to end with zero network calls, outbox growing one row per fact', async () => {
     const db = createMemoryDatabase(STORE_KEY_PATH);
     const runtime = createLocalRuntime({
@@ -56,24 +62,49 @@ describe('Driver drop lifecycle — offline queuing via LocalRuntime (this ticke
     const sjId = 'f1b2c3d4-e5f6-7890-abcd-ef1234567890';
 
     // 1. Depart — frozen shipment, load temp entered.
-    await runtime.commitDropDeparted(dropId, { dropId, at: '2026-08-17T01:00:00.000Z', tempC: '-18.0' }, ACTOR);
-    await runtime.commitTempLog(crypto.randomUUID(), { sjId, dropId, stage: 'depart', tempC: '-18.0' }, ACTOR);
+    await runtime.commitDropDeparted(
+      dropId,
+      { dropId, at: '2026-08-17T01:00:00.000Z', tempC: '-18.0' },
+      ACTOR,
+    );
+    await runtime.commitTempLog(
+      crypto.randomUUID(),
+      { sjId, dropId, stage: 'depart', tempC: '-18.0' },
+      ACTOR,
+    );
     expect(await runtime.getOutboxDepth()).toBe(2);
 
     // 2. Arrive — seal verified intact, arrival temp logged (registry requires tempC on arrive).
     await runtime.commitDropArrived(
       dropId,
-      { dropId, at: '2026-08-17T04:00:00.000Z', tempC: '-19.0', sealCheck: { sealId: crypto.randomUUID(), status: 'verified_intact' } },
+      {
+        dropId,
+        at: '2026-08-17T04:00:00.000Z',
+        tempC: '-19.0',
+        sealCheck: { sealId: crypto.randomUUID(), status: 'verified_intact' },
+      },
       ACTOR,
     );
-    await runtime.commitTempLog(crypto.randomUUID(), { sjId, dropId, stage: 'arrive', tempC: '-19.0' }, ACTOR);
+    await runtime.commitTempLog(
+      crypto.randomUUID(),
+      { sjId, dropId, stage: 'arrive', tempC: '-19.0' },
+      ACTOR,
+    );
     expect(await runtime.getOutboxDepth()).toBe(4);
 
     // 3. Serah terima — evidence captured locally first (no upload attempted here).
     const photoBlob = new Blob(['fake-jpeg-bytes'], { type: 'image/jpeg' });
     const signatureBlob = new Blob(['fake-png-bytes'], { type: 'image/png' });
-    const photoRef = await runtime.captureEvidence(photoBlob, 'image/jpeg', 'delivery_receiving_photo');
-    const signatureRef = await runtime.captureEvidence(signatureBlob, 'image/png', 'delivery_receiving_signature');
+    const photoRef = await runtime.captureEvidence(
+      photoBlob,
+      'image/jpeg',
+      'delivery_receiving_photo',
+    );
+    const signatureRef = await runtime.captureEvidence(
+      signatureBlob,
+      'image/png',
+      'delivery_receiving_signature',
+    );
     expect(photoRef.attachmentId).toBeTruthy();
     expect(signatureRef.attachmentId).toBeTruthy();
     // The two captured blobs get distinct attachment ids — each one must
@@ -85,7 +116,13 @@ describe('Driver drop lifecycle — offline queuing via LocalRuntime (this ticke
       dropId,
       {
         dropId,
-        lines: [{ lineId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890', qtyReceived: '10.000', receivedStorageAreaId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890' }],
+        lines: [
+          {
+            lineId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890',
+            qtyReceived: '10.000',
+            receivedStorageAreaId: 'c1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          },
+        ],
         photoAttachmentIds: [photoRef.attachmentId],
         signatureAttachmentId: signatureRef.attachmentId,
         tempC: '-19.5',
@@ -105,7 +142,12 @@ describe('Driver drop lifecycle — offline queuing via LocalRuntime (this ticke
 
   it('is idempotent on retry: resubmitting depart against the SAME entityId does not double-queue (double-tap guard)', async () => {
     const db = createMemoryDatabase(STORE_KEY_PATH);
-    const runtime = createLocalRuntime({ db, transport: unreachableTransport(), candidates: [], connectivity: noopConnectivity });
+    const runtime = createLocalRuntime({
+      db,
+      transport: unreachableTransport(),
+      candidates: [],
+      connectivity: noopConnectivity,
+    });
     await runtime.init();
 
     const dropId = 'a1b2c3d4-e5f6-7890-abcd-ef1234567891';
@@ -119,7 +161,12 @@ describe('Driver drop lifecycle — offline queuing via LocalRuntime (this ticke
 
   it('never blocks a LATER drop on an EARLIER one — two drops on the same route depart independently', async () => {
     const db = createMemoryDatabase(STORE_KEY_PATH);
-    const runtime = createLocalRuntime({ db, transport: unreachableTransport(), candidates: [], connectivity: noopConnectivity });
+    const runtime = createLocalRuntime({
+      db,
+      transport: unreachableTransport(),
+      candidates: [],
+      connectivity: noopConnectivity,
+    });
     await runtime.init();
 
     const dropA = 'a1b2c3d4-e5f6-7890-abcd-ef1234567892';
@@ -129,11 +176,19 @@ describe('Driver drop lifecycle — offline queuing via LocalRuntime (this ticke
     // unreachable) even though drop A never departed. Each drop is its own
     // `(entity, entityId, op)` row, so this must NOT collide with, or be
     // blocked by, drop A's untouched state.
-    await runtime.commitDropDeparted(dropB, { dropId: dropB, at: '2026-08-17T01:00:00.000Z' }, ACTOR);
+    await runtime.commitDropDeparted(
+      dropB,
+      { dropId: dropB, at: '2026-08-17T01:00:00.000Z' },
+      ACTOR,
+    );
     expect(await runtime.getOutboxDepth()).toBe(1);
 
     // Drop A can still depart independently afterwards — no ordering lock.
-    await runtime.commitDropDeparted(dropA, { dropId: dropA, at: '2026-08-17T05:00:00.000Z' }, ACTOR);
+    await runtime.commitDropDeparted(
+      dropA,
+      { dropId: dropA, at: '2026-08-17T05:00:00.000Z' },
+      ACTOR,
+    );
     expect(await runtime.getOutboxDepth()).toBe(2);
   });
 });

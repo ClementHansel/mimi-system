@@ -4,7 +4,12 @@
  * (`settings.read`/`settings.manage`/`settings.approval_chain.manage`) is
  * the only gate.
  */
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { v5 as uuidV5 } from 'uuid';
 import {
@@ -20,9 +25,18 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
-import { SettingsRepository, type ApprovalChainStepRow, type SettingRow } from './settings.repository';
+import {
+  SettingsRepository,
+  type ApprovalChainStepRow,
+  type SettingRow,
+} from './settings.repository';
 import { validateSettingValue } from './settings-value-validator';
-import type { ChainStepDto, PutApprovalChainDto, PutApprovalModeDto, PutSettingDto } from './settings.dto';
+import type {
+  ChainStepDto,
+  PutApprovalChainDto,
+  PutApprovalModeDto,
+  PutSettingDto,
+} from './settings.dto';
 import { withWrite } from './db-tx';
 
 /** Same fixed namespace convention as `statutory.service.ts` — `sync_events.entity_id` is UUID NOT NULL but `settings.key` is a VARCHAR PK; `payload.data.key` carries the real identity. */
@@ -44,7 +58,12 @@ export interface SettingRes {
 
 export interface ApprovalChainRes {
   documentType: string;
-  steps: { stepNo: number; approverRole: string; minAmount: string | null; maxAmount: string | null }[];
+  steps: {
+    stepNo: number;
+    approverRole: string;
+    minAmount: string | null;
+    maxAmount: string | null;
+  }[];
 }
 
 /** D-23 — `GET /api/settings/approval-modes` row shape. */
@@ -67,11 +86,20 @@ export class SettingsService {
 
   async getOne(key: string, client: PoolClient): Promise<SettingRes> {
     const row = await this.repo.findByKey(client, key);
-    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown settings key '${key}'` });
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Unknown settings key '${key}'`,
+      });
     return mapSetting(row);
   }
 
-  async putOne(key: string, dto: PutSettingDto, caller: { sub: string }, client: PoolClient): Promise<SettingRes> {
+  async putOne(
+    key: string,
+    dto: PutSettingDto,
+    caller: { sub: string },
+    client: PoolClient,
+  ): Promise<SettingRes> {
     if (key === WIZARD_ONLY_KEY) {
       throw new ForbiddenException({
         code: ERR_USE_WIZARD,
@@ -79,16 +107,27 @@ export class SettingsService {
       });
     }
     if (!SETTINGS_KEY_SET.has(key)) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown settings key '${key}'` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Unknown settings key '${key}'`,
+      });
     }
     const errors = validateSettingValue(key as SettingsKey, dto.value);
     if (errors.length > 0) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Invalid value for '${key}'`, details: errors });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Invalid value for '${key}'`,
+        details: errors,
+      });
     }
 
     return withWrite(client, async () => {
       const updated = await this.repo.updateValue(client, key, dto.value, caller.sub);
-      if (!updated) throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown settings key '${key}'` });
+      if (!updated)
+        throw new NotFoundException({
+          code: ERR_NOT_FOUND,
+          message: `Unknown settings key '${key}'`,
+        });
 
       await this.syncEmit.emit(client, {
         entity: SyncEntity.SETTINGS,
@@ -108,9 +147,16 @@ export class SettingsService {
     return groupChainRows(rows);
   }
 
-  async putApprovalChain(documentType: string, dto: PutApprovalChainDto, client: PoolClient): Promise<ApprovalChainRes> {
+  async putApprovalChain(
+    documentType: string,
+    dto: PutApprovalChainDto,
+    client: PoolClient,
+  ): Promise<ApprovalChainRes> {
     if (!APPROVAL_DOCUMENT_TYPES.has(documentType)) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Unknown document type '${documentType}'` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Unknown document type '${documentType}'`,
+      });
     }
 
     this.assertStepsWellFormed(dto.steps);
@@ -118,7 +164,11 @@ export class SettingsService {
     const existing = await this.repo.findChainSteps(client, documentType);
     const existingFirst = existing.find((s) => s.step_no === 1);
     const incomingFirst = dto.steps.find((s) => s.stepNo === 1);
-    if (existingFirst && incomingFirst && existingFirst.approver_role !== incomingFirst.approverRole) {
+    if (
+      existingFirst &&
+      incomingFirst &&
+      existingFirst.approver_role !== incomingFirst.approverRole
+    ) {
       throw new BadRequestException({
         code: ERR_VALIDATION,
         message: `step 1's approver role is fixed per document type (CONTRACTS.md §5) — cannot change '${existingFirst.approver_role}' to '${incomingFirst.approverRole}' for '${documentType}'`,
@@ -129,7 +179,12 @@ export class SettingsService {
       await this.repo.replaceChainSteps(
         client,
         documentType,
-        dto.steps.map((s) => ({ stepNo: s.stepNo, approverRole: s.approverRole, minAmount: s.minAmount ?? null, maxAmount: s.maxAmount ?? null })),
+        dto.steps.map((s) => ({
+          stepNo: s.stepNo,
+          approverRole: s.approverRole,
+          minAmount: s.minAmount ?? null,
+          maxAmount: s.maxAmount ?? null,
+        })),
       );
 
       const rows = await this.repo.findChainSteps(client, documentType);
@@ -148,9 +203,17 @@ export class SettingsService {
     }));
   }
 
-  async putApprovalMode(documentType: string, dto: PutApprovalModeDto, caller: { sub: UUID }, client: PoolClient): Promise<ApprovalModeRes> {
+  async putApprovalMode(
+    documentType: string,
+    dto: PutApprovalModeDto,
+    caller: { sub: UUID },
+    client: PoolClient,
+  ): Promise<ApprovalModeRes> {
     if (!APPROVAL_DOCUMENT_TYPES.has(documentType)) {
-      throw new BadRequestException({ code: ERR_VALIDATION, message: `Unknown document type '${documentType}'` });
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Unknown document type '${documentType}'`,
+      });
     }
 
     return withWrite(client, async () => {
@@ -165,7 +228,10 @@ export class SettingsService {
         data: { key: 'approval.mode', documentType, mode: dto.mode },
       });
 
-      return { documentType: documentType as ApprovalDocumentType, mode: values[documentType] ?? dto.mode };
+      return {
+        documentType: documentType as ApprovalDocumentType,
+        mode: values[documentType] ?? dto.mode,
+      };
     });
   }
 
@@ -203,6 +269,11 @@ function groupChainRows(rows: ApprovalChainStepRow[]): ApprovalChainRes[] {
     documentType,
     steps: stepRows
       .sort((a, b) => a.step_no - b.step_no)
-      .map((r) => ({ stepNo: r.step_no, approverRole: r.approver_role, minAmount: r.min_amount, maxAmount: r.max_amount })),
+      .map((r) => ({
+        stepNo: r.step_no,
+        approverRole: r.approver_role,
+        minAmount: r.min_amount,
+        maxAmount: r.max_amount,
+      })),
   }));
 }

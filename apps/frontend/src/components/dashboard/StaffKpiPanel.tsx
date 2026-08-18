@@ -48,16 +48,40 @@ export function StaffKpiPanel({ from, to, locationId }: StaffKpiPanelProps) {
   }, [from, to, locationId, t]);
 
   const columns: DataTableColumn<StaffKpiRow>[] = [
-    { key: 'name', header: t('dashboard.staffKpi.columnName'), render: (r) => (
-      <div className="flex flex-col">
-        <span className="font-medium text-text-primary">{r.name}</span>
-        <span className="text-xs text-text-muted">{r.role}</span>
-      </div>
-    ) },
-    { key: 'salesCount', header: t('dashboard.staffKpi.columnSalesCount'), align: 'right', render: (r) => formatNumber(r.salesCount) },
-    { key: 'salesAmount', header: t('dashboard.staffKpi.columnSalesAmount'), align: 'right', render: (r) => formatMoney(r.salesAmount) },
-    { key: 'attendanceRate', header: t('dashboard.staffKpi.columnAttendanceRate'), align: 'right', render: (r) => formatPercent(Number(r.attendanceRate)) },
-    { key: 'lateCount', header: t('dashboard.staffKpi.columnLateCount'), align: 'right', render: (r) => formatNumber(r.lateCount) },
+    {
+      key: 'name',
+      header: t('dashboard.staffKpi.columnName'),
+      render: (r) => (
+        <div className="flex flex-col">
+          <span className="font-medium text-text-primary">{r.name}</span>
+          <span className="text-xs text-text-muted">{r.role}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'salesCount',
+      header: t('dashboard.staffKpi.columnSalesCount'),
+      align: 'right',
+      render: (r) => formatNumber(r.salesCount),
+    },
+    {
+      key: 'salesAmount',
+      header: t('dashboard.staffKpi.columnSalesAmount'),
+      align: 'right',
+      render: (r) => formatMoney(r.salesAmount),
+    },
+    {
+      key: 'attendanceRate',
+      header: t('dashboard.staffKpi.columnAttendanceRate'),
+      align: 'right',
+      render: (r) => formatPercent(Number(r.attendanceRate)),
+    },
+    {
+      key: 'lateCount',
+      header: t('dashboard.staffKpi.columnLateCount'),
+      align: 'right',
+      render: (r) => formatNumber(r.lateCount),
+    },
   ];
 
   return (

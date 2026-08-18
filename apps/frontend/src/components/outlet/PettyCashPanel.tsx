@@ -4,7 +4,16 @@ import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
-  Button, Modal, DataTable, StatusBadge, Select, Input, MoneyInput, PhotoCapture, toast, PermissionGate,
+  Button,
+  Modal,
+  DataTable,
+  StatusBadge,
+  Select,
+  Input,
+  MoneyInput,
+  PhotoCapture,
+  toast,
+  PermissionGate,
 } from '@/components/ui';
 import type { DataTableColumn, SelectOption } from '@/components/ui';
 import { formatMoney } from '@/lib/formatters';
@@ -51,7 +60,9 @@ export function PettyCashPanel() {
   function reload() {
     if (!locationId) return;
     setLoading(true);
-    listPettyCash(locationId).then((r) => setRows(r.rows)).finally(() => setLoading(false));
+    listPettyCash(locationId)
+      .then((r) => setRows(r.rows))
+      .finally(() => setLoading(false));
   }
   useEffect(reload, [locationId]);
   useEffect(() => {
@@ -73,16 +84,29 @@ export function PettyCashPanel() {
     setSaving(true);
     try {
       const [paymentProofAttachmentId, goodsPhotoAttachmentId] = await Promise.all([
-        uploadAttachment({ file: paymentProof, fileName: paymentProof.name, mimeType: paymentProof.type || 'image/jpeg', kind: 'payment_proof' }),
-        uploadAttachment({ file: goodsPhoto, fileName: goodsPhoto.name, mimeType: goodsPhoto.type || 'image/jpeg', kind: 'petty_cash_photo' }),
+        uploadAttachment({
+          file: paymentProof,
+          fileName: paymentProof.name,
+          mimeType: paymentProof.type || 'image/jpeg',
+          kind: 'payment_proof',
+        }),
+        uploadAttachment({
+          file: goodsPhoto,
+          fileName: goodsPhoto.name,
+          mimeType: goodsPhoto.type || 'image/jpeg',
+          kind: 'petty_cash_photo',
+        }),
       ]);
       await createPettyCash({
         locationId,
         purchaseDate,
         storeName: storeName.trim(),
         lines: valid.map((l) => ({
-          description: l.description, itemId: l.itemId || undefined, qty: l.qty ?? undefined,
-          amount: l.amount as string, expenseCategory: l.expenseCategory,
+          description: l.description,
+          itemId: l.itemId || undefined,
+          qty: l.qty ?? undefined,
+          amount: l.amount as string,
+          expenseCategory: l.expenseCategory,
         })),
         paymentProofAttachmentId,
         goodsPhotoAttachmentId,
@@ -90,7 +114,9 @@ export function PettyCashPanel() {
       toast({ title: t('outlet.pettyCash.created'), variant: 'success' });
       setOpen(false);
       setStoreName('');
-      setLines([{ description: '', itemId: '', qty: null, amount: null, expenseCategory: 'bahan_baku' }]);
+      setLines([
+        { description: '', itemId: '', qty: null, amount: null, expenseCategory: 'bahan_baku' },
+      ]);
       setPaymentProof(null);
       setGoodsPhoto(null);
       reload();
@@ -104,8 +130,17 @@ export function PettyCashPanel() {
   const columns: DataTableColumn<PettyCash>[] = [
     { key: 'pcNumber', header: t('outlet.pettyCash.number') },
     { key: 'storeName', header: t('outlet.pettyCash.storeName') },
-    { key: 'totalAmount', header: t('common.total'), align: 'right', render: (r) => formatMoney(r.totalAmount) },
-    { key: 'status', header: t('common.status'), render: (r) => <StatusBadge domain="pettyCash" status={r.status} /> },
+    {
+      key: 'totalAmount',
+      header: t('common.total'),
+      align: 'right',
+      render: (r) => formatMoney(r.totalAmount),
+    },
+    {
+      key: 'status',
+      header: t('common.status'),
+      render: (r) => <StatusBadge domain="pettyCash" status={r.status} />,
+    },
   ];
 
   return (
@@ -128,7 +163,12 @@ export function PettyCashPanel() {
 
       <Modal open={open} onClose={() => setOpen(false)} title={t('outlet.pettyCash.new')} size="lg">
         <div className="flex flex-col gap-4">
-          <Input type="date" label={t('common.date')} value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
+          <Input
+            type="date"
+            label={t('common.date')}
+            value={purchaseDate}
+            onChange={(e) => setPurchaseDate(e.target.value)}
+          />
 
           {!useFreeText && supplierOptions.length > 0 ? (
             <div className="flex items-end gap-2">
@@ -145,26 +185,72 @@ export function PettyCashPanel() {
               </Button>
             </div>
           ) : (
-            <Input label={t('outlet.pettyCash.storeName')} value={storeName} onChange={(e) => setStoreName(e.target.value)} required />
+            <Input
+              label={t('outlet.pettyCash.storeName')}
+              value={storeName}
+              onChange={(e) => setStoreName(e.target.value)}
+              required
+            />
           )}
 
           {lines.map((line, idx) => (
             <div key={idx} className="grid gap-3 sm:grid-cols-2">
-              <Input label={t('outlet.pettyCash.description')} value={line.description}
-                onChange={(e) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, description: e.target.value } : l)))} />
-              <Select label={`${t('outlet.replenishment.item')} ${t('common.optional')}`} value={line.itemId}
+              <Input
+                label={t('outlet.pettyCash.description')}
+                value={line.description}
+                onChange={(e) =>
+                  setLines((ls) =>
+                    ls.map((l, i) => (i === idx ? { ...l, description: e.target.value } : l)),
+                  )
+                }
+              />
+              <Select
+                label={`${t('outlet.replenishment.item')} ${t('common.optional')}`}
+                value={line.itemId}
                 options={items.map((i) => ({ value: i.id, label: i.name }))}
-                onValueChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))}
-                placeholder={t('common.selectPlaceholder')} />
-              <MoneyInput label={t('common.total')} value={line.amount}
-                onChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, amount: v } : l)))} />
-              <Select label={t('outlet.pettyCash.category')} value={line.expenseCategory}
-                options={EXPENSE_CATEGORIES.map((c) => ({ value: c, label: t(`outlet.pettyCash.categoryOptions.${c}`) }))}
-                onValueChange={(v) => setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, expenseCategory: v } : l)))} />
+                onValueChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))
+                }
+                placeholder={t('common.selectPlaceholder')}
+              />
+              <MoneyInput
+                label={t('common.total')}
+                value={line.amount}
+                onChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, amount: v } : l)))
+                }
+              />
+              <Select
+                label={t('outlet.pettyCash.category')}
+                value={line.expenseCategory}
+                options={EXPENSE_CATEGORIES.map((c) => ({
+                  value: c,
+                  label: t(`outlet.pettyCash.categoryOptions.${c}`),
+                }))}
+                onValueChange={(v) =>
+                  setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, expenseCategory: v } : l)))
+                }
+              />
             </div>
           ))}
-          <Button type="button" variant="outline" size="sm" leftIcon={<Plus className="size-4" />}
-            onClick={() => setLines((ls) => [...ls, { description: '', itemId: '', qty: null, amount: null, expenseCategory: 'bahan_baku' }])}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            leftIcon={<Plus className="size-4" />}
+            onClick={() =>
+              setLines((ls) => [
+                ...ls,
+                {
+                  description: '',
+                  itemId: '',
+                  qty: null,
+                  amount: null,
+                  expenseCategory: 'bahan_baku',
+                },
+              ])
+            }
+          >
             {t('outlet.replenishment.addLine')}
           </Button>
 
@@ -173,15 +259,29 @@ export function PettyCashPanel() {
           </p>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <PhotoCapture label={t('outlet.pettyCash.paymentProofLabel')} value={paymentProof ? URL.createObjectURL(paymentProof) : null}
-              onCapture={setPaymentProof} onRemove={() => setPaymentProof(null)} required />
-            <PhotoCapture label={t('outlet.pettyCash.goodsPhotoLabel')} value={goodsPhoto ? URL.createObjectURL(goodsPhoto) : null}
-              onCapture={setGoodsPhoto} onRemove={() => setGoodsPhoto(null)} required />
+            <PhotoCapture
+              label={t('outlet.pettyCash.paymentProofLabel')}
+              value={paymentProof ? URL.createObjectURL(paymentProof) : null}
+              onCapture={setPaymentProof}
+              onRemove={() => setPaymentProof(null)}
+              required
+            />
+            <PhotoCapture
+              label={t('outlet.pettyCash.goodsPhotoLabel')}
+              value={goodsPhoto ? URL.createObjectURL(goodsPhoto) : null}
+              onCapture={setGoodsPhoto}
+              onRemove={() => setGoodsPhoto(null)}
+              required
+            />
           </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
-          <Button loading={saving} disabled={!paymentProof || !goodsPhoto} onClick={submit}>{t('common.submit')}</Button>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button loading={saving} disabled={!paymentProof || !goodsPhoto} onClick={submit}>
+            {t('common.submit')}
+          </Button>
         </div>
       </Modal>
     </div>

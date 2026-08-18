@@ -77,7 +77,11 @@ export async function reconcilePulledEvents(
         updatedAt: e.receivedAt ?? e.occurredAt,
       });
 
-      await appliedStore.put({ eventId: e.eventId, entity: e.entity, appliedAt: new Date().toISOString() });
+      await appliedStore.put({
+        eventId: e.eventId,
+        entity: e.entity,
+        appliedAt: new Date().toISOString(),
+      });
       applied += 1;
 
       try {
@@ -88,7 +92,10 @@ export async function reconcilePulledEvents(
           await applyBuiltinStockEffect(tx, e, masterStore);
         }
       } catch (err) {
-        options.onWarning?.(`stock-effect projection failed for ${e.entity}.${e.op} (${e.eventId})`, err);
+        options.onWarning?.(
+          `stock-effect projection failed for ${e.entity}.${e.op} (${e.eventId})`,
+          err,
+        );
       }
     }
   });
@@ -112,12 +119,26 @@ async function applyBuiltinStockEffect(
     }
     case 'sj_drops.received': {
       const lines = (data.lines as SimpleFactLine[] | undefined) ?? [];
-      await recordReceiptWithinTx(tx, e.eventId, lines, MovementType.TRANSFER_IN, 'sj_drop', e.occurredAt);
+      await recordReceiptWithinTx(
+        tx,
+        e.eventId,
+        lines,
+        MovementType.TRANSFER_IN,
+        'sj_drop',
+        e.occurredAt,
+      );
       return;
     }
     case 'goods_receipts.recorded': {
       const lines = (data.lines as SimpleFactLine[] | undefined) ?? [];
-      await recordReceiptWithinTx(tx, e.eventId, lines, MovementType.PURCHASE_IN, 'goods_receipt', e.occurredAt);
+      await recordReceiptWithinTx(
+        tx,
+        e.eventId,
+        lines,
+        MovementType.PURCHASE_IN,
+        'goods_receipt',
+        e.occurredAt,
+      );
       return;
     }
     case 'waste_records.approved': {
@@ -144,7 +165,13 @@ async function applyBuiltinStockEffect(
       const target = data.target as { locationId: string; storageAreaId: string } | undefined;
       if (!target) return;
       const recipesByProduct = await loadRecipesByProduct(masterStore);
-      await recordSaleWithinTx(tx, { saleEventId: e.eventId, saleLines, recipesByProduct, target, occurredAt: e.occurredAt });
+      await recordSaleWithinTx(tx, {
+        saleEventId: e.eventId,
+        saleLines,
+        recipesByProduct,
+        target,
+        occurredAt: e.occurredAt,
+      });
       return;
     }
     default:

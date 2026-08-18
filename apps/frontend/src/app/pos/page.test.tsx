@@ -44,8 +44,14 @@ function renderPosPage() {
 function setOwner() {
   useSessionStore.setState({
     user: {
-      id: 'u1', username: 'owner1', name: 'Owner Satu', roleKey: 'owner',
-      permissions: ['location.read'], locations: [], employeeId: null, mustSetPin: false,
+      id: 'u1',
+      username: 'owner1',
+      name: 'Owner Satu',
+      roleKey: 'owner',
+      permissions: ['location.read'],
+      locations: [],
+      employeeId: null,
+      mustSetPin: false,
     },
   });
 }
@@ -72,7 +78,9 @@ describe('PosPage — F02-FIX head-office access', () => {
 
     // The old bug: zero API calls, indefinite "Memuat…". The fix must
     // actually call the locations endpoint and show a picker.
-    await waitFor(() => expect(mockedGet).toHaveBeenCalledWith('/locations?type=outlet&active=true&pageSize=200'));
+    await waitFor(() =>
+      expect(mockedGet).toHaveBeenCalledWith('/locations?type=outlet&active=true&pageSize=200'),
+    );
     expect(await screen.findByText('Pilih Outlet')).toBeInTheDocument();
     expect(screen.getByText('Outlet Cempaka')).toBeInTheDocument();
 
@@ -99,9 +107,16 @@ describe('PosPage — F02-FIX head-office access', () => {
   it('gives an explicit, retryable error — never an indefinite spinner — when the local runtime fails to bootstrap', async () => {
     useSessionStore.setState({
       user: {
-        id: 'u2', username: 'kasir1', name: 'Kasir Satu', roleKey: 'kasir',
-        permissions: [], locations: [{ id: 'loc1', code: 'OUT1', name: 'Outlet Cempaka', type: 'outlet', city: 'Denpasar' }],
-        employeeId: null, mustSetPin: false,
+        id: 'u2',
+        username: 'kasir1',
+        name: 'Kasir Satu',
+        roleKey: 'kasir',
+        permissions: [],
+        locations: [
+          { id: 'loc1', code: 'OUT1', name: 'Outlet Cempaka', type: 'outlet', city: 'Denpasar' },
+        ],
+        employeeId: null,
+        mustSetPin: false,
       },
     });
     mockedGetRuntime.mockRejectedValue(new Error('IndexedDB unavailable'));

@@ -1343,6 +1343,17 @@ async function main(): Promise<void> {
       let isNewSj = false;
       if (existingSj.rows.length > 0) {
         sjId = existingSj.rows[0].id;
+        // Roll the demo trip forward to the day of the re-seed. The driver
+        // surface asks for `my-jobs?date=<today>` (F13's "Surat Jalan Hari
+        // Ini"), so an SJ left on the date it was FIRST seeded silently
+        // disappears from the driver's phone the next morning — the screen
+        // just says "no Surat Jalan today" and the whole delivery flow looks
+        // broken when it is only stale fixture data. Idempotency here means
+        // "one demo trip", not "frozen in time".
+        await client.query(
+          `UPDATE surat_jalan SET planned_date = $2 WHERE id = $1 AND status NOT IN ('completed','cancelled')`,
+          [sjId, isoDate(daysAgo(0))],
+        );
       } else {
         const sjNumber = await nextDocNumber(client, 'SJ');
         const sjRes = await client.query(

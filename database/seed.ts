@@ -270,6 +270,23 @@ async function main(): Promise<void> {
       locations: [],
       withPin: true,
     });
+    // The all-access technical account (migration 222). Deliberately NOT
+    // created by that migration: a privileged login minted from SQL would be a
+    // credential in version control, created silently on every environment it
+    // ran against. Here it is demo data with the same demo password as every
+    // other seeded account, and obvious to change.
+    //
+    // `locations: []` is what a central role carries — "not restricted to one
+    // outlet", the same shape owner/manager/finance use — and combined with
+    // `app_is_central()` (222) it is what actually lets this account read
+    // location-scoped tables.
+    seedUsers.push({
+      username: 'superadmin',
+      name: 'Super Admin',
+      roleKey: 'superadmin',
+      locations: [],
+      withPin: true,
+    });
     seedUsers.push({
       username: 'manager1',
       name: 'Siti Nurhaliza',
@@ -505,6 +522,11 @@ async function main(): Promise<void> {
     }
 
     for (const u of seedUsers) {
+      // `superadmin` is a technical account, not a person on the payroll: it
+      // gets no employee record, so it never appears in headcount, attendance,
+      // shift rotas or a payroll run. (It also has no `positions` entry, which
+      // is what surfaced this — `employees.position` is NOT NULL.)
+      if (u.roleKey === 'superadmin') continue;
       const homeLoc = u.locations[0] ?? 'GDG';
       await upsertEmployee(
         u.username,
@@ -533,7 +555,9 @@ async function main(): Promise<void> {
       extraIdx++;
     }
     console.log(
-      `  - employees: ${currentTotal} total (${seedUsers.length} with login, ${extraIdx} staff-only)`,
+      // `seedUsers.length` would over-count now that `superadmin` is a login
+      // with deliberately no employee record.
+      `  - employees: ${currentTotal} total (${seedUsers.filter((u) => u.roleKey !== 'superadmin').length} with login, ${extraIdx} staff-only)`,
     );
 
     // Drivers table + vehicles
@@ -1110,7 +1134,19 @@ async function main(): Promise<void> {
         // everything. These are kg of chicken and rice in a regional
         // distribution warehouse; hundreds, not tens, is also the realistic
         // figure.
-        const openingQty = rnd(400, 1200);
+        //
+        // The gudang pusat is stocked an order of magnitude deeper than an
+        // outlet, for two reasons. It is realistic — one central warehouse
+        // supplies twenty outlets, so holding the same 400-1200 kg as a single
+        // outlet never made sense. And it is what keeps the live-DB test
+        // suites usable: several of them (waste/return most visibly) COMMIT
+        // real stock movements out of GDG rather than rolling them back — the
+        // `withWrite`-inside-`withRollback` behaviour the statutory suite
+        // documents at length — so every full test run permanently draws the
+        // warehouse down a little. With outlet-sized stock, GDG hit zero after
+        // a handful of runs and the suite began failing with
+        // StockInsufficientError on a database that was seeded fine.
+        const openingQty = code === 'GDG' ? rnd(6000, 15000) : rnd(400, 1200);
         await client.query(
           `INSERT INTO stock_balances (location_id, storage_area_id, item_id, qty_on_hand)
            VALUES ($1,$2,$3,$4)

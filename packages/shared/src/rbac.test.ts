@@ -19,7 +19,7 @@ describe('RBAC matrix shape', () => {
     expect(new Set(PERMISSION_KEYS).size).toBe(138); // no duplicate keys
   });
 
-  it('has exactly 9 roles, in contract column order', () => {
+  it('has exactly 10 roles, in contract column order', () => {
     expect(RBAC_ROLE_ORDER).toEqual([
       RoleKey.OWNER,
       RoleKey.MANAGER,
@@ -30,6 +30,10 @@ describe('RBAC matrix shape', () => {
       RoleKey.KASIR,
       RoleKey.HR_ADMIN,
       RoleKey.DRIVER,
+      // Appended, never inserted: RBAC_ROLE_ORDER's position IS the column
+      // index into every row of the 138-row matrix, so adding SUPERADMIN
+      // anywhere but the end would silently re-map all nine existing roles.
+      RoleKey.SUPERADMIN,
     ]);
   });
 
@@ -49,9 +53,33 @@ describe('can() spot checks against CONTRACTS.md §3', () => {
     expect(can(RoleKey.FINANCE, 'user.create')).toBe(false);
   });
 
-  it('only owner holds settings.approval_chain.manage', () => {
+  it('only owner (and the all-access superadmin) holds settings.approval_chain.manage', () => {
     for (const role of RBAC_ROLE_ORDER) {
-      expect(can(role, 'settings.approval_chain.manage')).toBe(role === RoleKey.OWNER);
+      expect(can(role, 'settings.approval_chain.manage')).toBe(
+        role === RoleKey.OWNER || role === RoleKey.SUPERADMIN,
+      );
+    }
+  });
+
+  it('superadmin holds every permission in the matrix', () => {
+    // The whole point of the role: if a key is ever added with `false` in the
+    // last column, this fails and names it rather than leaving a surface
+    // mysteriously unreachable for the account meant to reach everything.
+    const missing = PERMISSION_KEYS.filter((key) => !can(RoleKey.SUPERADMIN, key));
+    expect(missing).toEqual([]);
+  });
+
+  it('owner can reach the outlet and driver surfaces (2026-08-18 owner request)', () => {
+    // These five gate `/outlet` and `/driver` in the frontend nav; owner held
+    // none of them, which is why both surfaces were missing from the hub.
+    for (const key of [
+      'replenishment.create',
+      'opname.create',
+      'waste.create',
+      'pettycash.create',
+      'delivery.drop.execute',
+    ] as const) {
+      expect(can(RoleKey.OWNER, key)).toBe(true);
     }
   });
 
@@ -130,8 +158,14 @@ describe('permissionsForRole / rolesWithPermission', () => {
   });
 
   it('only finance and owner can pay a verified payment', () => {
-    expect(rolesWithPermission('payment.pay').sort()).toEqual(
-      [RoleKey.OWNER, RoleKey.FINANCE].sort(),
-    );
+    // SUPERADMIN is expected in every `rolesWithPermission` result by
+    // definition — the segregation-of-duties claim this test makes is about
+    // the nine business roles, so it is excluded rather than the assertion
+    // being weakened.
+    expect(
+      rolesWithPermission('payment.pay')
+        .filter((r) => r !== RoleKey.SUPERADMIN)
+        .sort(),
+    ).toEqual([RoleKey.OWNER, RoleKey.FINANCE].sort());
   });
 });

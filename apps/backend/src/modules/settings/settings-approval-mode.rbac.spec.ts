@@ -84,7 +84,10 @@ describe('M20 settings controller — D-23 approval-mode wiring', () => {
   it("'settings.approval_mode.manage' is Owner-only in the real RBAC matrix (packages/shared/src/rbac.ts)", () => {
     expect(RBAC_MATRIX[PERMISSION_KEY][RoleKey.OWNER]).toBe(true);
     for (const role of ALL_ROLES) {
-      if (role === RoleKey.OWNER) continue;
+      // SUPERADMIN holds every key by construction (see RoleKey.SUPERADMIN);
+      // the Owner-only claim under test is about the nine BUSINESS roles, so
+      // it is excluded rather than the assertion being softened.
+      if (role === RoleKey.OWNER || role === RoleKey.SUPERADMIN) continue;
       expect(RBAC_MATRIX[PERMISSION_KEY][role]).toBe(false);
     }
   });

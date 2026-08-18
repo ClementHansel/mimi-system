@@ -10,7 +10,7 @@ import { RoleKey, type Me } from '@/lib/shared-types';
  * + the server), it would just be a bad first impression.
  */
 const ROLE_LANDING: Record<string, string> = {
-  [RoleKey.OWNER]: '/dashboard',
+  [RoleKey.OWNER]: '/',
   [RoleKey.MANAGER]: '/dashboard',
   [RoleKey.FINANCE]: '/finance',
   [RoleKey.KEPALA_GUDANG]: '/warehouse',
@@ -19,6 +19,10 @@ const ROLE_LANDING: Record<string, string> = {
   [RoleKey.KASIR]: '/pos',
   [RoleKey.HR_ADMIN]: '/hr',
   [RoleKey.DRIVER]: '/driver',
+  // Owner and Super Admin land on the HUB, not a single surface: they are the
+  // two roles that see every interface, so the directory is their home rather
+  // than a detour (app/page.tsx redirects every other role past it).
+  [RoleKey.SUPERADMIN]: '/',
 };
 
 /** Fallback for an unrecognized/future role key — `/me` is the one surface every employee can reach. */

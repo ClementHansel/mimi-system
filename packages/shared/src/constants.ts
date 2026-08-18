@@ -184,6 +184,12 @@ export const SETTINGS_KEY_LIST: readonly SettingsKey[] = SETTINGS_KEYS;
 
 /** Higher number = broader authority. Used by the approval engine's role-rank override rule (§5). */
 export const ROLE_RANK: Readonly<Record<RoleKey, number>> = {
+  // Above OWNER by design: the all-access role must be able to act on any
+  // approval step, including one whose chain names the owner. A rank EQUAL to
+  // owner's would have been the subtler choice, but the override rule is
+  // "at or below their level", so equal already grants the same reach — 110
+  // just states the intent rather than relying on the comparison's edge.
+  [RoleKey.SUPERADMIN]: 110,
   [RoleKey.OWNER]: 100,
   [RoleKey.MANAGER]: 90,
   [RoleKey.FINANCE]: 50,

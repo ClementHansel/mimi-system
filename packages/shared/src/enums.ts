@@ -43,6 +43,18 @@ export enum RoleKey {
   HR_ADMIN = 'hr_admin',
   /** Added by D-14 (Appendix A-2) — Surat Jalan needs a driver actor the PRD's 8 roles don't cover. */
   DRIVER = 'driver',
+  /**
+   * Added 2026-08-18 (owner request): an all-access technical account that can
+   * reach EVERY interface, distinct from `OWNER` so "the boss's login" and
+   * "the account that can see everything" need not be the same credential.
+   *
+   * Holds every permission in the matrix by construction (see `rbac.ts`) and is
+   * treated as central by RLS (`app_is_central()`, migration 222) — without
+   * that second half it would pass every permission check and still see no
+   * rows. Deliberately LAST in `RBAC_ROLE_ORDER` so adding it shifted no
+   * existing column index in the 138-row matrix.
+   */
+  SUPERADMIN = 'superadmin',
 }
 
 // ── §2.2 Stock & logistics ────────────────────────────────────────────────────

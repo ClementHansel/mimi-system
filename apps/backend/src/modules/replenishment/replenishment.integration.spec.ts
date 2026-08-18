@@ -647,7 +647,12 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
         RoleKey.SUPERVISOR,
         RoleKey.LEADER_OUTLET,
       ],
-      'replenishment.create': [RoleKey.SUPERVISOR, RoleKey.LEADER_OUTLET],
+      // OWNER added 2026-08-18 (owner request: owner must reach every
+      // interface, and `/outlet` is gated on these create keys). Note this
+      // deliberately lets an owner raise a replenishment AND approve it —
+      // accepted by the owner when the segregation-of-duties trade-off was
+      // put to them.
+      'replenishment.create': [RoleKey.OWNER, RoleKey.SUPERVISOR, RoleKey.LEADER_OUTLET],
       'replenishment.submit': [RoleKey.SUPERVISOR, RoleKey.LEADER_OUTLET],
       'replenishment.approve.supervisor': [RoleKey.OWNER, RoleKey.MANAGER, RoleKey.SUPERVISOR],
       'replenishment.approve.warehouse': [RoleKey.OWNER, RoleKey.MANAGER, RoleKey.KEPALA_GUDANG],
@@ -660,6 +665,9 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
     };
     for (const [key, allowedRoles] of Object.entries(ALLOW)) {
       for (const role of Object.values(RoleKey)) {
+        // SUPERADMIN holds every key by construction — the CONTRACTS §3 claim
+        // being verified is about the nine business roles.
+        if (role === RoleKey.SUPERADMIN) continue;
         const expected = allowedRoles.includes(role);
         expect(can(role, key as never)).toBe(expected);
       }

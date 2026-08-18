@@ -238,7 +238,12 @@ describe('ProductService / RecipeService (live database)', () => {
 
     it('product.manage is granted only to owner/manager', () => {
       const granted = [RoleKey.OWNER, RoleKey.MANAGER];
-      const denied = Object.values(RoleKey).filter((r) => !granted.includes(r));
+      // SUPERADMIN holds every key by construction (RoleKey.SUPERADMIN), so it
+      // is excluded from the denied set — the claim under test is about the
+      // nine business roles, not the all-access technical account.
+      const denied = Object.values(RoleKey).filter(
+        (r) => !granted.includes(r) && r !== RoleKey.SUPERADMIN,
+      );
       for (const role of granted) expect(can(role, 'product.manage')).toBe(true);
       for (const role of denied) expect(can(role, 'product.manage')).toBe(false);
     });

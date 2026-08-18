@@ -89,6 +89,7 @@ export const id = {
     kasir: 'Kasir',
     hr_admin: 'Admin SDM',
     driver: 'Driver',
+    superadmin: 'Super Admin',
   },
 
   // F-HUB-2 home hub (`app/page.tsx`) — standalone workspace CHOOSER, modeled
@@ -110,6 +111,29 @@ export const id = {
     multipleOutlets: '{{count}} Lokasi',
     roleAtOutlet: '{{role}} · {{outlet}}',
     subtitle: 'Pilih tujuan Anda untuk bekerja hari ini',
+    // Owner/Super Admin land on the hub as an interface DIRECTORY; every other
+    // role is redirected straight to its own surface and never sees this page.
+    subtitleAll: 'Semua {{count}} antarmuka yang dapat Anda akses',
+    section: {
+      referensi: 'REFERENSI',
+    },
+    // One sentence per interface, keyed by the `lib/nav.ts` item id.
+    surface: {
+      approvals: 'Tinjau dan putuskan dokumen yang menunggu persetujuan Anda.',
+      pos: 'Layani pesanan, terima pembayaran, dan kelola shift serta kas kecil.',
+      dashboard: 'Ringkasan penjualan, stok, dan kinerja seluruh outlet.',
+      outlet: 'Permintaan barang, stok opname, waste, dan kas kecil outlet.',
+      driver: 'Daftar Surat Jalan hari ini: rute, alamat, navigasi, dan serah terima.',
+      warehouse: 'Gudang pusat: penerimaan, stok, dan pemenuhan permintaan outlet.',
+      delivery: 'Buat Surat Jalan, atur rute pengiriman, dan pantau truk.',
+      purchasing: 'Permintaan pembelian, PO ke supplier, dan penerimaan barang.',
+      finance: 'Verifikasi pembayaran, jurnal, dan laporan keuangan.',
+      hr: 'Data karyawan, absensi, shift, cuti, dan penggajian.',
+      assets: 'Aset, kendaraan, jadwal maintenance, dan riwayat servis.',
+      me: 'Absen, slip gaji, dan pengajuan cuti Anda sendiri.',
+      admin: 'Pengguna, hak akses, pengaturan sistem, dan audit log.',
+      topology: 'Topologi perangkat: node cabang, printer, dan status koneksi.',
+    },
     emptyTitle: 'Belum ada akses ke modul manapun',
     emptyDescription: 'Hubungi admin untuk memberikan akses sesuai peran Anda.',
     workspace: {

@@ -1,12 +1,5 @@
 import type { PoolClient } from 'pg';
-import type {
-  Drop,
-  DropLine,
-  Seal,
-  SuratJalan,
-  TempLog,
-  UUID,
-} from '@mimi/shared';
+import type { Drop, DropLine, Seal, SuratJalan, TempLog, UUID } from '@mimi/shared';
 import { formatDateOnly } from '../../common/date-only.util';
 
 /**
@@ -48,13 +41,22 @@ const HEADER_SELECT = `
     LEFT JOIN users cu ON cu.id = sj.created_by
 `;
 
-export async function selectSuratJalanHeader(client: PoolClient, id: UUID): Promise<SuratJalanHeaderRow | null> {
+export async function selectSuratJalanHeader(
+  client: PoolClient,
+  id: UUID,
+): Promise<SuratJalanHeaderRow | null> {
   const res = await client.query<SuratJalanHeaderRow>(`${HEADER_SELECT} WHERE sj.id = $1`, [id]);
   return res.rows[0] ?? null;
 }
 
-export async function selectSuratJalanHeaderForUpdate(client: PoolClient, id: UUID): Promise<SuratJalanHeaderRow | null> {
-  const res = await client.query<SuratJalanHeaderRow>(`${HEADER_SELECT} WHERE sj.id = $1 FOR UPDATE OF sj`, [id]);
+export async function selectSuratJalanHeaderForUpdate(
+  client: PoolClient,
+  id: UUID,
+): Promise<SuratJalanHeaderRow | null> {
+  const res = await client.query<SuratJalanHeaderRow>(
+    `${HEADER_SELECT} WHERE sj.id = $1 FOR UPDATE OF sj`,
+    [id],
+  );
   return res.rows[0] ?? null;
 }
 
@@ -64,6 +66,10 @@ interface DropRow {
   location_id: string;
   location_name: string;
   city: string;
+  address: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  delivery_instructions: string | null;
   replenishment_request_id: string | null;
   status: string;
   departed_at: Date | null;
@@ -75,8 +81,14 @@ interface DropRow {
   failure_reason: string | null;
 }
 
+// `l.address`/`l.latitude`/`l.longitude` are joined in because the driver has
+// to physically find the place: without them the stop card could only say
+// "Outlet Loa Janan, Samarinda", which is not something you can navigate to.
+// The columns were populated on every location all along — they simply were
+// never selected, so the data existed and the driver could not see it.
 const DROP_SELECT = `
   SELECT d.id, d.drop_seq, d.location_id, l.name AS location_name, l.city,
+         l.address, l.latitude, l.longitude, d.delivery_instructions,
          d.replenishment_request_id, d.status, d.departed_at, d.arrived_at,
          ru.name AS received_by_name, d.received_at, d.signature_attachment_id,
          d.discrepancy_notes, d.failure_reason
@@ -86,7 +98,10 @@ const DROP_SELECT = `
 `;
 
 export async function selectDropsForSj(client: PoolClient, sjId: UUID): Promise<DropRow[]> {
-  const res = await client.query<DropRow>(`${DROP_SELECT} WHERE d.sj_id = $1 ORDER BY d.drop_seq ASC`, [sjId]);
+  const res = await client.query<DropRow>(
+    `${DROP_SELECT} WHERE d.sj_id = $1 ORDER BY d.drop_seq ASC`,
+    [sjId],
+  );
   return res.rows;
 }
 
@@ -94,12 +109,21 @@ export interface DropWithSjRow extends DropRow {
   sj_id: string;
 }
 
-export async function selectDropById(client: PoolClient, dropId: UUID): Promise<DropWithSjRow | null> {
-  const res = await client.query<DropWithSjRow>(`${DROP_SELECT.replace('SELECT d.id', 'SELECT d.sj_id, d.id')} WHERE d.id = $1`, [dropId]);
+export async function selectDropById(
+  client: PoolClient,
+  dropId: UUID,
+): Promise<DropWithSjRow | null> {
+  const res = await client.query<DropWithSjRow>(
+    `${DROP_SELECT.replace('SELECT d.id', 'SELECT d.sj_id, d.id')} WHERE d.id = $1`,
+    [dropId],
+  );
   return res.rows[0] ?? null;
 }
 
-export async function selectDropByIdForUpdate(client: PoolClient, dropId: UUID): Promise<DropWithSjRow | null> {
+export async function selectDropByIdForUpdate(
+  client: PoolClient,
+  dropId: UUID,
+): Promise<DropWithSjRow | null> {
   const res = await client.query<DropWithSjRow>(
     `${DROP_SELECT.replace('SELECT d.id', 'SELECT d.sj_id, d.id')} WHERE d.id = $1 FOR UPDATE OF d`,
     [dropId],
@@ -131,18 +155,30 @@ const LINE_SELECT = `
 `;
 
 export async function selectLinesForSj(client: PoolClient, sjId: UUID): Promise<LineRow[]> {
-  const res = await client.query<LineRow>(`${LINE_SELECT} WHERE sl.sj_id = $1 ORDER BY i.name ASC`, [sjId]);
+  const res = await client.query<LineRow>(
+    `${LINE_SELECT} WHERE sl.sj_id = $1 ORDER BY i.name ASC`,
+    [sjId],
+  );
   return res.rows;
 }
 
 export async function selectLinesForDrop(client: PoolClient, dropId: UUID): Promise<LineRow[]> {
-  const res = await client.query<LineRow>(`${LINE_SELECT} WHERE sl.drop_id = $1 ORDER BY i.name ASC`, [dropId]);
+  const res = await client.query<LineRow>(
+    `${LINE_SELECT} WHERE sl.drop_id = $1 ORDER BY i.name ASC`,
+    [dropId],
+  );
   return res.rows;
 }
 
 /** Locks every line of a drop for the duration of the caller's transaction — the receiving flow updates them one by one. */
-export async function selectLinesForDropForUpdate(client: PoolClient, dropId: UUID): Promise<LineRow[]> {
-  const res = await client.query<LineRow>(`${LINE_SELECT} WHERE sl.drop_id = $1 ORDER BY i.name ASC FOR UPDATE OF sl`, [dropId]);
+export async function selectLinesForDropForUpdate(
+  client: PoolClient,
+  dropId: UUID,
+): Promise<LineRow[]> {
+  const res = await client.query<LineRow>(
+    `${LINE_SELECT} WHERE sl.drop_id = $1 ORDER BY i.name ASC FOR UPDATE OF sl`,
+    [dropId],
+  );
   return res.rows;
 }
 
@@ -190,7 +226,10 @@ export async function selectSealsForSj(client: PoolClient, sjId: UUID): Promise<
 }
 
 /** Attachment ids for a drop's receiving photos (`kind='receiving_photo'`) — resolved to presigned URLs by the caller (StorageService), not here (this file has no `user`/`locationScope` context). */
-export async function selectDropPhotoAttachmentIds(client: PoolClient, dropId: UUID): Promise<string[]> {
+export async function selectDropPhotoAttachmentIds(
+  client: PoolClient,
+  dropId: UUID,
+): Promise<string[]> {
   const res = await client.query<{ id: string }>(
     `SELECT id FROM attachments WHERE entity_type = 'sj_drop' AND entity_id = $1 AND kind = 'receiving_photo' ORDER BY created_at ASC`,
     [dropId],
@@ -220,6 +259,13 @@ export function mapDropBase(r: DropRow, lines: LineRow[]): Drop {
     locationId: r.location_id,
     locationName: r.location_name,
     city: r.city,
+    address: r.address,
+    // pg returns NUMERIC as a string to avoid float precision loss. Coordinates
+    // are consumed as numbers by every map/deep-link call site, so they are
+    // parsed once here rather than at each of them.
+    latitude: r.latitude === null ? null : Number(r.latitude),
+    longitude: r.longitude === null ? null : Number(r.longitude),
+    deliveryInstructions: r.delivery_instructions,
     replenishmentRequestId: r.replenishment_request_id,
     status: r.status as Drop['status'],
     departedAt: r.departed_at ? r.departed_at.toISOString() : null,
@@ -257,7 +303,10 @@ export function mapSeal(r: SealRow): Seal {
 }
 
 /** Assembles the full `SuratJalan` DTO — drops WITH their lines, seals, and temperature logs. Used by `GET :id` and `my-jobs`. */
-export async function buildSuratJalanFull(client: PoolClient, header: SuratJalanHeaderRow): Promise<SuratJalan> {
+export async function buildSuratJalanFull(
+  client: PoolClient,
+  header: SuratJalanHeaderRow,
+): Promise<SuratJalan> {
   const [dropRows, lineRows, tempRows, sealRows] = await Promise.all([
     selectDropsForSj(client, header.id),
     selectLinesForSj(client, header.id),
@@ -276,7 +325,11 @@ export async function buildSuratJalanFull(client: PoolClient, header: SuratJalan
     originLocationId: header.origin_location_id,
     shipmentType: header.shipment_type,
     driver: { id: header.driver_id, name: header.driver_name, phone: header.driver_phone },
-    vehicle: { id: header.vehicle_id, plateNumber: header.vehicle_plate, hasFreezer: header.vehicle_has_freezer },
+    vehicle: {
+      id: header.vehicle_id,
+      plateNumber: header.vehicle_plate,
+      hasFreezer: header.vehicle_has_freezer,
+    },
     status: header.status as SuratJalan['status'],
     plannedDate: formatDateOnly(header.planned_date),
     dispatchedAt: header.dispatched_at ? header.dispatched_at.toISOString() : null,
@@ -289,7 +342,10 @@ export async function buildSuratJalanFull(client: PoolClient, header: SuratJalan
 }
 
 /** Light `SuratJalan` for list views ("without lines" — CONTRACTS.md §4.10): drops present (route visibility) but each drop's `lines`/the SJ's `seals`/`tempLogs` are empty. */
-export async function buildSuratJalanSummary(client: PoolClient, header: SuratJalanHeaderRow): Promise<SuratJalan> {
+export async function buildSuratJalanSummary(
+  client: PoolClient,
+  header: SuratJalanHeaderRow,
+): Promise<SuratJalan> {
   const dropRows = await selectDropsForSj(client, header.id);
   return {
     id: header.id,
@@ -297,7 +353,11 @@ export async function buildSuratJalanSummary(client: PoolClient, header: SuratJa
     originLocationId: header.origin_location_id,
     shipmentType: header.shipment_type,
     driver: { id: header.driver_id, name: header.driver_name, phone: header.driver_phone },
-    vehicle: { id: header.vehicle_id, plateNumber: header.vehicle_plate, hasFreezer: header.vehicle_has_freezer },
+    vehicle: {
+      id: header.vehicle_id,
+      plateNumber: header.vehicle_plate,
+      hasFreezer: header.vehicle_has_freezer,
+    },
     status: header.status as SuratJalan['status'],
     plannedDate: formatDateOnly(header.planned_date),
     dispatchedAt: header.dispatched_at ? header.dispatched_at.toISOString() : null,

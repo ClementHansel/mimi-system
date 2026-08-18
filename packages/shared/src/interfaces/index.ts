@@ -411,6 +411,18 @@ export interface Drop {
   locationId: UUID;
   locationName: string;
   city: string;
+  /** Street address of the destination, for the driver's stop card and as the
+   * text fallback when a location has no coordinates to navigate to. */
+  address: string | null;
+  /** Destination coordinates, used to launch the driver's map app and to plot
+   * the stop on the dispatcher's route map. Null when a location predates the
+   * geocoding of the site list — the UI must degrade to `address` text. */
+  latitude: number | null;
+  longitude: number | null;
+  /** Per-stop delivery brief written by gudang before dispatch (access notes,
+   * who to call, unloading bay). Written by the WAREHOUSE, unlike
+   * `discrepancyNotes`, which the driver writes after the fact. */
+  deliveryInstructions: string | null;
   replenishmentRequestId: UUID | null;
   status: DropStatus;
   departedAt: ISODateTime | null;
@@ -421,6 +433,38 @@ export interface Drop {
   photoUrls: string[];
   discrepancyNotes: string | null;
   lines: DropLine[];
+}
+
+/** One GPS breadcrumb from a truck on a dispatched Surat Jalan (migration 221). */
+export interface SjPosition {
+  latitude: number;
+  longitude: number;
+  accuracyM: number | null;
+  speedKph: number | null;
+  headingDeg: number | null;
+  /** When the DEVICE took the fix. Offline-queued pings flush late, so this is
+   * the field to trust for ordering and for "how stale is this truck". */
+  recordedAt: ISODateTime;
+  /** When the cloud accepted it. Differs from `recordedAt` across an offline
+   * stretch — the gap is what distinguishes lost signal from a stopped truck. */
+  receivedAt: ISODateTime;
+}
+
+/** A truck currently on the road, for the dispatcher's live board. */
+export interface LiveDelivery {
+  sjId: UUID;
+  sjNumber: string;
+  driverId: UUID | null;
+  driverName: string | null;
+  vehiclePlate: string | null;
+  status: string;
+  dispatchedAt: ISODateTime | null;
+  totalDrops: number;
+  completedDrops: number;
+  /** Null until the driver's phone reports its first fix — a dispatched truck
+   * with no position is normal for the first minute, and permanent if the
+   * driver denied the browser's location permission. */
+  lastPosition: SjPosition | null;
 }
 
 export interface SuratJalan {

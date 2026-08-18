@@ -54,6 +54,8 @@ export type { Me, LoginRes, OfflineCredentialRes } from '@mimi/shared';
 // file's own header contract ("do not redeclare").
 export { SuratJalanStatus, DropStatus, ShipmentType, SealStatus, TempLogStage } from '@mimi/shared';
 export type { SuratJalan, Drop, DropLine, Seal, TempLog } from '@mimi/shared';
+// Route planning + live tracking (migration 221 / M10 delivery).
+export type { SjPosition, LiveDelivery } from '@mimi/shared';
 
 // M08 `stock-opname` (CONTRACTS §4.8, F-WAREHOUSE) — verified field-for-field
 // against `stock-opname.service.ts`'s `toOpname`/`toOpnameLine` mappers

@@ -22,6 +22,7 @@
  * same run) never collides with `ERR_EFFECTIVE_OVERLAP` on stale data.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { PoolClient } from 'pg';
 import { asRequest, closeTestPool, fetchOneUserId, getAppPool, getOwnerPool, withRollback } from '../auth/test-support/live-db';
 import { SettingsRepository } from './settings.repository';
 import { StatutoryRepository } from './statutory.repository';
@@ -78,9 +79,28 @@ async function resetStatutoryGate(): Promise<void> {
   );
 }
 
+/**
+ * Empties the four statutory tables the readiness check counts, INSIDE the
+ * caller's rollback transaction so nothing is destroyed for real.
+ *
+ * Needed since the seed began installing statutory config (PTKP, TER, BPJS and
+ * a tax profile per employee) so PPh21 can actually be exercised on a demo
+ * box. These tests assert the behaviour of an UNCONFIGURED install, which is
+ * now a state no seeded environment is in — so the state has to be arranged
+ * rather than assumed. Doing it on the transaction-scoped client means the
+ * ROLLBACK in `withRollback` puts the seeded rows straight back.
+ */
+async function emptyStatutoryTablesInTx(client: PoolClient): Promise<void> {
+  await client.query('DELETE FROM employee_tax_profiles');
+  await client.query('DELETE FROM bpjs_configs');
+  await client.query('DELETE FROM pph21_ter_rates');
+  await client.query('DELETE FROM pph21_ptkp');
+}
+
 describe('StatutoryService.status — the wizard readiness check', () => {
   it('reports NOT ready with all four pieces missing on a fresh (unconfigured) install', async () => {
     await withRollback(async (client) => {
+      await emptyStatutoryTablesInTx(client);
       const status = await buildService().status(client);
       expect(status.enabled).toBe(false);
       expect(status.ready).toBe(false);
@@ -215,7 +235,10 @@ describe('StatutoryService — PPh21 TER bracket contiguity (ERR_BRACKET_GAP)', 
           client,
         ),
       );
-      expect(rows).toHaveLength(3);
+      // `putTer` returns every row for the categories it touched, not just the
+      // ones this call wrote — and the seed now ships a full TER ladder — so
+      // assert on THIS write's own effective window rather than the table total.
+      expect(rows.filter((r) => r.effectiveFrom === effectiveFrom)).toHaveLength(3);
     } finally {
       await cleanupStatutoryRows(effectiveFrom);
     }
@@ -269,6 +292,7 @@ describe('StatutoryService — PPh21 Article 17 (ERR_BRACKET_GAP, top bracket mu
 describe('StatutoryService.enable — gated by readiness (ERR_STATUTORY_NOT_READY)', () => {
   it('rejects enabling when setup is incomplete', async () => {
     await withRollback(async (client) => {
+      await emptyStatutoryTablesInTx(client);
       await expect(buildService().enable({ confirm: true }, CALLER, client)).rejects.toMatchObject({ response: { code: 'ERR_STATUTORY_NOT_READY' } });
     });
   });

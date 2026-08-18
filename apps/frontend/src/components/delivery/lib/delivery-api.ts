@@ -12,7 +12,7 @@
  * gap to flag (unlike `driver`'s `LocalRuntime` path for on-road actions).
  */
 import { api } from '@/lib/api';
-import type { Paginated, SuratJalan } from '@/lib/shared-types';
+import type { LiveDelivery, Paginated, SjPosition, SuratJalan } from '@/lib/shared-types';
 import type { Driver, Vehicle, DailyRecap, Replenishment } from './types';
 
 export function listSuratJalan(params: { status?: string; date?: string; locationId?: string; driverId?: string; page?: number } = {}) {
@@ -74,4 +74,38 @@ export function getDailyRecap(date: string) {
 /** The warehouse work queue (§4.9) filtered to `approved` — the SJ-create picker's request source, same endpoint `warehouse`'s own builder reads. */
 export function listApprovedRequests() {
   return api.get<Paginated<Replenishment>>(`/replenishment/queue/warehouse?status=approved`);
+}
+
+// ── Route planning (gudang) + live tracking, migration 221 ──────────────────
+
+/** Replace the stop order wholesale. Array position IS the sequence — the
+ * client never sends `dropSeq`, so there is only one source of truth for
+ * "which stop is third". `deliveryInstructions` is optional per stop: omit to
+ * leave an existing brief untouched, send '' to clear it. */
+export function planRoute(
+  sjId: string,
+  stops: { dropId: string; deliveryInstructions?: string }[],
+) {
+  return api.put<{ sjId: string; stops: number }>(`/delivery/surat-jalan/${sjId}/route`, { stops });
+}
+
+/** Update one stop's brief without touching the order — allowed later in the
+ * lifecycle than a reorder, so dispatch can warn a driver already on the road. */
+export function setDropInstructions(dropId: string, deliveryInstructions: string | null) {
+  return api.patch<{ dropId: string; deliveryInstructions: string | null }>(
+    `/delivery/surat-jalan/drops/${dropId}/instructions`,
+    { deliveryInstructions },
+  );
+}
+
+/** Every truck in transit plus its latest fix — the live board's poll target. */
+export function getLiveBoard() {
+  return api.get<LiveDelivery[]>(`/delivery/live`);
+}
+
+/** Breadcrumb trail for one trip. `since` returns only the tail so the live
+ * view polls cheaply instead of refetching the whole day each tick. */
+export function getTrail(sjId: string, since?: string) {
+  const qs = since ? `?${new URLSearchParams({ since }).toString()}` : '';
+  return api.get<SjPosition[]>(`/delivery/surat-jalan/${sjId}/positions${qs}`);
 }

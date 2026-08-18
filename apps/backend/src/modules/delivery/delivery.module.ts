@@ -10,6 +10,8 @@ import { ReplenishmentAdvancementService as ReplenishmentAdvancementServiceImpl 
 import { SuratJalanController } from './controllers/surat-jalan.controller';
 import { DropController } from './controllers/drop.controller';
 import { DeliveryMiscController } from './controllers/delivery-misc.controller';
+import { RouteController } from './controllers/route.controller';
+import { TrackingController } from './controllers/tracking.controller';
 
 import { SuratJalanService } from './services/surat-jalan.service';
 import { DropService } from './services/drop.service';
@@ -17,6 +19,8 @@ import { DriverVehicleService } from './services/driver-vehicle.service';
 import { RecapService } from './services/recap.service';
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { ColdChainService } from './services/cold-chain.service';
+import { RouteService } from './services/route.service';
+import { TrackingService } from './services/tracking.service';
 import { DeliverySyncProjector } from './services/delivery-sync-projector.service';
 import { REPLENISHMENT_FULFILLMENT_PORT } from './ports/replenishment-fulfillment.port';
 
@@ -55,7 +59,13 @@ import { REPLENISHMENT_FULFILLMENT_PORT } from './ports/replenishment-fulfillmen
  */
 @Module({
   imports: [SyncEngineModule, StockLedgerModule, EventsModule, NotificationModule],
-  controllers: [SuratJalanController, DropController, DeliveryMiscController],
+  controllers: [
+    SuratJalanController,
+    RouteController,
+    TrackingController,
+    DropController,
+    DeliveryMiscController,
+  ],
   providers: [
     SuratJalanService,
     DropService,
@@ -63,6 +73,8 @@ import { REPLENISHMENT_FULFILLMENT_PORT } from './ports/replenishment-fulfillmen
     RecapService,
     GoodsReceiptService,
     ColdChainService,
+    RouteService,
+    TrackingService,
     DeliverySyncProjector,
     ReplenishmentRepository,
     { provide: REPLENISHMENT_FULFILLMENT_PORT, useClass: ReplenishmentAdvancementServiceImpl },

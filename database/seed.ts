@@ -1101,7 +1101,16 @@ async function main(): Promise<void> {
           [locationId[code], areaId, itemId[itemName]],
         );
         if (already.rows.length > 0) continue;
-        const openingQty = rnd(20, 200);
+        // Opening stock has to outlast the week of sales this seed also
+        // creates. At the original rnd(20, 200) a busy outlet's fast-moving
+        // items were fully consumed by the depletion pass in seed-extended.ts,
+        // leaving balances at zero — which then failed any later flow needing
+        // stock to exist (the waste/return integration suite hit exactly this)
+        // and made the seeded warehouse look like it was permanently out of
+        // everything. These are kg of chicken and rice in a regional
+        // distribution warehouse; hundreds, not tens, is also the realistic
+        // figure.
+        const openingQty = rnd(400, 1200);
         await client.query(
           `INSERT INTO stock_balances (location_id, storage_area_id, item_id, qty_on_hand)
            VALUES ($1,$2,$3,$4)

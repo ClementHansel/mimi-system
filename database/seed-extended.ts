@@ -1328,7 +1328,15 @@ export async function seedExtended(client: pg.Client): Promise<void> {
   );
 
   let nodes = 0;
-  for (const loc of locations) {
+  for (const [locIndex, loc] of locations.entries()) {
+    // NOT every outlet gets a branch node, on purpose. Nodes are Phase 1.5
+    // hardware (BUILD-PLAN RISK-P5) and D-13's topology tree is explicitly
+    // required to "degrade gracefully" to a node-less outlet — a state that
+    // cannot be exercised, or even seen, if the seed installs a node
+    // everywhere. Roughly every third outlet is deliberately left without one.
+    // (The device-registry topology suite asserts exactly this, and started
+    // failing the moment this seed gave all 21 locations a node.)
+    if (loc.code !== 'GDG' && locIndex % 3 === 2) continue;
     const status =
       loc.code === 'GDG'
         ? 'online'

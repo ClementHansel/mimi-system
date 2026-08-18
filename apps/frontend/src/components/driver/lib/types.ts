@@ -11,7 +11,8 @@
  */
 import type { Qty, Temp, UUID, ISODate, ISODateTime } from '@/lib/shared-types';
 
-export type DropStatus = 'pending' | 'en_route' | 'arrived' | 'completed' | 'completed_discrepancy' | 'failed';
+export type DropStatus =
+  'pending' | 'en_route' | 'arrived' | 'completed' | 'completed_discrepancy' | 'failed';
 export type SealStatus = 'applied' | 'verified_intact' | 'broken' | 'replaced';
 export type TempLogStage = 'load' | 'depart' | 'arrive';
 
@@ -33,6 +34,14 @@ export interface Drop {
   locationId: UUID;
   locationName: string;
   city: string;
+  /** Where the place actually is. Present on the wire since migration 221 —
+   * `locations` always held these, the delivery query simply never selected
+   * them, so the driver's stop card could name the outlet but not point at it. */
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  /** The stop's delivery brief, written by gudang before dispatch. */
+  deliveryInstructions: string | null;
   replenishmentRequestId: UUID | null;
   status: DropStatus;
   departedAt: ISODateTime | null;

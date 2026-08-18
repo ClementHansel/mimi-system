@@ -109,12 +109,35 @@ export async function pickUnusedStockKey(
   opts: { excludeLocationId?: string } = {},
 ): Promise<StockFixtureKey> {
   const res = await client.query<{ location_id: string; storage_area_id: string; item_id: string }>(
+    // "Unused" has to mean unused by EVERY table a caller then counts, not
+    // just `stock_balances`.
+    //
+    // `stock-ledger.property.spec.ts`'s C5 property counts the
+    // `stock_reconciliations` rows for the key it was handed and asserts the
+    // number equals the crossings it just caused. Filtering on balances alone
+    // let it be handed a key that already carried reconciliations left behind
+    // by an earlier suite — of which this database has several, on keys with
+    // no balance row at all — and the assertion then failed by exactly the
+    // number of pre-existing rows (seen in CI as "expected 5 to be 4").
+    // Because the key is chosen with `ORDER BY random()`, that surfaced as an
+    // intermittent CI failure rather than a reproducible one.
+    //
+    // `stock_movements` is excluded on the same principle: a key with history
+    // but no surviving balance row is not a clean slate either.
     `SELECT sa.location_id, sa.id AS storage_area_id, i.id AS item_id
        FROM storage_areas sa
        CROSS JOIN items i
       WHERE NOT EXISTS (
               SELECT 1 FROM stock_balances b
                WHERE b.location_id = sa.location_id AND b.storage_area_id = sa.id AND b.item_id = i.id
+            )
+        AND NOT EXISTS (
+              SELECT 1 FROM stock_reconciliations r
+               WHERE r.location_id = sa.location_id AND r.storage_area_id = sa.id AND r.item_id = i.id
+            )
+        AND NOT EXISTS (
+              SELECT 1 FROM stock_movements m
+               WHERE m.location_id = sa.location_id AND m.storage_area_id = sa.id AND m.item_id = i.id
             )
         ${opts.excludeLocationId ? 'AND sa.location_id <> $1' : ''}
       ORDER BY random()

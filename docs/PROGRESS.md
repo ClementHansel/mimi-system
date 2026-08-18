@@ -1,6 +1,6 @@
 # Mimi Chicken OS — Progress Tracker
 
-**Last updated:** 2026-08-17, from a measured clean serial run.
+**Last updated:** 2026-08-18, from a measured run on a freshly reset database.
 **Maintenance rule:** this file is updated by the coordinator **every time a task or wave completes**, and whenever a blocker opens, changes state, or closes.
 
 Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not started · `[!]` blocked
@@ -22,16 +22,18 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **7 — Deploy & handover** | 5      | 1      | 🔄 **deployed to the VPS with CI/CD**; docs, manual, hardware, importer left  |
 | **Totals**                | **62** | **45** | **73%**                                                                       |
 
-**Measured test state** — re-run by the coordinator on a freshly reset database, 2026-08-17, not taken from agent reports.
+**Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
-| Workspace          | Result                                                                                                                                                |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@mimi/backend`    | **764 pass / 1 fail (765)**, 77 files. Deterministic across two consecutive runs since QA-ISOLATION. The 1 is a stale assertion mid-fix, not a defect |
-| `@mimi/frontend`   | **413 pass (413)**, 60 files                                                                                                                          |
-| `@mimi/shared`     | 205 pass · `@mimi/sync-protocol` 141 pass · `@mimi/branch-node` 42 pass                                                                               |
-| **Campaign total** | **~1,565 passing**                                                                                                                                    |
+| Workspace          | Result                                                                  |
+| ------------------ | ----------------------------------------------------------------------- |
+| `@mimi/backend`    | **803 pass / 0 fail** (8 skipped), 82 files                             |
+| `@mimi/frontend`   | **433 pass (433)**, 66 files                                            |
+| `@mimi/shared`     | 211 pass · `@mimi/sync-protocol` 141 pass · `@mimi/branch-node` 42 pass |
+| **Campaign total** | **1,630 passing**                                                       |
 
-99 migrations (latest **220**) · 104 tables + 4 matviews · backend and frontend `tsc` both clean.
+102 migrations (latest **222**) · 106 tables + 4 matviews · 10 roles · `tsc`, `lint` (0 errors) and `format:check` all clean.
+
+**CI is GREEN** — first passing run in 11 commits; see 1c-3 for why it had been red and never reached the tests.
 
 **Deployed:** `http://150.109.15.108:8080` — demo box, mock data, auto-deploys from `main`. Own Postgres/Redis/MinIO, one public port, seven neighbouring projects untouched.
 
@@ -156,6 +158,91 @@ PO/PR detail were specified to carry `approval` and `paymentStatus`; the service
 
 > **The through-line for the whole day:** every one of these is an integration defect. Each component was correct in isolation and wrong at the seam — and none was visible to a unit test. They surfaced only from deploying the thing and clicking through it.
 
+## 1c-3. Session 2026-08-18 — dispatcher/driver routing, the all-access hub, and a green CI
+
+Everything below is live on the VPS and verified in a real browser, not taken from agent reports.
+
+### 🔴 The whole app rendered a blank white page — **FIXED**
+
+Reported as "I opened it and the page is blank". The server was fine: `/` and `/login` both 200, every `_next` asset 200, and a clean browser profile rendered the login page perfectly. The cause was two auth gates checking **different things**. `AppShell` gated on `accessToken`; `app/page.tsx` gated on `user`. A stored session holding a token but no usable `user` passed the first and failed the second, so nothing rendered — **and the redirect never fired either**, because it only triggers when the token is falsy. No content, no console error, no navigation. A stored `Me` that merely _lost_ a field failed the other way: `user.locations.length` threw mid-render.
+
+Anyone logged in before the IA/owner-UI reshape of `Me` hit one of the two. Fixed by making authentication mean token **and** user in both places, plus a persist `version` + `migrate` so an incompatible blob is discarded rather than rehydrated, and shape validation on every hydration for same-version corruption. All four poisoned states were reproduced against the live box and each now recovers to `/login`.
+
+> **Class of bug worth remembering:** two gates on the same condition that read different fields will eventually disagree, and the failure mode is silence — not an error.
+
+### 🔴 Selling never consumed stock — **FIXED**
+
+`stock_movements` held nothing but `opening_balance` rows despite 418 sales, so balances never moved and `mv_item_usage_daily` was permanently empty. The deploy's `REFRESH` dutifully produced zero rows and every consumption report rendered blank **against a database that looked full** — the same "working system reporting nothing" shape as the matview trap in 1c-2.
+
+Backfilled as `usage_out` movements derived from each product's recipe (1,093 on the VPS; the matview went 0 → 496 rows). Written as a **backfill, not an inline hook**: inline would only ever fire for newly inserted sales and would never have repaired an existing deployment. Transactional per sale so a decrement and its movement land together — an earlier draft crashed between them and left the ledger invariant broken, which is exactly the corruption the reconciliation console would later report as a real-world discrepancy.
+
+### 🔴 Statutory payroll was unreachable, and 32 tables were empty — **FIXED**
+
+`pph21_ter_rates` / `pph21_ptkp` / `bpjs_configs` were empty and **no migration fills them**, so `statutory.service.ts` failed closed with `ERR_STATUTORY_NOT_READY` and PPh21/BPJS could not be exercised at all. Purchasing dead-ended at the PO — `purchase_requests`, `goods_receipts`, `po_receipts` all empty — so requisition → receive → stock-in could never be walked end to end.
+
+`database/seed-extended.ts` now fills the remaining **31 tables**; the VPS is at **zero empty tables**, ledger invariant clean, no negative balances. Statutory figures carry a prominent provenance warning: they are demo values, effective-dated so finance supersedes them through the admin UI, **not a compliance source**.
+
+**Three seed defects the work surfaced, all fixed:** the seed could not be re-run on a later calendar day (`pos_shifts.shift_number` came from a loop offset while idempotency keyed on a date-derived `client_id`, so yesterday's `S100` collided with today's); the demo Surat Jalan kept its original `planned_date`, so `/driver` showed "no trip today" every day after seeding; and a seeded opname targeted the chiller, where no core item is chilled, so counting it correctly produced zero lines.
+
+### 🟠 Drivers could not see where to go — **FIXED**
+
+`queries.ts` selected only `l.name` and `l.city`. Every location already had `address`, `latitude`, `longitude` and `geofence_radius_m` populated — the data existed all along and was simply never sent, so a stop card could say "Outlet Loa Janan, Samarinda", which is not something you can navigate to.
+
+Drops now carry address + coordinates + a per-stop delivery brief, and each open stop gets a **Navigasi** button. Navigation is a **deep link** into the map app already on the phone (Google Maps universal URL, plus Waze where coordinates exist) rather than an embedded routing SDK: no API key, no billing, no per-request cost, and it reuses the driver's own offline map cache. Deliberately not the `geo:` URI, which is unsupported on iOS — a dead Navigate button mid-route is worse than none.
+
+### 🟠 Gudang could not set the route — **FIXED**
+
+`drop_seq` was fixed at creation, so a dispatcher who spotted a wrong-way-round route had to cancel and rebuild the Surat Jalan, and per-stop guidance had nowhere to live but the trip-wide notes blob. Added `sj_drops.delivery_instructions` (migration 221) and a route planner: reorder stops, write a brief per stop, still editable mid-route once the order is locked.
+
+**No auto-optimise, deliberately.** A truck is loaded back-to-front, so the sequence is a property of how it was packed; an optimiser reshuffling it would mean unloading half the truck at every stop. Reordering renumbers in two passes because `UNIQUE (sj_id, drop_seq)` is checked per-statement and a straight swap collides.
+
+### 🟠 Live truck tracking — built, **blocked on HTTPS**
+
+New `sj_positions` table: append-only breadcrumbs, batched and idempotent on `client_id` for offline flush, with `recorded_at` (device) kept separate from `received_at` (cloud) — collapsing them would make an offline stretch indistinguishable from a truck standing still, which is exactly what a dispatcher asks when a delivery is late. RLS mirrors `sj_drops_scope`, so a driver writes and reads only their own trail. The dispatcher gets a Leaflet/OSM map paired with a **list**, because a truck with no signal has no pin and that is the case you must not let disappear from the screen.
+
+**It cannot work until the box serves HTTPS.** Browsers refuse geolocation on insecure origins — verified: `isSecureContext: false`, `getCurrentPosition` → `PERMISSION_DENIED "Only secure origins are allowed"`. Service workers are blocked for the same reason, so offline-first is degraded on HTTP too. The driver screen states this honestly rather than pretending. Unblocking is the documented upgrade path: a domain pointed at the box, then `docker-compose.prod.yml`'s Traefik + Let's Encrypt.
+
+### 🔴 Every device reported itself permanently offline — **FIXED**
+
+`getBrowserLocalRuntime` built its upstream list purely from the persisted device identity, but `identity.cloudUrl` is only ever written by `applyRegistration()` and **nothing in the app calls `/api/devices/register`**. So every browser handed the selector an **empty candidate list**: nothing to probe, the tier never moved, and every surface showed "Offline — Tidak Ada Koneksi. Perangkat ini bekerja sendiri" forever, on a good connection where `/sync/v1/health` returned `{"ok":true}`.
+
+Worse than cosmetic: a false offline banner on a back-office laptop teaches people to ignore the one indicator that matters when a device really is isolated. The cloud candidate now defaults to the app's own origin — correct rather than a guess, since `next.config.ts` rewrites `/sync/v1/*` same-origin precisely so this works.
+
+**Its own fallout, caught by a smoke pass over all 15 interfaces and fixed:** with an upstream finally available, every page fired `GET /sync/v1/pull` → `401 "Missing device credential"` on each heartbeat. Health is unauthenticated (which is what fixes the tier); push/pull/heartbeat are not. `SyncEngine` now takes `hasDeviceCredential` and skips authenticated cycles without one.
+
+### 🟢 The hub is now an interface directory; `superadmin` added
+
+Owner's ruling: _owner and superadmin see every interface; every other account is redirected to its own interface._ The hub had been a three-card chooser (Dasbor / Kasir / Dokumentasi) — abstract groupings rather than actual surfaces, and for a Kepala Gudang with several permitted areas it amounted to a second navigation menu.
+
+Now **one card per unique interface** (15), grouped under the same sections as the sidebar so the two cannot disagree, derived from `lib/nav.ts` + `usePermissions` and never hand-listed. Owner and superadmin land here; everyone else is redirected — verified live: `kepalagudang1` → `/warehouse`, kasir/finance/hr → straight past the hub.
+
+**Owner was missing exactly two surfaces** (`/outlet`, `/driver`) because it held none of `replenishment.create` / `opname.create` / `waste.create` / `pettycash.create` / `delivery.drop.execute`. It now does. **This is a real segregation-of-duties trade-off** — an owner can raise a document and approve it in the same session, which the approval chains were written assuming could not happen. It was put to the owner explicitly and accepted, and is recorded in migration 222 so it is not later read as an oversight.
+
+**`superadmin` is the 10th role**, appended to `RBAC_ROLE_ORDER` — never inserted, because position _is_ the column index into all 138 matrix rows and inserting it anywhere else would have silently re-mapped the other nine. True on every row, with a test that fails and **names** any key it ever lacks. `ROLE_RANK` 110, above owner, so the approval engine's "act on any step at or below your level" rule reaches every chain. The login is seeded, deliberately **not** minted by the migration — that would put a privileged credential in version control and create it on every environment it ran against.
+
+> **The half that would have silently broken it:** `app_is_central()` hardcoded four role names, and `app_has_location()` falls back to it for every location-scoped table. A superadmin holding all 138 permissions would have passed every guard and still read **almost nothing** — each query returning an empty set rather than an error, which reads as "the system has no data" rather than "this role cannot see it". Migration 222 adds the role there too; that is what makes the grants real.
+
+`/driver` renders **empty** for owner/superadmin: `my-jobs` is a personal work queue keyed on a `drivers` row neither account has. Flagged before it was built; the dispatcher view is the owner-appropriate way to see a route.
+
+### 🔴 CI had been red for 11 straight commits — **NOW GREEN**
+
+Not noticed earlier because the failure was at the **Lint** step, so the test suite behind it had never run in CI at all. Three things stacked:
+
+1. **Four ESLint errors**, all pre-existing and none in files this session touched (`rls-cleanup.interceptor.ts`, `supplier.integration.spec.ts`, `sync-admin.integration.spec.ts`).
+2. **668 files failing `format:check`** — the repo had a `.prettierrc` and a CI gate but had **never been formatted**, so fixing lint alone would only have moved the failure one step down. Done in one mechanical commit (`78d35eb`), with `.git-blame-ignore-revs` so blame still points at whoever last changed a line's meaning.
+3. **An empty `@mimi/e2e` stub failing the whole run** — `pnpm -r test` picked it up and `playwright test` exits 1 on "No tests found". Excluded from the recursive script; the dedicated `pnpm e2e` script still runs it.
+
+### 🟡 Two test-isolation defects found while getting there
+
+- **`pickUnusedStockKey` returned keys that were not unused.** It filtered on `stock_balances` alone, while stock-ledger's C5 property counts `stock_reconciliations` — and this database carries several reconciliation rows on keys with no balance row, left behind by earlier suites. `ORDER BY random()` made it an **intermittent** CI failure ("expected 5 to be 4") rather than a reproducible one. Now excludes movements and reconciliations too.
+- **Live-DB suites drain the warehouse.** Several `COMMIT` real stock movements out of GDG instead of rolling them back (the `withWrite`-inside-`withRollback` behaviour the statutory suite documents at length), so every full run draws it down until it hits zero and the suite fails with `StockInsufficientError` on a database that seeded fine. Mitigated by stocking GDG an order of magnitude deeper than an outlet — realistic anyway, since one warehouse supplies twenty outlets. **The underlying isolation leak is not fixed.**
+
+### Known-flaky, unresolved
+
+`attachment-store.test.ts` ("evicts oldest UPLOADED blobs") failed 2 of roughly 8 full runs and passes every time in isolation. Load- or ordering-sensitive; it has **not** failed in CI. The eviction logic reads as deterministic, so no fix was attempted — guessing at a fix in someone else's package is worse than leaving it flagged.
+
+---
+
 ## 1d. Running system — verified in a real browser
 
 **The app runs end to end.** Backend `:4000` (39 modules, 339 routes), frontend `:3100`. Logged in as `owner` via Playwright and captured every surface.
@@ -170,6 +257,25 @@ PO/PR detail were specified to carry `approval` and `paymentStatus`; the service
 - Login inputs carry **no `name` attribute** (React-generated ids only) — breaks password managers, autofill, and any selector-based automation.
 
 ## 2. ACTIVE BLOCKERS
+
+### 🔴 B-14 — The demo box is HTTP-only, so geolocation and service workers are dead
+
+**Opened:** 2026-08-18 · **Blocks:** live truck tracking (built, cannot function), full offline-first behaviour
+
+Browsers gate "powerful features" behind a secure context, and `http://150.109.15.108:8080` is not one. Verified in a real browser on the live box:
+
+```
+isSecureContext: false      protocol: "http:"
+navigator.geolocation.getCurrentPosition
+  → code 1 PERMISSION_DENIED "Only secure origins are allowed"
+navigator.serviceWorker → undefined
+```
+
+**Consequences today:** every driver reports "no signal" and the dispatcher's live map stays empty, no matter how correct the code is — the driver screen says so plainly rather than pretending. `public/sw.js` never registers either, so background sync and the offline shell are unavailable on this host; IndexedDB still works, so queued actions survive, and the online path is unaffected.
+
+**Not a code fix.** `docker-compose.vps.yml`'s own header already documents the upgrade path: point a DNS A record at the box, decide who owns `:80`/`:443` (aire's nginx has been crash-looping since 30 July, which is the only reason those ports look free), then swap the overlay for `docker-compose.prod.yml` with Traefik + Let's Encrypt and set `DOMAIN`/`ACME_EMAIL`. Everything else in the delivery feature works over plain HTTP today.
+
+> Also the reason the overlay's own comment says HTTP-only "is fine for a demo but NOT acceptable for real payroll data" — this blocker is that note coming due.
 
 ### ✅ B-09 — Dashboards silently freeze in production — **RESOLVED**
 

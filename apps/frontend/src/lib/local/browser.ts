@@ -33,7 +33,11 @@ export async function getBrowserLocalRuntime(): Promise<LocalRuntime> {
 
   const db = await openLocalDatabase();
   const identity = await loadDeviceIdentity(db);
-  const transport = createHttpTransport(() => identity?.deviceToken ?? null);
+  // ONE source of truth for "does this device hold a credential", shared by
+  // the transport (which attaches it) and the engine's sync gate (which skips
+  // authenticated cycles without it) so the two cannot disagree.
+  const deviceToken = () => identity?.deviceToken ?? null;
+  const transport = createHttpTransport(deviceToken);
 
   const candidates: UpstreamCandidate[] = [];
   if (identity?.nodeLanUrl) candidates.push({ kind: 'node', baseUrl: identity.nodeLanUrl });
@@ -67,6 +71,11 @@ export async function getBrowserLocalRuntime(): Promise<LocalRuntime> {
     transport,
     candidates,
     connectivity: connectivityReporter,
+    // Without this, the same-origin cloud candidate above turned every page
+    // into a 401 generator: health (unauthenticated) succeeds and sets the
+    // tier, then push/pull/heartbeat fire with no credential. No browser has
+    // one today — nothing in the app calls `/api/devices/register` yet.
+    hasDeviceCredential: () => deviceToken() !== null,
   });
   await runtime.init();
   singleton = runtime;

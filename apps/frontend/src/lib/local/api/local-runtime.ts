@@ -42,6 +42,8 @@ export interface LocalRuntimeConfig {
   pinVerifier?: PinVerifier;
   /** Defaults to `noopSignatureVerifier` — the v1-unsigned-token decision (see `credentials/signature-verifier.ts`). Inject a real one here once it exists; no other call site changes. */
   signatureVerifier?: SignatureVerifier;
+  /** Passed straight to `SyncEngine` — see `SyncEngineOptions.hasDeviceCredential`. */
+  hasDeviceCredential?: () => boolean;
 }
 
 export interface ActorMeta {
@@ -75,6 +77,7 @@ export class LocalRuntime {
       transport: config.transport,
       candidates: config.candidates,
       connectivity: config.connectivity,
+      hasDeviceCredential: config.hasDeviceCredential,
     });
   }
 

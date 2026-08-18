@@ -72,6 +72,20 @@ export interface SyncEngineOptions {
   connectivity: ConnectivityReporter;
   reconcileOptions?: ReconcileOptions;
   now?: () => number;
+  /**
+   * Whether this device holds a credential the cloud will accept.
+   *
+   * `/sync/v1/health` is unauthenticated — which is what lets the upstream
+   * selector establish the tier for ANY device — but `push`/`pull`/`heartbeat`
+   * all require a device credential issued by `/api/devices/register`. An
+   * unregistered browser therefore has a perfectly good upstream and no way to
+   * use it, and firing the cycle anyway just produced a 401 on every heartbeat
+   * (`GET /sync/v1/pull` -> "Missing device credential"), on every page.
+   *
+   * Omitted = always allowed, preserving existing behaviour for tests and for
+   * the in-memory runtime, which are registered by construction.
+   */
+  hasDeviceCredential?: () => boolean;
 }
 
 /**
@@ -88,6 +102,7 @@ export class SyncEngine {
   private readonly connectivity: ConnectivityReporter;
   private readonly reconcileOptions: ReconcileOptions;
   private readonly now: () => number;
+  private readonly hasDeviceCredential?: () => boolean;
   private probeTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private syncing = false;
@@ -98,6 +113,7 @@ export class SyncEngine {
     this.connectivity = opts.connectivity;
     this.reconcileOptions = opts.reconcileOptions ?? {};
     this.now = opts.now ?? Date.now;
+    this.hasDeviceCredential = opts.hasDeviceCredential;
     this.selector = new UpstreamSelector(
       opts.candidates,
       (baseUrl) => this.transport.health(baseUrl),
@@ -182,6 +198,10 @@ export class SyncEngine {
   async syncNow(): Promise<SyncCycleResult | null> {
     const state = this.selector.getState();
     if (!state.current || this.syncing) return null;
+    // No credential -> push/pull can only 401. The tier is already correct
+    // (the selector's own unauthenticated health probe set it), so skipping
+    // here costs nothing and stops the noise.
+    if (this.hasDeviceCredential && !this.hasDeviceCredential()) return null;
 
     this.syncing = true;
     this.connectivity.setSyncing(true);
@@ -239,6 +259,10 @@ export class SyncEngine {
     if (!state.current) return;
     const identity = await this.db.store<DeviceIdentity>('device_identity').get('self');
     if (!identity) return;
+    // Same reason as `syncNow`: heartbeat is device-authenticated. Its own
+    // catch swallows the rejection, but the browser still logs the 401 — and
+    // telemetry for a device the registry has never heard of is meaningless.
+    if (!identity.deviceToken) return;
     const depth = await getOutboxDepth(this.db);
     try {
       await this.transport.heartbeat(state.current.baseUrl, {

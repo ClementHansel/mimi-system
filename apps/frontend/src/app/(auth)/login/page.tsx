@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LogIn, ShieldAlert, WifiOff } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
@@ -37,6 +37,20 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * False until React has hydrated this page in the browser.
+   *
+   * Until then `onSubmit` is NOT attached, so a click (or Enter in either
+   * field) performs the browser's DEFAULT form submission. That is not a
+   * cosmetic race: with the default GET method it navigated to
+   * `/login?username=…&password=…`, putting the password in the URL bar, the
+   * browser history, the Referer of the next request and the server's access
+   * log. Caught by the e2e suite, which clicks as soon as the field accepts
+   * text — the same thing a real user does on a slow phone, which is exactly
+   * the device most likely to hydrate late.
+   */
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -104,7 +118,16 @@ export default function LoginPage() {
           </h2>
           <p className="mt-2 text-sm text-text-secondary">{t('auth.loginSubtitle')}</p>
 
-          <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4" noValidate>
+          {/*
+            `method="post"` is the belt to the `hydrated` brace below: it can
+            never be reached once hydration attaches `onSubmit` (which calls
+            `preventDefault`), but if a native submit ever does happen — Enter
+            pressed a millisecond early, JS blocked entirely — the credentials
+            travel in the request BODY instead of the query string. A 405 from
+            Next is a bad experience; a password in the access log is an
+            incident.
+          */}
+          <form onSubmit={onSubmit} method="post" className="mt-8 flex flex-col gap-4" noValidate>
             {error && (
               <div
                 role="alert"
@@ -173,6 +196,9 @@ export default function LoginPage() {
               size="touch-lg"
               fullWidth
               loading={submitting}
+              // Disabled until hydrated so the native-submit path above is
+              // unreachable in practice rather than merely made safe.
+              disabled={!hydrated}
               leftIcon={<LogIn className="size-4" />}
             >
               {submitting ? t('auth.submitting') : t('auth.submit')}

@@ -101,12 +101,17 @@ export default function HomePage() {
   if (!user) return null;
   if (redirectHref) return null; // redirecting — never flash a one-card chooser
 
+  // `session-store` guarantees `locations` is an array before it lets a
+  // session hydrate, but default here too: a missing array used to throw
+  // mid-render and hand the visitor Next's client-side-exception screen,
+  // which is a far worse failure than showing "all outlets".
+  const locations = user.locations ?? [];
   const outletLabel =
-    user.locations.length === 0
+    locations.length === 0
       ? t('hub.allOutlets')
-      : user.locations.length === 1
-        ? user.locations[0]!.name
-        : t('hub.multipleOutlets', { count: user.locations.length });
+      : locations.length === 1
+        ? locations[0]!.name
+        : t('hub.multipleOutlets', { count: locations.length });
 
   const firstName = user.name.trim().split(/\s+/)[0] ?? user.name;
 

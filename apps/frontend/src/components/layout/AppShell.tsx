@@ -90,7 +90,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const isHydrated = useSessionStore((s) => s.isHydrated);
   const accessToken = useSessionStore((s) => s.accessToken);
+  const user = useSessionStore((s) => s.user);
   const mobileMenuOpen = useNavStore((s) => s.mobileMenuOpen);
+
+  // Authentication means a token AND the user it belongs to — never the token
+  // alone. Gating on `accessToken` by itself let a half-valid session through
+  // here while `app/page.tsx` (which gates on `user`) returned null, so the
+  // app rendered nothing, logged nothing, and never redirected: a permanent
+  // blank white page. The two gates now agree, and any session that fails
+  // this check is treated as signed out and bounced to /login.
+  const isAuthenticated = !!accessToken && !!user;
   const setMobileMenuOpen = useNavStore((s) => s.setMobileMenuOpen);
 
   // Device-local offline runtime (D-12/SYNC-PROTOCOL): starts the sync
@@ -121,12 +130,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isHydrated) return;
     const publicRoute = isPublicRoute(pathname);
-    if (!accessToken && !publicRoute) router.replace('/login');
+    if (!isAuthenticated && !publicRoute) router.replace('/login');
     // F-BRAND: an already-authenticated visitor who lands on /login (e.g. a
     // stale tab, a bookmarked link) bounces to the home hub, not /dashboard —
     // the hub is the one role-agnostic "already signed in" destination.
-    if (accessToken && publicRoute) router.replace('/');
-  }, [isHydrated, accessToken, pathname, router]);
+    if (isAuthenticated && publicRoute) router.replace('/');
+  }, [isHydrated, isAuthenticated, pathname, router]);
 
   if (isPublicRoute(pathname)) {
     return (
@@ -139,7 +148,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Not yet hydrated, or hydrated-but-unauthenticated (redirect effect above
   // is about to fire) — render nothing rather than flashing the shell.
-  if (!isHydrated || !accessToken) return null;
+  if (!isHydrated || !isAuthenticated) return null;
 
   if (isChromelessRoute(pathname)) {
     return (

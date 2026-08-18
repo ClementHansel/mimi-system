@@ -32,6 +32,32 @@ interface SessionState {
   clearSession: () => void;
 }
 
+/** Bump when `Me` (CONTRACTS §4.1) gains, loses, or renames a field. */
+const SESSION_PERSIST_VERSION = 1;
+
+/** The signed-out shape — the one state every discard path resolves to. */
+const EMPTY_SESSION = { accessToken: null, refreshToken: null, user: null } as const;
+
+/**
+ * A persisted session is usable only if the token AND a structurally complete
+ * `user` both survived. The array checks are not paranoia: `app/page.tsx`
+ * reads `user.locations.length` and `usePermissions` reads `user.permissions`,
+ * so a `Me` missing either throws during render and Next replaces the page
+ * with its client-side-exception screen.
+ */
+function isUsableSession(s: Pick<SessionState, 'accessToken' | 'user'>): boolean {
+  return (
+    typeof s.accessToken === 'string' &&
+    s.accessToken.length > 0 &&
+    !!s.user &&
+    typeof s.user.id === 'string' &&
+    typeof s.user.name === 'string' &&
+    typeof s.user.roleKey === 'string' &&
+    Array.isArray(s.user.permissions) &&
+    Array.isArray(s.user.locations)
+  );
+}
+
 export const useSessionStore = create<SessionState>()(
   persist(
     (set) => ({
@@ -47,6 +73,16 @@ export const useSessionStore = create<SessionState>()(
     }),
     {
       name: 'mimi-session',
+      // Bump whenever `Me`'s shape changes. A stored blob written by an older
+      // build arrives here as version 0, `migrate` throws it away, and the
+      // visitor simply logs in again — which is the only safe answer, because
+      // a HALF-VALID session is worse than none: `AppShell` used to gate on
+      // `accessToken` alone while `app/page.tsx` gates on `user`, so a blob
+      // carrying a token but no usable user passed the first gate, failed the
+      // second, and rendered a permanently blank white page with no error and
+      // no redirect (the redirect effect only fires when the token is falsy).
+      version: SESSION_PERSIST_VERSION,
+      migrate: () => EMPTY_SESSION,
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
@@ -58,12 +94,26 @@ export const useSessionStore = create<SessionState>()(
 
 // Flip `isHydrated` once persisted state has loaded, so route protection
 // never redirects on the one render before we know whether a session exists.
+//
+// `migrate` above only runs when the stored VERSION differs, so it cannot
+// catch a same-version blob that is nonetheless unusable (hand-edited
+// localStorage, a write interrupted mid-flight, a `Me` field that went
+// missing without a version bump). Validating on every hydration closes that
+// gap: anything that isn't a complete session is discarded here, so by the
+// time `isHydrated` flips, `accessToken && user` is the only truthy shape the
+// rest of the app can observe.
 if (typeof window !== 'undefined') {
-  useSessionStore.persist.onFinishHydration(() => {
+  const finishHydration = (state?: SessionState) => {
+    if (state && !isUsableSession(state)) {
+      useSessionStore.setState({ ...EMPTY_SESSION, isHydrated: true });
+      return;
+    }
     useSessionStore.setState({ isHydrated: true });
-  });
+  };
+
+  useSessionStore.persist.onFinishHydration(finishHydration);
   if (useSessionStore.persist.hasHydrated()) {
-    useSessionStore.setState({ isHydrated: true });
+    finishHydration(useSessionStore.getState());
   }
 }
 

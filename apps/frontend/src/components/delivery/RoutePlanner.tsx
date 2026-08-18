@@ -6,7 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
 import { Button, Textarea, toast } from '@/components/ui';
 import type { Drop } from '@/lib/shared-types';
-import { planRoute } from './lib/delivery-api';
+import { planRoute, setDropInstructions } from './lib/delivery-api';
 
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -19,7 +19,15 @@ interface PlannedStop {
   address: string | null;
   hasCoords: boolean;
   deliveryInstructions: string;
+  /** The brief as the server last returned it, so a save can send only the
+   * stops that actually changed once reordering is locked. */
+  originalInstructions: string;
+  /** Finished stops accept no further brief — the backend rejects it, and
+   * rewriting the note on a delivery that already happened is editing history. */
+  isTerminal: boolean;
 }
+
+const TERMINAL_DROP_STATUSES = new Set(['completed', 'completed_discrepancy', 'failed']);
 
 /**
  * The gudang side of "set the directions": order the stops, and write the brief
@@ -69,6 +77,8 @@ export function RoutePlanner({
           address: d.address,
           hasCoords: typeof d.latitude === 'number' && typeof d.longitude === 'number',
           deliveryInstructions: d.deliveryInstructions ?? '',
+          originalInstructions: d.deliveryInstructions ?? '',
+          isTerminal: TERMINAL_DROP_STATUSES.has(d.status),
         })),
     );
     setDirty(false);
@@ -94,13 +104,31 @@ export function RoutePlanner({
   async function save() {
     setSaving(true);
     try {
-      // Instructions are always sent, including empty strings — within this
-      // form an empty box means "no brief", and omitting it would make the
-      // backend's COALESCE silently restore a note the dispatcher just deleted.
-      await planRoute(
-        sjId,
-        stops.map((s) => ({ dropId: s.dropId, deliveryInstructions: s.deliveryInstructions })),
-      );
+      if (editable) {
+        // Instructions are always sent, including empty strings — within this
+        // form an empty box means "no brief", and omitting it would make the
+        // backend's COALESCE silently restore a note the dispatcher just deleted.
+        await planRoute(
+          sjId,
+          stops.map((s) => ({ dropId: s.dropId, deliveryInstructions: s.deliveryInstructions })),
+        );
+      } else {
+        // Route is locked, but the BRIEFS are not: a dispatcher who learns
+        // mid-route that a gate is blocked must still be able to tell the
+        // driver, and that changes no loading assumption. Only the stops that
+        // actually changed are sent, one per request — `PUT :id/route` would be
+        // rejected outright for a locked SJ, and re-sending untouched stops
+        // would pointlessly rewrite briefs the dispatcher never opened.
+        const changed = stops.filter(
+          (s) => !s.isTerminal && s.deliveryInstructions !== s.originalInstructions,
+        );
+        for (const s of changed) {
+          await setDropInstructions(
+            s.dropId,
+            s.deliveryInstructions === '' ? null : s.deliveryInstructions,
+          );
+        }
+      }
       toast({ title: t('delivery.route.saved'), variant: 'success' });
       setDirty(false);
       onSaved();
@@ -120,17 +148,17 @@ export function RoutePlanner({
           <h3 className="font-medium text-text-primary">{t('delivery.route.title')}</h3>
           <p className="text-xs text-text-muted">{t('delivery.route.subtitle')}</p>
         </div>
-        {editable && (
-          <Button
-            size="sm"
-            onClick={save}
-            loading={saving}
-            disabled={!dirty}
-            leftIcon={<Save className="size-4" />}
-          >
-            {t('delivery.route.save')}
-          </Button>
-        )}
+        {/* Shown even when the order is locked — the briefs remain editable,
+            which is exactly what the locked-state hint below promises. */}
+        <Button
+          size="sm"
+          onClick={save}
+          loading={saving}
+          disabled={!dirty}
+          leftIcon={<Save className="size-4" />}
+        >
+          {editable ? t('delivery.route.save') : t('delivery.route.saveInstructions')}
+        </Button>
       </div>
 
       {!editable && <p className="text-xs text-warning-700">{t('delivery.route.locked')}</p>}
@@ -178,7 +206,7 @@ export function RoutePlanner({
                     id={`instr-${stop.dropId}`}
                     rows={2}
                     maxLength={1000}
-                    disabled={!editable}
+                    disabled={stop.isTerminal}
                     placeholder={t('delivery.route.instructionsPlaceholder')}
                     value={stop.deliveryInstructions}
                     onChange={(e) => setInstruction(stop.dropId, e.target.value)}

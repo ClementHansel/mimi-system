@@ -1643,10 +1643,11 @@ export const id = {
       subtitle:
         'Atur urutan pemberhentian dan tulis petunjuk untuk setiap lokasi. Driver mengikuti urutan ini.',
       save: 'Simpan Rute',
+      saveInstructions: 'Simpan Petunjuk',
       saved: 'Rute tersimpan',
       saveError: 'Gagal menyimpan rute',
       locked:
-        'Urutan rute terkunci — Surat Jalan sudah dimuat atau dalam perjalanan. Petunjuk per lokasi masih dapat diubah lewat detail drop.',
+        'Urutan rute terkunci — Surat Jalan sudah dimuat atau dalam perjalanan. Petunjuk per lokasi masih dapat diubah dan langsung terlihat oleh driver.',
       moveUp: 'Naikkan urutan',
       moveDown: 'Turunkan urutan',
       instructionsLabel: 'Petunjuk untuk driver',

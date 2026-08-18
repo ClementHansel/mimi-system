@@ -37,7 +37,30 @@ export async function getBrowserLocalRuntime(): Promise<LocalRuntime> {
 
   const candidates: UpstreamCandidate[] = [];
   if (identity?.nodeLanUrl) candidates.push({ kind: 'node', baseUrl: identity.nodeLanUrl });
-  if (identity?.cloudUrl) candidates.push({ kind: 'cloud', baseUrl: identity.cloudUrl });
+
+  // Cloud upstream, defaulting to the app's OWN ORIGIN.
+  //
+  // `identity.cloudUrl` is only ever populated by `applyRegistration()` —
+  // i.e. after a device has been through `/api/devices/register`.
+  // `ensureDeviceIdentity()` seeds it as `''`, and nothing else writes it, so
+  // every browser that has not been paired produced an EMPTY candidate list:
+  // the selector had nothing to probe, `setTier` never moved off its initial
+  // value, and every surface showed "Offline — Tidak Ada Koneksi. Perangkat
+  // ini bekerja sendiri" permanently — while sitting on a working connection
+  // where every REST call succeeded. A false offline banner on a laptop in
+  // the back office trains people to ignore the one indicator that matters
+  // when a device really is isolated.
+  //
+  // The origin is the correct default rather than a guess: `next.config.ts`
+  // rewrites `/sync/v1/*` to the backend precisely so the PWA works
+  // same-origin "whether it's reached directly on :3000 (dev) or through
+  // Traefik in prod". A registered device still wins — its `cloudUrl` may
+  // legitimately point somewhere else — and `upstream-selector.ts`'s own
+  // header already describes the no-node case as "the candidate list is just
+  // [cloud]", which is exactly what this restores.
+  const cloudUrl =
+    identity?.cloudUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+  if (cloudUrl) candidates.push({ kind: 'cloud', baseUrl: cloudUrl });
 
   const runtime = createLocalRuntime({
     db,

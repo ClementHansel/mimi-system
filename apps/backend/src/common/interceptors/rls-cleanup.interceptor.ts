@@ -102,7 +102,10 @@ export class RlsCleanupInterceptor implements NestInterceptor {
 
   /** See this file's class doc comment ("BE-TXN-ROLLBACK GUARD") for the full rationale. */
   private async warnIfUncommittedWrite(client: PoolClient, request: RequestWithDbContext & Request): Promise<void> {
-    let xid: string | null = null;
+    // Declared without an initializer: the `catch` below returns, so the only
+    // path that reaches the read has already assigned it, and a `= null` seed
+    // would be dead (eslint no-useless-assignment).
+    let xid: string | null;
     try {
       const res = await client.query<{ xid: string | null }>(`SELECT pg_current_xact_id_if_assigned()::text AS xid`);
       xid = res.rows[0]?.xid ?? null;

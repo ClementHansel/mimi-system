@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RoleKey } from '@mimi/shared';
 import { SupplierService } from './supplier.service';
+import pg from 'pg';
 import type { Pool, PoolClient } from 'pg';
 
 /**
@@ -50,7 +51,6 @@ let fx: {
 
 function getOwnerPool(): Pool {
   if (!ownerPool) {
-    const pg = require('pg');
     ownerPool = new pg.Pool({ connectionString: OWNER_URL, max: 5 });
   }
   return ownerPool;
@@ -58,7 +58,6 @@ function getOwnerPool(): Pool {
 
 function getAppPool(): Pool {
   if (!appPool) {
-    const pg = require('pg');
     appPool = new pg.Pool({ connectionString: APP_URL, max: 5 });
   }
   return appPool;

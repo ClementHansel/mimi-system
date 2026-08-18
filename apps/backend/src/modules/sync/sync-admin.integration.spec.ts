@@ -22,7 +22,11 @@ import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.reposi
 import { ReconciliationService } from '../../kernel/sync/reconciliation.service';
 import { SyncAdminController } from './sync-admin.controller';
 
-function buildController(client: PoolClient): SyncAdminController {
+// `_client` is accepted so call sites read as "the controller for THIS
+// connection", matching every other builder in these suites, but the
+// controller resolves its client from the request object instead — hence the
+// underscore rather than dropping the parameter and changing six call sites.
+function buildController(_client: PoolClient): SyncAdminController {
   // `ReconciliationService` is never exercised by `dismissConflict`/`resolveReconciliation`
   // (only `triggerReconcile`, out of scope here — already correct per this ticket's brief) —
   // wired with `undefined as never` rather than a real `Pool`-backed instance, matching how

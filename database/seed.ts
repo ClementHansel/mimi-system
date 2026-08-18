@@ -1140,7 +1140,14 @@ async function main(): Promise<void> {
            VALUES ($1,$2,$3,$4,300000,$5,$6,$7,$7,0,$8,0,0,$9)
            ON CONFLICT (client_id) DO NOTHING RETURNING id`,
           [
-            `${code}-POS1-S${day === 6 ? 1 : 100 - day}`,
+            // Derived from the DATE, not the loop's day offset. The offset form
+            // (`S${100 - day}`) made the seed un-re-runnable across calendar
+            // days: client_id is date-based, so on the next day the same shift
+            // got a fresh client_id (no ON CONFLICT hit) but recycled
+            // yesterday's shift_number, and the insert died on
+            // pos_shifts_shift_number_key. Keying both on the date keeps the
+            // two idempotency mechanisms in agreement.
+            `${code}-POS1-${isoDate(openedAt).replace(/-/g, '')}`,
             locationId[code],
             kasirId,
             openedAt,

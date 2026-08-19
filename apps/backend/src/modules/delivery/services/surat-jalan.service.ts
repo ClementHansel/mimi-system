@@ -61,6 +61,9 @@ const SJ_TRANSITIONS: Record<string, string[]> = {
   cancel: ['draft', 'ready', 'loading'],
 };
 
+/** Hard ceiling on `my-jobs`. A driver never legitimately has this many open jobs; the cap exists so a data problem cannot turn one phone request into an unbounded fan-out. */
+const MY_JOBS_MAX_ROWS = 200;
+
 @Injectable()
 export class SuratJalanService {
   constructor(
@@ -137,9 +140,18 @@ export class SuratJalanService {
     if (date) {
       params.push(date);
       dateFilter = `AND sj.planned_date = $2::date`;
+    } else {
+      // Without a date this used to return the driver's ENTIRE history, then
+      // load full detail for every row — a result set that grows forever on a
+      // phone on outlet wifi. The driver UI always passes today, so this
+      // bound only affects other API consumers, and a week is well past what
+      // a "pre-departure cache" (F13) means. Anchored to the WITA business
+      // day, not the server's UTC day (NFR-10).
+      dateFilter = `AND sj.planned_date >= ((NOW() AT TIME ZONE 'Asia/Makassar')::date - INTERVAL '7 days')`;
     }
     const res = await client.query<{ id: string }>(
-      `SELECT sj.id FROM surat_jalan sj WHERE sj.driver_id = $1 ${dateFilter} ORDER BY sj.planned_date ASC`,
+      `SELECT sj.id FROM surat_jalan sj WHERE sj.driver_id = $1 ${dateFilter}
+        ORDER BY sj.planned_date ASC LIMIT ${MY_JOBS_MAX_ROWS}`,
       params,
     );
     // Batched — this is the driver's pre-departure cache load (F13), on a phone

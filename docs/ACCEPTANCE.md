@@ -123,7 +123,7 @@ with `E2E_BASE_URL=<url> pnpm e2e`.
 4. **Offsite backups.** A restore drill passed, but every dump shares a disk with the database.
 5. **IDOR / scope-escape sweep (B6, B7).** Guards are proven present; cross-location leakage is not disproven.
 6. **NFR-01 has never been measured.** The harness is written; nobody has run it against a real instance.
-7. **`my-jobs` is still unbounded** — the N+1 fan-out and the missing indexes are fixed (batched reads + migration 223), but the driver's job query has no `LIMIT` when no date is passed.
+7. **NFR-01 aside, delivery reads are now bounded** — the N+1 fan-out, the missing indexes and `my-jobs`' unbounded result set are all fixed. Nothing outstanding here beyond actually running the k6 harness.
 
 ## Deliberately not automated
 

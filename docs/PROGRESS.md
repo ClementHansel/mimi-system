@@ -9,18 +9,18 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 
 ## 1. At a glance
 
-| Wave                      | Tasks  | Done   | State                                                                                   |
-| ------------------------- | ------ | ------ | --------------------------------------------------------------------------------------- |
-| **0 — Contracts**         | 2      | 2      | ✅ complete                                                                             |
-| **1 — Foundation**        | 5      | 5      | ✅ complete · **Gate G1 closed**                                                        |
-| **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                                        |
-| **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                               |
-| **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                             |
-| **5 — Completion**        | 8      | 5      | 🔄 print layer left; node packaging + notifications PARTIAL (WA blocked)                |
-| **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                          |
-| **6 — QA**                | 7      | 0      | 🔄 W6-01 STARTED: 24 e2e specs, but 4 of 8 roles; the other six untouched               |
-| **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; W7-01 PARTIAL — no TLS (B-14), backups written but never scheduled |
-| **Totals**                | **62** | **47** | **76%**                                                                                 |
+| Wave                      | Tasks  | Done   | State                                                                                        |
+| ------------------------- | ------ | ------ | -------------------------------------------------------------------------------------------- |
+| **0 — Contracts**         | 2      | 2      | ✅ complete                                                                                  |
+| **1 — Foundation**        | 5      | 5      | ✅ complete · **Gate G1 closed**                                                             |
+| **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                                             |
+| **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                                    |
+| **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
+| **5 — Completion**        | 8      | 5      | 🔄 print layer left; node packaging + notifications PARTIAL (WA blocked)                     |
+| **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
+| **6 — QA**                | 7      | 0      | 🔄 W6-01 STARTED: 24 e2e specs, but 4 of 8 roles; the other six untouched                    |
+| **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
+| **Totals**                | **62** | **47** | **76%**                                                                                      |
 
 **Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
@@ -48,24 +48,26 @@ was verified on the live box, not inferred from a passing unit test.
 
 ### Done and verified
 
-| Item                                                                | Evidence                                                                  |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Blank-page incident (half-valid session) — fixed                    | 4 poisoned session shapes recover to `/login`, covered by e2e             |
-| Sales consume stock; `mv_item_usage_daily` populated                | 1,093 `usage_out` movements, matview 0 → 496 rows                         |
-| 32 empty tables filled; statutory payroll reachable                 | **zero** empty tables on the VPS, ledger invariant clean                  |
-| Driver sees address + one-tap navigation                            | e2e asserts the Google/Waze deep links carry real coordinates             |
-| Gudang plans the route (order + per-stop brief, editable mid-route) | e2e round-trips a brief and re-reads it from the server                   |
-| Hub = every interface for owner/superadmin; all others redirected   | e2e checks 15 cards for both roles, and the redirect for kepala gudang    |
-| `superadmin` role (10th), central in RLS                            | migration 222; test fails and NAMES any permission it ever lacks          |
-| Seed dates use the WITA business day                                | demo Surat Jalan lands on WITA today, verified at 00:xx WITA              |
-| CI green                                                            | both jobs pass; had been red for 11 commits, failing before the tests ran |
-| `@mimi/e2e` is a real suite                                         | **24 specs, 24 passing, 0 skipped** against the live box                  |
+| Item                                                                | Evidence                                                                      |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Blank-page incident (half-valid session) — fixed                    | 4 poisoned session shapes recover to `/login`, covered by e2e                 |
+| Sales consume stock; `mv_item_usage_daily` populated                | 1,093 `usage_out` movements, matview 0 → 496 rows                             |
+| 32 empty tables filled; statutory payroll reachable                 | **zero** empty tables on the VPS, ledger invariant clean                      |
+| Driver sees address + one-tap navigation                            | e2e asserts the Google/Waze deep links carry real coordinates                 |
+| Gudang plans the route (order + per-stop brief, editable mid-route) | e2e round-trips a brief and re-reads it from the server                       |
+| Hub = every interface for owner/superadmin; all others redirected   | e2e checks 15 cards for both roles, and the redirect for kepala gudang        |
+| `superadmin` role (10th), central in RLS                            | migration 222; test fails and NAMES any permission it ever lacks              |
+| Seed dates use the WITA business day                                | demo Surat Jalan lands on WITA today, verified at 00:xx WITA                  |
+| CI green                                                            | both jobs pass; had been red for 11 commits, failing before the tests ran     |
+| Nightly backups scheduled + restore drill passed                    | cron proven under `env -i`; dump restored into a throwaway DB, counts matched |
+| `@mimi/e2e` is a real suite                                         | **24 specs, 24 passing, 0 skipped** against the live box                      |
 
 ### Not done — carried into the next session
 
 | Item                                                   | Why it is open                                                                                                                                                    |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **B-14 — HTTPS** (see ACTIVE BLOCKERS)                 | Needs a domain + TLS, not code. Blocks live truck tracking entirely and degrades offline-first; everything else works over HTTP today                             |
+| **Backups sit on the same disk as the database**       | `OFFSITE_REMOTE_CMD` unset. Protects against a bad `DELETE`, not against losing the host. Needs an offsite target (rclone/S3) chosen by the owner                 |
 | **Live truck tracking cannot function**                | Built and deployed, but browsers refuse geolocation on an insecure origin. Unblocks itself the moment B-14 closes                                                 |
 | **Live-DB suites drain GDG stock**                     | Several `COMMIT` real movements instead of rolling back, so each full run draws the warehouse down. **Mitigated** (GDG stocked 10× deeper), root cause untouched  |
 | **`attachment-store.test.ts` is flaky**                | Failed 2 of ~8 full runs, passes every time in isolation, has never failed in CI. No fix attempted — guessing at someone else's package is worse than flagging it |
@@ -711,7 +713,12 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
 
 ### Wave 7 — Deploy & handover ⬜
 
-- [~] **W7-01 VPS / Traefik / backups + restore drill — PARTIAL.** Deployed with CI/CD and proven green. But: **no TLS** (blocker B-14 — needs a domain), and `infrastructure/backup/backup.sh` is written and ready yet **has never been scheduled** — verified 2026-08-19, no cron entry and no backup files on the box. The restore drill has not been run. **This is the largest unforced risk in the project right now: a single host with no backups.**
+- [~] **W7-01 VPS / Traefik / backups + restore drill — PARTIAL, and much less risky than it was.**
+  - Deployed with CI/CD, proven green.
+  - **Backups: DONE 2026-08-19.** `backup.sh` had been written but never wired up — no cron entry, no dumps on disk. Now scheduled nightly at 02:00 via the `ubuntu` crontab, appended so the three neighbouring projects' entries were untouched. The exact cron line was executed under `env -i /bin/sh` to prove it works with a stripped environment, which is where "it runs by hand but not from cron" usually hides.
+  - **Restore drill: DONE, and it actually restored.** The newest dump was loaded into a throwaway `mimi_restore_drill` database on the same server: 0 errors, and `users`/`sales`/`sj_drops`/`stock_movements`/`employees`/`role_permissions`/`sj_positions` all matched the live counts exactly. The throwaway database was dropped; the live one was never touched (pg_dump only reads).
+  - **Still open:** no TLS (blocker B-14 — needs a domain), and `OFFSITE_REMOTE_CMD` is unset, so every dump lives on the same disk as the database it protects. That is fine against "someone dropped a table" and worthless against "the host died" — set it before go-live (NFR-06).
+  - Host clock is `Asia/Shanghai`, which is UTC+8 with no DST, so 02:00 there IS 02:00 WITA today. If that host timezone ever changes, the schedule drifts relative to the business day.
 - [ ] W7-02 technical docs · [ ] W7-03 **Bahasa Indonesia manual** + training
 - [ ] W7-04 hardware spec — needs owner input (budget, vendor, per-outlet device count)
 - [ ] W7-05 data importer — needs the owner's real files to design against

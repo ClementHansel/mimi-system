@@ -16,11 +16,11 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                                             |
 | **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                                    |
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
-| **5 — Completion**        | 8      | 5      | 🔄 print layer left; node packaging + notifications PARTIAL (WA blocked)                     |
+| **5 — Completion**        | 8      | 6      | 🔄 print layer DONE; node packaging + notifications PARTIAL (WA blocked)                     |
 | **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
-| **6 — QA**                | 7      | 0      | 🔄 W6-01 STARTED: 24 e2e specs, but 4 of 8 roles; the other six untouched                    |
+| **6 — QA**                | 7      | 0      | 🔄 W6-01 STARTED: 27 e2e specs, but 4 of 8 roles; the other six untouched                    |
 | **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
-| **Totals**                | **62** | **47** | **76%**                                                                                      |
+| **Totals**                | **62** | **48** | **77%**                                                                                      |
 
 **Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
@@ -60,6 +60,7 @@ was verified on the live box, not inferred from a passing unit test.
 | Seed dates use the WITA business day                                | demo Surat Jalan lands on WITA today, verified at 00:xx WITA                  |
 | CI green                                                            | both jobs pass; had been red for 11 commits, failing before the tests ran     |
 | Nightly backups scheduled + restore drill passed                    | cron proven under `env -i`; dump restored into a throwaway DB, counts matched |
+| Printable Surat Jalan + slip gaji (W5-05)                           | e2e opens both through their real buttons; `/print` still auth-gated          |
 | `@mimi/e2e` is a real suite                                         | **24 specs, 24 passing, 0 skipped** against the live box                      |
 
 ### Not done — carried into the next session
@@ -638,7 +639,18 @@ Neither `ApprovalService` nor `ReplenishmentService`/`ReplenishmentAdvancementSe
 - [x] **W5-02** `finance` UI — 15 tests, payment ladder, journal with a live debits=credits gate, COA, reports with an explicit balanced/unbalanced indicator, fiscal periods, D-17 exception queue. Money as BigInt cents throughout
 - [x] **W5-03** `topology` UI — 17 tests, handles the no-node case, does not alarm on legitimately-offline devices
 - [x] **W5-04** `purchasing` UI — 11 tests, PR/PO/receiving/price history, D-20 price gate. _(Was mis-listed as "notification surfaces"; F06 purchasing is the BUILD-PLAN §5 assignment)_
-- [ ] **W5-05** print/document layer (nota, SJ PDF, slip gaji) — **NOT started.** The only printing that exists is the user-manual surface (`app/docs`, `window.print()` + a print stylesheet); no receipt, Surat Jalan or payslip document exists
+- [x] **W5-05** print/document layer — **DONE 2026-08-19**, and the register was wrong about all three parts:
+  - **Nota: was already done.** POS ships a full ESC/POS Web Bluetooth thermal receipt printer with
+    unit-testable byte builders. Nothing needed building.
+  - **Slip gaji: was a DEAD button.** `SlipGajiPanel` rendered "Download PDF" only when
+    `slip.slipPdfUrl` was set, and `runs.service.ts` hardcodes it to null — so the control never appeared
+    and no employee could obtain a payslip.
+  - **Surat Jalan: nothing at all**, for the one LEGAL document in the system (D-14).
+    Both now exist as chromeless `/print/**` routes printed by the browser rather than a bundled PDF
+    generator — the same call already recorded for `/docs`. Being chromeless is what lets them print without
+    the structural-selector trick `docs.css` had to use to hide the shell. Covered by e2e through the
+    BUTTONS that reach them (a route nobody can navigate to is not a feature), plus a check that `/print`
+    still requires a session
 - [x] **W5-06** posting-rule completion — **verified done 2026-08-19**, not by reading the code but by the coverage tests in `packages/shared/src/gl/posting-rules.test.ts`: every one of the 16 PRD `JournalEventType`s AND all 9 D-04 `JournalSystemEventType`s has at least one rule (7 tests). The register had this open; it was not
 - [~] **W5-07** branch-node packaging — **PARTIAL.** A working `Dockerfile` and a hardware-free `SIMULATE=true` dev profile exist, so the image builds and runs. What does not exist is the field-installable package BUILD-PLAN §4 promises under `infrastructure/` — no installer, no provisioning runbook, no pairing walkthrough for a box someone carries to an outlet
 - [~] **W5-08** notification surfaces + n8n WA live test — **PARTIAL.** `notification_outbox` and the three channels (`in_app`/`email`/`whatsapp`) exist and the header renders in-app notifications. The WA live test is **blocked**: `WA_ENABLED=false` on the VPS and no n8n/WhatsApp credentials have been supplied

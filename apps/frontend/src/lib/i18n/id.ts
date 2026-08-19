@@ -1969,6 +1969,13 @@ export const id = {
     },
   },
 
+  // W5-08 — the in-app notification inbox behind the header bell.
+  notifications: {
+    markAllRead: 'Tandai semua dibaca',
+    unread: 'Belum dibaca',
+    unreadCount: '{{count}} notifikasi belum dibaca',
+  },
+
   // W5-05 print/document layer — printable Surat Jalan + slip gaji, rendered
   // as chromeless /print routes and produced via the browser's own print
   // (paper AND print-to-PDF) rather than a bundled PDF generator.

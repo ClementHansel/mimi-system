@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Menu, Bell, LogOut, UserCircle, ChevronDown } from 'lucide-react';
+import { Menu, LogOut, UserCircle, ChevronDown } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { useSessionStore } from '@/stores/session-store';
 import { useNavStore } from '@/stores/nav-store';
 import { logout } from '@/lib/auth';
 import { SyncStatusPill, SyncRetryButton } from '@/components/ui/SyncStatusPill';
 import { cn } from '@/lib/utils';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
@@ -48,13 +49,13 @@ export function Header() {
       <SyncStatusPill className="hidden sm:inline-flex" />
       <SyncRetryButton className="hidden sm:inline-flex" />
 
-      <button
-        type="button"
-        className="relative rounded-md p-2 text-text-secondary hover:bg-surface-sunken"
-        aria-label={t('shell.notifications')}
-      >
-        <Bell className="size-5" />
-      </button>
+      {/*
+        Was a <button> with no onClick, no badge and no panel, while
+        `GET /notifications` and the two read endpoints had been live all
+        along — every notification the system raised went into a table nobody
+        could read. `NotificationBell` is the inbox that was missing (W5-08).
+      */}
+      <NotificationBell />
 
       <div ref={menuRef} className="relative">
         <button

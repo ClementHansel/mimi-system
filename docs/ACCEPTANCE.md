@@ -95,23 +95,23 @@ with `E2E_BASE_URL=<url> pnpm e2e`.
 
 ## 6. Offline and sync (NFR-07)
 
-| #   | Criterion                                                                                                                   | Evidence                                                                                                                     |
-| --- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| F1  | Connectivity tier and sync state are shown separately and correctly                                                         | `unit:lib/local` (135 tests)                                                                                                 |
-| F2  | A device with no credential does not spam failed sync calls                                                                 | Fixed 2026-08-18; **no regression test**                                                                                     |
-| F3  | Driver actions taken offline queue and flush on reconnect                                                                   | `unit:DriverJobsPanel.offline.test.ts`; **not exercised against a real network drop**                                        |
-| F4  | The adversarial set — mid-sale network kill, duplicate submit, clock skew, storage full, 24h backlog, two tablets diverging | **NONE.** This is W6-02 in full, and it is **partly blocked by B-14**: service workers do not register on an insecure origin |
+| #   | Criterion                                                                                                                   | Evidence                                                                                                                                                                                                                                                                                                                               |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1  | Connectivity tier and sync state are shown separately and correctly                                                         | `unit:lib/local` (135 tests)                                                                                                                                                                                                                                                                                                           |
+| F2  | A device with no credential does not spam failed sync calls                                                                 | Fixed 2026-08-18; **no regression test**                                                                                                                                                                                                                                                                                               |
+| F3  | Driver actions taken offline queue and flush on reconnect                                                                   | `unit:DriverJobsPanel.offline.test.ts`; **not exercised against a real network drop**                                                                                                                                                                                                                                                  |
+| F4  | The adversarial set — mid-sale network kill, duplicate submit, clock skew, storage full, 24h backlog, two tablets diverging | Partial. `e2e:offline-connectivity.spec.ts` (real browser, every `/sync/v1` request killed then restored), `unit:outbox-drain.ack-loss`, `unit:idempotent-commit.storage-full`. **Still uncovered: clock skew, 24h backlog, two tablets diverging — and the offline SHELL, blocked by B-14 (no service worker on an insecure origin)** |
 
 ## 7. Non-functional evidence (gate G6)
 
-| NFR    | Target                      | Evidence                                                                                                                     |
-| ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| NFR-01 | 150 concurrent users, < 3s  | **NONE** — needs k6 (W6-05)                                                                                                  |
-| NFR-03 | RBAC across roles × modules | B1–B5 above                                                                                                                  |
-| NFR-06 | Backups                     | Nightly cron + **restore drill performed** 2026-08-19. Gap: no offsite copy — every dump is on the same disk as the database |
-| NFR-07 | PWA / offline               | Partial — IndexedDB works; **service workers cannot register over HTTP (B-14)**                                              |
-| NFR-10 | WITA business day           | E8 above                                                                                                                     |
-| Others | Defined in the PRD          | Not transcribed here — do not treat this table as the full NFR list                                                          |
+| NFR    | Target                      | Evidence                                                                                                                          |
+| ------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| NFR-01 | 150 concurrent users, < 3s  | **NONE.** A k6 harness now exists (`perf/`, threshold `p(95)<3000ms`) but **has never been run** — a harness is not a measurement |
+| NFR-03 | RBAC across roles × modules | B1–B5 above                                                                                                                       |
+| NFR-06 | Backups                     | Nightly cron + **restore drill performed** 2026-08-19. Gap: no offsite copy — every dump is on the same disk as the database      |
+| NFR-07 | PWA / offline               | Partial — IndexedDB works; **service workers cannot register over HTTP (B-14)**                                                   |
+| NFR-10 | WITA business day           | E8 above                                                                                                                          |
+| Others | Defined in the PRD          | Not transcribed here — do not treat this table as the full NFR list                                                               |
 
 ---
 
@@ -122,6 +122,8 @@ with `E2E_BASE_URL=<url> pnpm e2e`.
 3. **Payroll golden cases (E6).** Money that people receive, with no test asserting a known input yields a known payslip.
 4. **Offsite backups.** A restore drill passed, but every dump shares a disk with the database.
 5. **IDOR / scope-escape sweep (B6, B7).** Guards are proven present; cross-location leakage is not disproven.
+6. **NFR-01 has never been measured.** The harness is written; nobody has run it against a real instance.
+7. **Two confirmed N+1 reads** on the driver's `my-jobs` (unbounded — no `LIMIT`) and the dispatcher's SJ list, plus two missing indexes. Found by W6-05, not yet fixed.
 
 ## Deliberately not automated
 

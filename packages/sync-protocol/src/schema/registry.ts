@@ -883,6 +883,24 @@ export const GROUP_12_SCHEMAS = {
   'device_events.went_online': object({}),
   'device_events.went_offline': object({}),
   'device_events.stale': object({}),
+  // OUTLET-level edges (not device-level), raised by
+  // `staleness-sweep.service.ts`'s `sweepOutlets()` when every active device
+  // AND the node at a location have been dark past OUTLET_OFFLINE_AFTER_MS.
+  //
+  // These were MISSING while the sweep emitted them anyway, so every firing
+  // hit `'device_events.outlet_offline' is not a known op` and was swallowed
+  // by the emit's own `.catch(logger.warn)`. The user-visible half still
+  // worked — the `device_events` row, the Owner/Manager notification and the
+  // `topology:update` broadcast all fire on a different path — so the only
+  // casualty was the sync pipeline: a branch node or any other `sync_events`
+  // consumer never learned that an outlet had gone dark. Deterministic, not
+  // intermittent, and silent by construction. Found by the W6-06 soak spec.
+  //
+  // Payload is `object({})` to match the sibling edges above; the sweep sends
+  // `data: {}` and the interesting context (`darkForMs`) is already on the
+  // `device_events` row it writes alongside.
+  'device_events.outlet_offline': object({}),
+  'device_events.outlet_online': object({}),
 
   'discovered_devices.discovered': object({
     ipAddress: string(),

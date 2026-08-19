@@ -45,7 +45,7 @@ describe('payload schema coverage vs. the authority matrix', () => {
     expect(orphans).toEqual([]);
   });
 
-  it('covers exactly 139 (entity, op) pairs — every op of every wire-eligible entity, no more, no less', () => {
+  it('covers exactly 141 (entity, op) pairs — every op of every wire-eligible entity, no more, no less', () => {
     const expectedCount = wireEligibleEntities().reduce((sum, entity) => {
       const meta = AUTHORITY[entity]!;
       return sum + meta.ops.length + (meta.pushExceptionOps?.length ?? 0);

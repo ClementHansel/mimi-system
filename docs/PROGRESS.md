@@ -16,11 +16,11 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                                             |
 | **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                                    |
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
-| **5 — Completion**        | 8      | 6      | 🔄 print + notification inbox DONE; node packaging PARTIAL; WA live test blocked             |
+| **5 — Completion**        | 8      | 6      | 🔄 print + inbox DONE; node field package DONE, installer/signing owed; WA live test blocked |
 | **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
-| **6 — QA**                | 7      | 3      | 🔄 W6-00 + W6-01 + W6-03 DONE; offline, financial, perf, soak left                           |
+| **6 — QA**                | 7      | 4      | 🔄 W6-00/01/03/06 DONE; W6-02 partial (B-14); W6-05 harness unrun; financial in progress     |
 | **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
-| **Totals**                | **62** | **51** | **82%**                                                                                      |
+| **Totals**                | **62** | **52** | **84%**                                                                                      |
 
 **Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
@@ -690,7 +690,16 @@ Neither `ApprovalService` nor `ReplenishmentService`/`ReplenishmentAdvancementSe
     BUTTONS that reach them (a route nobody can navigate to is not a feature), plus a check that `/print`
     still requires a session
 - [x] **W5-06** posting-rule completion — **verified done 2026-08-19**, not by reading the code but by the coverage tests in `packages/shared/src/gl/posting-rules.test.ts`: every one of the 16 PRD `JournalEventType`s AND all 9 D-04 `JournalSystemEventType`s has at least one rule (7 tests). The register had this open; it was not
-- [~] **W5-07** branch-node packaging — **PARTIAL.** A working `Dockerfile` and a hardware-free `SIMULATE=true` dev profile exist, so the image builds and runs. What does not exist is the field-installable package BUILD-PLAN §4 promises under `infrastructure/` — no installer, no provisioning runbook, no pairing walkthrough for a box someone carries to an outlet
+- [~] **W5-07** branch-node packaging — **still PARTIAL, but the runbook half is DONE 2026-08-19.**
+  `infrastructure/branch-node/` now carries the field package: `docker-compose.node.yml` (the outlet
+  mini-PC stack — node + its own Postgres, `restart: unless-stopped`, named volume, LAN-bound health
+  port, `TZ=Asia/Makassar` so a node cannot repeat the UTC-vs-WITA day defect), `node.env.example`, and
+  a README that walks the install, the **order-dependent** pairing (the API refuses to mint a token for
+  an outlet whose node setting is still OFF, D-26), a three-step verify, fleet update and teardown.
+  Three things are still owed and are listed in the README under **Still owed** rather than dropped:
+  **`install.sh`**, **signed images + a CI registry publish**, and a **fleet self-update channel**.
+  None blocks a pilot install; all three block shipping nodes at scale. Deploying real node hardware
+  remains a CHANGE ORDER (RISK-P5) — populating this directory does not make that decision
 - [~] **W5-08** notification surfaces + n8n WA live test — **surfaces DONE 2026-08-19; WA half still blocked.**
   The earlier note here ("the header renders in-app notifications") was wrong. The bell was a `<button>`
   with no `onClick`, no badge and no panel, while `GET /notifications`, `POST /notifications/:id/read` and
@@ -769,10 +778,46 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
 - [x] **W6-01 E2E × roles — DONE 2026-08-19.** `@mimi/e2e` is real: **39 specs passing against the live box**, covering session recovery, the hub, dispatcher route planning, the driver, both printable documents, and a journey for **all ten roles** (the nine business roles + superadmin).
       Each role journey asserts where `(auth)/landing.ts` puts it and exactly which surfaces it can and cannot reach, so it doubles as a nav-level RBAC sweep — a slice of W6-03, though the server remains the real boundary. The SEES/HIDDEN lists are TRANSCRIBED from `lib/nav.ts`'s permission arrays rather than recomputed at runtime: a test that derives its expectations from the code under test proves nothing.
       **Caught while writing it:** summarising `/approvals`' gate instead of reading it produced two wrong expectations — that entry accepts ANY of ELEVEN approve keys, so finance (`payment.verify`) and hr_admin (`hr.leave.approve`) legitimately see the approvals inbox. The test was wrong, not the app
-- [ ] W6-02 offline adversarial — **partly blocked by B-14**: service workers do not register on an insecure origin, so the offline shell cannot be exercised on the demo box as deployed
+- [~] **W6-02 offline adversarial — the unblocked half DONE 2026-08-19; the SW half still blocked by B-14.**
+  - `apps/frontend/src/lib/local/sync/outbox-drain.ack-loss.test.ts` + `idempotent-commit.storage-full.test.ts`
+    — ack loss (the push commits server-side but the ACK never arrives) and a storage-full IndexedDB. **8 tests, pass.**
+  - `e2e/tests/offline-connectivity.spec.ts` — a REAL browser against the live box: every `/sync/v1`
+    request aborted mid-session, then unblocked. Asserts the pill flips Offline, `OfflineBanner` appears,
+    the app does not blank, and recovery returns it to Online with no reload. **2 tests, pass.**
+  - **Both e2e tests failed on their first real run**, and neither failure was a product defect:
+    (1) the suite asserted on the header straight after `login()`, but `owner` now lands on the
+    **chromeless hub** (`CHROMELESS_EXACT_ROUTES`), which mounts no `Header` and no `OfflineBanner` —
+    the same "assert before the surface exists" mistake this log has already recorded three times;
+    (2) once degraded, `OfflineBanner` mounts a SECOND "Coba Sinkron", so the unscoped locator became a
+    strict-mode violation. Both are recorded because the suite was authored by an agent that explicitly
+    reported it had NOT executed it — which is exactly why unexecuted tests are not trusted here.
+  - Still blocked: service workers do not register on an insecure origin, so the offline **shell** cannot
+    be exercised on the demo box as deployed (B-14). The tests above deliberately avoid `serviceWorker`
+    and geolocation, which is why they run at all
 - [x] **W6-03 RBAC sweep — DONE 2026-08-19** (the automated half). `apps/backend/test/rbac-endpoint-sweep.spec.ts` enumerates every route the compiled AppModule registers (100+) and fails if any is neither `@Public` nor `@RequirePermission` — mutating routes asserted separately. Found four unguarded: three deliberate and now documented (the two CONTRACTS §4.0 approval reads, and the attachment URL which `StorageService.assertEntityScope` enforces), and one real gap, **B-15**.
       Not a full pen-test: this proves a guard EXISTS on every route, not that each key is the right one, and it does not probe for IDOR or scope-escape. Those remain manual
-- [ ] W6-04 financial correctness · [ ] W6-05 perf (NFR-01) · [ ] W6-06 topology soak
+- [ ] W6-04 financial correctness — in progress
+- [~] **W6-05 perf (NFR-01) — harness written 2026-08-19, NOT YET RUN.** `perf/` holds a k6 suite:
+  `nfr01-150-concurrent.js` (the gate — 150 VUs across a documented traffic mix, threshold `p(95)<3000ms`,
+  the only number the repo actually states), five single-endpoint isolation scripts, a 1-VU smoke, and a
+  sync-backlog script that mints real pairing tokens per outlet. **No run has happened** — no local backend
+  was up and the live box is the owner's demo. So NFR-01 is still evidenced by NOTHING; a harness is not a
+  measurement, and `docs/ACCEPTANCE.md` still reads `NONE` for it.
+  Two **N+1 reads found and confirmed by hand**, both real:
+  - `delivery/services/surat-jalan.service.ts:105-109` (`list`) and `:131-136` (`myJobs`) loop over SJ ids
+    issuing per-row queries — 2/row and 5/row. **`myJobs` has no `LIMIT` at all**, so a driver with a long
+    history fans out unbounded. This is the driver's pre-departure cache load, on a phone, on outlet wifi.
+  - `pos/services/pos-sale.service.ts:488-511` (`GET /api/pos/sales`) — 2 queries/row. Minor.
+    Two missing indexes: `sales` filters on `(occurred_at AT TIME ZONE 'Asia/Makassar')::date` but only a
+    plain `occurred_at` index exists, so the day filter cannot use it; `surat_jalan` filters+sorts on
+    `status` + `planned_date` with only single-column indexes. Neither is fixed yet
+- [x] **W6-06 topology soak — DONE 2026-08-19.** `apps/backend/src/modules/device-registry/topology-heartbeat-soak.integration.test.ts`
+      (10 tests, pass) drives heartbeat/staleness over a compressed clock. It surfaced a **real defect**, now
+      fixed: `staleness-sweep.service.ts` emits `outlet_offline`/`outlet_online` sync events, but neither op
+      existed in `packages/sync-protocol`'s authority matrix or schema registry — so every one was rejected and
+      swallowed by a `.catch(logger.warn)`. **An outlet going offline never reached any device.** Added to both
+      `authority-matrix.ts` and `schema/registry.ts` (141 sync-protocol tests pass, warnings gone).
+      The lesson is the `.catch(logger.warn)`: a fire-and-forget emit made a total delivery failure look like noise
 
 ### Wave 7 — Deploy & handover ⬜
 

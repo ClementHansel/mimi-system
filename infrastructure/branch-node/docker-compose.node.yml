@@ -1,0 +1,109 @@
+# =============================================================================
+# Mimi Chicken OS — branch node (Tier 2), the stack that runs ON A MINI-PC AT
+# AN OUTLET. W5-07.
+#
+# This is NOT part of the cloud stack. It is copied to the box that sits in the
+# outlet's back room, together with `node.env`, and started once. From then on
+# it is expected to survive power cuts and reboots unattended, because nobody
+# at an outlet is going to SSH into it.
+#
+#   Usage on the box:
+#     cd /opt/mimi-node
+#     docker compose --env-file node.env -f docker-compose.node.yml up -d
+#
+# THREE PROPERTIES THIS FILE EXISTS TO GUARANTEE:
+#
+# 1. NO INBOUND PORT TO THE INTERNET. The node holds one OUTBOUND socket.io
+#    connection to the cloud (`bridge-client.ts`). Nothing here publishes a
+#    port to 0.0.0.0 except the LAN health/API port, and that is bound to the
+#    outlet's LAN only. An outlet router must never be port-forwarded for this.
+#
+# 2. IT COMES BACK BY ITSELF. `restart: unless-stopped` on both services, and
+#    Postgres owns a named volume — a power cut at 21:00 must not need a visit.
+#
+# 3. THE LOCAL DATABASE IS THE POINT. The node keeps its own Postgres so the
+#    outlet keeps working when the internet does not (D-12). Losing that volume
+#    loses queued outlet work that has not yet reached the cloud, so it is a
+#    named volume, never a bind mount into a temp dir.
+# =============================================================================
+
+name: mimi-node
+
+services:
+  node-postgres:
+    image: postgres:16-alpine
+    container_name: mimi-node-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${NODE_POSTGRES_DB:-mimi_node}
+      POSTGRES_USER: ${NODE_POSTGRES_USER:-mimi_node}
+      POSTGRES_PASSWORD: ${NODE_POSTGRES_PASSWORD:?NODE_POSTGRES_PASSWORD must be set in node.env}
+      # The whole system runs on the business timezone (NFR-10). A node whose
+      # clock reasons in UTC would stamp outlet work on the wrong calendar day
+      # for the first eight hours of every WITA day — the exact defect already
+      # recorded twice against the cloud side.
+      TZ: Asia/Makassar
+      PGTZ: Asia/Makassar
+    volumes:
+      - node-pgdata:/var/lib/postgresql/data
+    # Bound to loopback INSIDE the compose network only — the database is never
+    # reachable from the outlet LAN, let alone the internet.
+    expose:
+      - '5432'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${NODE_POSTGRES_USER:-mimi_node} -d ${NODE_POSTGRES_DB:-mimi_node}',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  branch-node:
+    # Pinned by digest/tag at rollout time — see README "Fleet update".
+    image: ${NODE_IMAGE:?NODE_IMAGE must be set in node.env (e.g. ghcr.io/<org>/mimi-branch-node:1.4.2)}
+    container_name: mimi-branch-node
+    restart: unless-stopped
+    depends_on:
+      node-postgres:
+        condition: service_healthy
+    environment:
+      # Hardware-free mode OFF: this is a real box on a real LAN.
+      SIMULATE: 'false'
+      BRANCH_NODE_CLOUD_URL: ${BRANCH_NODE_CLOUD_URL:?set the cloud base URL in node.env}
+      # One-time pairing token from the owner UI. After a successful register
+      # the node persists its own credential, so this may be blanked — see the
+      # README's note on why it is deliberately not removed automatically.
+      BRANCH_NODE_PAIRING_TOKEN: ${BRANCH_NODE_PAIRING_TOKEN:-}
+      BRANCH_NODE_DATABASE_URL: postgresql://${NODE_POSTGRES_USER:-mimi_node}:${NODE_POSTGRES_PASSWORD}@node-postgres:5432/${NODE_POSTGRES_DB:-mimi_node}
+      BRANCH_NODE_HEALTH_PORT: '4010'
+      # Leave unset to auto-derive from the box's own interfaces. Set it only
+      # when the outlet has more than one subnet and discovery finds the wrong
+      # one (e.g. a guest wifi range).
+      BRANCH_NODE_SCAN_SUBNET: ${BRANCH_NODE_SCAN_SUBNET:-}
+      BRANCH_NODE_HOSTNAME: ${BRANCH_NODE_HOSTNAME:-}
+      TZ: Asia/Makassar
+    ports:
+      # LAN-only. `${NODE_LAN_BIND}` should be the box's LAN address (e.g.
+      # 192.168.1.50), NOT 0.0.0.0 — tablets in the outlet reach it, the
+      # internet cannot. Defaults to loopback so a misconfigured box is
+      # useless-but-safe rather than exposed.
+      - '${NODE_LAN_BIND:-127.0.0.1}:4010:4010'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:4010/health || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      # Same reasoning as the VPS overlay: an outlet mini-PC has a small disk
+      # and nobody watching it. Unbounded container logs will fill it.
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+
+volumes:
+  node-pgdata:
+    name: mimi-node-pgdata

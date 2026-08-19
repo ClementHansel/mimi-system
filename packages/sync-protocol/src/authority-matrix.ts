@@ -202,9 +202,16 @@ export const AUTHORITY: Readonly<Record<string, EntityAuthority>> = {
   }),
   [SyncEntity.DEVICE_EVENTS]: entity({
     class: 'F', direction: 'bidirectional', pullScope: 'own_location',
-    ops: ['storage_warning', 'storage_full', 'quarantine_added', 'clock_suspect', 'credential_denied', 'went_online', 'went_offline', 'stale'],
+    // `outlet_offline`/`outlet_online` are OUTLET-level edges, not device-level:
+    // raised by the cloud's `staleness-sweep.service.ts` when every active
+    // device AND the node at a location have been dark past its threshold.
+    // They were emitted by that sweep but never declared here, so every firing
+    // failed schema validation and was swallowed by the emit's own
+    // `.catch(logger.warn)` — silently, deterministically, forever. Found by
+    // the W6-06 soak spec. Pull-only, like the other cloud-born transitions.
+    ops: ['storage_warning', 'storage_full', 'quarantine_added', 'clock_suspect', 'credential_denied', 'went_online', 'went_offline', 'stale', 'outlet_offline', 'outlet_online'],
     pushOps: ['storage_warning', 'storage_full', 'quarantine_added', 'clock_suspect', 'credential_denied'],
-    note: 'push: origin incidents; pull: cloud-born transitions (went_online/went_offline/stale)',
+    note: 'push: origin incidents; pull: cloud-born transitions (went_online/went_offline/stale) + outlet-level edges (outlet_offline/outlet_online)',
   }),
   [SyncEntity.DISCOVERED_DEVICES]: entity({
     class: 'F', direction: 'push', pullScope: 'none', ops: ['discovered', 'updated', 'disappeared'],

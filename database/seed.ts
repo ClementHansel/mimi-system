@@ -1586,6 +1586,17 @@ async function main(): Promise<void> {
     let runId: string;
     if (existingRun.rows.length > 0) {
       runId = existingRun.rows[0].id;
+      // Converge an already-seeded run onto the intended state. Without this,
+      // a box seeded before the status change above keeps a `calculated` run
+      // for ever and `my-slips` keeps returning nothing — re-running the seed
+      // would appear to fix nothing. Guarded to `calculated` so a run someone
+      // has deliberately moved on to `paid`/`cancelled` is never dragged back.
+      await client.query(
+        `UPDATE payroll_runs
+            SET status = 'approved', approved_by = COALESCE(approved_by, $2), approved_at = COALESCE(approved_at, NOW())
+          WHERE id = $1 AND status = 'calculated'`,
+        [runId, userIdByUsername['owner']],
+      );
     } else {
       const runNumber = await nextDocNumber(client, 'PRUN');
       // Seeded as APPROVED, not `calculated`.

@@ -1969,6 +1969,48 @@ export const id = {
     },
   },
 
+  // W5-05 print/document layer — printable Surat Jalan + slip gaji, rendered
+  // as chromeless /print routes and produced via the browser's own print
+  // (paper AND print-to-PDF) rather than a bundled PDF generator.
+  print: {
+    print: 'Cetak',
+    close: 'Tutup',
+    company: 'Ayam Geprek & Fried Chicken — Kalimantan',
+    sj: {
+      title: 'Surat Jalan',
+      driver: 'Driver',
+      vehicle: 'Kendaraan',
+      plannedDate: 'Tgl. Rencana Kirim',
+      shipmentType: 'Jenis Muatan',
+      dispatchedAt: 'Berangkat',
+      status: 'Status',
+      seals: 'Nomor Segel',
+      item: 'Barang',
+      qtySent: 'Dikirim',
+      qtyReceived: 'Diterima',
+      tempAtDrop: 'Suhu saat serah terima',
+      signDriver: 'Driver',
+      signReceiver: 'Penerima di Outlet',
+      footer:
+        'Dokumen ini adalah bukti pengiriman resmi. Simpan satu rangkap di outlet dan satu rangkap dibawa kembali ke gudang pusat.',
+    },
+    slip: {
+      title: 'Slip Gaji',
+      employee: 'Nama Karyawan',
+      period: 'Periode',
+      position: 'Jabatan',
+      location: 'Lokasi',
+      earnings: 'Pendapatan',
+      deductions: 'Potongan',
+      gross: 'Total Pendapatan',
+      totalDeductions: 'Total Potongan',
+      net: 'Gaji Bersih',
+      notFound: 'Slip gaji untuk periode {{period}} tidak ditemukan',
+      footer:
+        'Slip ini diterbitkan oleh sistem dan sah tanpa tanda tangan basah. Hubungi Admin SDM bila ada selisih.',
+    },
+  },
+
   // F13 `driver` (W4-09) — mobile, offline-first: today's Surat Jalan,
   // multi-drop route, per-drop depart/arrive/serah-terima, cold-chain seal
   // + temperature checks. Additive-only namespace.

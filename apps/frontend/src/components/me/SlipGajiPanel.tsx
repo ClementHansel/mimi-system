@@ -88,24 +88,31 @@ export function SlipGajiPanel() {
                           </span>
                         </div>
                       ))}
-                      {slip.slipPdfUrl && (
-                        <a
-                          href={slip.slipPdfUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
+                      {/*
+                        Was gated on `slip.slipPdfUrl`, which the backend
+                        hardcodes to null (`runs.service.ts`) — so this button
+                        never rendered and no employee could obtain a payslip.
+                        Now it opens the printable document (W5-05), which
+                        gives both paper and the browser's print-to-PDF. The
+                        `slipPdfUrl` field is left alone: if a server-rendered
+                        PDF ever lands, it can take precedence here.
+                      */}
+                      <a
+                        href={`/print/slip-gaji/${slip.periodCode}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          leftIcon={<Download className="size-4" />}
+                          fullWidth
+                          className="mt-2"
                         >
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            leftIcon={<Download className="size-4" />}
-                            fullWidth
-                            className="mt-2"
-                          >
-                            {t('me.slip.downloadPdf')}
-                          </Button>
-                        </a>
-                      )}
+                          {t('me.slip.downloadPdf')}
+                        </Button>
+                      </a>
                     </div>
                   )}
                 </CardContent>

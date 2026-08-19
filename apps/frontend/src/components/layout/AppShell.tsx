@@ -29,6 +29,13 @@ function isPublicRoute(pathname: string): boolean {
  * - `/` exactly (F-HUB-2): the home hub is a standalone, centred workspace
  *   chooser with its own slim top bar, not a page rendered inside the app
  *   shell's chrome.
+ * - `/print` and everything under it (W5-05): the printable Surat Jalan and
+ *   payslip are whole documents, not pages inside an app. Making them
+ *   chromeless is what lets them print correctly WITHOUT a stylesheet that
+ *   reaches out to hide the sidebar/header — the awkward structural-selector
+ *   trick `app/docs/docs.css` had to use, and explicitly flagged, because it
+ *   is not allowed to edit this file. The auth redirect below still applies,
+ *   so a printable document is never reachable unauthenticated.
  * - `/pos` and everything under it (F-POS-2): the owner reviewed POS against
  *   AIRE's live till and wants it to read as a standalone cashier app, not a
  *   page inside the admin shell — a tablet used one-handed during a rush has
@@ -42,7 +49,7 @@ function isPublicRoute(pathname: string): boolean {
  * lists rather than one, both checked by `isChromelessRoute`.
  */
 const CHROMELESS_EXACT_ROUTES = ['/'];
-const CHROMELESS_PREFIX_ROUTES = ['/pos'];
+const CHROMELESS_PREFIX_ROUTES = ['/pos', '/print'];
 
 function isChromelessRoute(pathname: string): boolean {
   if (CHROMELESS_EXACT_ROUTES.includes(pathname)) return true;

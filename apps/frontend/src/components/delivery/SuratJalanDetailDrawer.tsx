@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Truck, Ban, AlertTriangle, Thermometer } from 'lucide-react';
+import { Plus, Trash2, Truck, Ban, AlertTriangle, Thermometer, Printer } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
 import type { Drop, TempLog, Temp, SuratJalan } from '@/lib/shared-types';
@@ -244,6 +244,19 @@ export function SuratJalanDetailDrawer({
                 </Button>
               )}
             </PermissionGate>
+            {/*
+              Printing is available at ANY status and to anyone who can read
+              the SJ — a dispatcher checks the paperwork before load, the
+              driver carries it, and finance reads it back weeks later during
+              a dispute. Gating it behind dispatch permission (or behind a
+              status) would put the legal shipping document out of reach of
+              the people who need a copy of it.
+            */}
+            <a href={`/print/surat-jalan/${id}`} target="_blank" rel="noreferrer">
+              <Button variant="outline" size="sm" leftIcon={<Printer className="size-4" />}>
+                {t('print.sj.title')}
+              </Button>
+            </a>
             <PermissionGate permission="delivery.sj.dispatch">
               {sj.status === 'ready' && (
                 <Button size="sm" leftIcon={<Truck className="size-4" />} onClick={openLoad}>

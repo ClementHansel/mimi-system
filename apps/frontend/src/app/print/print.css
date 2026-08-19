@@ -1,0 +1,69 @@
+/* W5-05 — shared print styling for /print/**.
+
+   Loaded only while a /print route is mounted (Next per-segment CSS
+   chunking), so nothing here leaks onto other routes.
+
+   These documents are CHROMELESS routes (see AppShell's
+   CHROMELESS_PREFIX_ROUTES), which is the important difference from
+   `app/docs/docs.css`: there is no sidebar, header, banner or toast host in
+   the tree to hide, so this file needs no structural selectors reaching
+   outside its own scope. It only has to express the things Tailwind
+   utilities cannot — `@page` and print-only visibility.
+
+   Why the browser's own print rather than a PDF library: the same reason
+   recorded for /docs. A PWA served over mobile data in Kalimantan should not
+   ship a PDF generator, and `window.print()` gives both paper and
+   print-to-PDF for free, on the tablet the user already has. */
+
+@media screen {
+  /* An on-screen preview of the paper, so "Cetak" is not a leap of faith. */
+  .print-sheet {
+    margin: 1.5rem auto;
+    max-width: 210mm;
+    background: white;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+    padding: 16mm;
+    border-radius: 2px;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+
+  html,
+  body {
+    background: white !important;
+  }
+
+  /* Controls belong to the screen, never to the paper. */
+  .print-hide {
+    display: none !important;
+  }
+
+  .print-sheet {
+    margin: 0;
+    max-width: none;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  /* Keep a signature block or a drop's item table from being split across a
+     page break — a Surat Jalan whose signature box lands alone on page 3 is
+     a document people refuse to sign. */
+  .print-keep {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Repeat table headers when a long item list spans pages. */
+  thead {
+    display: table-header-group;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+}

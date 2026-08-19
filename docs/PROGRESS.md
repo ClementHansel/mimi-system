@@ -18,9 +18,9 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
 | **5 — Completion**        | 8      | 6      | 🔄 print + notification inbox DONE; node packaging PARTIAL; WA live test blocked             |
 | **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
-| **6 — QA**                | 7      | 2      | 🔄 W6-01 + W6-03 DONE; acceptance matrix, offline, financial, perf, soak left                |
+| **6 — QA**                | 7      | 3      | 🔄 W6-00 + W6-01 + W6-03 DONE; offline, financial, perf, soak left                           |
 | **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
-| **Totals**                | **62** | **50** | **81%**                                                                                      |
+| **Totals**                | **62** | **51** | **82%**                                                                                      |
 
 **Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
@@ -64,6 +64,7 @@ was verified on the live box, not inferred from a passing unit test.
 | Role journeys for all 10 roles (W6-01)                              | 39 e2e specs green against the live box; doubles as a nav-level RBAC sweep    |
 | In-app notification inbox (W5-08 surfaces)                          | bell was decorative over a live API; now badge + inbox + read, e2e-covered    |
 | Endpoint-level RBAC sweep (W6-03)                                   | 100+ routes; fails on any unguarded route. Surfaced B-15                      |
+| Acceptance matrix (W6-00)                                           | `docs/ACCEPTANCE.md` — criterion → named evidence, with the gaps ranked       |
 | `@mimi/e2e` is a real suite                                         | **24 specs, 24 passing, 0 skipped** against the live box                      |
 
 ### Not done — carried into the next session
@@ -764,7 +765,7 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
 
 ### Wave 6 — QA ⬜
 
-- [ ] W6-00 QA lead / acceptance matrix
+- [x] **W6-00 acceptance matrix — DONE 2026-08-19** → `docs/ACCEPTANCE.md`. Every criterion carries the NAMED test that evidences it, or `manual`, or `NONE`; every cited path was verified to exist. The `NONE` rows are ranked at the end — B-15, B-14, payroll golden cases, offsite backups, IDOR sweep. It also records what is deliberately NOT automated (thermal printing needs a printer; WhatsApp needs credentials) so those do not read as oversights
 - [x] **W6-01 E2E × roles — DONE 2026-08-19.** `@mimi/e2e` is real: **39 specs passing against the live box**, covering session recovery, the hub, dispatcher route planning, the driver, both printable documents, and a journey for **all ten roles** (the nine business roles + superadmin).
       Each role journey asserts where `(auth)/landing.ts` puts it and exactly which surfaces it can and cannot reach, so it doubles as a nav-level RBAC sweep — a slice of W6-03, though the server remains the real boundary. The SEES/HIDDEN lists are TRANSCRIBED from `lib/nav.ts`'s permission arrays rather than recomputed at runtime: a test that derives its expectations from the code under test proves nothing.
       **Caught while writing it:** summarising `/approvals`' gate instead of reading it produced two wrong expectations — that entry accepts ANY of ELEVEN approve keys, so finance (`payment.verify`) and hr_admin (`hr.leave.approve`) legitimately see the approvals inbox. The test was wrong, not the app

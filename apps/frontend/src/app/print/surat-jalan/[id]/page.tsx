@@ -114,7 +114,9 @@ export default function PrintSuratJalanPage({ params }: { params: Promise<{ id: 
                           {received && line.qtyReceived !== null ? (
                             `${formatQty(line.qtyReceived)} ${line.unitCode}`
                           ) : (
-                            <span className="inline-block w-20 border-b border-stone-500">&nbsp;</span>
+                            <span className="inline-block w-20 border-b border-stone-500">
+                              &nbsp;
+                            </span>
                           )}
                         </td>
                       </tr>

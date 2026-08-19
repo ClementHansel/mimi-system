@@ -47,9 +47,7 @@ export default function PrintSlipGajiPage({ params }: { params: Promise<{ period
         }
         setSlip(found);
       })
-      .catch((err: unknown) =>
-        setError(err instanceof ApiError ? err.message : t('table.error')),
-      );
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')));
   }, [period, t]);
 
   const earnings = slip?.lines.filter((l) => l.type === 'earning') ?? [];
@@ -85,7 +83,12 @@ export default function PrintSlipGajiPage({ params }: { params: Promise<{ period
           </section>
 
           <div className="grid grid-cols-2 gap-8">
-            <LineTable title={t('print.slip.earnings')} lines={earnings} total={slip.gross} totalLabel={t('print.slip.gross')} />
+            <LineTable
+              title={t('print.slip.earnings')}
+              lines={earnings}
+              total={slip.gross}
+              totalLabel={t('print.slip.gross')}
+            />
             <LineTable
               title={t('print.slip.deductions')}
               lines={deductions}

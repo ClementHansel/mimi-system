@@ -1588,11 +1588,21 @@ async function main(): Promise<void> {
       runId = existingRun.rows[0].id;
     } else {
       const runNumber = await nextDocNumber(client, 'PRUN');
+      // Seeded as APPROVED, not `calculated`.
+      //
+      // `RunsService.mySlips` filters `r.status IN ('approved','paid')` — the
+      // right rule, since an employee must not see a slip for a run finance
+      // has not signed off. But a run left at `calculated` means
+      // `/payroll/my-slips` returns NOTHING for every employee, so the entire
+      // employee-facing payslip surface (and now the printable slip, W5-05)
+      // is dead on a freshly seeded box — with no error to explain why.
+      // Approving the demo run is also the realistic state for a period that
+      // has already been paid out.
       const runRes = await client.query(
-        `INSERT INTO payroll_runs (period_id, run_seq, run_number, status, statutory_mode, calculated_by, calculated_at)
-         VALUES ($1,1,$2,'calculated',false,$3,NOW())
+        `INSERT INTO payroll_runs (period_id, run_seq, run_number, status, statutory_mode, calculated_by, calculated_at, approved_by, approved_at)
+         VALUES ($1,1,$2,'approved',false,$3,NOW(),$4,NOW())
          ON CONFLICT (period_id, run_seq) DO NOTHING RETURNING id`,
-        [periodId, runNumber, userIdByUsername['hradmin1']],
+        [periodId, runNumber, userIdByUsername['hradmin1'], userIdByUsername['owner']],
       );
       runId =
         runRes.rows[0]?.id ??

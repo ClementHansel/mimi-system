@@ -68,13 +68,18 @@ test.describe('printable documents', () => {
     const body = page.locator('body');
     await expect(body).toContainText(/Slip Gaji|Akun Saya/, { timeout: 20_000 });
 
-    const slipLink = page.locator('a[href^="/print/slip-gaji/"]');
-    if ((await slipLink.count()) === 0) {
-      // The panel lists slips per year and the button lives inside an expanded
-      // slip; if this account has none for the current year there is nothing
-      // to print. Say so rather than failing on absent demo data.
+    // The panel lists each period collapsed; the print button only exists
+    // inside an expanded slip. Expand the first one before looking for it —
+    // the original spec skipped here and reported "no payslip", which was the
+    // test not clicking rather than the data being absent.
+    const slipRows = page.locator('button', { hasText: /^\d{4}-\d{2}$/ });
+    if ((await slipRows.count()) === 0) {
       test.skip(true, 'no payslip listed for this account/year');
     }
+    await slipRows.first().click();
+
+    const slipLink = page.locator('a[href^="/print/slip-gaji/"]');
+    await expect(slipLink.first()).toBeVisible({ timeout: 10_000 });
 
     const [printPage] = await Promise.all([context.waitForEvent('page'), slipLink.first().click()]);
     await printPage.waitForLoadState('domcontentloaded');

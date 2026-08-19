@@ -9,18 +9,18 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 
 ## 1. At a glance
 
-| Wave                      | Tasks  | Done   | State                                                                         |
-| ------------------------- | ------ | ------ | ----------------------------------------------------------------------------- |
-| **0 — Contracts**         | 2      | 2      | ✅ complete                                                                   |
-| **1 — Foundation**        | 5      | 5      | ✅ complete · **Gate G1 closed**                                              |
-| **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                              |
-| **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                     |
-| **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                   |
-| **5 — Completion**        | 8      | 4      | 🔄 UI surfaces done; print, posting rules, node packaging, notifications left |
-| **5b — Owner UI round**   | 9      | 7      | 🔄 QA-ISOLATION finishing; F-UX not started                                   |
-| **6 — QA**                | 7      | 0      | ⬜ not started                                                                |
-| **7 — Deploy & handover** | 5      | 1      | 🔄 **deployed to the VPS with CI/CD**; docs, manual, hardware, importer left  |
-| **Totals**                | **62** | **45** | **73%**                                                                       |
+| Wave                      | Tasks  | Done   | State                                                                                   |
+| ------------------------- | ------ | ------ | --------------------------------------------------------------------------------------- |
+| **0 — Contracts**         | 2      | 2      | ✅ complete                                                                             |
+| **1 — Foundation**        | 5      | 5      | ✅ complete · **Gate G1 closed**                                                        |
+| **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                                        |
+| **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                               |
+| **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                             |
+| **5 — Completion**        | 8      | 5      | 🔄 print layer left; node packaging + notifications PARTIAL (WA blocked)                |
+| **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                          |
+| **6 — QA**                | 7      | 0      | 🔄 W6-01 STARTED: 24 e2e specs, but 4 of 8 roles; the other six untouched               |
+| **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; W7-01 PARTIAL — no TLS (B-14), backups written but never scheduled |
+| **Totals**                | **62** | **47** | **76%**                                                                                 |
 
 **Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
@@ -636,10 +636,10 @@ Neither `ApprovalService` nor `ReplenishmentService`/`ReplenishmentAdvancementSe
 - [x] **W5-02** `finance` UI — 15 tests, payment ladder, journal with a live debits=credits gate, COA, reports with an explicit balanced/unbalanced indicator, fiscal periods, D-17 exception queue. Money as BigInt cents throughout
 - [x] **W5-03** `topology` UI — 17 tests, handles the no-node case, does not alarm on legitimately-offline devices
 - [x] **W5-04** `purchasing` UI — 11 tests, PR/PO/receiving/price history, D-20 price gate. _(Was mis-listed as "notification surfaces"; F06 purchasing is the BUILD-PLAN §5 assignment)_
-- [ ] **W5-05** print/document layer (nota, SJ PDF, slip gaji)
-- [ ] **W5-06** posting-rule completion (all 16 journal events)
-- [ ] **W5-07** branch-node packaging
-- [ ] **W5-08** notification surfaces + n8n WA live test
+- [ ] **W5-05** print/document layer (nota, SJ PDF, slip gaji) — **NOT started.** The only printing that exists is the user-manual surface (`app/docs`, `window.print()` + a print stylesheet); no receipt, Surat Jalan or payslip document exists
+- [x] **W5-06** posting-rule completion — **verified done 2026-08-19**, not by reading the code but by the coverage tests in `packages/shared/src/gl/posting-rules.test.ts`: every one of the 16 PRD `JournalEventType`s AND all 9 D-04 `JournalSystemEventType`s has at least one rule (7 tests). The register had this open; it was not
+- [~] **W5-07** branch-node packaging — **PARTIAL.** A working `Dockerfile` and a hardware-free `SIMULATE=true` dev profile exist, so the image builds and runs. What does not exist is the field-installable package BUILD-PLAN §4 promises under `infrastructure/` — no installer, no provisioning runbook, no pairing walkthrough for a box someone carries to an outlet
+- [~] **W5-08** notification surfaces + n8n WA live test — **PARTIAL.** `notification_outbox` and the three channels (`in_app`/`email`/`whatsapp`) exist and the header renders in-app notifications. The WA live test is **blocked**: `WA_ENABLED=false` on the VPS and no n8n/WhatsApp credentials have been supplied
 
 ### Wave 5b — Owner-driven UI round (2026-08-17) 🔄
 
@@ -652,7 +652,7 @@ Raised directly by the owner after using the deployed system.
 - [x] **BE-PURCH-FIX** purchasing contract + DATE/WITA fixes — incl. a **write-path** date bug and a supplier endpoint that could never execute
 - [x] **DB-PV-RLS** migration 220 — `FOR SELECT` carve-out so `kepala_gudang` can read the PV row its own receiving creates, with proof it gained no write access
 - [x] **CLEANUP-DATE** consolidated `formatDateOnly` into `common/`; removed two independently-wrong private copies
-- [ ] **QA-ISOLATION** live-DB suite determinism — serial `integration-live-db` project + reconcile-on-cleanup; **one assertion outstanding**
+- [x] **QA-ISOLATION** live-DB suite determinism — serial `integration-live-db` project + reconcile-on-cleanup. **Closed 2026-08-19: 803 pass / 0 fail on a freshly reset database.** Two further isolation defects were found and dealt with along the way (`pickUnusedStockKey` handing out dirty keys — fixed; suites committing stock out of GDG — mitigated, root cause open, see §1a)
 
 ### Wave 5c — IA rework + live-system defects (2026-08-17, owner-reviewed) 🔄
 
@@ -703,13 +703,18 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
 
 ### Wave 6 — QA ⬜
 
-- [ ] W6-00 QA lead / acceptance matrix · [ ] W6-01 E2E × 8 roles · [ ] W6-02 offline adversarial
-- [ ] W6-03 RBAC pen-test · [ ] W6-04 financial correctness · [ ] W6-05 perf (NFR-01) · [ ] W6-06 topology soak
+- [ ] W6-00 QA lead / acceptance matrix
+- [~] **W6-01 E2E × 8 roles — STARTED.** `@mimi/e2e` is real: 24 specs passing against the live box (session recovery, hub, dispatcher, driver). It covers **4 roles** — owner, superadmin, kepala_gudang, driver. The remaining five (manager, finance, supervisor, leader_outlet, kasir, hr_admin) have no journey spec
+- [ ] W6-02 offline adversarial — **partly blocked by B-14**: service workers do not register on an insecure origin, so the offline shell cannot be exercised on the demo box as deployed
+- [ ] W6-03 RBAC pen-test — per-module RBAC specs exist in the backend suite, but no systematic role × endpoint sweep
+- [ ] W6-04 financial correctness · [ ] W6-05 perf (NFR-01) · [ ] W6-06 topology soak
 
 ### Wave 7 — Deploy & handover ⬜
 
-- [ ] W7-01 VPS/Traefik/backups + restore drill · [ ] W7-02 technical docs · [ ] W7-03 **Bahasa Indonesia manual** + training
-- [ ] W7-04 hardware spec · [ ] W7-05 data importer
+- [~] **W7-01 VPS / Traefik / backups + restore drill — PARTIAL.** Deployed with CI/CD and proven green. But: **no TLS** (blocker B-14 — needs a domain), and `infrastructure/backup/backup.sh` is written and ready yet **has never been scheduled** — verified 2026-08-19, no cron entry and no backup files on the box. The restore drill has not been run. **This is the largest unforced risk in the project right now: a single host with no backups.**
+- [ ] W7-02 technical docs · [ ] W7-03 **Bahasa Indonesia manual** + training
+- [ ] W7-04 hardware spec — needs owner input (budget, vendor, per-outlet device count)
+- [ ] W7-05 data importer — needs the owner's real files to design against
 
 ---
 

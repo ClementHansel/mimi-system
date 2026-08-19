@@ -18,9 +18,9 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
 | **5 — Completion**        | 8      | 6      | 🔄 print + notification inbox DONE; node packaging PARTIAL; WA live test blocked             |
 | **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
-| **6 — QA**                | 7      | 1      | 🔄 W6-01 DONE (41 e2e specs, all 10 roles); the other six QA tasks untouched                 |
+| **6 — QA**                | 7      | 2      | 🔄 W6-01 + W6-03 DONE; acceptance matrix, offline, financial, perf, soak left                |
 | **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
-| **Totals**                | **62** | **49** | **79%**                                                                                      |
+| **Totals**                | **62** | **50** | **81%**                                                                                      |
 
 **Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
@@ -63,6 +63,7 @@ was verified on the live box, not inferred from a passing unit test.
 | Printable Surat Jalan + slip gaji (W5-05)                           | e2e opens both through their real buttons; `/print` still auth-gated          |
 | Role journeys for all 10 roles (W6-01)                              | 39 e2e specs green against the live box; doubles as a nav-level RBAC sweep    |
 | In-app notification inbox (W5-08 surfaces)                          | bell was decorative over a live API; now badge + inbox + read, e2e-covered    |
+| Endpoint-level RBAC sweep (W6-03)                                   | 100+ routes; fails on any unguarded route. Surfaced B-15                      |
 | `@mimi/e2e` is a real suite                                         | **24 specs, 24 passing, 0 skipped** against the live box                      |
 
 ### Not done — carried into the next session
@@ -71,6 +72,7 @@ was verified on the live box, not inferred from a passing unit test.
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **B-14 — HTTPS** (see ACTIVE BLOCKERS)                 | Needs a domain + TLS, not code. Blocks live truck tracking entirely and degrades offline-first; everything else works over HTTP today                             |
 | **Backups sit on the same disk as the database**       | `OFFSITE_REMOTE_CMD` unset. Protects against a bad `DELETE`, not against losing the host. Needs an offsite target (rclone/S3) chosen by the owner                 |
+| **B-15 — PIN verification is an unthrottled oracle**   | Any authenticated caller can guess any user's PIN. Mitigation is a product decision — see the blocker                                                             |
 | **Live truck tracking cannot function**                | Built and deployed, but browsers refuse geolocation on an insecure origin. Unblocks itself the moment B-14 closes                                                 |
 | **Live-DB suites drain GDG stock**                     | Several `COMMIT` real movements instead of rolling back, so each full run draws the warehouse down. **Mitigated** (GDG stocked 10× deeper), root cause untouched  |
 | **`attachment-store.test.ts` is flaky**                | Failed 2 of ~8 full runs, passes every time in isolation, has never failed in CI. No fix attempted — guessing at someone else's package is worse than flagging it |
@@ -375,6 +377,39 @@ don't.
 - Login inputs carry **no `name` attribute** (React-generated ids only) — breaks password managers, autofill, and any selector-based automation.
 
 ## 2. ACTIVE BLOCKERS
+
+### 🔴 B-15 — `POST /auth/pin/verify` is an unthrottled PIN oracle
+
+**Opened:** 2026-08-19 · **Found by:** the W6-03 endpoint sweep · **Needs:** a product decision, not just code
+
+The endpoint takes an **arbitrary `userId`**, never reads `req.user`, runs under `withSystemContext` (bypassing RLS), and returns a signed `pin_verified` token:
+
+```ts
+async verifyPin(dto: VerifyPinDto) {          // { userId, pin, context }
+  await withSystemContext(this.pool, ..., async (client) => {
+    const target = await this.repo.findUserAuthById(client, dto.userId);   // ANY user
+    ...verifyPinHash(dto.pin, target.pin_hash)
+  });
+  const verifierToken = this.verifierJwt.sign({ sub: dto.userId, purpose: 'pin_verified' });
+}
+```
+
+So **any authenticated caller can test PIN guesses against any other user**, with no rate limit, no lockout and no audit trail. There is no throttler anywhere in the backend (checked). PINs are 6 digits.
+
+**Impact today is latent, not live:** nothing consumes `pin_verified` yet, so a stolen token currently authorises nothing in-app. What it does leak is the PIN itself — and the same PIN backs **offline authorization** on devices (`offline_credentials.pin_verifier`), where a supervisor's PIN approves voids and discounts on a tablet with no connectivity. A kasir who brute-forces their supervisor's PIN gets that.
+
+**Why this is not just "add a lockout":** the endpoint's design is correct for its purpose — a supervisor walks to the kasir's tablet and enters _their_ PIN to approve something, so verifying another user's PIN is the intended flow. A naive per-target lockout therefore hands anyone a way to **disable a supervisor mid-shift** by burning their attempts. That trade-off is the owner's to make.
+
+**Options, cheapest first:**
+
+1. **Audit every attempt** (additive, no downside, does not stop the attack but makes it visible).
+2. **Exponential backoff per (caller, target) pair** rather than a hard lockout — slows brute force without letting one attacker lock a supervisor out.
+3. **Hard lockout after N attempts**, with an explicit unlock path for a manager.
+4. **Bind the request to context** — require the caller to already hold the document/action the PIN is approving, so a random kasir cannot probe at all.
+
+Redis is already in the stack, so any of 1–3 is straightforward once the policy is chosen.
+
+Recorded in the sweep's allowlist as `KNOWN GAP — see B-15; allowlisted, not accepted`, so the test guards every other route without silently blessing this one.
 
 ### 🔴 B-14 — The demo box is HTTP-only, so geolocation and service workers are dead
 
@@ -734,7 +769,8 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
       Each role journey asserts where `(auth)/landing.ts` puts it and exactly which surfaces it can and cannot reach, so it doubles as a nav-level RBAC sweep — a slice of W6-03, though the server remains the real boundary. The SEES/HIDDEN lists are TRANSCRIBED from `lib/nav.ts`'s permission arrays rather than recomputed at runtime: a test that derives its expectations from the code under test proves nothing.
       **Caught while writing it:** summarising `/approvals`' gate instead of reading it produced two wrong expectations — that entry accepts ANY of ELEVEN approve keys, so finance (`payment.verify`) and hr_admin (`hr.leave.approve`) legitimately see the approvals inbox. The test was wrong, not the app
 - [ ] W6-02 offline adversarial — **partly blocked by B-14**: service workers do not register on an insecure origin, so the offline shell cannot be exercised on the demo box as deployed
-- [ ] W6-03 RBAC pen-test — per-module RBAC specs exist in the backend suite, but no systematic role × endpoint sweep
+- [x] **W6-03 RBAC sweep — DONE 2026-08-19** (the automated half). `apps/backend/test/rbac-endpoint-sweep.spec.ts` enumerates every route the compiled AppModule registers (100+) and fails if any is neither `@Public` nor `@RequirePermission` — mutating routes asserted separately. Found four unguarded: three deliberate and now documented (the two CONTRACTS §4.0 approval reads, and the attachment URL which `StorageService.assertEntityScope` enforces), and one real gap, **B-15**.
+      Not a full pen-test: this proves a guard EXISTS on every route, not that each key is the right one, and it does not probe for IDOR or scope-escape. Those remain manual
 - [ ] W6-04 financial correctness · [ ] W6-05 perf (NFR-01) · [ ] W6-06 topology soak
 
 ### Wave 7 — Deploy & handover ⬜

@@ -18,9 +18,9 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
 | **5 — Completion**        | 8      | 6      | 🔄 print + inbox DONE; node field package DONE, installer/signing owed; WA live test blocked |
 | **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
-| **6 — QA**                | 7      | 4      | 🔄 W6-00/01/03/06 DONE; W6-02 partial (B-14); W6-05 harness unrun; financial in progress     |
+| **6 — QA**                | 7      | 5      | 🔄 W6-00/01/03/04/06 DONE; W6-02 partial (B-14); W6-05 harness unrun. W6-04 found **B-16**   |
 | **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
-| **Totals**                | **62** | **52** | **84%**                                                                                      |
+| **Totals**                | **62** | **53** | **85%**                                                                                      |
 
 **Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
@@ -378,6 +378,24 @@ don't.
 - Login inputs carry **no `name` attribute** (React-generated ids only) — breaks password managers, autofill, and any selector-based automation.
 
 ## 2. ACTIVE BLOCKERS
+
+### 🔴 B-16 — the general ledger is structurally incomplete: 11 of 23 posting rules are never triggered
+
+**Opened:** 2026-08-19 · **Found by:** W6-04 · **Verified independently before recording**
+
+`packages/shared/src/gl/posting-rules.ts` defines 23 journal event types and `accounting.integration.spec.ts` proves the posting ENGINE balances for all 23. It proves it by hand-constructing each event and calling `postForEvent` directly — which is why nobody noticed that **most of those events are never published by production code**.
+
+Grepping every `journal.action` publish site outside specs leaves five files: `delivery/services/drop.service.ts`, `delivery/services/surat-jalan.service.ts`, `payroll/runs/runs.service.ts`, `pos/services/pos-void-refund.service.ts`, and the accounting module's own services. That is 12 event types emitted; the other 11 are defined, tested in isolation, and dead.
+
+**The worst one: `outlet_sales` (JOUT-03) is never emitted, so POS revenue never reaches the general ledger.** `outlet_sales` appears in exactly three places in the backend — the posting engine that knows how to post it, and two test files. `pos-sale.service.ts` has no `EventBus` reference at all.
+
+Also never emitted: `gudang_purchase`, `outlet_ingredient_usage` (COGS), `outlet_waste`/`gudang_waste`, `outlet_return_to_warehouse`, `gudang_stock_adjustment`/`outlet_stock_adjustment`, `gudang_goods_in`, `gudang_return_to_supplier`, `gudang_stock_revaluation`, `outlet_direct_purchase`, `outlet_petty_cash`.
+
+**Proven by execution, not by grep.** Two specs drive the real services and then assert the GL is empty: `waste-gl-posting.spec.ts` files and approves a cold-chain-breach waste report — the `waste_out` stock movement posts, and `journal_entries` has zero rows for it; `pos-online-order-gl-posting.spec.ts` does the same for a completed GoFood order. Both pin the CURRENT broken behaviour deliberately, so they go red the moment the wiring is fixed. That is the intended signal, not a passing grade.
+
+**Impact:** every financial report derived from the GL is wrong — not marginally, but structurally. Revenue, COGS, purchases, waste and stock adjustments are all absent; only payment-settlement and payroll postings land. Anything the owner reads off the P&L today is meaningless.
+
+**Not fixed.** Each of the 11 needs its amount, context and idempotency key derived correctly at the right lifecycle point, following the working `drop.service.ts` pattern. That is real design work on money, not a mechanical wiring pass, and it should not be done in the same breath as discovering it.
 
 ### 🔴 B-15 — `POST /auth/pin/verify` is an unthrottled PIN oracle
 
@@ -796,8 +814,11 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
     and geolocation, which is why they run at all
 - [x] **W6-03 RBAC sweep — DONE 2026-08-19** (the automated half). `apps/backend/test/rbac-endpoint-sweep.spec.ts` enumerates every route the compiled AppModule registers (100+) and fails if any is neither `@Public` nor `@RequirePermission` — mutating routes asserted separately. Found four unguarded: three deliberate and now documented (the two CONTRACTS §4.0 approval reads, and the attachment URL which `StorageService.assertEntityScope` enforces), and one real gap, **B-15**.
       Not a full pen-test: this proves a guard EXISTS on every route, not that each key is the right one, and it does not probe for IDOR or scope-escape. Those remain manual
-- [ ] W6-04 financial correctness — in progress
-- [~] **W6-05 perf (NFR-01) — harness written 2026-08-19, NOT YET RUN.** `perf/` holds a k6 suite:
+- [x] **W6-04 financial correctness — DONE 2026-08-19**, and it found the worst defect in the project so far (**B-16**).
+      Added, all verified by running them myself rather than trusting the report: `packages/shared/src/payroll/payroll.golden.test.ts` (22) closes ACCEPTANCE **E6** — a cent-exact golden payslip, BPJS cap/floor clamping, the December Article-17 true-up, idempotency, and line reconciliation (Σearnings=gross, Σdeductions, ΣemployerCost). Notably **no figure is asserted as "correct Indonesian tax"** — every number is re-derived from the same configured rows the engine consumes, so the test proves self-consistency and cannot silently encode a wrong tax claim.
+      `packages/shared/src/cart/online-order-net.property.test.ts` (9) closes **E7**'s arithmetic half. `apps/backend/src/kernel/stock-ledger/reconcile-opname.property.spec.ts` (2, live DB) proves `reconcile()` against arbitrary movement histories. `waste-gl-posting.spec.ts` and `pos-online-order-gl-posting.spec.ts` (2 each, live DB) are the executed proof of B-16.
+      **31 + 6 = 37 tests pass.** The six live-DB ones need `DATABASE_URL` set — they `describe.skipIf` without it, which is the house convention (CI sets it; two existing specs do the same), but it does mean they silently skip on a bare local `vitest run`
+- [~] **W6-05 perf (NFR-01) — harness written 2026-08-19, NOT YET RUN; both defects it found ARE fixed.** `perf/` holds a k6 suite:
   `nfr01-150-concurrent.js` (the gate — 150 VUs across a documented traffic mix, threshold `p(95)<3000ms`,
   the only number the repo actually states), five single-endpoint isolation scripts, a 1-VU smoke, and a
   sync-backlog script that mints real pairing tokens per outlet. **No run has happened** — no local backend
@@ -808,9 +829,10 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
     issuing per-row queries — 2/row and 5/row. **`myJobs` has no `LIMIT` at all**, so a driver with a long
     history fans out unbounded. This is the driver's pre-departure cache load, on a phone, on outlet wifi.
   - `pos/services/pos-sale.service.ts:488-511` (`GET /api/pos/sales`) — 2 queries/row. Minor.
-    Two missing indexes: `sales` filters on `(occurred_at AT TIME ZONE 'Asia/Makassar')::date` but only a
-    plain `occurred_at` index exists, so the day filter cannot use it; `surat_jalan` filters+sorts on
-    `status` + `planned_date` with only single-column indexes. Neither is fixed yet
+    Two missing indexes were also found. **Both defects are now fixed:**
+    - `queries.ts` gained batch twins (`selectDropsForSjs`/`LinesForSjs`/`TempLogsForSjs`/`SealsForSjs`, `selectSuratJalanHeaders`) and both builders now funnel through one pure `assembleSuratJalan`, so a list row and a detail row can no longer drift apart — they previously duplicated all 16 field mappings. `list` is 2 queries per PAGE instead of 2 per row; `myJobs` is 4 per page instead of 5 per row. Header order is re-imposed from the id page, since `ANY($1::uuid[])` returns rows unordered. **67 delivery tests pass unchanged**, which is what makes it fair to call this behaviour-identical.
+    - Migration `223_w6_05_perf_indexes_wita_date_and_sj_lists.sql`: expression indexes on the WITA business-day filter for `sales`, `pos_shifts` AND `void_refunds` (there were three such call sites, not one), plus `(planned_date DESC, created_at DESC)`, `(status, planned_date DESC, created_at DESC)` and `(driver_id, planned_date)` on `surat_jalan`, dropping the two now-redundant single-column prefixes. Verified with `EXPLAIN` under `enable_seqscan=off` that the planner actually MATCHES the expression index (`Index Cond: ((occurred_at AT TIME ZONE 'Asia/Makassar')::date = ...)`) and that the composite serves filter+ordering with no `Sort` node — an expression index that fails to match is invisible, so that check is the point, not a formality.
+      Still outstanding: `myJobs` has no `LIMIT`. Batching removed the per-row fan-out, but the result set is still unbounded when no date is passed
 - [x] **W6-06 topology soak — DONE 2026-08-19.** `apps/backend/src/modules/device-registry/topology-heartbeat-soak.integration.test.ts`
       (10 tests, pass) drives heartbeat/staleness over a compressed clock. It surfaced a **real defect**, now
       fixed: `staleness-sweep.service.ts` emits `outlet_offline`/`outlet_online` sync events, but neither op

@@ -82,16 +82,16 @@ with `E2E_BASE_URL=<url> pnpm e2e`.
 
 ## 5. Money and stock correctness (NFR-09/10)
 
-| #   | Criterion                                                                     | Evidence                                                                                |
-| --- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| E1  | Every journal event type has a posting rule                                   | `unit:packages/shared/src/gl/posting-rules.test.ts` — all 16 PRD + 9 D-04 events        |
-| E2  | Journals always balance (debits = credits)                                    | `int:accounting.integration.spec.ts`                                                    |
-| E3  | Money is never floating point                                                 | `unit:packages/shared/src/money.test.ts`                                                |
-| E4  | Stock balance always equals the sum of its movements, and never goes negative | `int:stock-ledger.property.spec.ts` (property-based)                                    |
-| E5  | Selling depletes ingredient stock via the recipe                              | Seed backfill + `int:stock-ledger`; **no e2e for a POS sale moving stock**              |
-| E6  | Payroll golden cases — a known input produces a known payslip                 | **NONE.** W6-04's core ask; PPh21/BPJS are seeded but no golden-case test exists        |
-| E7  | Platform (GoFood/ShopeeFood) net-received math                                | **NONE**                                                                                |
-| E8  | Calendar dates use the WITA business day, not UTC (NFR-10)                    | `unit:packages/shared/src/wita`; seed fixed 2026-08-19 after a live 8-hour-a-day defect |
+| #   | Criterion                                                                     | Evidence                                                                                                                                                                            |
+| --- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1  | Every journal event type has a posting rule                                   | `unit:packages/shared/src/gl/posting-rules.test.ts` — all 16 PRD + 9 D-04 events                                                                                                    |
+| E2  | Journals always balance (debits = credits)                                    | Engine: `int:accounting.integration.spec.ts`. **But see B-16 — 11 of 23 event types are never emitted in production, so most of the ledger is not merely unbalanced, it is absent** |
+| E3  | Money is never floating point                                                 | `unit:packages/shared/src/money.test.ts`                                                                                                                                            |
+| E4  | Stock balance always equals the sum of its movements, and never goes negative | `int:stock-ledger.property.spec.ts` (property-based)                                                                                                                                |
+| E5  | Selling depletes ingredient stock via the recipe                              | Seed backfill + `int:stock-ledger`; **no e2e for a POS sale moving stock**                                                                                                          |
+| E6  | Payroll golden cases — a known input produces a known payslip                 | `unit:packages/shared/src/payroll/payroll.golden.test.ts` (22 tests) — cent-exact, statutory on/off, BPJS clamping, December Art-17 true-up, idempotency                            |
+| E7  | Platform (GoFood/ShopeeFood) net-received math                                | Arithmetic: `unit:packages/shared/src/cart/online-order-net.property.test.ts` (9, property-based). **GL leg: FAILS — never posted, B-16**                                           |
+| E8  | Calendar dates use the WITA business day, not UTC (NFR-10)                    | `unit:packages/shared/src/wita`; seed fixed 2026-08-19 after a live 8-hour-a-day defect                                                                                             |
 
 ## 6. Offline and sync (NFR-07)
 
@@ -117,13 +117,13 @@ with `E2E_BASE_URL=<url> pnpm e2e`.
 
 ## Standing gaps, ranked
 
-1. **B-15 — PIN oracle.** Any authenticated caller can brute-force any user's PIN. Mitigation is a product decision; four options are costed in PROGRESS.md.
-2. **B-14 — no HTTPS.** Blocks live tracking outright and half of the offline suite (F4, C7, NFR-07).
-3. **Payroll golden cases (E6).** Money that people receive, with no test asserting a known input yields a known payslip.
+1. **B-16 — the GL is structurally incomplete.** POS revenue, COGS, purchases, waste and stock adjustments never post. Every GL-derived report is currently meaningless. Proven by execution, not inference.
+2. **B-15 — PIN oracle.** Any authenticated caller can brute-force any user's PIN. Mitigation is a product decision; four options are costed in PROGRESS.md.
+3. **B-14 — no HTTPS.** Blocks live tracking outright and half of the offline suite (F4, C7, NFR-07).
 4. **Offsite backups.** A restore drill passed, but every dump shares a disk with the database.
 5. **IDOR / scope-escape sweep (B6, B7).** Guards are proven present; cross-location leakage is not disproven.
 6. **NFR-01 has never been measured.** The harness is written; nobody has run it against a real instance.
-7. **Two confirmed N+1 reads** on the driver's `my-jobs` (unbounded — no `LIMIT`) and the dispatcher's SJ list, plus two missing indexes. Found by W6-05, not yet fixed.
+7. **`my-jobs` is still unbounded** — the N+1 fan-out and the missing indexes are fixed (batched reads + migration 223), but the driver's job query has no `LIMIT` when no date is passed.
 
 ## Deliberately not automated
 

@@ -33,7 +33,9 @@ import { withWrite } from '../db-tx';
 import { allowedStorageTypesForShipment, requiredAreaTypeFor } from '../storage-type.util';
 import {
   buildSuratJalanFull,
-  buildSuratJalanSummary,
+  buildSuratJalanSummaryMany,
+  buildSuratJalanFullMany,
+  selectSuratJalanHeaders,
   selectLinesForSj,
   selectSuratJalanHeader,
   selectSuratJalanHeaderForUpdate,
@@ -102,11 +104,18 @@ export class SuratJalanService {
       [...params, pageSize, (page - 1) * pageSize],
     );
 
-    const rows: SuratJalan[] = [];
-    for (const { id } of idsRes.rows) {
-      const header = await selectSuratJalanHeader(client, id);
-      if (header) rows.push(await buildSuratJalanSummary(client, header));
-    }
+    // Batched, not looped: the id page is resolved to headers in ONE query and
+    // their drops in one more. The previous `for` loop issued 2 queries per row
+    // (50 rows => 100 round trips for one list page).
+    const headers = await selectSuratJalanHeaders(
+      client,
+      idsRes.rows.map((r) => r.id),
+    );
+    const byId = new Map(headers.map((h) => [h.id, h]));
+    // `selectSuratJalanHeaders` returns rows in arbitrary order, so re-impose
+    // the page's own ORDER BY rather than trusting Postgres to have kept it.
+    const ordered = idsRes.rows.map(({ id }) => byId.get(id)).filter((h) => h !== undefined);
+    const rows = await buildSuratJalanSummaryMany(client, ordered);
     return { rows, total, page, pageSize };
   }
 
@@ -133,12 +142,15 @@ export class SuratJalanService {
       `SELECT sj.id FROM surat_jalan sj WHERE sj.driver_id = $1 ${dateFilter} ORDER BY sj.planned_date ASC`,
       params,
     );
-    const out: SuratJalan[] = [];
-    for (const { id } of res.rows) {
-      const header = await selectSuratJalanHeader(client, id);
-      if (header) out.push(await buildSuratJalanFull(client, header));
-    }
-    return out;
+    // Batched — this is the driver's pre-departure cache load (F13), on a phone
+    // on outlet wifi. It was 5 queries per SJ with no LIMIT on the id query.
+    const headers = await selectSuratJalanHeaders(
+      client,
+      res.rows.map((r) => r.id),
+    );
+    const byId = new Map(headers.map((h) => [h.id, h]));
+    const ordered = res.rows.map(({ id }) => byId.get(id)).filter((h) => h !== undefined);
+    return buildSuratJalanFullMany(client, ordered);
   }
 
   // ── create / edit ────────────────────────────────────────────────────

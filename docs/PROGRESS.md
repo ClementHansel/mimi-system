@@ -1,6 +1,6 @@
 # Mimi Chicken OS — Progress Tracker
 
-**Last updated:** 2026-08-18, from a measured run on a freshly reset database.
+**Last updated:** 2026-08-19, from a measured run on a freshly reset database + a full e2e pass on the live box.
 **Maintenance rule:** this file is updated by the coordinator **every time a task or wave completes**, and whenever a blocker opens, changes state, or closes.
 
 Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not started · `[!]` blocked
@@ -27,15 +27,51 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | Workspace          | Result                                                                  |
 | ------------------ | ----------------------------------------------------------------------- |
 | `@mimi/backend`    | **803 pass / 0 fail** (8 skipped), 82 files                             |
-| `@mimi/frontend`   | **433 pass (433)**, 66 files                                            |
+| `@mimi/frontend`   | **435 pass (435)**, 67 files                                            |
 | `@mimi/shared`     | 211 pass · `@mimi/sync-protocol` 141 pass · `@mimi/branch-node` 42 pass |
-| **Campaign total** | **1,630 passing**                                                       |
+| `@mimi/e2e`        | **24 pass (24)**, 4 files — real browser vs the live box (`pnpm e2e`)   |
+| **Campaign total** | **1,632 unit/integration + 24 e2e**                                     |
 
 102 migrations (latest **222**) · 106 tables + 4 matviews · 10 roles · `tsc`, `lint` (0 errors) and `format:check` all clean.
 
 **CI is GREEN** — first passing run in 11 commits; see 1c-3 for why it had been red and never reached the tests.
 
 **Deployed:** `http://150.109.15.108:8080` — demo box, mock data, auto-deploys from `main`. Own Postgres/Redis/MinIO, one public port, seven neighbouring projects untouched.
+
+---
+
+## 1a. Session close-out — what is done, and what is not (2026-08-19)
+
+Written at the end of the 2026-08-18/19 session so the next one starts from
+facts rather than from re-reading the narrative below. Everything marked done
+was verified on the live box, not inferred from a passing unit test.
+
+### Done and verified
+
+| Item                                                                | Evidence                                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Blank-page incident (half-valid session) — fixed                    | 4 poisoned session shapes recover to `/login`, covered by e2e             |
+| Sales consume stock; `mv_item_usage_daily` populated                | 1,093 `usage_out` movements, matview 0 → 496 rows                         |
+| 32 empty tables filled; statutory payroll reachable                 | **zero** empty tables on the VPS, ledger invariant clean                  |
+| Driver sees address + one-tap navigation                            | e2e asserts the Google/Waze deep links carry real coordinates             |
+| Gudang plans the route (order + per-stop brief, editable mid-route) | e2e round-trips a brief and re-reads it from the server                   |
+| Hub = every interface for owner/superadmin; all others redirected   | e2e checks 15 cards for both roles, and the redirect for kepala gudang    |
+| `superadmin` role (10th), central in RLS                            | migration 222; test fails and NAMES any permission it ever lacks          |
+| Seed dates use the WITA business day                                | demo Surat Jalan lands on WITA today, verified at 00:xx WITA              |
+| CI green                                                            | both jobs pass; had been red for 11 commits, failing before the tests ran |
+| `@mimi/e2e` is a real suite                                         | **24 specs, 24 passing, 0 skipped** against the live box                  |
+
+### Not done — carried into the next session
+
+| Item                                                   | Why it is open                                                                                                                                                    |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B-14 — HTTPS** (see ACTIVE BLOCKERS)                 | Needs a domain + TLS, not code. Blocks live truck tracking entirely and degrades offline-first; everything else works over HTTP today                             |
+| **Live truck tracking cannot function**                | Built and deployed, but browsers refuse geolocation on an insecure origin. Unblocks itself the moment B-14 closes                                                 |
+| **Live-DB suites drain GDG stock**                     | Several `COMMIT` real movements instead of rolling back, so each full run draws the warehouse down. **Mitigated** (GDG stocked 10× deeper), root cause untouched  |
+| **`attachment-store.test.ts` is flaky**                | Failed 2 of ~8 full runs, passes every time in isolation, has never failed in CI. No fix attempted — guessing at someone else's package is worse than flagging it |
+| **e2e is not wired into any pipeline**                 | Runs by hand via `pnpm e2e`. A post-deploy smoke job is the obvious next step but would need browser install in CI and a decision on failing a deploy on it       |
+| **`/driver` renders empty for owner/superadmin**       | `my-jobs` is a personal queue keyed on a `drivers` row neither account has. Working as designed; noted so it is not re-reported as a bug                          |
+| **Pre-hydration clicks are silently ignored app-wide** | Only the login form guards it. Elsewhere the first click on a server-rendered control can do nothing, with no feedback                                            |
 
 ---
 
@@ -240,6 +276,83 @@ Not noticed earlier because the failure was at the **Lint** step, so the test su
 ### Known-flaky, unresolved
 
 `attachment-store.test.ts` ("evicts oldest UPLOADED blobs") failed 2 of roughly 8 full runs and passes every time in isolation. Load- or ordering-sensitive; it has **not** failed in CI. The eviction logic reads as deterministic, so no fix was attempted — guessing at a fix in someone else's package is worse than leaving it flagged.
+
+---
+
+### 🟢 The e2e package is real now — and it paid for itself on the first run
+
+`@mimi/e2e` had been a stub since Wave 1: a `package.json`, an empty `tests/`
+holding only `.gitkeep`, and no Playwright config at all. It now has **24 specs**
+across four files — session recovery, the hub, the dispatcher, the driver —
+covering the flows this session built and the incident it opened with.
+
+Deliberate choices worth knowing before extending it:
+
+- **No `webServer`.** The suite runs against an already-running instance
+  (`E2E_BASE_URL`, default `localhost:3000`). Booting Postgres + Redis + MinIO +
+  backend + frontend from a test runner would duplicate `docker-compose.yml`
+  badly and hide which layer broke.
+- **No retries, serial, one worker.** A retry converts a real intermittent
+  defect into a green run, which is precisely how CI sat red for eleven commits
+  without anyone reading it. Serial because every spec logs in through the real
+  UI against ONE shared database.
+- **Not in `pnpm test`.** The unit/integration suites must stay runnable with
+  nothing served; a browser suite that "passes" because the app was down is
+  worse than no suite. Run it with `pnpm e2e`.
+
+**It found a credential leak on its very first run.** The suite clicks Submit as
+soon as the field accepts text — what a real user does on a slow phone — and the
+browser navigated to `/login?username=driver1&password=password123`.
+`<form onSubmit>` only prevents the default submission once React has HYDRATED;
+before that, a click (or Enter) performs the browser's own GET, writing the
+password into the URL bar, history, the next request's Referer and the server
+access log. Worst on cheap phones on weak connections — the driver's device.
+Fixed with two independent guards (`method="post"`, plus the submit disabled
+until hydrated) and a regression test asserting both.
+
+> **Class of bug worth remembering:** anything interactive that is
+> server-rendered does nothing at all before hydration — silently. The login
+> form submitted natively; a Surat Jalan row's click handler simply wasn't
+> there yet. Only the login form has an explicit guard; elsewhere the app just
+> ignores the first click.
+
+**Three of the suite's early failures were the suite's own bugs**, recorded
+because each is a trap worth not repeating: filling login fields BEFORE
+hydration (controlled inputs discard the text and post an empty username);
+filling two of set-pin's THREE fields, leaving confirm empty so validation
+failed and the page never navigated; and evaluating a skip condition before the
+async content loaded — a skip reading "not applicable" when the truth was "I
+looked too early" is worse than a failure, because reports show it as fine.
+
+### 🔴 Seed dates were UTC, so drivers saw nothing for 8 hours a day — **FIXED**
+
+The e2e suite passed all evening and then skipped every driver test at 00:06
+WITA. Not flakiness — it had walked into a real defect:
+
+```
+host UTC : 2026-08-18 16:06   <- what the seed wrote
+host WITA: 2026-08-19 00:06   <- what the driver's app asks for
+```
+
+`isoDate()` was `toISOString().slice(0, 10)` — the UTC calendar day. Every
+surface asks the server for "today" in the business timezone (the driver screen
+fetches `my-jobs?date=<local today>`), so between 00:00 and 08:00 WITA the two
+disagreed: the seed stamped yesterday onto "today's" Surat Jalan and the
+driver's phone read "Tidak ada Surat Jalan untuk hari ini" against a freshly
+seeded database. It also silently defeated the roll-forward added earlier that
+day, which used the same helper.
+
+Both seed files now derive calendar dates from `@mimi/shared`'s
+`businessDateOf`. **This is the third DATE/WITA defect in this tracker** (§1c
+has two more) and the first found by a test rather than by someone noticing a
+wrong number on screen.
+
+Its own fallout, also fixed: importing `@mimi/shared` meant the seed needed the
+workspace BUILT, which CI's "Migrations + seed" job and the VPS's bare
+`node:22-alpine` container did not do. `db:seed`/`db:reset` now build the
+package first — fixed in the root script rather than in `ci.yml`, so every
+caller is covered instead of one workflow file knowing a secret the others
+don't.
 
 ---
 

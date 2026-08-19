@@ -18,9 +18,9 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
 | **5 — Completion**        | 8      | 6      | 🔄 print layer DONE; node packaging + notifications PARTIAL (WA blocked)                     |
 | **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
-| **6 — QA**                | 7      | 0      | 🔄 W6-01 STARTED: 27 e2e specs, but 4 of 8 roles; the other six untouched                    |
+| **6 — QA**                | 7      | 1      | 🔄 W6-01 DONE (39 e2e specs, all 10 roles); the other six QA tasks untouched                 |
 | **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
-| **Totals**                | **62** | **48** | **77%**                                                                                      |
+| **Totals**                | **62** | **49** | **79%**                                                                                      |
 
 **Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
 
@@ -29,8 +29,8 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | `@mimi/backend`    | **803 pass / 0 fail** (8 skipped), 82 files                             |
 | `@mimi/frontend`   | **435 pass (435)**, 67 files                                            |
 | `@mimi/shared`     | 211 pass · `@mimi/sync-protocol` 141 pass · `@mimi/branch-node` 42 pass |
-| `@mimi/e2e`        | **24 pass (24)**, 4 files — real browser vs the live box (`pnpm e2e`)   |
-| **Campaign total** | **1,632 unit/integration + 24 e2e**                                     |
+| `@mimi/e2e`        | **39 pass (39)**, 6 files — real browser vs the live box (`pnpm e2e`)   |
+| **Campaign total** | **1,632 unit/integration + 39 e2e**                                     |
 
 102 migrations (latest **222**) · 106 tables + 4 matviews · 10 roles · `tsc`, `lint` (0 errors) and `format:check` all clean.
 
@@ -61,6 +61,7 @@ was verified on the live box, not inferred from a passing unit test.
 | CI green                                                            | both jobs pass; had been red for 11 commits, failing before the tests ran     |
 | Nightly backups scheduled + restore drill passed                    | cron proven under `env -i`; dump restored into a throwaway DB, counts matched |
 | Printable Surat Jalan + slip gaji (W5-05)                           | e2e opens both through their real buttons; `/print` still auth-gated          |
+| Role journeys for all 10 roles (W6-01)                              | 39 e2e specs green against the live box; doubles as a nav-level RBAC sweep    |
 | `@mimi/e2e` is a real suite                                         | **24 specs, 24 passing, 0 skipped** against the live box                      |
 
 ### Not done — carried into the next session
@@ -718,7 +719,9 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
 ### Wave 6 — QA ⬜
 
 - [ ] W6-00 QA lead / acceptance matrix
-- [~] **W6-01 E2E × 8 roles — STARTED.** `@mimi/e2e` is real: 24 specs passing against the live box (session recovery, hub, dispatcher, driver). It covers **4 roles** — owner, superadmin, kepala_gudang, driver. The remaining five (manager, finance, supervisor, leader_outlet, kasir, hr_admin) have no journey spec
+- [x] **W6-01 E2E × roles — DONE 2026-08-19.** `@mimi/e2e` is real: **39 specs passing against the live box**, covering session recovery, the hub, dispatcher route planning, the driver, both printable documents, and a journey for **all ten roles** (the nine business roles + superadmin).
+      Each role journey asserts where `(auth)/landing.ts` puts it and exactly which surfaces it can and cannot reach, so it doubles as a nav-level RBAC sweep — a slice of W6-03, though the server remains the real boundary. The SEES/HIDDEN lists are TRANSCRIBED from `lib/nav.ts`'s permission arrays rather than recomputed at runtime: a test that derives its expectations from the code under test proves nothing.
+      **Caught while writing it:** summarising `/approvals`' gate instead of reading it produced two wrong expectations — that entry accepts ANY of ELEVEN approve keys, so finance (`payment.verify`) and hr_admin (`hr.leave.approve`) legitimately see the approvals inbox. The test was wrong, not the app
 - [ ] W6-02 offline adversarial — **partly blocked by B-14**: service workers do not register on an insecure origin, so the offline shell cannot be exercised on the demo box as deployed
 - [ ] W6-03 RBAC pen-test — per-module RBAC specs exist in the backend suite, but no systematic role × endpoint sweep
 - [ ] W6-04 financial correctness · [ ] W6-05 perf (NFR-01) · [ ] W6-06 topology soak

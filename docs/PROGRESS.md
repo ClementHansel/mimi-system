@@ -18,7 +18,7 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
 | **5 — Completion**        | 8      | 6      | 🔄 print + notification inbox DONE; node packaging PARTIAL; WA live test blocked             |
 | **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
-| **6 — QA**                | 7      | 1      | 🔄 W6-01 DONE (39 e2e specs, all 10 roles); the other six QA tasks untouched                 |
+| **6 — QA**                | 7      | 1      | 🔄 W6-01 DONE (41 e2e specs, all 10 roles); the other six QA tasks untouched                 |
 | **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
 | **Totals**                | **62** | **49** | **79%**                                                                                      |
 
@@ -29,8 +29,8 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | `@mimi/backend`    | **803 pass / 0 fail** (8 skipped), 82 files                             |
 | `@mimi/frontend`   | **435 pass (435)**, 67 files                                            |
 | `@mimi/shared`     | 211 pass · `@mimi/sync-protocol` 141 pass · `@mimi/branch-node` 42 pass |
-| `@mimi/e2e`        | **39 pass (39)**, 6 files — real browser vs the live box (`pnpm e2e`)   |
-| **Campaign total** | **1,632 unit/integration + 39 e2e**                                     |
+| `@mimi/e2e`        | **41 pass (41)**, 7 files — real browser vs the live box (`pnpm e2e`)   |
+| **Campaign total** | **1,632 unit/integration + 41 e2e**                                     |
 
 102 migrations (latest **222**) · 106 tables + 4 matviews · 10 roles · `tsc`, `lint` (0 errors) and `format:check` all clean.
 

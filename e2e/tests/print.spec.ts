@@ -66,17 +66,34 @@ test.describe('printable documents', () => {
     await page.goto('/me');
 
     const body = page.locator('body');
-    await expect(body).toContainText(/Slip Gaji|Akun Saya/, { timeout: 20_000 });
+    await expect(body).toContainText('Akun Saya', { timeout: 20_000 });
+
+    // `/me` opens on Absen; the payslips live behind their own tab. Earlier
+    // versions of this spec skipped with "no payslip listed" without ever
+    // getting to the tab — the data was there the whole time.
+    await page.getByRole('tab', { name: /Slip Gaji/ }).click();
 
     // The panel lists each period collapsed; the print button only exists
     // inside an expanded slip. Expand the first one before looking for it —
     // the original spec skipped here and reported "no payslip", which was the
     // test not clicking rather than the data being absent.
-    const slipRows = page.locator('button', { hasText: /^\d{4}-\d{2}$/ });
-    if ((await slipRows.count()) === 0) {
+    // WAIT for the panel to resolve before deciding anything. The slips are
+    // fetched after the tab mounts, so counting immediately saw zero and the
+    // spec skipped itself with "no payslip listed" while the slip was on
+    // screen — the same look-too-early mistake already recorded for the
+    // driver specs.
+    const body2 = page.locator('body');
+    await expect(body2).toContainText(/\d{4}-\d{2}|Belum ada slip/, { timeout: 20_000 });
+    if (/Belum ada slip/.test(await body2.innerText())) {
       test.skip(true, 'no payslip listed for this account/year');
     }
-    await slipRows.first().click();
+
+    // The period row is a clickable CARD, not a <button> — target the period
+    // text, which is what a user actually clicks.
+    await page
+      .getByText(/^\d{4}-\d{2}$/)
+      .first()
+      .click();
 
     const slipLink = page.locator('a[href^="/print/slip-gaji/"]');
     await expect(slipLink.first()).toBeVisible({ timeout: 10_000 });

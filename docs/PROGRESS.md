@@ -16,7 +16,7 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                                             |
 | **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                                    |
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
-| **5 — Completion**        | 8      | 6      | 🔄 print layer DONE; node packaging + notifications PARTIAL (WA blocked)                     |
+| **5 — Completion**        | 8      | 6      | 🔄 print + notification inbox DONE; node packaging PARTIAL; WA live test blocked             |
 | **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
 | **6 — QA**                | 7      | 1      | 🔄 W6-01 DONE (39 e2e specs, all 10 roles); the other six QA tasks untouched                 |
 | **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
@@ -62,6 +62,7 @@ was verified on the live box, not inferred from a passing unit test.
 | Nightly backups scheduled + restore drill passed                    | cron proven under `env -i`; dump restored into a throwaway DB, counts matched |
 | Printable Surat Jalan + slip gaji (W5-05)                           | e2e opens both through their real buttons; `/print` still auth-gated          |
 | Role journeys for all 10 roles (W6-01)                              | 39 e2e specs green against the live box; doubles as a nav-level RBAC sweep    |
+| In-app notification inbox (W5-08 surfaces)                          | bell was decorative over a live API; now badge + inbox + read, e2e-covered    |
 | `@mimi/e2e` is a real suite                                         | **24 specs, 24 passing, 0 skipped** against the live box                      |
 
 ### Not done — carried into the next session
@@ -654,7 +655,17 @@ Neither `ApprovalService` nor `ReplenishmentService`/`ReplenishmentAdvancementSe
     still requires a session
 - [x] **W5-06** posting-rule completion — **verified done 2026-08-19**, not by reading the code but by the coverage tests in `packages/shared/src/gl/posting-rules.test.ts`: every one of the 16 PRD `JournalEventType`s AND all 9 D-04 `JournalSystemEventType`s has at least one rule (7 tests). The register had this open; it was not
 - [~] **W5-07** branch-node packaging — **PARTIAL.** A working `Dockerfile` and a hardware-free `SIMULATE=true` dev profile exist, so the image builds and runs. What does not exist is the field-installable package BUILD-PLAN §4 promises under `infrastructure/` — no installer, no provisioning runbook, no pairing walkthrough for a box someone carries to an outlet
-- [~] **W5-08** notification surfaces + n8n WA live test — **PARTIAL.** `notification_outbox` and the three channels (`in_app`/`email`/`whatsapp`) exist and the header renders in-app notifications. The WA live test is **blocked**: `WA_ENABLED=false` on the VPS and no n8n/WhatsApp credentials have been supplied
+- [~] **W5-08** notification surfaces + n8n WA live test — **surfaces DONE 2026-08-19; WA half still blocked.**
+  The earlier note here ("the header renders in-app notifications") was wrong. The bell was a `<button>`
+  with no `onClick`, no badge and no panel, while `GET /notifications`, `POST /notifications/:id/read` and
+  `/read-all` had been live all along with 56 rows behind them — every notification the system raised
+  (an approval waiting on you, a cold-chain breach, a sync conflict) was written where nobody could read it.
+  Now a real inbox: unread badge, dropdown, per-item and mark-all read, and a link through to the document
+  a notification names. Polled at 60s rather than pushed over the sync socket — that socket is for DEVICE
+  sync, and coupling user messaging to it would mean any browser without a device credential (which is
+  every browser today) silently loses its notifications too.
+  **Still blocked:** the n8n/WhatsApp live test — `WA_ENABLED=false` and no credentials supplied. Counted
+  as PARTIAL rather than done for exactly that reason
 
 ### Wave 5b — Owner-driven UI round (2026-08-17) 🔄
 

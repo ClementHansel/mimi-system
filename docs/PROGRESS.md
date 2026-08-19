@@ -379,23 +379,36 @@ don't.
 
 ## 2. ACTIVE BLOCKERS
 
-### 🔴 B-16 — the general ledger is structurally incomplete: 11 of 23 posting rules are never triggered
+### 🟠 B-16 — the general ledger is structurally incomplete: 13 of 25 posting rules were never triggered; **revenue and COGS now post, 11 still do not**
 
-**Opened:** 2026-08-19 · **Found by:** W6-04 · **Verified independently before recording**
+**Opened:** 2026-08-19 · **Found by:** W6-04 · **Partially fixed 2026-08-19** · **Verified independently before recording**
+
+**Count correction:** the original report said "13 of 23", which cannot both be true — the enums hold 16 `JournalEventType` + 9 `JournalSystemEventType` = **25**, of which 12 are emitted and **13 were dead**. The list of 13 was right; the 23 was not. Recorded because the wrong denominator was briefly copied into this file.
 
 `packages/shared/src/gl/posting-rules.ts` defines 23 journal event types and `accounting.integration.spec.ts` proves the posting ENGINE balances for all 23. It proves it by hand-constructing each event and calling `postForEvent` directly — which is why nobody noticed that **most of those events are never published by production code**.
 
-Grepping every `journal.action` publish site outside specs leaves five files: `delivery/services/drop.service.ts`, `delivery/services/surat-jalan.service.ts`, `payroll/runs/runs.service.ts`, `pos/services/pos-void-refund.service.ts`, and the accounting module's own services. That is 12 event types emitted; the other 11 are defined, tested in isolation, and dead.
+Grepping every `journal.action` publish site outside specs left five files: `delivery/services/drop.service.ts`, `delivery/services/surat-jalan.service.ts`, `payroll/runs/runs.service.ts`, `pos/services/pos-void-refund.service.ts`, and the accounting module's own services. That is 12 event types emitted; the other 13 were defined, tested in isolation, and dead.
 
-**The worst one: `outlet_sales` (JOUT-03) is never emitted, so POS revenue never reaches the general ledger.** `outlet_sales` appears in exactly three places in the backend — the posting engine that knows how to post it, and two test files. `pos-sale.service.ts` has no `EventBus` reference at all.
+**The worst two are now FIXED: `outlet_sales` (JOUT-03) and `outlet_ingredient_usage` (JOUT-02) — POS revenue and COGS.**
 
-Also never emitted: `gudang_purchase`, `outlet_ingredient_usage` (COGS), `outlet_waste`/`gudang_waste`, `outlet_return_to_warehouse`, `gudang_stock_adjustment`/`outlet_stock_adjustment`, `gudang_goods_in`, `gudang_return_to_supplier`, `gudang_stock_revaluation`, `outlet_direct_purchase`, `outlet_petty_cash`.
+CONTRACTS §6.2 defines both as a "daily aggregate of applied `sales.completed`", and the posting engine's own comment says its caller is a daily aggregator. No aggregator existed, and the backend has no scheduler at all, so neither ever fired. `accounting/daily-posting.service.ts` is that missing caller:
+
+- Aggregating a finished DAY, rather than emitting per sale, is deliberate and is what the contract asks for: a sale is created offline, synced late, and may be voided afterwards, so a per-sale emit would post revenue on the wrong calendar day or post revenue that later reverses.
+- **The cash leg is net of change given.** `Σ payments` exceeds `Σ total` by exactly the change handed back, so the obvious "sum payments by method" would post a permanently unbalanced entry. There is an explicit guard that refuses to post rather than write an unbalanced day, and a test that hands over 100k for a 75k sale to prove it.
+- `ref_id` is a UUIDv5 derived from (location, business date), not generated — that is what makes a re-run a no-op against the journal's `UNIQUE (event_type, ref_type, ref_id)` instead of double-posting revenue.
+- `occurredAt` is built as `<date>T23:59:59+08:00` so `entryDate = occurredAt.slice(0,10)` lands on the WITA business day — the same UTC-vs-WITA trap the seed already fell into once.
+- `daily-posting.scheduler.ts` re-attempts YESTERDAY every 30 minutes (`OnApplicationBootstrap` + `setInterval`, the house pattern — this workspace has no `@nestjs/schedule`). Short interval + idempotent work is chosen over a real 01:00 cron on purpose: a once-a-day cron silently loses the day if the process is restarting at 01:00, whereas this self-heals after any outage. It never posts TODAY, because a partial day posted now would become permanent.
+- `POST /api/accounting/daily-posting` (`accounting.journal.post`) backfills a named day by hand.
+
+`daily-posting.spec.ts` (4 tests, live DB) proves a cash sale reaches Dr 1000 / Cr 4000, that a split-payment day with change still balances, that a re-run does not double-post, and that a day with no trading posts nothing.
+
+**Still never emitted — 11 remaining, and this is what keeps B-16 open:** `gudang_purchase`, `outlet_waste`/`gudang_waste`, `outlet_return_to_warehouse`, `gudang_stock_adjustment`/`outlet_stock_adjustment`, `gudang_goods_in`, `gudang_return_to_supplier`, `gudang_stock_revaluation`, `outlet_direct_purchase`, `outlet_petty_cash`. Unlike the two above these are event-triggered, not daily aggregates — each belongs at a specific lifecycle point (waste approved, return shipped, opname applied, PO received) in a service that currently has no `EventBus` reference.
 
 **Proven by execution, not by grep.** Two specs drive the real services and then assert the GL is empty: `waste-gl-posting.spec.ts` files and approves a cold-chain-breach waste report — the `waste_out` stock movement posts, and `journal_entries` has zero rows for it; `pos-online-order-gl-posting.spec.ts` does the same for a completed GoFood order. Both pin the CURRENT broken behaviour deliberately, so they go red the moment the wiring is fixed. That is the intended signal, not a passing grade.
 
-**Impact:** every financial report derived from the GL is wrong — not marginally, but structurally. Revenue, COGS, purchases, waste and stock adjustments are all absent; only payment-settlement and payroll postings land. Anything the owner reads off the P&L today is meaningless.
+**Impact now:** the P&L's revenue and cost-of-sales lines are real from this change onwards. Purchases, waste, returns and stock adjustments are still absent, so the ledger is usable for sales performance but **not yet a complete set of books**. Days traded BEFORE this change are still unposted — the endpoint backfills them, but nothing has run that backfill yet.
 
-**Not fixed.** Each of the 11 needs its amount, context and idempotency key derived correctly at the right lifecycle point, following the working `drop.service.ts` pattern. That is real design work on money, not a mechanical wiring pass, and it should not be done in the same breath as discovering it.
+**Remaining work.** Each of the 11 needs its amount, context and idempotency key derived correctly at the right lifecycle point, following the `drop.service.ts` pattern. That is design work on money, not a mechanical wiring pass.
 
 ### 🔴 B-15 — `POST /auth/pin/verify` is an unthrottled PIN oracle
 

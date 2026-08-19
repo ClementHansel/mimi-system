@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsDateString,
   IsISO8601,
   IsIn,
   IsInt,
@@ -343,4 +344,17 @@ export class ExceptionVerdictDto {
   @IsOptional()
   @IsBoolean()
   routeToPayrollDeduction?: boolean;
+}
+
+/** `POST /api/accounting/daily-posting` — B-16's JOUT-02/JOUT-03 aggregator. */
+export class PostDailyDto {
+  /** WITA business date (`YYYY-MM-DD`). Defaults to YESTERDAY, because posting a day that is still trading would post a partial day and then refuse to correct it (the entry is idempotent by design). */
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  /** Restrict to one outlet. Omit to post every outlet that traded that day. */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 }

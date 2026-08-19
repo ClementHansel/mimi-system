@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
-import type { Account, Paginated } from '@mimi/shared';
-import { RoleKey } from '@mimi/shared';
+import type { Account, Paginated, UUID } from '@mimi/shared';
+import { RoleKey, businessDateOf } from '@mimi/shared';
 import { Audited, RequirePermission } from '../../common/decorators';
 import type { RequestWithDbContext } from '../../common/guards/rls-context.guard';
 import { ChartOfAccountsService } from './chart-of-accounts.service';
@@ -8,6 +8,7 @@ import { FiscalPeriodsService } from './fiscal-periods.service';
 import { JournalService } from './journal.service';
 import { PaymentVerificationsService, type PaymentActor } from './payment-verifications.service';
 import { ReportsService } from './reports.service';
+import { DailyPostingService } from './daily-posting.service';
 import { ExceptionsService } from './exceptions.service';
 import {
   BalanceSheetQueryDto,
@@ -24,6 +25,7 @@ import {
   ProfitLossQueryDto,
   RejectPaymentDto,
   ReopenPeriodDto,
+  PostDailyDto,
   ReverseJournalEntryDto,
   StockValueQueryDto,
   TrialBalanceQueryDto,
@@ -31,6 +33,18 @@ import {
   UploadProofDto,
   VerifyPaymentDto,
 } from './dto/accounting.dto';
+
+/**
+ * The most recent business day that is definitely FINISHED, in WITA.
+ *
+ * Defaulting to today would post a day still being traded, and because the
+ * entry is idempotent by (event_type, ref_type, ref_id) the partial figure
+ * would then be permanent — a later re-run silently does nothing. Yesterday
+ * is the only safe default.
+ */
+function yesterdayInWita(): string {
+  return businessDateOf(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+}
 
 function actorOf(req: RequestWithDbContext): PaymentActor {
   const user = req.user!;
@@ -115,6 +129,35 @@ export class JournalController {
     @Body() dto: ReverseJournalEntryDto,
   ) {
     return this.journal.reverse(req.dbClient!, req.user!.sub, id, dto.reason);
+  }
+}
+
+/**
+ * CONTRACTS.md §6.2 JOUT-02/JOUT-03 — post a finished business day to the GL.
+ *
+ * This exists because the backend has NO scheduler: without something calling
+ * it, the two daily-aggregate posting rules never fire and POS revenue and
+ * COGS never reach the ledger at all (B-16). It is idempotent, so a nightly
+ * cron may call it and a human may re-run it for a day that was missed.
+ */
+@Controller('accounting/daily-posting')
+export class DailyPostingController {
+  constructor(private readonly daily: DailyPostingService) {}
+
+  @Post()
+  @RequirePermission('accounting.journal.post')
+  @Audited({ entityType: 'journal_entries', action: 'accounting.journal.post' })
+  async post(@Req() req: RequestWithDbContext, @Body() dto: PostDailyDto) {
+    const client = req.dbClient!;
+    const date = dto.date ?? yesterdayInWita();
+    const locations = dto.locationId
+      ? [dto.locationId as UUID]
+      : await this.daily.locationsWithActivity(client, date);
+    const results = [];
+    for (const locationId of locations) {
+      results.push(await this.daily.postBusinessDay(client, locationId, date));
+    }
+    return { businessDate: date, locations: results.length, results };
   }
 }
 

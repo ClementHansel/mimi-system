@@ -3,6 +3,7 @@ import { EventsModule } from '../../kernel/events/events.module';
 import { SyncEngineModule } from '../../kernel/sync/sync.module';
 import {
   AccountsController,
+  DailyPostingController,
   ExceptionsController,
   JournalController,
   PaymentsController,
@@ -16,6 +17,8 @@ import { JournalService } from './journal.service';
 import { PostingEngineService } from './posting-engine.service';
 import { PaymentVerificationsService } from './payment-verifications.service';
 import { ReportsService } from './reports.service';
+import { DailyPostingService } from './daily-posting.service';
+import { DailyPostingScheduler } from './daily-posting.scheduler';
 import { ExceptionsService } from './exceptions.service';
 
 /**
@@ -43,6 +46,7 @@ import { ExceptionsService } from './exceptions.service';
     AccountsController,
     PostingRulesController,
     JournalController,
+    DailyPostingController,
     PeriodsController,
     ReportsController,
     PaymentsController,
@@ -56,7 +60,14 @@ import { ExceptionsService } from './exceptions.service';
     PaymentVerificationsService,
     ReportsService,
     ExceptionsService,
+    DailyPostingService,
+    DailyPostingScheduler,
   ],
-  exports: [PaymentVerificationsService, JournalService, ChartOfAccountsService],
+  exports: [
+    PaymentVerificationsService,
+    JournalService,
+    ChartOfAccountsService,
+    DailyPostingService,
+  ],
 })
 export class AccountingModule {}

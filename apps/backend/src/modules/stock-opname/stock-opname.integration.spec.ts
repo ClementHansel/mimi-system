@@ -86,6 +86,7 @@ function buildService(): StockOpnameService {
     new SyncEmitService(events, conflictDetector),
     conflicts,
     events,
+    new EventBus(),
   );
 }
 

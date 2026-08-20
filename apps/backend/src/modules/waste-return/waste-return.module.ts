@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ApprovalsModule } from '../../kernel/approvals/approvals.module';
+import { EventsModule } from '../../kernel/events/events.module';
 import { StockLedgerModule } from '../../kernel/stock-ledger/stock-ledger.module';
 import { SyncEngineModule } from '../../kernel/sync/sync.module';
 
@@ -23,7 +24,7 @@ import { ReturnService } from './return.service';
  * ids and never re-derives that routing.
  */
 @Module({
-  imports: [ApprovalsModule, StockLedgerModule, SyncEngineModule],
+  imports: [ApprovalsModule, StockLedgerModule, SyncEngineModule, EventsModule],
   controllers: [WasteController, ReturnController],
   providers: [WasteRepository, WasteService, ReturnRepository, ReturnService],
 })

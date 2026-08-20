@@ -13,6 +13,8 @@ import {
   ERR_FORBIDDEN,
   ERR_NOT_FOUND,
   ERR_PHOTO_REQUIRED,
+  JournalEventType,
+  LocationType,
   mulMoneyByQty,
   MovementType,
   RoleKey,
@@ -23,6 +25,7 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { ApprovalService } from '../../kernel/approvals/approvals.service';
+import { EventBus } from '../../kernel/events/event-bus.service';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { withWrite } from './db-tx';
@@ -33,6 +36,7 @@ import type {
   RejectWasteDto,
 } from './dto/waste.dto';
 import { WasteRepository, type WasteRecordRow } from './waste.repository';
+import { toWitaOccurredAt } from '../../common/wita-occurred-at.util';
 
 export interface ActorContext {
   userId: UUID;
@@ -78,6 +82,7 @@ export class WasteService {
     private readonly approvals: ApprovalService,
     private readonly ledger: StockLedgerService,
     private readonly sync: SyncEmitService,
+    private readonly eventBus: EventBus,
   ) {}
 
   async list(client: PoolClient, query: ListWasteQueryDto): Promise<Paginated<WasteListRow>> {
@@ -185,6 +190,15 @@ export class WasteService {
     dto: ApproveWasteDto,
   ): Promise<WasteListRow[]> {
     const records = await this.requireBatch(client, batchId);
+    // Every record in a batch shares the SAME `location_id` (one `POST /api/waste` call is one
+    // location, per this module's own doc comment) — one lookup for the whole batch, not one per
+    // record. B-16 (JOUT-04/JGUD-05): the journal event depends on whether that location is an
+    // outlet or a warehouse, read from the DB, never guessed from the location's name/code.
+    const locationType = await this.locationType(client, records[0]!.location_id);
+    const journalEventType =
+      locationType === LocationType.WAREHOUSE
+        ? JournalEventType.GUDANG_WASTE
+        : JournalEventType.OUTLET_WASTE;
 
     return withWrite(client, async () => {
       for (const record of records) {
@@ -205,7 +219,11 @@ export class WasteService {
         });
         if (decision.currentStep !== null) continue; // still awaiting a further step (SPV -> MGR above threshold)
 
-        const approvedAt = new Date().toISOString();
+        // WITA-labelled (not a bare UTC 'Z' string) so `PostingEngineService`'s `occurredAt.slice(0,10)`
+        // lands the journal entry on the correct WITA business day (D-11) — this app's UTC-vs-WITA
+        // off-by-one trap, hit twice already, applies to a point-in-time approval just as much as a
+        // day aggregate.
+        const approvedAt = toWitaOccurredAt();
         const unitCost = await this.repo.itemAvgCost(client, record.item_id);
         await this.repo.setUnitCost(client, record.id, unitCost);
         await this.repo.setApproved(client, record.id, actor.userId, approvedAt);
@@ -229,6 +247,20 @@ export class WasteService {
           ],
           'fact',
         );
+
+        // B-16 JOUT-04/JGUD-05 — Dr 5100 Beban Waste / Cr 1110 or 1100 (CONTRACTS.md §6.2), valued
+        // at the SAME qty × unit_cost as the stock movement just posted above (never re-derived).
+        // `documentId` is the real `waste_records.id` — idempotent under the journal's
+        // `UNIQUE (event_type, ref_type, ref_id) WHERE source='system'` against a replayed approval.
+        await this.eventBus.publish('journal.action', {
+          eventType: journalEventType,
+          documentType: 'waste_record',
+          documentId: record.id,
+          locationId: record.location_id,
+          amount: mulMoneyByQty(unitCost, record.qty),
+          context: {},
+          occurredAt: approvedAt,
+        });
       }
 
       await this.sync.emit(client, {
@@ -284,6 +316,19 @@ export class WasteService {
       const updated = await this.repo.findByBatch(client, batchId);
       return Promise.all(updated.map((r) => this.toListRow(client, r)));
     });
+  }
+
+  /** B-16: JOUT-04 vs JGUD-05 turns on the waste's location TYPE, read from `locations` — never inferred from a code/name convention. */
+  private async locationType(client: PoolClient, locationId: UUID): Promise<string> {
+    const res = await client.query<{ type: string }>(`SELECT type FROM locations WHERE id = $1`, [
+      locationId,
+    ]);
+    if (!res.rows[0])
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Location ${locationId} not found`,
+      });
+    return res.rows[0].type;
   }
 
   private async requireBatch(client: PoolClient, batchId: UUID): Promise<WasteRecordRow[]> {

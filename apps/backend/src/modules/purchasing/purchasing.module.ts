@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ApprovalsModule } from '../../kernel/approvals/approvals.module';
+import { EventsModule } from '../../kernel/events/events.module';
 import { StockLedgerModule } from '../../kernel/stock-ledger/stock-ledger.module';
 import { SyncEngineModule } from '../../kernel/sync/sync.module';
 import { AccountingModule } from '../accounting/accounting.module';
@@ -31,7 +32,7 @@ import { PettyCashService } from './petty-cash.service';
  * pattern `modules/delivery` uses for `modules/replenishment`.
  */
 @Module({
-  imports: [ApprovalsModule, StockLedgerModule, SyncEngineModule, AccountingModule],
+  imports: [ApprovalsModule, StockLedgerModule, SyncEngineModule, AccountingModule, EventsModule],
   controllers: [PurchaseRequestController, PurchaseOrderController, PettyCashController],
   providers: [
     PurchaseRequestRepository,

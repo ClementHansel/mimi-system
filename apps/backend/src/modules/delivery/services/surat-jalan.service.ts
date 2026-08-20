@@ -136,7 +136,7 @@ export class SuratJalanService {
     const driverId = driverRes.rows[0]?.id;
     if (!driverId) return [];
     const params: unknown[] = [driverId];
-    let dateFilter = '';
+    let dateFilter: string;
     if (date) {
       params.push(date);
       dateFilter = `AND sj.planned_date = $2::date`;

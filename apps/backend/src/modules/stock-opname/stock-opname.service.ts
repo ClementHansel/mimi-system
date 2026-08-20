@@ -17,7 +17,10 @@ import {
   ERR_VARIANCE_REASON_REQUIRED,
   isNegativeQty,
   isZeroQty,
+  JournalEventType,
+  LocationType,
   MovementType,
+  mulMoneyByQty,
   OpnameStatus,
   RoleKey,
   subQty,
@@ -29,7 +32,9 @@ import {
   type Qty,
   type UUID,
 } from '@mimi/shared';
+import { toWitaOccurredAt } from '../../common/wita-occurred-at.util';
 import { ApprovalService } from '../../kernel/approvals/approvals.service';
+import { EventBus } from '../../kernel/events/event-bus.service';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
@@ -82,6 +87,7 @@ export class StockOpnameService {
     private readonly sync: SyncEmitService,
     private readonly conflicts: SyncConflictsRepository,
     private readonly events: SyncEventsRepository,
+    private readonly eventBus: EventBus,
   ) {}
 
   // ── reads ────────────────────────────────────────────────────────────────
@@ -585,6 +591,18 @@ export class StockOpnameService {
     approvedAt: string,
   ): Promise<void> {
     const lines = await this.repo.findLines(client, opnameId);
+    // B-16 JGUD-06/JOUT-06 (CONTRACTS.md §6.2) — one opname always targets a
+    // single location, so the gudang-vs-outlet journal event type is resolved
+    // ONCE from the `locations` table (never inferred from the location's
+    // name/code — same rule `waste-return/waste.service.ts` follows for
+    // JOUT-04/JGUD-05).
+    const locType = await this.locationType(client, header.location_id);
+    const journalEventType =
+      locType === LocationType.WAREHOUSE
+        ? JournalEventType.GUDANG_STOCK_ADJUSTMENT
+        : JournalEventType.OUTLET_STOCK_ADJUSTMENT;
+    const journalOccurredAt = toWitaOccurredAt(new Date(approvedAt));
+
     let index = 0;
     for (const line of lines) {
       if (isZeroQty(line.diff_qty)) continue;
@@ -634,6 +652,37 @@ export class StockOpnameService {
         'fact',
       );
 
+      // B-16 JGUD-06/JOUT-06 — value is the SAME qty × unit_cost as the ledger
+      // movement just posted above (never re-derived). `documentId` is the
+      // real `stock_adjustments.id` for this line — idempotent under the
+      // journal's `UNIQUE (event_type, ref_type, ref_id) WHERE source='system'`.
+      //
+      // `attributable` (JOUT-06's extra shortage variant, Dr 1210 Piutang
+      // Karyawan instead of 6400) is deliberately hardcoded `false` here: per
+      // CONTRACTS.md `payroll.so_shortfall` (§4.17) and
+      // `runs/runs.service.ts`'s `computeStockShortfallShares`, whether a
+      // shortfall is attributable is decided by PAYROLL at RUN time — it
+      // checks `shift_assignments` for the adjustment's location/date AND
+      // filters to whichever employees that FUTURE run's own roster includes,
+      // neither of which exists yet at opname-approval time (this endpoint is
+      // online-only and posts immediately, FR-SO-03/04/§7.6). Duplicating
+      // payroll's on-shift query here would only produce a guess that can
+      // silently disagree with what payroll later actually charges — flagged
+      // to the coordinator as a follow-up rather than invented.
+      const journalAmount = mulMoneyByQty(line.unit_cost, qty);
+      await this.eventBus.publish('journal.action', {
+        eventType: journalEventType,
+        documentType: 'stock_adjustment',
+        documentId: adjustmentId,
+        locationId: header.location_id,
+        amount: journalAmount,
+        context:
+          journalEventType === JournalEventType.OUTLET_STOCK_ADJUSTMENT
+            ? { direction, attributable: false }
+            : { direction },
+        occurredAt: journalOccurredAt,
+      });
+
       await this.sync.emit(client, {
         entity: SyncEntity.STOCK_ADJUSTMENTS,
         op: 'posted',
@@ -661,6 +710,14 @@ export class StockOpnameService {
     if (!header)
       throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Stock opname ${id} not found` });
     return header;
+  }
+
+  /** B-16 — gudang vs outlet, read from `locations.type`, never guessed from the location's name/code. */
+  private async locationType(client: PoolClient, locationId: UUID): Promise<string | undefined> {
+    const res = await client.query<{ type: string }>(`SELECT type FROM locations WHERE id = $1`, [
+      locationId,
+    ]);
+    return res.rows[0]?.type;
   }
 
   private async storageAreaLocationId(

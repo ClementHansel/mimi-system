@@ -379,7 +379,25 @@ don't.
 
 ## 2. ACTIVE BLOCKERS
 
-### 🟠 B-16 — the general ledger is structurally incomplete: 13 of 25 posting rules were never triggered; **revenue and COGS now post, 11 still do not**
+### ✅ RESOLVED 2026-08-20 — "purchasing and dispatcher have no features": owner could not see the buttons
+
+Reported as missing functionality: no way to add a PO, and no surat-jalan creation or route control on the dispatcher screen. **Nothing was missing.** `CreateSuratJalanModal`, `SuratJalanDetailDrawer` (which hosts `RoutePlanner` — stop reordering and per-stop instructions) and `PurchaseOrdersPanel`'s `CreateOrderModal` were all built, wired and reachable.
+
+They were invisible because they render behind a `PermissionGate`, and **owner was `false`** on `delivery.sj.create`, `delivery.sj.dispatch`, `delivery.sj.cancel`, `delivery.receive`, `purchasing.pr.create`, `purchasing.po.create`, `purchasing.po.receive` and `purchasing.po.close`. Migration 222 had granted owner five create rights under the standing "owner does everything" decision and simply missed these eight. Fixed in `rbac.ts` + migration `224`.
+
+**This is the third time this exact failure mode has cost a session** (the driver menu, the notification bell, now this): a feature is built, and the only account the owner actually uses cannot see it. The lesson is not "grant more permissions" — it is that a feature is not done until it is verified as reachable BY THE ROLE THAT USES IT. `e2e:role-journeys.spec.ts` asserts what each role sees, and it did not cover these two create paths.
+
+Owner still lacks 22 keys (payroll run/approve, `accounting.journal.post`, `payment.verify`, POS shift/sale, etc.). Those are deliberately left alone — they are the segregation-of-duties boundary, and unlike the eight above nobody has reported being blocked by them. Say the word if owner should hold everything.
+
+### ✅ RESOLVED 2026-08-20 — the live-DB suite corrupted its own database (G1 invariant drift)
+
+Long-standing and previously recorded as "root cause open": running the backend suite left `stock_balances` disagreeing with `fold(stock_movements)`, so `stock-ledger.integration.spec.ts` failed on the NEXT run with the invariant already broken "before this suite touches anything", and other suites failed with `StockInsufficientError` from drained stock.
+
+Root cause was in `stock-opname-gl-posting.spec.ts`'s cleanup, and it was two bugs: it deleted the `stock_movements` it had created but never the `stock_balances` row they moved, and its `DELETE FROM stock_movements WHERE ref_type = 'test_seed'` was **unscoped**, wiping the seed movements of every other key — including those of specs running concurrently — and stranding their balances.
+
+Both scoped/fixed. Verified by reseeding and then running the full suite TWICE with no reseed between: 837 passed both times, drift 0. Previously the second run failed.
+
+### 🟠 B-16 — the general ledger was structurally incomplete: 13 of 25 posting rules were never triggered. **9 now wired, 4 remain**
 
 **Opened:** 2026-08-19 · **Found by:** W6-04 · **Partially fixed 2026-08-19** · **Verified independently before recording**
 
@@ -402,11 +420,15 @@ CONTRACTS §6.2 defines both as a "daily aggregate of applied `sales.completed`"
 
 `daily-posting.spec.ts` (4 tests, live DB) proves a cash sale reaches Dr 1000 / Cr 4000, that a split-payment day with change still balances, that a re-run does not double-post, and that a day with no trading posts nothing.
 
-**Still never emitted — 11 remaining, and this is what keeps B-16 open:** `gudang_purchase`, `outlet_waste`/`gudang_waste`, `outlet_return_to_warehouse`, `gudang_stock_adjustment`/`outlet_stock_adjustment`, `gudang_goods_in`, `gudang_return_to_supplier`, `gudang_stock_revaluation`, `outlet_direct_purchase`, `outlet_petty_cash`. Unlike the two above these are event-triggered, not daily aggregates — each belongs at a specific lifecycle point (waste approved, return shipped, opname applied, PO received) in a service that currently has no `EventBus` reference.
+**Seven more wired 2026-08-20** (event-triggered, not daily aggregates — each fires at a lifecycle point): `outlet_waste`/`gudang_waste` (waste approved), `outlet_return_to_warehouse`/`gudang_return_to_supplier` (return shipped), `outlet_stock_adjustment`/`gudang_stock_adjustment` (opname approved), `gudang_purchase` (PO approved). Each derives its amount from the SAME `qty × unit_cost` as the stock movement it accompanies rather than re-deriving it, uses the real document id as `documentId` so a replayed approval cannot double-post, and stamps `occurredAt` through a shared `common/wita-occurred-at.util.ts` so `entryDate` lands on the WITA business day. Outlet-vs-gudang is resolved from `locations.type`, never from a name convention.
+
+Two correctness details worth keeping: the engine's two adjustment rules are ASYMMETRIC — `outlet_stock_adjustment` branches on `direction === 'overage'` while `gudang_stock_adjustment` branches on `direction === 'shortage'`, so the wrong string silently swaps the accounts instead of failing. Both are fed from one typed `'shortage' | 'overage'` value that also chooses the movement type, so the ledger and the journal cannot disagree. Outlet shortages post `attributable: false` (Dr 6400 expense, not Dr 1210 employee receivable) because attributability is a payroll decision made later.
+
+**Still never emitted — 4 remaining, and this is what keeps B-16 open:** `gudang_goods_in`, `gudang_stock_revaluation`, `outlet_direct_purchase`, `outlet_petty_cash`. (`gudang_goods_in` was in scope for the wiring pass above and did NOT get done — recorded rather than quietly re-scoped.)
 
 **Proven by execution, not by grep.** Two specs drive the real services and then assert the GL is empty: `waste-gl-posting.spec.ts` files and approves a cold-chain-breach waste report — the `waste_out` stock movement posts, and `journal_entries` has zero rows for it; `pos-online-order-gl-posting.spec.ts` does the same for a completed GoFood order. Both pin the CURRENT broken behaviour deliberately, so they go red the moment the wiring is fixed. That is the intended signal, not a passing grade.
 
-**Impact now:** the P&L's revenue and cost-of-sales lines are real from this change onwards. Purchases, waste, returns and stock adjustments are still absent, so the ledger is usable for sales performance but **not yet a complete set of books**. Days traded BEFORE this change are still unposted — the endpoint backfills them, but nothing has run that backfill yet.
+**Impact now:** revenue, COGS, purchases, waste, returns and stock adjustments all post. What is still missing is goods-receipt, revaluation, direct purchase and petty cash. Days traded BEFORE this change remain unposted — the backfill endpoint exists but has not been run.
 
 **Remaining work.** Each of the 11 needs its amount, context and idempotency key derived correctly at the right lifecycle point, following the `drop.service.ts` pattern. That is design work on money, not a mechanical wiring pass.
 

@@ -63,8 +63,24 @@ function buildKit() {
   const ledger = new StockLedgerService(new StockMovedEventEmitter(new EventBus()));
   const approvals = new ApprovalService(new ApprovalsRepository());
 
-  const wasteService = new WasteService(new WasteRepository(), approvals, ledger, sync);
-  const returnService = new ReturnService(new ReturnRepository(), approvals, ledger, sync);
+  // B-16: `WasteService`/`ReturnService` now publish `journal.action` (JOUT-04/05, JGUD-04/05) —
+  // a fresh, unsubscribed `EventBus` here is deliberate: this file exercises the waste/return
+  // lifecycle itself, not the GL leg (that is `waste-gl-posting.spec.ts`/`return-gl-posting.spec.ts`),
+  // so `publish()` simply finding no handlers and no-op'ing is correct, not a gap.
+  const wasteService = new WasteService(
+    new WasteRepository(),
+    approvals,
+    ledger,
+    sync,
+    new EventBus(),
+  );
+  const returnService = new ReturnService(
+    new ReturnRepository(),
+    approvals,
+    ledger,
+    sync,
+    new EventBus(),
+  );
   return { wasteService, returnService };
 }
 

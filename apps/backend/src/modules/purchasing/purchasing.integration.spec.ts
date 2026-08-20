@@ -66,15 +66,23 @@ function buildKit() {
   const ledger = new StockLedgerService(new StockMovedEventEmitter(new EventBus()));
   const approvals = new ApprovalService(new ApprovalsRepository());
   const payments = new PaymentVerificationsService(sync, new EventBus());
+  const journalEventBus = new EventBus();
 
   const prRepo = new PurchaseRequestRepository();
   const prService = new PurchaseRequestService(prRepo, approvals);
   const poRepo = new PurchaseOrderRepository();
-  const poService = new PurchaseOrderService(poRepo, approvals, ledger, payments, prService);
+  const poService = new PurchaseOrderService(
+    poRepo,
+    approvals,
+    ledger,
+    payments,
+    prService,
+    journalEventBus,
+  );
   const pcRepo = new PettyCashRepository();
   const pcService = new PettyCashService(pcRepo, ledger, sync, payments);
 
-  return { prService, poService, pcService };
+  return { prService, poService, pcService, journalEventBus };
 }
 
 function actorFor(

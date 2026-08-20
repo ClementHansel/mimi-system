@@ -14,10 +14,13 @@ import {
   ERR_PHOTO_REQUIRED,
   ERR_VALIDATION,
   isNegativeQty,
+  JournalEventType,
+  mulMoneyByQty,
   MovementType,
   ReturnDirection,
   ReturnStatus,
   RoleKey,
+  sumMoney,
   SyncEntity,
   type Money,
   type Paginated,
@@ -25,6 +28,7 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { ApprovalService } from '../../kernel/approvals/approvals.service';
+import { EventBus } from '../../kernel/events/event-bus.service';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { withWrite } from './db-tx';
@@ -36,6 +40,7 @@ import type {
   ShipReturnDto,
 } from './dto/return.dto';
 import { ReturnRepository, type ReturnHeaderRow, type ReturnLineRow } from './return.repository';
+import { toWitaOccurredAt } from '../../common/wita-occurred-at.util';
 
 export interface ActorContext {
   userId: UUID;
@@ -84,6 +89,7 @@ export class ReturnService {
     private readonly approvals: ApprovalService,
     private readonly ledger: StockLedgerService,
     private readonly sync: SyncEmitService,
+    private readonly eventBus: EventBus,
   ) {}
 
   async list(client: PoolClient, query: ListReturnQueryDto): Promise<Paginated<ReturnDetail>> {
@@ -341,7 +347,10 @@ export class ReturnService {
     }
 
     return withWrite(client, async () => {
-      const shippedAt = new Date().toISOString();
+      // WITA-labelled (not a bare UTC 'Z' string) so `PostingEngineService`'s `occurredAt.slice(0,10)`
+      // lands the journal entry on the correct WITA business day (D-11) — same off-by-one trap as
+      // `waste.service.ts`'s `approve()`, this app has hit it twice already.
+      const shippedAt = toWitaOccurredAt();
       const lines = await this.repo.findLines(client, id);
       const movements = lines.map((l) => ({
         locationId: header.from_location_id,
@@ -378,6 +387,26 @@ export class ReturnService {
           data: { proofAttachmentIds: dto.proofAttachmentIds },
         });
       }
+
+      // B-16 JOUT-05/JGUD-04 — `returns.direction` (not a location-name guess — the same field
+      // `document-context.resolver.ts` already reads to route this document's own approval step)
+      // distinguishes the outlet->gudang leg (Dr 1120 Dalam Perjalanan / Cr 1110 Persediaan Outlet)
+      // from the gudang->supplier leg (Dr 2000 Hutang Supplier / Cr 1100 Persediaan Gudang),
+      // CONTRACTS.md §6.2. Amount is Σ qty × unit_cost over the SAME lines the stock movements
+      // above were built from — never re-derived. `documentId` is the real `returns.id`, idempotent
+      // under the journal's `UNIQUE (event_type, ref_type, ref_id) WHERE source='system'`.
+      await this.eventBus.publish('journal.action', {
+        eventType:
+          header.direction === ReturnDirection.OUTLET_TO_WAREHOUSE
+            ? JournalEventType.OUTLET_RETURN_TO_WAREHOUSE
+            : JournalEventType.GUDANG_RETURN_TO_SUPPLIER,
+        documentType: 'return',
+        documentId: id,
+        locationId: header.from_location_id,
+        amount: sumMoney(lines.map((l) => mulMoneyByQty(l.unit_cost, l.qty))),
+        context: {},
+        occurredAt: shippedAt,
+      });
 
       return this.getDetail(client, id);
     });

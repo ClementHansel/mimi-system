@@ -16,9 +16,12 @@ import {
   ERR_VARIANCE_REASON_REQUIRED,
   isNegativeQty,
   isZeroQty,
+  JournalEventType,
   MovementType,
   mulMoneyByQty,
   PurchaseOrderStatus,
+  sumMoney,
+  ZERO_MONEY,
   type ApprovalDetail,
   type Money,
   type Paginated,
@@ -27,7 +30,9 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { formatDateOnly } from '../../common/date-only.util';
+import { toWitaOccurredAt } from '../../common/wita-occurred-at.util';
 import { ApprovalService } from '../../kernel/approvals/approvals.service';
+import { EventBus } from '../../kernel/events/event-bus.service';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { PaymentVerificationsService } from '../accounting/payment-verifications.service';
 import { withWrite } from './db-tx';
@@ -120,6 +125,7 @@ export class PurchaseOrderService {
     private readonly ledger: StockLedgerService,
     private readonly payments: PaymentVerificationsService,
     private readonly prService: PurchaseRequestService,
+    private readonly eventBus: EventBus,
   ) {}
 
   async list(
@@ -424,6 +430,12 @@ export class PurchaseOrderService {
         notes: dto.notes ?? null,
       });
 
+      // B-16 JGUD-01 (`gudang_purchase`, CONTRACTS.md §6.2) — Dr 1100 Persediaan
+      // Gudang / Cr 2000 Hutang Supplier, valued at `Σ receipt_line.qty_received
+      // × po_line.unit_price` for THIS receipt only (never the PO's cumulative
+      // total — a partially-received PO posts each receipt as its own entry).
+      const receivedLineValues: Money[] = [];
+
       for (const line of dto.lines) {
         const poLine = await this.repo.findLineById(client, id, line.poLineId);
         if (!poLine)
@@ -463,6 +475,8 @@ export class PurchaseOrderService {
         });
 
         if (!isZeroQty(line.qtyReceived)) {
+          receivedLineValues.push(mulMoneyByQty(poLine.unit_price, line.qtyReceived as Qty));
+
           const costing = await this.repo.getItemCosting(client, poLine.item_id);
           await this.ledger.post(
             client,
@@ -499,6 +513,20 @@ export class PurchaseOrderService {
 
           await this.repo.incrementLineReceived(client, poLine.id, line.qtyReceived as Qty);
         }
+      }
+
+      const receiptTotal =
+        receivedLineValues.length > 0 ? sumMoney(receivedLineValues) : ZERO_MONEY;
+      if (receiptTotal !== ZERO_MONEY && receiptTotal !== '0.00') {
+        await this.eventBus.publish('journal.action', {
+          eventType: JournalEventType.GUDANG_PURCHASE,
+          documentType: 'po_receipt',
+          documentId: receiptId,
+          locationId: header.location_id,
+          amount: receiptTotal,
+          context: {},
+          occurredAt: toWitaOccurredAt(),
+        });
       }
 
       // Recompute PO status from the fully up-to-date lines (post-increment).

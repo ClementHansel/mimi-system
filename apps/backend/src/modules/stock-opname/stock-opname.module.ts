@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ApprovalsModule } from '../../kernel/approvals/approvals.module';
+import { EventsModule } from '../../kernel/events/events.module';
 import { StockLedgerModule } from '../../kernel/stock-ledger/stock-ledger.module';
 import { SyncEngineModule } from '../../kernel/sync/sync.module';
 import { StockOpnameController } from './stock-opname.controller';
@@ -19,7 +20,7 @@ import { StockOpnameService } from './stock-opname.service';
  * double-count dispute resolution, SYNC-PROTOCOL §5.2).
  */
 @Module({
-  imports: [ApprovalsModule, StockLedgerModule, SyncEngineModule],
+  imports: [ApprovalsModule, StockLedgerModule, SyncEngineModule, EventsModule],
   controllers: [StockOpnameController],
   providers: [StockOpnameRepository, StockOpnameService],
 })

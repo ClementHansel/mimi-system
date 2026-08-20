@@ -16,6 +16,8 @@ import type {
   Supplier,
   SupplierDirectoryEntry,
   SupplierItem,
+  SupplierWriteBody,
+  SupplierTransaction,
   PriceHistoryEntry,
   PurchaseRequestListRow,
   PurchaseRequestDetail,
@@ -57,6 +59,52 @@ export function getSupplierDirectory(q?: string) {
 
 export function getSupplierItems(supplierId: string) {
   return api.get<SupplierItem[]>(`/suppliers/${supplierId}/items`);
+}
+
+/** FR-SUP-01 — `supplier.manage`. `code` is unique and immutable in practice; the API rejects a duplicate. */
+export function createSupplier(body: SupplierWriteBody) {
+  return api.post<Supplier>('/suppliers', body);
+}
+
+export function updateSupplier(id: string, body: Partial<SupplierWriteBody>) {
+  return api.patch<Supplier>(`/suppliers/${id}`, body);
+}
+
+/** Soft-delete: the row stays and goes `isActive: false`, because purchase orders reference it. */
+export function deactivateSupplier(id: string) {
+  return api.delete<{ id: string; deactivated: true }>(`/suppliers/${id}`);
+}
+
+/** FR-SUP-03/04 — upsert. A CHANGED price appends to `supplier_price_history` server-side; nothing here needs to write that. */
+export function upsertSupplierItem(
+  supplierId: string,
+  itemId: string,
+  body: {
+    supplierSku?: string | null;
+    currentPrice: string;
+    leadTimeDays?: number;
+    isPreferred?: boolean;
+  },
+) {
+  return api.put<SupplierItem>(`/suppliers/${supplierId}/items/${itemId}`, body);
+}
+
+export function deleteSupplierItem(supplierId: string, itemId: string) {
+  return api.delete<{ ok: true }>(`/suppliers/${supplierId}/items/${itemId}`);
+}
+
+/** FR-SUP-02/05 — the supplier's PO history. */
+export function getSupplierTransactions(
+  supplierId: string,
+  params: { page?: number; pageSize?: number } = {},
+) {
+  const qs = new URLSearchParams({
+    page: String(params.page ?? 1),
+    pageSize: String(params.pageSize ?? 25),
+  });
+  return api.get<Paginated<SupplierTransaction>>(
+    `/suppliers/${supplierId}/transactions?${qs.toString()}`,
+  );
 }
 
 /** FR-SUP-04 — append-only price history, role-locked behind `supplier.price.read` (D-20). */

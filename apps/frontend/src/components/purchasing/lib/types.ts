@@ -63,6 +63,22 @@ export interface Supplier {
   isActive: boolean;
 }
 
+/**
+ * The writable half of a supplier. `id`/`isActive` are server-owned:
+ * deactivation goes through `DELETE`, never a field on an update.
+ */
+export type SupplierWriteBody = Omit<Supplier, 'id' | 'isActive'> & { notes?: string | null };
+
+/** FR-SUP-02/05 — one purchase order in a supplier's history. Transcribed from `TransactionEntry` in `supplier.service.ts`, not guessed. */
+export interface SupplierTransaction {
+  poId: UUID;
+  poNumber: string;
+  orderDate: string;
+  status: string;
+  total: Money;
+  paymentStatus: string | null;
+}
+
 /** Outlet-visible projection — name/contact only, no pricing/termin/bank (FR-SUP-06). */
 export interface SupplierDirectoryEntry {
   id: UUID;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ClipboardList, Truck, History } from 'lucide-react';
+import { ClipboardList, Truck, History, Building2 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PurchaseRequestsPanel } from './PurchaseRequestsPanel';
 import { PurchaseOrdersPanel } from './PurchaseOrdersPanel';
 import { SupplierPriceHistoryPanel } from './SupplierPriceHistoryPanel';
+import { SuppliersPanel } from './SuppliersPanel';
 
 /**
  * F-PO `purchasing` (CONTRACTS §4.11: FR-PO-01..04, F-PUR-01..05; §4.6
@@ -43,6 +44,13 @@ export function PurchasingShell() {
         icon: Truck,
         visible: can('purchasing.read'),
         content: <PurchaseOrdersPanel />,
+      },
+      {
+        value: 'suppliers',
+        labelKey: 'purchasing.tabs.suppliers',
+        icon: Building2,
+        visible: can('supplier.read'),
+        content: <SuppliersPanel />,
       },
       {
         value: 'priceHistory',

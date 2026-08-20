@@ -379,6 +379,27 @@ don't.
 
 ## 2. ACTIVE BLOCKERS
 
+### ✅ Supplier management UI — DONE 2026-08-20
+
+Reported as "pembelian has no features: add supplier and its items and prices, categories, supplier lists, items lists". Split into what was actually missing:
+
+- **Items, categories, units, products, locations** — ALREADY EXIST, under **Admin → Master Data** (`MasterDataPanel`, four tabs). Nothing built; the ask was already met, just not where the owner looked.
+- **Suppliers** — genuinely missing. The backend was complete all along (`suppliers` CRUD, `supplier_items`, `supplier_price_history`, transactions, and the D-20 outlet-visible projection) with **no UI whatsoever**.
+
+Built as a fourth tab in Pembelian rather than under Master Data, because it is worked on by the person raising POs, beside the PR/PO tabs they already have open:
+
+- `SuppliersPanel` — searchable list (debounced), create/edit/deactivate.
+- `SupplierFormModal` — `code` is locked on edit, since it is printed on POs already issued and changing it would silently re-label historical documents. Empty text fields are sent as `null`, not `''`.
+- `SupplierDetailDrawer` — items with inline price editing, price history, PO history. Save appears only when a price actually changed, because every changed price appends a permanent history row.
+
+**The permission split is mirrored from the server, not approximated:** `supplier.read` lists, `supplier.price.read` reveals items and history, `supplier.price.manage` allows editing, `supplier.manage` allows create/deactivate. Outlet roles hold none and get a stripped name/contact directory from a different endpoint. 5 tests cover exactly this split — showing a control the server will 403 is what caused the original "no features" report.
+
+`outletVisible` gets a written explanation in the form rather than a bare switch: it exposes the supplier's NAME and CONTACT to outlet supervisors for petty-cash forms, while price, terms and bank details stay stripped for those roles either way.
+
+One bug caught by reading the server instead of trusting the shape: the transactions endpoint returns `total`/`paymentStatus`, not the `totalAmount` first assumed.
+
+459 frontend tests pass, lint and format clean.
+
 ### 🔄 Driver interface upgrade (owner request 2026-08-20) — 5 of 6 done
 
 Asked for "Google Maps like the laundry driver". Worth recording what that turned out to mean: **laundry has no embedded map at all** — it deep-links to `google.com/maps/search/?api=1&query=<address>`. Mimi already deep-linked to Google Maps AND did it better (coordinates rather than a text address, plus a Waze option). So the real gap was not the deep link; it was that a driver could not SEE the route. Built on Leaflet + OSM (owner confirmed), matching the dispatcher's existing `LiveTruckMap` — no API key, no billing account, no per-request cost, so the panel cannot become an outage when a card expires.

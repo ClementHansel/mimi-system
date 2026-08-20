@@ -4,7 +4,7 @@ import { STORE_KEY_PATH, STORE_NAMES, type StoreName } from '../types';
 
 export const DB_NAME = 'mimi-local';
 /** Bump on any STORE_NAMES/STORE_KEY_PATH change. `idb`'s upgrade callback below must stay additive-only in production (never drop a store with un-drained data). */
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 /**
  * The REAL IndexedDB-backed `LocalDatabase` (via `idb`, already a repo

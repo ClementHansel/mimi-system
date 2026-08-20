@@ -320,6 +320,8 @@ export const id = {
   },
 
   common: {
+    showDetail: 'Lihat detail',
+    hideDetail: 'Sembunyikan',
     save: 'Simpan',
     cancel: 'Batal',
     delete: 'Hapus',
@@ -2039,6 +2041,31 @@ export const id = {
       navigate: 'Navigasi',
       waze: 'Waze',
       instructions: 'Petunjuk Pengiriman',
+      call: 'Telepon Tujuan',
+    },
+    map: {
+      label: 'Peta rute pengiriman',
+      missingCoords:
+        '{{missing}} dari {{total}} tujuan belum punya titik koordinat dan tidak tampil di peta.',
+    },
+    progress: {
+      summary: '{{done}} dari {{total}} tujuan selesai',
+      failed: '{{count}} gagal',
+      nextStop: 'Tujuan berikutnya',
+    },
+    cache: {
+      offline: 'Menampilkan rute tersimpan di perangkat',
+      cachedAt:
+        'Terakhir diperbarui {{time}}. Muat ulang saat sinyal kembali untuk melihat perubahan dari gudang.',
+    },
+    summary: {
+      title: 'Ringkasan Hari Ini',
+      delivered: 'Terkirim',
+      discrepancy: 'Selisih saat serah terima',
+      failed: 'Gagal kirim',
+      coldChainBreach: 'Pelanggaran rantai dingin',
+      cleanHint: 'Semua tujuan selesai tanpa catatan. Serahkan Surat Jalan ke gudang.',
+      reportHint: 'Ada catatan yang perlu dilaporkan ke gudang saat kembali.',
     },
     tracking: {
       active: 'Lokasi sedang dibagikan',

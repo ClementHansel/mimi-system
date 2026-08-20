@@ -103,6 +103,22 @@ export interface ClockState {
 
 // ── master data cache (class M/F/B pull projections) ──────────────────────────
 
+/**
+ * The driver's route for one business day, cached so a hard reload with no
+ * signal does not lose the day's work (F13).
+ *
+ * A SEPARATE store rather than a row in `master_data`: the reconciler wipes
+ * `master_data` wholesale (`RECONCILE_STORES`), and a driver halfway through a
+ * run in a dead zone is exactly when that must not happen.
+ */
+export interface DriverJobsRecord {
+  /** The WITA business date, `YYYY-MM-DD` — one cached route per day. */
+  key: string;
+  /** `SuratJalan[]` as returned by `GET /delivery/my-jobs`, stored opaquely: this layer must not need updating every time a delivery field is added. */
+  jobs: unknown;
+  cachedAt: ISODateTime;
+}
+
 export interface MasterDataRecord {
   /** `${entity}:${entityId}` */
   key: string;
@@ -214,6 +230,7 @@ export const STORE_NAMES = [
   'credential_crl',
   'pin_attempts',
   'attachments',
+  'driver_jobs',
 ] as const;
 
 export type StoreName = (typeof STORE_NAMES)[number];
@@ -235,4 +252,5 @@ export const STORE_KEY_PATH: Record<StoreName, string> = {
   credential_crl: 'credentialId',
   pin_attempts: 'credentialId',
   attachments: 'sha256',
+  driver_jobs: 'key',
 };

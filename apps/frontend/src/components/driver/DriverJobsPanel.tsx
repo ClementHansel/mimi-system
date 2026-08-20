@@ -1,13 +1,27 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCcw } from 'lucide-react';
+import { RefreshCcw, WifiOff } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Button, EmptyState, SyncStatusPill, toast } from '@/components/ui';
 import { toDateInput } from '@/lib/dates';
 import { getMyJobs } from './lib/driver-api';
 import { SjJobCard } from './SjJobCard';
+import { loadJobs, saveJobs } from './lib/job-cache';
+import { DaySummary } from './DaySummary';
 import type { Drop, SuratJalan } from './lib/types';
+
+function fmtCachedAt(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? '-'
+    : d.toLocaleString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: 'numeric',
+        month: 'short',
+      });
+}
 
 const OPEN_SJ_STATUSES = new Set(['ready', 'loading', 'in_transit']);
 const TERMINAL_DROP_STATUSES = new Set(['completed', 'completed_discrepancy', 'failed']);
@@ -41,13 +55,30 @@ export function DriverJobsPanel() {
   const [jobs, setJobs] = useState<SuratJalan[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  /** Non-null when what is on screen came from the device, not the server. */
+  const [servedFromCache, setServedFromCache] = useState<string | null>(null);
 
   const reload = useCallback(() => {
+    const businessDate = toDateInput(new Date());
     setLoading(true);
     setLoadError(false);
-    getMyJobs(toDateInput(new Date()))
-      .then(setJobs)
-      .catch(() => {
+    getMyJobs(businessDate)
+      .then((fresh) => {
+        setJobs(fresh);
+        setServedFromCache(null);
+        // Cache AFTER a successful fetch only, so a failed request can never
+        // overwrite a good route with an empty one.
+        void saveJobs(businessDate, fresh);
+      })
+      .catch(async () => {
+        // The network is the expected failure here, not the exceptional one.
+        // Fall back to the device's own copy before declaring the day lost.
+        const cached = await loadJobs(businessDate);
+        if (cached) {
+          setJobs(cached.jobs);
+          setServedFromCache(cached.cachedAt);
+          return;
+        }
         setLoadError(true);
         toast({ title: t('table.error'), variant: 'danger' });
       })
@@ -99,8 +130,26 @@ export function DriverJobsPanel() {
         <EmptyState title={t('driver.empty')} size="lg" />
       )}
 
+      {/* Stale data is shown, but never passed off as live: a driver who does
+          not know the route is a cached copy cannot know to re-check it for a
+          dispatcher's amendment. */}
+      {servedFromCache && (
+        <div className="flex items-start gap-2 rounded-lg bg-warning-50 p-2.5 text-sm text-warning-800">
+          <WifiOff className="mt-0.5 size-4 flex-none" aria-hidden />
+          <div>
+            <p className="font-medium">{t('driver.cache.offline')}</p>
+            <p className="text-xs text-warning-700">
+              {t('driver.cache.cachedAt', { time: fmtCachedAt(servedFromCache) })}
+            </p>
+          </div>
+        </div>
+      )}
+
       {!loading &&
         openJobs.map((sj) => <SjJobCard key={sj.id} sj={sj} onChanged={applyDropPatch} />)}
+
+      {/* The end-of-day picture, once nothing is left to drive to. */}
+      {!loading && jobs.length > 0 && openJobs.length === 0 && <DaySummary jobs={jobs} />}
     </div>
   );
 }

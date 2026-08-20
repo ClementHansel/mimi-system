@@ -379,6 +379,19 @@ don't.
 
 ## 2. ACTIVE BLOCKERS
 
+### 🔄 Driver interface upgrade (owner request 2026-08-20) — 5 of 6 done
+
+Asked for "Google Maps like the laundry driver". Worth recording what that turned out to mean: **laundry has no embedded map at all** — it deep-links to `google.com/maps/search/?api=1&query=<address>`. Mimi already deep-linked to Google Maps AND did it better (coordinates rather than a text address, plus a Waze option). So the real gap was not the deep link; it was that a driver could not SEE the route. Built on Leaflet + OSM (owner confirmed), matching the dispatcher's existing `LiveTruckMap` — no API key, no billing account, no per-request cost, so the panel cannot become an outage when a card expires.
+
+- **`DriverRouteMap`** — every stop as a numbered pin in `dropSeq` order, next stop ringed, finished stops greyed, straight dashed connector. The connector is straight ON PURPOSE: it shows the SEQUENCE, and drawing a convincing road path we never actually routed would be a lie a driver might follow. Stops without coordinates are counted in a line under the map rather than silently omitted.
+- **Route progress + next-stop focus** — `lib/route-progress.ts` derives "where am I up to" once, so the header count, the highlighted pin and the expanded card cannot disagree. Finished stops collapse. 6 unit tests, incl. that an EMPTY route is not a "complete" one (that would send a driver home mid-shift) and that a failed stop is finished-for-sequencing but never counted as delivered.
+- **Offline job cache** — `lib/job-cache.ts` + a new `driver_jobs` IndexedDB store (`DB_VERSION` 1→2; the upgrade path was already additive). Previously the route lived only in React state and `DriverJobsPanel`'s own comment admitted a hard reload with no signal lost the day. A separate store, NOT `master_data`, because the reconciler wipes that wholesale — precisely the wrong moment for a driver in a dead zone. Read-fallback only: the outbox stays the authority for actions taken. Stale data is shown but LABELLED with its age, never passed off as live. 5 tests.
+- **Call the destination** — `locations.phone` existed on every outlet and was simply never selected, the same gap `address`/`latitude` had. Now on the drop, with a one-tap `tel:` on open stops only.
+- **Day summary** — shown when no stop is left open. Deliberately NOT a "finish run" button: the SJ already completes server-side from its drops, and a second driver-pressed notion of done would create two sources of truth that disagree the moment someone forgets to press it. Failures, discrepancies and cold-chain breaches get equal billing to successes.
+- **NOT DONE: WhatsApp chat (client + admin).** Still owed. `WA_ENABLED=false` and there are no WA credentials, so it can be built but not proven end to end.
+
+Verified: 454 frontend + 837 backend tests pass, lint and format clean.
+
 ### ✅ RESOLVED 2026-08-20 — "purchasing and dispatcher have no features": owner could not see the buttons
 
 Reported as missing functionality: no way to add a PO, and no surat-jalan creation or route control on the dispatcher screen. **Nothing was missing.** `CreateSuratJalanModal`, `SuratJalanDetailDrawer` (which hosts `RoutePlanner` — stop reordering and per-stop instructions) and `PurchaseOrdersPanel`'s `CreateOrderModal` were all built, wired and reachable.

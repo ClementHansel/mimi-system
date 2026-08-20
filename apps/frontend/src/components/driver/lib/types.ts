@@ -40,6 +40,8 @@ export interface Drop {
   address: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** The destination's phone, for the one-tap call on the stop card. */
+  phone: string | null;
   /** The stop's delivery brief, written by gudang before dispatch. */
   deliveryInstructions: string | null;
   replenishmentRequestId: UUID | null;

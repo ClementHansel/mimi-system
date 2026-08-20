@@ -419,6 +419,10 @@ export interface Drop {
    * geocoding of the site list — the UI must degrade to `address` text. */
   latitude: number | null;
   longitude: number | null;
+  /** The destination's own phone number, so the driver can call ahead from the
+   * stop card instead of hunting for it. Sourced from `locations.phone`, which
+   * every outlet already had — it simply was never selected. */
+  phone: string | null;
   /** Per-stop delivery brief written by gudang before dispatch (access notes,
    * who to call, unloading bay). Written by the WAREHOUSE, unlike
    * `discrepancyNotes`, which the driver writes after the fact. */

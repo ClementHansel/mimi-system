@@ -69,6 +69,7 @@ interface DropRow {
   address: string | null;
   latitude: string | null;
   longitude: string | null;
+  phone: string | null;
   delivery_instructions: string | null;
   replenishment_request_id: string | null;
   status: string;
@@ -88,7 +89,7 @@ interface DropRow {
 // never selected, so the data existed and the driver could not see it.
 const DROP_SELECT = `
   SELECT d.id, d.drop_seq, d.location_id, l.name AS location_name, l.city,
-         l.address, l.latitude, l.longitude, d.delivery_instructions,
+         l.address, l.latitude, l.longitude, l.phone, d.delivery_instructions,
          d.replenishment_request_id, d.status, d.departed_at, d.arrived_at,
          ru.name AS received_by_name, d.received_at, d.signature_attachment_id,
          d.discrepancy_notes, d.failure_reason
@@ -353,6 +354,7 @@ export function mapDropBase(r: DropRow, lines: LineRow[]): Drop {
     // parsed once here rather than at each of them.
     latitude: r.latitude === null ? null : Number(r.latitude),
     longitude: r.longitude === null ? null : Number(r.longitude),
+    phone: r.phone,
     deliveryInstructions: r.delivery_instructions,
     replenishmentRequestId: r.replenishment_request_id,
     status: r.status as Drop['status'],

@@ -12,6 +12,8 @@ import {
 } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { DropCard } from './DropCard';
+import { DriverRouteMap } from './DriverRouteMap';
+import { routeProgress, orderedDrops, isFinished } from './lib/route-progress';
 import { useTripTracking } from './lib/use-trip-tracking';
 import type { Drop, SuratJalan } from './lib/types';
 
@@ -30,7 +32,8 @@ export function SjJobCard({
 }) {
   const { t } = useI18n();
   const isFrozen = sj.shipmentType === 'frozen';
-  const drops = [...sj.drops].sort((a, b) => a.dropSeq - b.dropSeq);
+  const drops = orderedDrops(sj.drops);
+  const progress = routeProgress(sj.drops);
 
   // Position reporting is scoped to THIS trip and only while it is in transit —
   // the same window the backend enforces. A driver holding two jobs for the day
@@ -102,8 +105,50 @@ export function SjJobCard({
           </div>
         )}
 
+        {/* Orientation first: how far through the run, then the shape of it.
+            A driver glancing at this between stops needs "how many left"
+            before anything else on the card. */}
+        {progress.total > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-sm font-semibold text-text-primary">
+                {t('driver.progress.summary', { done: progress.done, total: progress.total })}
+              </span>
+              {progress.failed > 0 && (
+                <span className="text-xs font-medium text-danger-700">
+                  {t('driver.progress.failed', { count: progress.failed })}
+                </span>
+              )}
+            </div>
+            <div
+              className="h-1.5 w-full overflow-hidden rounded-full bg-stone-200"
+              role="progressbar"
+              aria-valuenow={progress.done}
+              aria-valuemin={0}
+              aria-valuemax={progress.total}
+            >
+              <div
+                className="h-full rounded-full bg-brand-500 transition-[width]"
+                style={{ width: `${(progress.done / progress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        <DriverRouteMap drops={drops} nextDropId={progress.nextDropId} />
+
+        {/* Finished stops collapse. On a seven-stop run the screen is otherwise
+            mostly history, and the one card that matters — the next stop — is
+            pushed below the fold on a phone. */}
         {drops.map((drop) => (
-          <DropCard key={drop.id} sj={sj} drop={drop} onChanged={onChanged} />
+          <DropCard
+            key={drop.id}
+            sj={sj}
+            drop={drop}
+            onChanged={onChanged}
+            isNext={drop.id === progress.nextDropId}
+            defaultCollapsed={isFinished(drop)}
+          />
         ))}
       </CardContent>
     </Card>

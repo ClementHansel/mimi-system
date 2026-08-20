@@ -27,6 +27,10 @@ import { NotificationOutboxRepository } from './channels/notification-outbox.rep
     WhatsAppChannelService,
     InAppChannelService,
   ],
-  exports: [NotificationService],
+  // `WhatsAppChannelService` is exported for `modules/chat`, which sends
+  // conversation messages through the SAME channel so that chat inherits the
+  // outbox record and the `WA_ENABLED` kill switch instead of holding a second
+  // opinion about whether a message was delivered.
+  exports: [NotificationService, WhatsAppChannelService],
 })
 export class NotificationModule {}

@@ -379,6 +379,21 @@ don't.
 
 ## 2. ACTIVE BLOCKERS
 
+### 🔄 WhatsApp chat (W7) — BUILT 2026-08-20, DELIVERY UNPROVEN
+
+The last item of the owner's 2026-08-20 request. Built end to end except the one part that cannot be built: proof that a message reaches a phone. `WA_ENABLED=false` and there are no gateway credentials (RISK-P4), so **delivery remains untested and must be exercised in staging against a real n8n workflow before anyone relies on it.**
+
+**Delivery is borrowed, not rebuilt.** `WhatsAppChannelService` already existed for one-way templated notifications: it owns the n8n webhook, records every attempt in `notification_outbox`, and no-ops when `WA_ENABLED=false`. Chat sends through it rather than talking to the gateway itself, so there is exactly one answer to "did it actually go". What chat adds is the shape a notification log cannot express: a thread, a reply, and who said what.
+
+- Migration `225` — `chat_conversations` (UNIQUE on `contact_phone`: a phone number IS the conversation) + `chat_messages` (UNIQUE `external_id` for webhook idempotency). Denormalised `last_message_at`/`unread_count` because ordering an inbox by newest message via a correlated subquery is the obvious way to make it slow. RLS: central sees all, a scoped role sees its locations PLUS unclassified threads (an inbound stranger has no location, and hiding it from everyone but head office means nobody answers), and a user always sees their own.
+- Migration `226` — `chat.read.own` to every role; `chat.read`/`chat.send`/`chat.manage` to head office and managers only. A kasir must not be able to read a supplier negotiation.
+- Admin inbox (`/chat`) and the staff thread (`/me/chat`). The staff endpoint takes NO conversation id — the server resolves it from the session, because accepting one would let any authenticated user post into somebody else's thread, the same class of hole as B-15.
+- **The UI never claims a message was delivered.** While WA is off, every outbound message is `pending` and rendered as such. 5 frontend tests exist for exactly this, because the failure mode of shipping a chat feature blind is a sent tick that lies.
+
+**A real defect this surfaced, now fixed:** `rbac-endpoint-sweep.spec.ts` exempted `@Public` routes from BOTH of its assertions, so a public WRITE — the most dangerous shape there is — passed with nobody recording why it was safe. Added a third assertion requiring every public mutating route to be justified. It immediately found **six** pre-existing ones nobody had recorded: device register/heartbeat, node register, and sync hello/bootstrap/push. All were verified as genuinely authenticated (pairing tokens, `DeviceTokenGuard`, `DeviceAuthGuard`) and are now documented rather than invisible.
+
+Verified: 847 backend + 464 frontend tests pass, lint and format clean. **Not verified: that WhatsApp delivery works at all.**
+
 ### ✅ Supplier management UI — DONE 2026-08-20
 
 Reported as "pembelian has no features: add supplier and its items and prices, categories, supplier lists, items lists". Split into what was actually missing:

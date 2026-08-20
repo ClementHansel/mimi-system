@@ -11,12 +11,12 @@ import {
 } from './rbac';
 
 describe('RBAC matrix shape', () => {
-  it('has exactly 138 permission keys (CONTRACTS.md §3 as amended by D-18/D-19/D-20, + D-23 settings.approval_mode.manage)', () => {
+  it('has exactly 142 permission keys (CONTRACTS.md §3 as amended by D-18/D-19/D-20, + D-23 settings.approval_mode.manage, + W7 chat.*)', () => {
     // 137 at CONTRACTS.md's own last count (already stale relative to its table — see rbac.ts's
     // header) + 1: `settings.approval_mode.manage` (D-23, owner-decided, not yet folded into
     // CONTRACTS.md §3 — same documented-drift situation, flagged for the architect to reconcile).
-    expect(PERMISSION_KEY_COUNT).toBe(138);
-    expect(new Set(PERMISSION_KEYS).size).toBe(138); // no duplicate keys
+    expect(PERMISSION_KEY_COUNT).toBe(142);
+    expect(new Set(PERMISSION_KEYS).size).toBe(142); // no duplicate keys
   });
 
   it('has exactly 10 roles, in contract column order', () => {
@@ -31,7 +31,7 @@ describe('RBAC matrix shape', () => {
       RoleKey.HR_ADMIN,
       RoleKey.DRIVER,
       // Appended, never inserted: RBAC_ROLE_ORDER's position IS the column
-      // index into every row of the 138-row matrix, so adding SUPERADMIN
+      // index into every row of the 142-row matrix, so adding SUPERADMIN
       // anywhere but the end would silently re-map all nine existing roles.
       RoleKey.SUPERADMIN,
     ]);

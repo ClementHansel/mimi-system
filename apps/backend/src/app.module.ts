@@ -40,6 +40,7 @@ import { HrModule } from './modules/hr/hr.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { AssetModule } from './modules/asset/asset.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportModule } from './modules/report/report.module';
 import { SettingsModule } from './modules/settings/settings.module';
@@ -95,6 +96,7 @@ import { SyncModule } from './modules/sync/sync.module';
     PayrollModule,
     AssetModule,
     AccountingModule,
+    ChatModule,
     DashboardModule,
     ReportModule,
     SettingsModule,

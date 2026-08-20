@@ -202,6 +202,15 @@ const PERMISSION_ROWS = [
   ['sync.exception.review',               [true,  false, true,  false, false, false, false, false, false, true ]],
   // ── kernel ─────────────────────────────────────────────────────────────────
   ['notification.read.own',               [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
+  // Two-way WhatsApp chat (W7). `chat.read.own` is universal — it is the staff
+  // member's own thread with head office, and a driver or kasir with no
+  // location scope must still be able to open it. The INBOX keys are not:
+  // reading and replying to every conversation is a head-office/outlet-manager
+  // job, and a kasir must not be able to read a supplier negotiation.
+  ['chat.read.own',                       [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
+  ['chat.read',                           [true,  true,  true,  true,  true,  false, false, true,  false, true ]],
+  ['chat.send',                           [true,  true,  true,  true,  true,  false, false, true,  false, true ]],
+  ['chat.manage',                         [true,  true,  false, true,  false, false, false, false, false, true ]],
   ['attachment.upload',                   [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
 ] as const;
 

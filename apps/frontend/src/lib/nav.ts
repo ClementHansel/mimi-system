@@ -13,6 +13,7 @@ import {
   Truck,
   Route,
   ClipboardCheck,
+  MessageSquare,
   type LucideIcon,
 } from 'lucide-react';
 import type { PermissionKeyOrKeys } from './permissions';
@@ -149,6 +150,15 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         href: '/purchasing',
         icon: ClipboardList,
         permission: 'purchasing.read',
+      },
+      {
+        // The admin inbox. `chat.read` is head-office/manager only — the
+        // staff-facing thread is a different entry below, gated differently.
+        id: 'chat',
+        labelKey: 'nav.chat',
+        href: '/chat',
+        icon: MessageSquare,
+        permission: 'chat.read',
       },
     ],
   },

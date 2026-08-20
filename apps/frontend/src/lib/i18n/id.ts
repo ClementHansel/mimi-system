@@ -37,6 +37,7 @@ export const id = {
     outlet: 'Outlet',
     warehouse: 'Gudang Pusat',
     purchasing: 'Pembelian',
+    chat: 'Pesan (WhatsApp)',
     finance: 'Keuangan',
     hr: 'SDM & Absensi',
     assets: 'Aset & Maintenance',
@@ -1026,6 +1027,29 @@ export const id = {
     },
   },
 
+  // W7 — two-way WhatsApp chat.
+  chat: {
+    title: 'Pesan Masuk (WhatsApp)',
+    myTitle: 'Pesan ke Kantor Pusat',
+    empty: 'Belum ada percakapan',
+    myEmpty: 'Belum ada pesan. Tulis pesan pertama Anda ke kantor pusat.',
+    noMessages: 'Belum ada pesan',
+    selectConversation: 'Pilih percakapan untuk membaca dan membalas',
+    newConversation: 'Percakapan Baru',
+    composerPlaceholder: 'Tulis pesan… (Enter kirim, Shift+Enter baris baru)',
+    send: 'Kirim',
+    close: 'Tutup Percakapan',
+    reopen: 'Buka Kembali',
+    fieldPhone: 'Nomor WhatsApp',
+    fieldName: 'Nama Kontak',
+    phoneHint: 'Boleh ditulis 08… atau 62… — keduanya disimpan sebagai satu nomor yang sama.',
+    deliveryDisabledNotice:
+      'Pengiriman WhatsApp belum aktif (WA_ENABLED=false, kredensial gateway belum ada). Pesan tetap tersimpan dan terbaca di aplikasi, tetapi BELUM terkirim ke ponsel siapa pun sampai gateway dihidupkan.',
+    status: {
+      pending: 'Belum terkirim',
+      failed: 'Gagal kirim',
+    },
+  },
   purchasing: {
     tabs: {
       requests: 'Permintaan Pembelian',

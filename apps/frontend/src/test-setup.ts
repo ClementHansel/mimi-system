@@ -15,3 +15,11 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+// jsdom implements no layout, so `scrollIntoView` does not exist on elements.
+// Any component that scrolls a list to its newest item — the chat thread, and
+// anything similar later — throws without this. Same category as `matchMedia`
+// above: a jsdom gap, not something the component should defend against.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

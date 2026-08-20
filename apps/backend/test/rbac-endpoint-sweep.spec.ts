@@ -47,6 +47,31 @@ interface Route {
  * the test — so adding an unguarded route forces a deliberate entry here
  * rather than passing unnoticed.
  */
+/**
+ * Public routes that WRITE. Each entry names what authenticates the caller in
+ * place of a session — a public write with no such mechanism is a hole anyone
+ * on the internet can reach.
+ */
+const ALLOWED_PUBLIC_MUTATIONS: Record<string, string> = {
+  'AuthController.login': 'issues the session; the credentials ARE the authentication',
+  'AuthController.refresh': 'authenticated by the refresh token in the body',
+  'AuthController.logout': 'ends the caller’s own session; nothing else is reachable',
+  // Device/node onboarding and sync. All verified as genuinely authenticated
+  // when this assertion was added — they were simply never recorded, which is
+  // precisely what it exists to prevent.
+  'DevicesController.register':
+    'pairing-token authenticated (CONTRACTS §4.21); no session exists yet',
+  'DevicesController.heartbeat': '`DeviceTokenGuard` — the device credential is the authentication',
+  'NodesController.register': 'pairing-token authenticated (CONTRACTS §4.22)',
+  'SyncHttpController.hello': '`DeviceAuthGuard` — device credential, not a user session',
+  'SyncHttpController.bootstrap': '`DeviceAuthGuard`',
+  'SyncHttpController.push': '`DeviceAuthGuard`',
+  'ChatInboundController.receive':
+    'n8n WhatsApp webhook — authenticated by the `x-webhook-secret` shared secret, ' +
+    'which the handler compares BEFORE any write and which refuses every request ' +
+    'when `N8N_WEBHOOK_SECRET` is unset (fails closed, never open)',
+};
+
 const ALLOWED_UNGUARDED: Record<string, string> = {
   // Authentication itself cannot require a permission — there is no session yet.
   'AuthController.login': '@Public — issues the session',
@@ -171,5 +196,26 @@ describe.skipIf(!hasDb)('W6-03 — every registered route is permission-gated', 
 
     expect(mutating.length, 'no mutating routes found — reflection is broken').toBeGreaterThan(50);
     expect(ungated, 'unguarded MUTATING endpoints').toEqual([]);
+  });
+
+  /**
+   * A blind spot found while adding `chat/inbound` (W7): both assertions above
+   * exempt `@Public` routes entirely, so a PUBLIC WRITE — the most dangerous
+   * shape there is — passed the sweep without anyone recording why it was
+   * safe. `@Public` means "no session", which is a statement about
+   * authentication, not a licence to skip authorization.
+   *
+   * Every public mutating route must therefore be listed in
+   * `ALLOWED_PUBLIC_MUTATIONS` with the mechanism that actually protects it.
+   */
+  it('every PUBLIC mutating route is explicitly justified', () => {
+    const unjustified = routes
+      .filter((r) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(r.method))
+      .filter((r) => r.isPublic)
+      .filter((r) => !(`${r.controller}.${r.handler}` in ALLOWED_PUBLIC_MUTATIONS))
+      .map((r) => `${r.method} ${r.path}  (${r.controller}.${r.handler})`)
+      .sort();
+
+    expect(unjustified, 'PUBLIC endpoints that WRITE, with no recorded justification').toEqual([]);
   });
 });

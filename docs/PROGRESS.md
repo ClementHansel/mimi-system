@@ -431,7 +431,7 @@ Root cause was in `stock-opname-gl-posting.spec.ts`'s cleanup, and it was two bu
 
 Both scoped/fixed. Verified by reseeding and then running the full suite TWICE with no reseed between: 837 passed both times, drift 0. Previously the second run failed.
 
-### 🟠 B-16 — the general ledger was structurally incomplete: 13 of 25 posting rules were never triggered. **9 now wired, 4 remain**
+### ✅ B-16 RESOLVED 2026-08-20 — the general ledger was structurally incomplete: 13 of 25 posting rules were never triggered. **All 12 that should fire automatically now do; the 13th is manual by design**
 
 **Opened:** 2026-08-19 · **Found by:** W6-04 · **Partially fixed 2026-08-19** · **Verified independently before recording**
 
@@ -458,11 +458,18 @@ CONTRACTS §6.2 defines both as a "daily aggregate of applied `sales.completed`"
 
 Two correctness details worth keeping: the engine's two adjustment rules are ASYMMETRIC — `outlet_stock_adjustment` branches on `direction === 'overage'` while `gudang_stock_adjustment` branches on `direction === 'shortage'`, so the wrong string silently swaps the accounts instead of failing. Both are fed from one typed `'shortage' | 'overage'` value that also chooses the movement type, so the ledger and the journal cannot disagree. Outlet shortages post `attributable: false` (Dr 6400 expense, not Dr 1210 employee receivable) because attributability is a payroll decision made later.
 
-**Still never emitted — 4 remaining, and this is what keeps B-16 open:** `gudang_goods_in`, `gudang_stock_revaluation`, `outlet_direct_purchase`, `outlet_petty_cash`. (`gudang_goods_in` was in scope for the wiring pass above and did NOT get done — recorded rather than quietly re-scoped.)
+**The last three wired 2026-08-20**, and reading the contract first mattered more than the code did:
+
+- **`gudang_goods_in` (JGUD-02) is NOT a PO receipt.** The obvious reading of the name is wrong; CONTRACTS §6.2 says the trigger is `returns.received_at_warehouse`, the outlet→gudang leg, and the accounts confirm it (Dr 1100 / Cr **1120 Dalam Perjalanan**, not Cr 2000). It is the CLEARING half of `OUTLET_RETURN_TO_WAREHOUSE` (Dr 1120 / Cr 1110) posted at ship. Without it, 1120 accumulated every returned rupiah forever and never cleared. Wired at `returns.receive`.
+- **`outlet_direct_purchase` (JOUT-07) and `outlet_petty_cash` (JOUT-08) are the same document split in two.** One petty-cash slip can be both — a supervisor buys onions and pays the parking attendant on one trip. The stockable lines became inventory (Dr 1110), the rest was spent (Dr 6100), so a verify emits both, split by the _same_ `isStockableLine` predicate the stock loop uses. Extracted to one type-guard so the two halves cannot drift apart and describe different purchases. Context is `source: 'petty_cash'`, deliberately not `po_receipt`: this was paid from the cash float, so the credit is 1010 Kas Kecil, and the wrong context would silently book a payable nobody owes. No `expenseAccountCode` is passed — category→account mapping is a documented future refinement and the engine already defaults to 6100.
+
+**`gudang_stock_revaluation` (JGUD-07) is deliberately NOT wired, and that is the correct end state.** Appendix A-8: it is "a valuation statement, not an event", served primarily by `GET /api/accounting/stock-value`, with the rule kept for a manual FIN entry — and "moving-average cost updates from PO receipts do NOT auto-post revaluation entries in v1". Inventing a trigger would have contradicted the contract. Counting it as an open gap was my error, corrected here.
 
 **Proven by execution, not by grep.** Two specs drive the real services and then assert the GL is empty: `waste-gl-posting.spec.ts` files and approves a cold-chain-breach waste report — the `waste_out` stock movement posts, and `journal_entries` has zero rows for it; `pos-online-order-gl-posting.spec.ts` does the same for a completed GoFood order. Both pin the CURRENT broken behaviour deliberately, so they go red the moment the wiring is fixed. That is the intended signal, not a passing grade.
 
-**Impact now:** revenue, COGS, purchases, waste, returns and stock adjustments all post. What is still missing is goods-receipt, revaluation, direct purchase and petty cash. Days traded BEFORE this change remain unposted — the backfill endpoint exists but has not been run.
+**Impact now:** every event type that should post automatically does. The remaining exposure is not the wiring but the HISTORY: days traded before 2026-08-19 have no `outlet_sales`/`outlet_ingredient_usage` entries, and the pre-existing documents (waste, returns, opname, POs, petty cash) approved before their wiring landed were never posted either. `POST /api/accounting/daily-posting` backfills the sales side per day; **the document-side events have no backfill and would need one written**. Nothing has been backfilled yet, and doing so on production is an owner decision, not a cleanup task.
+
+Verified: reseed, then the full backend suite run TWICE with no reseed between — 837 pass both times.
 
 **Remaining work.** Each of the 11 needs its amount, context and idempotency key derived correctly at the right lifecycle point, following the `drop.service.ts` pattern. That is design work on money, not a mechanical wiring pass.
 

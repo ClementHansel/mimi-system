@@ -7,10 +7,12 @@ import {
 import type { PoolClient } from 'pg';
 import {
   addMoney,
+  sumMoney,
   ERR_CONFLICT,
   ERR_NOT_FOUND,
   ERR_VALIDATION,
   isZeroQty,
+  JournalEventType,
   MovementType,
   PettyCashStatus,
   SyncEntity,
@@ -23,6 +25,8 @@ import { formatDateOnly } from '../../common/date-only.util';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { PaymentVerificationsService } from '../accounting/payment-verifications.service';
+import { EventBus } from '../../kernel/events/event-bus.service';
+import { toWitaOccurredAt } from '../../common/wita-occurred-at.util';
 import { withWrite } from './db-tx';
 import type { CreatePettyCashDto, ListPettyCashQueryDto } from './dto/petty-cash.dto';
 import {
@@ -61,6 +65,26 @@ export interface PettyCashDetail {
  * decide directly, matching CONTRACTS.md §4.11's endpoint table having no
  * `/submit` step for it.
  */
+/**
+ * A petty-cash line is STOCKABLE when it names an item, an area to put it in,
+ * and a non-zero quantity — i.e. it became inventory rather than being spent.
+ *
+ * Extracted to one predicate because two places depend on the same answer: the
+ * ledger loop that posts `purchase_in`, and the B-16 journal split between
+ * JOUT-07 (direct purchase, Dr 1110) and JOUT-08 (petty cash expense, Dr
+ * 6100). If those two ever disagreed, stock and the ledger would silently
+ * describe different purchases.
+ * Declared as a type GUARD, not a plain boolean: the inline check it replaced
+ * was what narrowed `item_id`/`storage_area_id`/`qty` to non-null for the
+ * ledger call below, and a boolean would push the loop back to non-null
+ * assertions.
+ */
+type StockableLine = PettyCashLineRow & { item_id: string; storage_area_id: string; qty: Qty };
+
+function isStockableLine(line: PettyCashLineRow): line is StockableLine {
+  return !!line.item_id && !!line.storage_area_id && !!line.qty && !isZeroQty(line.qty);
+}
+
 @Injectable()
 export class PettyCashService {
   constructor(
@@ -68,6 +92,7 @@ export class PettyCashService {
     private readonly ledger: StockLedgerService,
     private readonly sync: SyncEmitService,
     private readonly payments: PaymentVerificationsService,
+    private readonly eventBus: EventBus,
   ) {}
 
   async list(
@@ -190,7 +215,7 @@ export class PettyCashService {
 
       const lines = await this.repo.findLines(client, id);
       for (const line of lines) {
-        if (!line.item_id || !line.storage_area_id || !line.qty || isZeroQty(line.qty)) continue;
+        if (!isStockableLine(line)) continue;
         const costing = await this.repo.itemCosting(client, line.item_id);
         const unitCost =
           costing && Number(line.qty) > 0 ? this.perUnitCost(line.amount, line.qty) : line.amount;
@@ -220,6 +245,50 @@ export class PettyCashService {
           );
           await this.repo.updateItemCost(client, line.item_id, newAvg, unitCost);
         }
+      }
+
+      // ── B-16 JOUT-07/JOUT-08 ────────────────────────────────────────────
+      // One petty-cash slip can be BOTH: a supervisor buys 5kg of onions and
+      // pays the parking attendant on the same trip. The stockable lines
+      // became inventory (posted to the ledger above) and the rest was spent,
+      // so they post as two different journal events, split by exactly the
+      // same test the stock loop used — never by re-deciding what "stockable"
+      // means, which is how the two halves would drift apart.
+      const stockableTotal = sumMoney(lines.filter(isStockableLine).map((l) => l.amount as Money));
+      const expenseTotal = sumMoney(
+        lines.filter((l) => !isStockableLine(l)).map((l) => l.amount as Money),
+      );
+      const journalOccurredAt = toWitaOccurredAt();
+
+      if (stockableTotal !== '0.00') {
+        await this.eventBus.publish('journal.action', {
+          eventType: JournalEventType.OUTLET_DIRECT_PURCHASE,
+          documentType: 'petty_cash',
+          documentId: id,
+          locationId: header.location_id,
+          amount: stockableTotal,
+          // NOT `po_receipt`: this was paid out of the outlet's cash float, so
+          // the credit is 1010 Kas Kecil, not 2000 Hutang Usaha. Getting this
+          // context wrong silently books a payable that nobody owes.
+          context: { source: 'petty_cash' },
+          occurredAt: journalOccurredAt,
+        });
+      }
+
+      if (expenseTotal !== '0.00') {
+        await this.eventBus.publish('journal.action', {
+          eventType: JournalEventType.OUTLET_PETTY_CASH,
+          documentType: 'petty_cash',
+          documentId: id,
+          locationId: header.location_id,
+          amount: expenseTotal,
+          // No `expenseAccountCode`: mapping an expense category to a GL
+          // account is called out as a future refinement in CONTRACTS §6.2,
+          // and the engine already defaults to 6100. Passing a guessed code
+          // would be worse than taking the documented default.
+          context: {},
+          occurredAt: journalOccurredAt,
+        });
       }
 
       if (!header.payment_verification_id) {

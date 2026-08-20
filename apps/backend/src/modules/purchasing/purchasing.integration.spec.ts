@@ -80,7 +80,9 @@ function buildKit() {
     journalEventBus,
   );
   const pcRepo = new PettyCashRepository();
-  const pcService = new PettyCashService(pcRepo, ledger, sync, payments);
+  // Same `journalEventBus` the PO service uses, so a test can observe the
+  // B-16 JOUT-07/JOUT-08 emits from a petty-cash verify too.
+  const pcService = new PettyCashService(pcRepo, ledger, sync, payments, journalEventBus);
 
   return { prService, poService, pcService, journalEventBus };
 }

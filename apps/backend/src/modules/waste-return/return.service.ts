@@ -440,6 +440,9 @@ export class ReturnService {
 
     return withWrite(client, async () => {
       const receivedAt = new Date().toISOString();
+      // Accumulated as the lines post, so the journal is valued from exactly
+      // the same qty x unit_cost the ledger moved rather than re-derived.
+      const receivedValues: Money[] = [];
       for (const line of dto.lines) {
         const rl = await this.repo.findLineById(client, id, line.lineId);
         if (!rl)
@@ -474,7 +477,32 @@ export class ReturnService {
             ],
             'strict',
           );
+          receivedValues.push(mulMoneyByQty(rl.unit_cost, line.qtyReceived as Qty));
         }
+      }
+
+      // ── B-16 JGUD-02 ────────────────────────────────────────────────────
+      // Dr 1100 Persediaan Gudang / Cr 1120 Persediaan Dalam Perjalanan. This
+      // is the CLEARING half of the outlet's `OUTLET_RETURN_TO_WAREHOUSE`
+      // (Dr 1120 / Cr 1110) posted at ship: goods left the outlet into
+      // in-transit, and this is them landing at the warehouse. Without it,
+      // 1120 accumulated every returned rupiah forever and never cleared.
+      //
+      // Note the contract's trigger is `returns.received_at_warehouse`, the
+      // outlet->gudang leg specifically — NOT a PO receipt, which posts
+      // `GUDANG_PURCHASE` against 2000 instead. The method has already
+      // rejected any other return direction above.
+      const receivedTotal = receivedValues.length > 0 ? sumMoney(receivedValues) : '0.00';
+      if (receivedTotal !== '0.00') {
+        await this.eventBus.publish('journal.action', {
+          eventType: JournalEventType.GUDANG_GOODS_IN,
+          documentType: 'return',
+          documentId: id,
+          locationId: header.to_location_id!,
+          amount: receivedTotal,
+          context: {},
+          occurredAt: toWitaOccurredAt(new Date(receivedAt)),
+        });
       }
 
       await this.repo.setReceived(client, id, actor.userId, receivedAt);

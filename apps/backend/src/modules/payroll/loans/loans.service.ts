@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import {
   ApprovalDocumentType,
@@ -94,13 +95,26 @@ export class LoansService {
 
     return withWrite(client, async () => {
       const loanNumber = await this.nextLoanNumber(client);
-      const res = await client.query<Record<string, any>>(
-        `INSERT INTO employee_loans (loan_number, employee_id, principal, monthly_installment, outstanding, reason)
-         VALUES ($1,$2,$3,$4,$3,$5) RETURNING *`,
-        [loanNumber, dto.employeeId, dto.principal, dto.monthlyInstallment, dto.reason ?? null],
-      );
-      const loanId = res.rows[0]!.id as UUID;
-
+      // The id is minted HERE, and the approval is submitted BEFORE the loan
+      // row exists, so the row can be inserted complete — with `approval_id`
+      // already set — in a single statement.
+      //
+      // That ordering is not cosmetic. It used to be insert-then-UPDATE, which
+      // meant a borrower raising their own kasbon (`requestOwn`, W7) needed RLS
+      // permission to UPDATE `employee_loans`. Postgres ORs the USING clauses of
+      // all permissive policies together and, separately, ORs their WITH CHECK
+      // clauses — so ANY self-UPDATE policy, however tightly written, combined
+      // with the pre-existing `employee_loans_scope` USING (which already sees
+      // self rows) to let an employee take their own ACTIVE loan and rewrite it
+      // back to `pending` with `outstanding` reset — erasing their own debt.
+      // An integration test caught it. With no UPDATE needed, self-service now
+      // needs INSERT alone, and `employee_loans` stays office-only for every
+      // change after the request is raised.
+      //
+      // `approvals.submit` does not require the document row to exist (it only
+      // refuses a DUPLICATE approval for the same document), and both writes are
+      // inside this one transaction, so an orphaned approval is not reachable.
+      const loanId = randomUUID() as UUID;
       const submitResult = await this.approvals.submit(client, {
         documentType: ApprovalDocumentType.EMPLOYEE_LOAN,
         documentId: loanId,
@@ -108,13 +122,71 @@ export class LoansService {
         amount: dto.principal,
         locationId: null,
       });
-      await client.query('UPDATE employee_loans SET approval_id = $2 WHERE id = $1', [
-        loanId,
-        submitResult.approvalId,
-      ]);
+
+      await client.query(
+        `INSERT INTO employee_loans
+           (id, loan_number, employee_id, principal, monthly_installment, outstanding, reason, approval_id)
+         VALUES ($1,$2,$3,$4,$5,$4,$6,$7)`,
+        [
+          loanId,
+          loanNumber,
+          dto.employeeId,
+          dto.principal,
+          dto.monthlyInstallment,
+          dto.reason ?? null,
+          submitResult.approvalId,
+        ],
+      );
 
       return this.getById(client, loanId);
     });
+  }
+
+  /**
+   * The caller's own loans (`employee` interface). RLS already scopes
+   * `employee_loans` to self (migration 069), so this only has to resolve
+   * "which employee am I" and reuse the same list projection the office sees.
+   */
+  async listOwn(client: PoolClient, actorUserId: UUID): Promise<Paginated<LoanApi>> {
+    const employeeId = await this.employeeIdForUser(client, actorUserId);
+    return this.list(client, employeeId, undefined, 1, 100);
+  }
+
+  /**
+   * Raise your own kasbon request (owner, 2026-08-21: the `employee` interface
+   * covers "loan req").
+   *
+   * Deliberately the SAME path as the office's `create`: one insert, one
+   * approval chain, one status vocabulary. A parallel self-service flow is how
+   * "requests raised by staff skip the Finance step" happens. The only
+   * difference is that the employee cannot name someone else — the employee id
+   * comes from the session, never from the body.
+   */
+  async requestOwn(
+    client: PoolClient,
+    actorUserId: UUID,
+    dto: { principal: string; monthlyInstallment: string; reason?: string },
+  ): Promise<LoanApi> {
+    const employeeId = await this.employeeIdForUser(client, actorUserId);
+    return this.create(client, actorUserId, {
+      employeeId,
+      principal: dto.principal,
+      monthlyInstallment: dto.monthlyInstallment,
+      reason: dto.reason,
+    } as CreateLoanDto);
+  }
+
+  private async employeeIdForUser(client: PoolClient, userId: UUID): Promise<UUID> {
+    const res = await client.query<{ id: string }>(`SELECT id FROM employees WHERE user_id = $1`, [
+      userId,
+    ]);
+    const row = res.rows[0];
+    if (!row)
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: 'This account is not linked to an employee record',
+      });
+    return row.id as UUID;
   }
 
   async approve(

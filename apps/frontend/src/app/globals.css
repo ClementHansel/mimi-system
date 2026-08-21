@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* ────────────────────────────────────────────────────────────────────────
    Mimi Chicken OS — design tokens
@@ -83,7 +83,7 @@
   --color-cold-700: #155e75;
 
   /* Typography — next/font variables set on <html> in layout.tsx */
-  --font-sans: var(--font-inter), "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-inter), 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-display: var(--font-manrope), var(--font-inter), system-ui, sans-serif;
 
   /* Radii — soft, calm, not sharp (this is a kitchen tool, not a fintech app) */
@@ -103,7 +103,7 @@
      Button's default size, not from shrinking these. `--spacing-*` extends
      Tailwind's spacing scale, so this yields h-touch/h-touch-lg (and
      w-/p-/min-h- variants) directly. */
-  --spacing-touch: 2.75rem;    /* 44px — floor for any interactive control */
+  --spacing-touch: 2.75rem; /* 44px — floor for any interactive control */
   --spacing-touch-lg: 3.5rem; /* 56px — POS numpad / primary POS actions */
 }
 
@@ -140,7 +140,9 @@ body {
 /* Respect reduced-motion for the animated status dots (SyncStatusPill,
    TopologyDevice online pulse) and any future transitions. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -149,6 +151,11 @@ body {
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }

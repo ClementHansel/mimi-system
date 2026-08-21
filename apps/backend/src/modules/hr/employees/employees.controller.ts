@@ -31,6 +31,20 @@ export class EmployeesController {
     );
   }
 
+  /**
+   * The caller's OWN employee record — the `employee` interface's Data Pribadi
+   * (owner, 2026-08-21). Declared before `:id` so the literal route wins.
+   *
+   * RLS was never the obstacle: `employees_scope` (migration 069) already
+   * carries `app_is_self(user_id)`. What was missing is a route a Kasir is
+   * allowed to call at all — `:id` is gated on the office's `hr.employee.read`.
+   */
+  @Get('me')
+  @RequirePermission('hr.employee.read.own')
+  async me(@Req() req: RequestWithDbContext) {
+    return this.service.findByUserId(req.dbClient!, req.user!.sub);
+  }
+
   @Get(':id')
   @RequirePermission('hr.employee.read')
   async getById(

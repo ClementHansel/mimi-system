@@ -1,14 +1,26 @@
 'use client';
 
-import { QrCode, FileText, CalendarPlus } from 'lucide-react';
+import { QrCode, FileText, CalendarPlus, UserCircle, HandCoins } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
 import { AbsenPanel } from '@/components/me/AbsenPanel';
 import { SlipGajiPanel } from '@/components/me/SlipGajiPanel';
 import { CutiPanel } from '@/components/me/CutiPanel';
+import { ProfilePanel } from '@/components/me/ProfilePanel';
+import { PinjamanPanel } from '@/components/me/PinjamanPanel';
 
 /**
- * F11 `me` — every employee's own view (BUILD-PLAN W4-10). MOBILE-FIRST: a
+ * F11 `me` — the EMPLOYEE INTERFACE (BUILD-PLAN W4-10, promoted to one of the
+ * seven interfaces by the owner on 2026-08-21: "the interface that employee
+ * will see to see their own personal data, loan req, leave req, absency,
+ * contracts and everything about themself").
+ *
+ * Five tabs today: Absen, Slip Gaji, Cuti, Data Pribadi, Pinjaman. Contracts
+ * are NOT here and are not faked with an empty tab — there is no contracts
+ * table anywhere in the schema, so that is a new domain object (HR-side
+ * management plus this view), flagged rather than stubbed.
+ *
+ * MOBILE-FIRST: a
  * phone screen used one-handed in a car park at 6am (NFR-04) — large touch
  * targets (`touch-lg` buttons throughout the panels), no dense tables, no
  * hover-only affordances. Strict self-scoping: every fetch here goes through
@@ -27,6 +39,8 @@ export default function MePage() {
       <h1 className="font-display text-xl font-semibold text-text-primary">{t('nav.me')}</h1>
 
       <Tabs defaultValue="absen">
+        {/* Five tabs on a phone: two rows of large targets beats one row of
+            unreadably narrow ones. */}
         <TabsList className="grid grid-cols-3">
           <TabsTrigger value="absen">
             <span className="inline-flex items-center gap-1.5">
@@ -48,8 +62,29 @@ export default function MePage() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsList className="grid grid-cols-2">
+          <TabsTrigger value="profile">
+            <span className="inline-flex items-center gap-1.5">
+              <UserCircle className="size-4" aria-hidden />
+              {t('me.tabs.profile')}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="pinjaman">
+            <span className="inline-flex items-center gap-1.5">
+              <HandCoins className="size-4" aria-hidden />
+              {t('me.tabs.pinjaman')}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+
         <TabsContent value="absen">
           <AbsenPanel />
+        </TabsContent>
+        <TabsContent value="profile">
+          <ProfilePanel />
+        </TabsContent>
+        <TabsContent value="pinjaman">
+          <PinjamanPanel />
         </TabsContent>
         <TabsContent value="slip">
           <SlipGajiPanel />

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, History } from 'lucide-react';
+import { Plus, Pencil, History, ArrowRightLeft } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
@@ -91,7 +91,7 @@ const EMPTY_LINE: LineDraft = {
  * Rejected/Cancelled are dead ends. Mirrors `PaymentsPanel`'s list+drawer
  * shape: inline status-driven actions, no separate route per state.
  */
-export function PurchaseRequestsPanel() {
+export function PurchaseRequestsPanel({ onCreatePo }: { onCreatePo?: (prId: string) => void }) {
   const { t } = useI18n();
   const { can } = usePermissions();
 
@@ -205,6 +205,7 @@ export function PurchaseRequestsPanel() {
 
       {selectedId && (
         <RequestDrawer
+          onCreatePo={onCreatePo}
           locations={locations}
           id={selectedId}
           canApprove={can('purchasing.pr.approve')}
@@ -444,6 +445,7 @@ function RequestDrawer({
   locations,
   canApprove,
   canSubmit,
+  onCreatePo,
   onClose,
   onChanged,
 }: {
@@ -451,6 +453,7 @@ function RequestDrawer({
   locations: LocationOption[];
   canApprove: boolean;
   canSubmit: boolean;
+  onCreatePo?: (prId: string) => void;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -645,6 +648,28 @@ function RequestDrawer({
                 )}
               </section>
             )}
+
+          {/* An approved PR's next step is a PO — so offer it here, where the
+              person who just read the approval is standing, rather than making
+              them re-find the document in another tab. */}
+          {pr.status === PurchaseRequestStatus.APPROVED && onCreatePo && (
+            <PermissionGate permission="purchasing.po.create">
+              <section className="flex flex-col gap-2 border-t border-border pt-4">
+                <Button
+                  size="sm"
+                  leftIcon={<ArrowRightLeft className="size-4" />}
+                  onClick={() => {
+                    onCreatePo(pr.id);
+                    onClose();
+                  }}
+                  className="self-start"
+                >
+                  {t('purchasing.requests.createPoButton')}
+                </Button>
+                <p className="text-xs text-text-muted">{t('purchasing.requests.createPoHint')}</p>
+              </section>
+            </PermissionGate>
+          )}
 
           <section className="flex flex-col gap-2 border-t border-border pt-4">
             <Button

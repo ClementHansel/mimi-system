@@ -124,6 +124,24 @@ export class CreateLoanDto {
   reason?: string;
 }
 
+/**
+ * A self-service kasbon request (`POST /payroll/loans/me`). Same fields as
+ * `CreateLoanDto` MINUS `employeeId`: on this route the borrower is the
+ * session, and accepting an id would be an invitation to request a loan in
+ * someone else's name.
+ */
+export class RequestOwnLoanDto {
+  @IsNumberString()
+  principal!: string;
+
+  @IsNumberString()
+  monthlyInstallment!: string;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
 export class ApproveLoanDto {
   @IsOptional()
   @IsString()

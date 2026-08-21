@@ -11,12 +11,15 @@ import {
 } from './rbac';
 
 describe('RBAC matrix shape', () => {
-  it('has exactly 142 permission keys (CONTRACTS.md §3 as amended by D-18/D-19/D-20, + D-23 settings.approval_mode.manage, + W7 chat.*)', () => {
+  it('has exactly 145 permission keys (CONTRACTS.md §3 as amended by D-18/D-19/D-20, + D-23 settings.approval_mode.manage, + W7 chat.* and the employee-self keys)', () => {
     // 137 at CONTRACTS.md's own last count (already stale relative to its table — see rbac.ts's
     // header) + 1: `settings.approval_mode.manage` (D-23, owner-decided, not yet folded into
-    // CONTRACTS.md §3 — same documented-drift situation, flagged for the architect to reconcile).
-    expect(PERMISSION_KEY_COUNT).toBe(142);
-    expect(new Set(PERMISSION_KEYS).size).toBe(142); // no duplicate keys
+    // CONTRACTS.md §3 — same documented-drift situation, flagged for the architect to reconcile),
+    // + 3 for the `employee` interface (W7, owner 2026-08-21): `hr.employee.read.own`,
+    // `payroll.loan.read.own`, `payroll.loan.request.own` — each grants access to the caller's
+    // own record only, and each is universal across the 10 roles.
+    expect(PERMISSION_KEY_COUNT).toBe(145);
+    expect(new Set(PERMISSION_KEYS).size).toBe(145); // no duplicate keys
   });
 
   it('has exactly 10 roles, in contract column order', () => {

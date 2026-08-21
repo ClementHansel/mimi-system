@@ -30,9 +30,38 @@
  * try asking for someone else's record.
  */
 import { api } from '@/lib/api';
+import type { Money, Paginated } from '@/lib/shared-types';
+import type { Employee } from '@/components/hr/lib/types';
 import type { AttendanceRow, MyLeaves, Leave } from '@/components/hr/lib/types';
 import type { Payslip } from '@/components/hr/lib/types';
 import type { LocationGeo } from '@/components/hr/lib/types';
+
+/**
+ * The caller's own employee record (W7 `employee` interface — Data Pribadi).
+ * `/hr/employees/me`, never `/hr/employees/:id`: the office route is gated on
+ * `hr.employee.read` and this surface must never hold an id it could swap.
+ */
+export function getMyEmployee() {
+  return api.get<EmployeeDetail>('/hr/employees/me');
+}
+
+/** The caller's own kasbon (loans) — `/payroll/loans/me`. */
+export function getMyLoans() {
+  return api.get<Paginated<MyLoan>>('/payroll/loans/me');
+}
+
+/**
+ * Raise a kasbon request for yourself. No `employeeId` in the body by design —
+ * the server takes the borrower from the session, so this UI has no way to ask
+ * on someone else's behalf.
+ */
+export function requestMyLoan(body: {
+  principal: string;
+  monthlyInstallment: string;
+  reason?: string;
+}) {
+  return api.post<MyLoan>('/payroll/loans/me', body);
+}
 
 export function getMyAttendance(month: string) {
   return api.get<AttendanceRow[]>(`/hr/attendance/me?month=${month}`);
@@ -88,4 +117,32 @@ export function getMySlips(year: string) {
 
 export function getLocationGeo(id: string) {
   return api.get<LocationGeo>(`/locations/${id}`);
+}
+
+/**
+ * `GET /hr/employees/me` returns the office's `EmployeeDetail` — the roster row
+ * plus employment history. Declared here rather than imported from the HR
+ * module's admin types because this surface only ever sees ONE of them (its
+ * own), and `baseSalary` IS present on this route: your own salary is not a
+ * secret from you, it is already on the payslip you can open.
+ */
+export interface EmployeeDetail extends Employee {
+  employments: {
+    position: string;
+    locationName: string;
+    baseSalary?: Money;
+    startDate: string;
+    endDate: string | null;
+  }[];
+}
+
+/** One kasbon, as `/payroll/loans/me` returns it (`LoanApi` server-side). */
+export interface MyLoan {
+  id: string;
+  loanNumber: string;
+  employeeName: string;
+  principal: Money;
+  monthlyInstallment: Money;
+  outstanding: Money;
+  status: string;
 }

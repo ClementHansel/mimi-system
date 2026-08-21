@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ClipboardList, Truck, History, Building2, Store } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
@@ -30,6 +30,17 @@ export function PurchasingShell() {
   const { t } = useI18n();
   const { can } = usePermissions();
 
+  /**
+   * The tab strip is CONTROLLED so the chain can walk itself: an approved PR's
+   * "Buat PO" button switches to Pesanan Pembelian and hands that panel the PR
+   * to open prefilled. Owner's ruling (2026-08-21) was "PR to PO" as a flow,
+   * and telling the user "now go to the other tab and find it again" is not a
+   * flow. `poFromPr` is consumed once and cleared by the orders panel, so
+   * coming back to the tab later does not reopen the modal.
+   */
+  const [tab, setTab] = useState<string | undefined>(undefined);
+  const [poFromPr, setPoFromPr] = useState<string | null>(null);
+
   const tabs = useMemo(
     () => [
       {
@@ -47,14 +58,23 @@ export function PurchasingShell() {
         labelKey: 'purchasing.tabs.requests',
         icon: ClipboardList,
         visible: can('purchasing.read'),
-        content: <PurchaseRequestsPanel />,
+        content: (
+          <PurchaseRequestsPanel
+            onCreatePo={(prId) => {
+              setPoFromPr(prId);
+              setTab('orders');
+            }}
+          />
+        ),
       },
       {
         value: 'orders',
         labelKey: 'purchasing.tabs.orders',
         icon: Truck,
         visible: can('purchasing.read'),
-        content: <PurchaseOrdersPanel />,
+        content: (
+          <PurchaseOrdersPanel fromPrId={poFromPr} onFromPrConsumed={() => setPoFromPr(null)} />
+        ),
       },
       {
         value: 'suppliers',
@@ -71,7 +91,7 @@ export function PurchasingShell() {
         content: <SupplierPriceHistoryPanel />,
       },
     ],
-    [can],
+    [can, poFromPr],
   );
 
   const visibleTabs = tabs.filter((tab) => tab.visible);
@@ -81,7 +101,7 @@ export function PurchasingShell() {
   }
 
   return (
-    <Tabs defaultValue={visibleTabs[0]?.value}>
+    <Tabs value={tab ?? visibleTabs[0]?.value} onValueChange={setTab}>
       <TabsList>
         {visibleTabs.map((tab) => (
           <TabsTrigger key={tab.value} value={tab.value}>

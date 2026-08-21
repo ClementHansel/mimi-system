@@ -112,6 +112,33 @@ export class EmployeesService {
     };
   }
 
+  /**
+   * The caller's own record, resolved from their user id — the `employee`
+   * interface's Data Pribadi.
+   *
+   * `includeSalary: true` on purpose: this is YOUR employment history, and your
+   * own base salary is not a secret from you (it is on the payslip you can
+   * already open). The office's field projection exists to keep salaries away
+   * from OTHER people's records, which this route cannot reach — RLS
+   * (`employees_scope`, `app_is_self`) allows exactly one row here.
+   *
+   * A user with no `employees` row is not an error worth 500-ing over: not
+   * every login is an employee (a shared POS account, a service user), so this
+   * answers 404 with a message that says which case it is.
+   */
+  async findByUserId(client: PoolClient, userId: UUID): Promise<EmployeeDetail> {
+    const res = await client.query<{ id: string }>(`SELECT id FROM employees WHERE user_id = $1`, [
+      userId,
+    ]);
+    const row = res.rows[0];
+    if (!row)
+      throw new NotFoundException({
+        code: 'ERR_NOT_FOUND',
+        message: 'This account is not linked to an employee record',
+      });
+    return this.getById(client, row.id, true);
+  }
+
   async create(client: PoolClient, actorUserId: UUID, dto: CreateEmployeeDto): Promise<Employee> {
     if (!dto.employeeNumber?.trim())
       throw new BadRequestException({

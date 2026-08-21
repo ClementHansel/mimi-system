@@ -10,7 +10,9 @@
    print-to-PDF via `window.print()` — see the ticket note on why we did
    not add a PDF-generation library for a PWA served over mobile data). */
 
-.doc-print-cover { display: none; }
+.doc-print-cover {
+  display: none;
+}
 
 @media print {
   @page {
@@ -35,9 +37,14 @@
     overflow: visible !important;
   }
 
-  html, body { background: #fff !important; }
+  html,
+  body {
+    background: #fff !important;
+  }
 
-  .docs-print-scope { max-width: none !important; }
+  .docs-print-scope {
+    max-width: none !important;
+  }
 
   /* Branded cover page — one per printed manual. */
   .doc-print-cover {
@@ -49,23 +56,61 @@
     color: var(--color-stone-900, #1a1714);
   }
   .doc-print-cover .cover-kicker {
-    font-size: 10pt; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    font-size: 10pt;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
     color: var(--color-brand-600, #a8481a);
   }
   .doc-print-cover .cover-rule {
-    width: 64px; height: 3pt; margin: 14px 0 22px;
+    width: 64px;
+    height: 3pt;
+    margin: 14px 0 22px;
     background: var(--color-brand-500, #c85f26);
   }
-  .doc-print-cover .cover-title { font-size: 28pt; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 14px; }
-  .doc-print-cover .cover-audience { font-size: 13pt; color: var(--color-stone-600, #5c564d); margin: 0 0 40px; }
-  .doc-print-cover .cover-foot { font-size: 9pt; color: var(--color-stone-500, #7c756a); line-height: 1.6; }
-  .doc-print-cover .cover-foot strong { color: var(--color-stone-900, #1a1714); }
+  .doc-print-cover .cover-title {
+    font-size: 28pt;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0 0 14px;
+  }
+  .doc-print-cover .cover-audience {
+    font-size: 13pt;
+    color: var(--color-stone-600, #5c564d);
+    margin: 0 0 40px;
+  }
+  .doc-print-cover .cover-foot {
+    font-size: 9pt;
+    color: var(--color-stone-500, #7c756a);
+    line-height: 1.6;
+  }
+  .doc-print-cover .cover-foot strong {
+    color: var(--color-stone-900, #1a1714);
+  }
 
-  .doc-body h2 { page-break-after: avoid; }
-  .doc-body h3, .doc-body h4 { page-break-after: avoid; }
-  .doc-body pre, .doc-body blockquote, .doc-body tr, .doc-body li { page-break-inside: avoid; }
-  .doc-body table { page-break-inside: auto; }
-  .doc-body thead { display: table-header-group; }
+  .doc-body h2 {
+    page-break-after: avoid;
+  }
+  .doc-body h3,
+  .doc-body h4 {
+    page-break-after: avoid;
+  }
+  .doc-body pre,
+  .doc-body blockquote,
+  .doc-body tr,
+  .doc-body li {
+    page-break-inside: avoid;
+  }
+  .doc-body table {
+    page-break-inside: auto;
+  }
+  .doc-body thead {
+    display: table-header-group;
+  }
 
-  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

@@ -2,7 +2,12 @@ import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 import { Audited } from '../../../common/decorators/audited.decorator';
 import type { RequestWithDbContext } from '../../../common/guards/rls-context.guard';
-import { ApproveLoanDto, CreateLoanDto, RejectLoanDto } from '../dto/payroll.dto';
+import {
+  ApproveLoanDto,
+  CreateLoanDto,
+  RejectLoanDto,
+  RequestOwnLoanDto,
+} from '../dto/payroll.dto';
 import { LoansService } from './loans.service';
 
 /** CONTRACTS.md §4.15 — `/api/payroll/loans*`. */
@@ -26,6 +31,25 @@ export class LoansController {
       page ? parseInt(page, 10) : 1,
       pageSize ? parseInt(pageSize, 10) : 50,
     );
+  }
+
+  /** The caller's own kasbon list — the `employee` interface's Pinjaman tab. */
+  @Get('me')
+  @RequirePermission('payroll.loan.read.own')
+  async listOwn(@Req() req: RequestWithDbContext) {
+    return this.service.listOwn(req.dbClient!, req.user!.sub);
+  }
+
+  /**
+   * Raise your own kasbon. The employee id comes from the session, never the
+   * body — an employee cannot request a loan in someone else's name, and the
+   * approval chain is the same one the office's `POST /` submits to.
+   */
+  @Post('me')
+  @RequirePermission('payroll.loan.request.own')
+  @Audited({ module: 'payroll', entityType: 'employee_loans', action: 'payroll.loan.request.own' })
+  async requestOwn(@Req() req: RequestWithDbContext, @Body() dto: RequestOwnLoanDto) {
+    return this.service.requestOwn(req.dbClient!, req.user!.sub, dto);
   }
 
   @Post()

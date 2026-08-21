@@ -1235,6 +1235,10 @@ export const id = {
       createdBy: 'Dibuat Oleh',
       updatedBy: 'Terakhir Diubah',
       sourceRequest: 'Dari Permintaan Outlet',
+      // An approved PR's next step, offered where the approval is read.
+      createPoButton: 'Buat PO dari PR ini',
+      createPoHint:
+        'Item dan tujuan PR akan disalin ke form PO. Harga masih perkiraan — sesuaikan dengan penawaran supplier.',
       historyTitle: 'Riwayat Perubahan',
       historyEmpty: 'Belum ada perubahan tercatat.',
       historyAction: {
@@ -1279,6 +1283,10 @@ export const id = {
       location: 'Lokasi',
       fromPr: 'Dari Permintaan Pembelian (opsional)',
       fromPrNone: 'Tidak dari PR',
+      // Picking a PR copies its destination and lines into this PO; the price
+      // is the requester's ESTIMATE and has to be confirmed against the supplier.
+      fromPrHint:
+        'Pilih PR untuk menyalin tujuan dan itemnya. Harga masih perkiraan — pastikan sesuai penawaran supplier.',
       orderDate: 'Tanggal Pesan',
       expectedDate: 'Estimasi Tanggal Datang',
       notes: 'Catatan',
@@ -2107,6 +2115,9 @@ export const id = {
       absen: 'Absen',
       slip: 'Slip Gaji',
       cuti: 'Cuti/Izin',
+      // The `employee` interface's own-data tabs (W7).
+      profile: 'Data Pribadi',
+      pinjaman: 'Pinjaman',
     },
     absen: {
       noLocation: 'Akun Anda belum terhubung ke lokasi kerja manapun.',
@@ -2162,6 +2173,43 @@ export const id = {
       startDate: 'Tanggal Mulai',
       endDate: 'Tanggal Selesai',
       reasonLabel: 'Alasan (opsional)',
+    },
+    // Data Pribadi — the employee's own HR record, read-only (corrections go
+    // through Admin SDM, because these fields feed pay).
+    profile: {
+      location: 'Lokasi Kerja',
+      joinDate: 'Tanggal Masuk',
+      nik: 'NIK (KTP)',
+      phone: 'Nomor HP',
+      email: 'Email',
+      baseSalary: 'Gaji Pokok',
+      baseSalaryHint: 'Sesuai posisi Anda saat ini.',
+      employmentHistory: 'Riwayat Jabatan',
+      present: 'sekarang',
+      correctionHint:
+        'Data ini dikelola oleh Admin SDM. Bila ada yang tidak sesuai, hubungi Admin SDM untuk diperbaiki.',
+      notEmployeeTitle: 'Akun ini belum terhubung ke data karyawan',
+      notEmployeeDescription:
+        'Minta Admin SDM menghubungkan akun Anda dengan data karyawan agar absensi, slip gaji, dan pinjaman muncul di sini.',
+    },
+    // Pinjaman (kasbon) — own loans plus the request form. A request goes to
+    // the same Keuangan -> Manajer approval chain the office uses.
+    pinjaman: {
+      totalOutstanding: 'Total Sisa Pinjaman',
+      activeCount: '{{count}} pinjaman berjalan',
+      outstanding: 'Sisa pinjaman',
+      principal: 'Jumlah Pinjaman',
+      installment: 'Angsuran per Bulan',
+      installmentHint: 'Dipotong otomatis dari gaji setiap bulan.',
+      reason: 'Alasan Pengajuan',
+      reasonPlaceholder: 'mis. biaya sekolah anak',
+      requestButton: 'Ajukan Pinjaman',
+      requestTitle: 'Ajukan Pinjaman (Kasbon)',
+      requestDescription:
+        'Pengajuan akan diperiksa oleh Keuangan lalu disetujui Manajer. Anda akan diberi tahu setelah ada keputusan.',
+      requestSuccess: 'Pengajuan pinjaman terkirim.',
+      emptyTitle: 'Belum ada pinjaman',
+      emptyDescription: 'Pengajuan kasbon Anda akan muncul di sini beserta sisa angsurannya.',
     },
   },
 

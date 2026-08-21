@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Upload } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
@@ -12,6 +12,7 @@ import { formatMoney } from '@/lib/formatters';
 import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { Select } from '@/components/ui/Select';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -32,6 +33,7 @@ import {
   getSuppliers,
   getStorageAreas,
   listPurchaseRequests,
+  getPurchaseRequest,
   getPurchaseOrder,
   createPurchaseOrder,
   submitPurchaseOrder,
@@ -76,7 +78,14 @@ const EMPTY_LINE: LineDraft = { itemId: '', qtyOrdered: null, unitId: '', unitPr
  * matrix (CONTRACTS §3), so receiving must work with quantities/storage
  * areas alone, never blocked on price visibility.
  */
-export function PurchaseOrdersPanel() {
+export function PurchaseOrdersPanel({
+  fromPrId,
+  onFromPrConsumed,
+}: {
+  /** An approved PR to open the create form with, handed over by the shell. */
+  fromPrId?: string | null;
+  onFromPrConsumed?: () => void;
+} = {}) {
   const { t } = useI18n();
   const { can } = usePermissions();
   const canSeePrice = can('supplier.price.read');
@@ -102,6 +111,12 @@ export function PurchaseOrdersPanel() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Arriving from an approved PR's "Buat PO": open the form on that PR, then
+  // tell the shell to forget it so returning to this tab later is a plain list.
+  useEffect(() => {
+    if (fromPrId) setCreateOpen(true);
+  }, [fromPrId]);
 
   const columns: DataTableColumn<PurchaseOrderListRow>[] = [
     { key: 'poNumber', header: t('purchasing.orders.columnNumber') },
@@ -187,10 +202,17 @@ export function PurchaseOrdersPanel() {
 
       {createOpen && (
         <CreateOrderModal
+          initialPrId={fromPrId ?? undefined}
           canSeePrice={canSeePrice}
-          onClose={() => setCreateOpen(false)}
+          onClose={() => {
+            setCreateOpen(false);
+            // Consumed either way — a cancelled conversion must not reopen the
+            // form the next time this tab is visited.
+            onFromPrConsumed?.();
+          }}
           onCreated={() => {
             setCreateOpen(false);
+            onFromPrConsumed?.();
             reload();
             toast({ title: t('purchasing.orders.createSuccess'), variant: 'success' });
           }}
@@ -215,10 +237,13 @@ export function PurchaseOrdersPanel() {
 
 function CreateOrderModal({
   canSeePrice,
+  initialPrId,
   onClose,
   onCreated,
 }: {
   canSeePrice: boolean;
+  /** Opened from an approved PR — prefill from it on mount. */
+  initialPrId?: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -235,8 +260,55 @@ function CreateOrderModal({
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [approvedPrs, setApprovedPrs] = useState<PurchaseRequestListRow[]>([]);
+  const [prLoading, setPrLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  /**
+   * PR -> PO, for real (owner, 2026-08-21: "later PR to PO").
+   *
+   * The PR picker already existed but only stamped `prId` on the PO — the buyer
+   * still retyped every line from the approved request into this form, which is
+   * both the slowest and the most error-prone way to do the one thing the two
+   * documents exist to do together.
+   *
+   * Picking a PR now copies its destination and its lines across. Prices come
+   * over as the PR's ESTIMATE and must be confirmed: an estimate is what the
+   * requester guessed, a PO price is what the supplier charges, and shipping
+   * the guess as a commitment is exactly the mistake this must not make — so
+   * the hint under the picker says so, and lines with no estimate arrive blank
+   * rather than as 0.
+   */
+  async function applyPr(nextPrId: string) {
+    setPrId(nextPrId);
+    if (!nextPrId) return;
+    setPrLoading(true);
+    setError(null);
+    try {
+      const pr = await getPurchaseRequest(nextPrId);
+      setLocationId(pr.locationId);
+      setLines(
+        pr.lines.map((l) => ({
+          itemId: l.itemId,
+          qtyOrdered: l.qty,
+          unitId: l.unitId,
+          // '0.00' is the "not priced yet" marker a converted PR carries, and a
+          // zero-priced PO line would fail validation anyway — so leave it empty
+          // and make the buyer type the real figure.
+          unitPrice: l.estPrice && l.estPrice !== '0.00' ? l.estPrice : null,
+        })),
+      );
+      // Only when the PR agrees with itself: several lines suggesting different
+      // suppliers is a real case (one PR, two POs), and guessing one of them
+      // would silently drop the others.
+      const suggested = [...new Set(pr.lines.map((l) => l.suggestedSupplierId).filter(Boolean))];
+      if (suggested.length === 1) setSupplierId(suggested[0]!);
+    } catch (err) {
+      setError(errMsg(err, t('auth.genericError')));
+    } finally {
+      setPrLoading(false);
+    }
+  }
 
   useEffect(() => {
     getItems()
@@ -253,6 +325,18 @@ function CreateOrderModal({
       .then((r) => setApprovedPrs(r.rows))
       .catch(() => {});
   }, [can]);
+
+  // Opened from an approved PR: prefill from it exactly once. Runs on mount
+  // only — a later change to `initialPrId` would mean a different modal.
+  const appliedInitialPr = useRef(false);
+  useEffect(() => {
+    if (!initialPrId || appliedInitialPr.current) return;
+    appliedInitialPr.current = true;
+    void applyPr(initialPrId);
+    // Deliberately keyed on `initialPrId` alone: `applyPr` is redeclared every
+    // render, so depending on it would refetch the PR continuously. The
+    // `appliedInitialPr` guard above is what makes that safe.
+  }, [initialPrId]);
 
   const itemOptions = items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }));
 
@@ -344,12 +428,17 @@ function CreateOrderModal({
             placeholder={t('common.selectPlaceholder')}
             required
           />
-          <Select
+          <SearchableSelect
             label={t('purchasing.orders.fromPr')}
             value={prId}
-            onValueChange={setPrId}
-            options={approvedPrs.map((p) => ({ value: p.id, label: p.prNumber }))}
+            onValueChange={applyPr}
+            options={approvedPrs.map((p) => ({
+              value: p.id,
+              label: p.prNumber,
+              hint: `${p.locationName} · ${t('purchasing.requests.columnLines')}: ${p.lineCount}`,
+            }))}
             placeholder={t('purchasing.orders.fromPrNone')}
+            hint={prLoading ? t('common.loading') : t('purchasing.orders.fromPrHint')}
           />
           <Input
             label={t('purchasing.orders.orderDate')}
@@ -377,7 +466,7 @@ function CreateOrderModal({
               key={idx}
               className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-2"
             >
-              <Select
+              <SearchableSelect
                 label={t('purchasing.orders.item')}
                 value={line.itemId}
                 options={itemOptions}

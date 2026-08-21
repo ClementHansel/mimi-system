@@ -146,6 +146,10 @@ const PERMISSION_ROWS = [
   ['hr.shift.read',                       [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
   ['hr.shift.manage',                     [false, true,  false, false, true,  false, false, true,  false, true ]],
   ['hr.employee.read',                    [true,  true,  true,  false, true,  false, false, true,  false, true ]],
+  // Your OWN employee record — name, NIK, position, join date, bank account —
+  // for the `employee` interface. `hr.employee.read` above is the office's
+  // "read anyone" key and stays office-only.
+  ['hr.employee.read.own',                [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
   ['hr.employee.manage',                  [true,  true,  false, false, false, false, false, true,  false, true ]],
   ['hr.leave.request',                    [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
   ['hr.leave.approve',                    [true,  true,  false, false, true,  false, false, true,  false, true ]],
@@ -159,6 +163,12 @@ const PERMISSION_ROWS = [
   ['payroll.run.pay',                     [true,  false, true,  false, false, false, false, false, false, true ]],
   ['payroll.slip.send',                   [false, false, false, false, false, false, false, true,  false, true ]],
   ['payroll.slip.read.own',               [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
+  // The `employee` interface (W7): reading and RAISING your own kasbon. Both
+  // universal — a driver with no location scope still has a self, and these
+  // grant access to nothing but that self. Approving one stays office-only
+  // (`payroll.loan.approve` below).
+  ['payroll.loan.read.own',               [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
+  ['payroll.loan.request.own',            [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
   ['payroll.loan.manage',                 [false, false, true,  false, false, false, false, true,  false, true ]],
   ['payroll.loan.approve',                [true,  true,  true,  false, false, false, false, false, false, true ]],
   ['payroll.statutory.read',              [true,  true,  true,  false, false, false, false, true,  false, true ]],

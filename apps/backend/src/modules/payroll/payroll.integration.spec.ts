@@ -1001,6 +1001,108 @@ describe('Payroll module (integration, live Postgres)', () => {
       }
     });
 
+    it("a Kasir can raise and read their OWN kasbon — and sees nobody else's (W7 employee interface)", async () => {
+      // The `employee` interface's Pinjaman tab (owner, 2026-08-21). This is the
+      // test that matters for migration 228: `employee_loans`' WITH CHECK was
+      // office-only, so the INSERT — and the `approval_id` UPDATE the service
+      // makes immediately after it — both had to be allowed for the BORROWER
+      // without opening the door to rewriting an active loan. Running it under a
+      // real Kasir session is the only way to prove the carve-out works, since
+      // an owner session passes every policy trivially.
+      if (!dbAvailable) return;
+      const kasirUserId = fixtures.usersByRole[RoleKey.KASIR];
+      const hrAdmin =
+        fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+      if (!kasirUserId) return;
+
+      // The seeded Kasir must be linked to an employee row for a self-service
+      // request to mean anything; if that ever stops being true the test says so.
+      const ownEmployee = await asRequest(
+        { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] },
+        async (client) => {
+          const r = await client.query<{ id: string }>(
+            'SELECT id FROM employees WHERE user_id = $1',
+            [kasirUserId],
+          );
+          return r.rows[0]?.id;
+        },
+      );
+      expect(ownEmployee, 'seeded kasir must have an employees row').toBeTruthy();
+
+      // Same document_counters pre-seed the loans WTR test documents above.
+      const loanPeriod = new Date().toISOString().slice(0, 7).replace('-', '');
+      await asCommittedRequest(
+        { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] },
+        (client) =>
+          client.query(
+            `INSERT INTO document_counters (doc_type, period, last_number) VALUES ('LOAN', $1, 1)
+             ON CONFLICT (doc_type, period) DO NOTHING`,
+            [loanPeriod],
+          ),
+      );
+
+      let loanId: string | undefined;
+      try {
+        const kasirSession = {
+          userId: kasirUserId,
+          roleKey: RoleKey.KASIR,
+          locationIds: [fixtures.locationId],
+        };
+
+        const requested = await asRequest(kasirSession, (client) =>
+          loans.requestOwn(client, kasirUserId, {
+            principal: '300000.00',
+            monthlyInstallment: '100000.00',
+            reason: 'biaya sekolah anak',
+          }),
+        );
+        loanId = requested.id;
+
+        // Lands pending — the borrower cannot advance their own request.
+        expect(requested.status).toBe('pending');
+        expect(requested.principal).toBe('300000.00');
+        expect(requested.outstanding).toBe('300000.00');
+
+        const own = await asRequest(kasirSession, (client) => loans.listOwn(client, kasirUserId));
+        expect(own.rows.some((l) => l.id === loanId)).toBe(true);
+        // RLS, not a WHERE clause the caller could drop: everything visible to
+        // this session belongs to this employee.
+        await asRequest(kasirSession, async (client) => {
+          const visible = await client.query<{ employee_id: string }>(
+            'SELECT employee_id FROM employee_loans',
+          );
+          for (const row of visible.rows) expect(row.employee_id).toBe(ownEmployee);
+        });
+
+        // And the borrower still cannot rewrite a loan that is no longer a
+        // pending request — the `employee_loans_self_amend` policy's USING
+        // clause is what stops "reset my own debt".
+        await asCommittedRequest(
+          { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN, locationIds: [] },
+          (client) =>
+            client.query(
+              `UPDATE employee_loans SET status = 'active', outstanding = '250000.00' WHERE id = $1`,
+              [loanId],
+            ),
+        );
+        await expect(
+          asRequest(kasirSession, (client) =>
+            client.query(
+              `UPDATE employee_loans SET outstanding = principal, status = 'pending' WHERE id = $1`,
+              [loanId],
+            ),
+          ),
+          // Postgres refuses the write outright: the row is VISIBLE to this
+          // session (`employee_loans_scope`'s USING carries a self clause), but
+          // no policy's WITH CHECK admits the new version of it, since the
+          // borrower has INSERT only. A bare "permission denied"-class error is
+          // the right answer here — nothing silently updates zero rows.
+        ).rejects.toThrow(/row-level security/i);
+      } finally {
+        if (loanId) await cleanupCommittedRows({ loanIds: [loanId] });
+      }
+    });
+
     it('runs: calculateForPeriod persists past its own request — a later getRunDetail (new connection) sees the calculated lines', async () => {
       if (!dbAvailable) return;
       const hrAdmin =

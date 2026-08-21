@@ -1,6 +1,6 @@
 # Mimi Chicken OS — Progress Tracker
 
-**Last updated:** 2026-08-19, from a measured run on a freshly reset database + a full e2e pass on the live box.
+**Last updated:** 2026-08-21. Frontend suite re-run today against the working tree (464/464). Backend, shared and e2e counts below are from their last measured runs (2026-08-20 / 08-18) and were **not** re-run today — they are labelled as such.
 **Maintenance rule:** this file is updated by the coordinator **every time a task or wave completes**, and whenever a blocker opens, changes state, or closes.
 
 Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not started · `[!]` blocked
@@ -17,22 +17,27 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 | **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                                    |
 | **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
 | **5 — Completion**        | 8      | 6      | 🔄 print + inbox DONE; node field package DONE, installer/signing owed; WA live test blocked |
-| **5b — Owner UI round**   | 9      | 8      | 🔄 QA-ISOLATION closed (803/0 on a fresh DB); F-UX not started                               |
-| **6 — QA**                | 7      | 5      | 🔄 W6-00/01/03/04/06 DONE; W6-02 partial (B-14); W6-05 harness unrun. W6-04 found **B-16**   |
-| **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups now scheduled & restore-drilled; W7-01 still open on TLS (B-14) |
-| **Totals**                | **62** | **53** | **85%**                                                                                      |
+| **5b — Owner UI round**   | 8      | 8      | ✅ complete · QA-ISOLATION closed (803/0 on a fresh DB)                                      |
+| **5c — IA rework**        | 6      | 4      | 🔄 F-HUB-2/F-POS-2/F-DOCS/FIX-SECURECTX done; FIX-LOADS unverified; **F-UX in flight now**   |
+| **6 — QA**                | 7      | 5      | 🔄 W6-00/01/03/04/06 DONE; W6-02 partial (B-14); W6-05 harness **still unrun**               |
+| **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups scheduled & restore-drilled; W7-01 open on TLS (B-14)           |
+| **Totals**                | **67** | **57** | **85%**                                                                                      |
 
-**Measured test state** — re-run on a freshly reset database, 2026-08-18, not taken from agent reports.
+**Outside the wave register** — four owner-driven rounds landed 2026-08-20/21 and are tracked in §2, not
+here: B-16 general-ledger wiring (closed), supplier management UI (done), the driver interface upgrade
+(5 of 6), WhatsApp chat (built, delivery unproven), and the six-interface IA rework (in flight, uncommitted).
 
-| Workspace          | Result                                                                  |
-| ------------------ | ----------------------------------------------------------------------- |
-| `@mimi/backend`    | **803 pass / 0 fail** (8 skipped), 82 files                             |
-| `@mimi/frontend`   | **435 pass (435)**, 67 files                                            |
-| `@mimi/shared`     | 211 pass · `@mimi/sync-protocol` 141 pass · `@mimi/branch-node` 42 pass |
-| `@mimi/e2e`        | **41 pass (41)**, 7 files — real browser vs the live box (`pnpm e2e`)   |
-| **Campaign total** | **1,632 unit/integration + 41 e2e**                                     |
+**Measured test state** — each row carries the date it was last actually executed. Nothing here is taken from an agent report.
 
-102 migrations (latest **222**) · 106 tables + 4 matviews · 10 roles · `tsc`, `lint` (0 errors) and `format:check` all clean.
+| Workspace          | Result                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| `@mimi/backend`    | **847 pass / 0 fail** — last measured 2026-08-20 (WA-chat round), not re-run since |
+| `@mimi/frontend`   | **464 pass (464)**, 73 files — **re-run 2026-08-21 against the working tree**      |
+| `@mimi/shared`     | 211 pass · `@mimi/sync-protocol` 141 pass · `@mimi/branch-node` 42 pass            |
+| `@mimi/e2e`        | **41 pass (41)**, 7 files — real browser vs the live box (`pnpm e2e`)              |
+| **Campaign total** | **1,632 unit/integration + 41 e2e**                                                |
+
+106 migrations (latest **226**, the chat pair) · 108 tables + 4 matviews (106 plus the two chat tables from 225) · 10 roles · `tsc`, `lint` (0 errors) and `format:check` last verified clean 2026-08-20.
 
 **CI is GREEN** — first passing run in 11 commits; see 1c-3 for why it had been red and never reached the tests.
 
@@ -40,7 +45,70 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 
 ---
 
-## 1a. Session close-out — what is done, and what is not (2026-08-19)
+## 1a. What is left — the whole remaining list (2026-08-21)
+
+Read this first. Everything below is either open, partial, or waiting on someone who is not an
+engineer. Ordered by what stops a go-live, not by wave number.
+
+### A. Blocked on the owner / client — no code will unblock these
+
+| #   | Item                                                                                   | What is needed                                                                                                                        |
+| --- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| A-1 | **B-14 — HTTPS.** No TLS, so geolocation and service workers are dead on the box       | A domain name + a decision on who owns `:80`/`:443` on the shared VPS. Then Traefik + Let's Encrypt                                   |
+| A-2 | **B-15 — PIN oracle.** Any authenticated caller can brute-force any user's PIN         | A product decision between audit / backoff / lockout / context-binding (§2)                                                           |
+| A-3 | **RISK-P4 — WhatsApp gateway credentials.** `WA_ENABLED=false`                         | Real n8n + gateway credentials. Blocks W5-08's live test and the new chat's delivery proof                                            |
+| A-4 | **Offsite backups.** `OFFSITE_REMOTE_CMD` unset — dumps sit on the database's own disk | An offsite target (rclone/S3) chosen by the owner. NFR-06                                                                             |
+| A-5 | **W7-04 hardware spec**                                                                | Budget, vendor, per-outlet device count                                                                                               |
+| A-6 | **W7-05 data importer**                                                                | The owner's real master-data files to design against                                                                                  |
+| A-7 | **GL history backfill** (B-16 aftermath)                                               | Owner's call. `POST /api/accounting/daily-posting` backfills sales per day; the document-side events have **no** backfill written yet |
+| A-8 | **RISK-P5 — branch node at scale**                                                     | A PM change order — ~20 mini-PCs installed across 4 cities                                                                            |
+
+### B. Engineering work still owed
+
+| #    | Item                                                                                                                                    | Size                                       |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| B-1  | **F-UX** (Wave 5c) — the six-interface IA rework. **In flight, uncommitted right now** — see §1a-2                                      | in flight                                  |
+| B-2  | **W6-05 — run the perf harness.** NFR-01 is still evidenced by NOTHING; the k6 suite has never been executed                            | small — needs a backend to point at        |
+| B-3  | **B-11 — four outlet flows have no offline path** (`stock_opname`, `waste_records`, `returns`, `petty_cash`)                            | large — needs the architect decision first |
+| B-4  | **B-13 — approval notifications deep-link to `/approvals/...`.** The route exists now; re-verify the link shape end to end and close it | small                                      |
+| B-5  | **W5-07 — branch-node packaging.** `install.sh`, signed images + a CI registry publish, a fleet self-update channel                     | medium (gated behind A-8)                  |
+| B-6  | **W6-02 — the service-worker half of the offline adversarial suite**                                                                    | blocked by A-1                             |
+| B-7  | **B-08 — no service-layer test can produce an audit row.** Needs an HTTP-level (supertest) harness                                      | medium                                     |
+| B-8  | **W7-02 technical docs.** (W7-03, the Bahasa Indonesia manual, is already DONE as `/docs` — see F-DOCS)                                 | medium                                     |
+| B-9  | **e2e is in no pipeline.** Runs by hand via `pnpm e2e`; a post-deploy smoke job is the obvious next step                                | small                                      |
+| B-10 | **Live-DB suites drain GDG stock.** Mitigated (GDG stocked 10× deeper), root cause untouched                                            | medium                                     |
+| B-11 | **Pre-hydration clicks are silently ignored app-wide** — only the login form guards it                                                  | small                                      |
+| B-12 | **`attachment-store.test.ts` flake** — 2 failures in ~8 full runs, never in CI, always passes in isolation                              | unknown                                    |
+| B-13 | **Technical-debt register (§5)** — 30 entries, incl. D-22b (xlsx export returns 501 on all 10 report endpoints), D-27 and D-30          | ongoing                                    |
+
+### C. Known-incomplete, deliberately
+
+`gudang_stock_revaluation` is not wired (Appendix A-8: it is a valuation statement, not an event) ·
+`/driver` renders empty for owner/superadmin (neither account has a `drivers` row — working as
+designed) · D-26 POS v1 scoping (single tender per sale; void only the last sale on this device) ·
+owner still lacks 22 permission keys at the segregation-of-duties boundary, and nobody has reported
+being blocked by them.
+
+## 1a-2. In flight, uncommitted (2026-08-21) — the six-interface IA rework
+
+The owner's ruling: the system has **six interfaces**, not fourteen destinations — `dashboard`, `pos`,
+`outlet`, `warehouse`, `driver`, `docs`. Everything else (`/approvals`, `/delivery`, `/purchasing`,
+`/chat`, `/finance`, `/hr`, `/assets`, `/me`, `/admin`, `/topology`) is a **section inside the
+dashboard**, not a peer of it. That is what the previous hub got wrong — _"the hub is not supposed to
+be shown like that"_ — it had become a second, flatter copy of the sidebar.
+
+Working-tree state: `apps/frontend/src/lib/nav.ts` reworked into two levels (`INTERFACES` →
+per-interface `sections`); a new `apps/frontend/src/lib/hub.ts` holding `HUB_ROLES`
+(`owner`/`superadmin`, the only two roles the hub belongs to — shared so the Sidebar's "Home" row
+cannot drift from the redirect and send everyone else to a page that bounces them straight back);
+plus `app/page.tsx`, `Sidebar.tsx`, `lib/i18n/id.ts`, `e2e/tests/hub.spec.ts` and `page.test.tsx`.
+
+**Verified 2026-08-21:** the full frontend suite passes on this working tree — **464/464, 73 files**.
+Not yet done: committed, e2e re-run against the live box, or owner-reviewed.
+
+---
+
+## 1a-3. Session close-out — what is done, and what is not (2026-08-19)
 
 Written at the end of the 2026-08-18/19 session so the next one starts from
 facts rather than from re-reading the narrative below. Everything marked done
@@ -821,7 +889,7 @@ Neither `ApprovalService` nor `ReplenishmentService`/`ReplenishmentAdvancementSe
   **Still blocked:** the n8n/WhatsApp live test — `WA_ENABLED=false` and no credentials supplied. Counted
   as PARTIAL rather than done for exactly that reason
 
-### Wave 5b — Owner-driven UI round (2026-08-17) 🔄
+### Wave 5b — Owner-driven UI round (2026-08-17) ✅ (8 items, all closed; F-UX is counted under 5c, where it belongs)
 
 Raised directly by the owner after using the deployed system.
 
@@ -841,9 +909,9 @@ The owner compared the system against AIRE and walked the deployed box. Everythi
 - [x] **F-HUB-2** home = a **workspace chooser**, not a second menu. Three cards (Dasbor · Kasir · Dokumentasi), no sidebar. Single-workspace users are redirected straight in, so a cashier never sees a chooser. _The first hub was wrong: it kept the sidebar and listed every destination._
 - [x] **F-POS-2** POS is now a standalone full-screen app — own top bar, branch + reason line, tabs Kasir / GoFood-ShopeeFood / Shift. Shell change only; all components reused (418 tests)
 - [x] **F-DOCS** `/docs` — six role-filtered manuals in Bahasa Indonesia written from the real UI, print-to-PDF, no PDF dependency added. **This is BUILD-PLAN W7-03.**
-- [ ] **FIX-SECURECTX** `crypto.randomUUID` + double sync banner — in progress
-- [ ] **FIX-LOADS** warehouse stock/opname/waste/retur, `/hr` denying the owner, empty recipe-ingredient list — in progress
-- [ ] **F-UX** the remaining flow simplification beyond hub/POS — not yet started
+- [x] **FIX-SECURECTX** `crypto.randomUUID` + double sync banner — **DONE.** `lib/uuid.ts` falls back to a `crypto.getRandomValues`-backed RFC-4122 v4 on an insecure origin (never `Math.random()` — these ids are `clientId`s and idempotency keys in an append-only protocol), pinned by `lib/uuid.test.ts`, which simulates the insecure origin explicitly
+- [~] **FIX-LOADS** warehouse stock/opname/waste/retur, `/hr` denying the owner, empty recipe-ingredient list — **believed fixed, NOT verified as a set.** The commit-path repair ("THE BIG ONE") plus migrations 220/224 addressed the causes: `rbac.ts` grants owner `hr.employee.read`, and the warehouse panels' writes now actually commit. The empty recipe-ingredient list is D-28 (the seed has no batch recipe). Left at `[~]` on purpose — nobody has walked these four screens on the live box since, and this file does not mark things done on inference
+- [~] **F-UX** the remaining flow simplification beyond hub/POS — **IN FLIGHT 2026-08-21, uncommitted.** The six-interface IA rework; see §1a-2. Frontend suite green (464/464) on the working tree
 
 ### 🔴 `crypto.randomUUID is not a function` — blank pages on the deployed box
 

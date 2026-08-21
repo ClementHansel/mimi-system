@@ -19,6 +19,7 @@ import { MoneyInput } from '@/components/ui/MoneyInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { useApiList } from '@/components/admin/useApiList';
+import { JournalDescription } from './JournalDescription';
 import { sumMoney, moneyEquals, isZeroMoney } from './lib/money';
 import type { Account, JournalEntry, Money } from './types';
 
@@ -71,7 +72,13 @@ export function JournalPanel() {
       header: t('finance.journal.columnDate'),
       render: (r) => fmtDate(r.entryDate),
     },
-    { key: 'description', header: t('finance.journal.columnDescription') },
+    {
+      key: 'description',
+      header: t('finance.journal.columnDescription'),
+      // System entries arrive as `outlet_ingredient_usage — usage_day <uuid>`;
+      // this renders them as a sentence and keeps the raw string on hover.
+      render: (r) => <JournalDescription description={r.description} />,
+    },
     {
       key: 'source',
       header: t('finance.journal.columnSource'),
@@ -423,7 +430,7 @@ function EntryDrawer({
             <StatusBadge domain="journalEntry" status={entry.status} />
             <span className="text-sm text-text-muted">{fmtDate(entry.entryDate)}</span>
           </div>
-          <p className="text-sm text-text-primary">{entry.description}</p>
+          <JournalDescription description={entry.description} variant="detail" />
 
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full border-collapse text-sm">

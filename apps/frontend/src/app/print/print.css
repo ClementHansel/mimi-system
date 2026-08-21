@@ -27,6 +27,18 @@
   }
 }
 
+/* One `.print-copy` is one printed page: a complete, separately-signed copy of
+   a document (the Surat Jalan prints three per drop — gudang, outlet, kantor).
+   On screen they are stacked with a visible gap and a rule so the operator can
+   scroll through exactly what the printer will produce. */
+@media screen {
+  .print-copy + .print-copy {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px dashed rgb(0 0 0 / 25%);
+  }
+}
+
 @media print {
   @page {
     size: A4;
@@ -56,6 +68,14 @@
   .print-keep {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* Each copy starts a fresh sheet — but never a blank leading page, so the
+     break goes BEFORE every copy except the first. A copy that spilled onto
+     the next party's page would be unsignable. */
+  .print-copy + .print-copy {
+    break-before: page;
+    page-break-before: always;
   }
 
   /* Repeat table headers when a long item list spans pages. */

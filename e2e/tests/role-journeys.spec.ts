@@ -7,15 +7,22 @@ import { expectLandsOn, login } from './support/app';
  * `hub.spec.ts` already covers owner, superadmin and kepala_gudang, and
  * `driver.spec.ts` covers the driver. This file covers the remaining six
  * business roles, and asserts the thing that actually matters about a role:
- * **where it lands, and what it can and cannot reach.**
+ * **where it lands, which INTERFACES it can reach, and what it sees inside the
+ * dashboard.**
  *
- * The SEES/HIDDEN lists below are not invented. They were computed from the
- * real `@mimi/shared` RBAC matrix crossed with `lib/nav.ts`'s permission
- * gates, then written down here on purpose rather than recomputed at runtime —
- * a test that derives its expectations from the same source it is testing
- * proves nothing. If someone widens a permission, this file fails and names
- * the surface that moved, which is exactly what a CONTRACTS §3 change should
- * do.
+ * Reworked for the two-level nav (owner's rulings, 2026-08-21). There is no
+ * longer one flat sidebar of fourteen routes per role: the sidebar belongs to
+ * the interface you are in (`lib/nav.ts` `INTERFACES`) and to nothing else —
+ * switching interfaces is the hub's job, reached by the Beranda row. So each
+ * journey asserts the sidebar of the interface it LANDS in, plus (for roles
+ * that reach the dashboard) the areas they hold once inside it.
+ *
+ * The lists below are not invented. They were computed from the real
+ * `@mimi/shared` RBAC matrix crossed with `lib/nav.ts`'s permission gates, then
+ * written down on purpose rather than recomputed at runtime — a test that
+ * derives its expectations from the same source it is testing proves nothing.
+ * If someone widens a permission, this file fails and names the surface that
+ * moved, which is exactly what a CONTRACTS §3 change should do.
  *
  * That makes this a genuine RBAC surface sweep as well as a smoke journey
  * (a slice of W6-03), though only at nav level — the server, not the sidebar,
@@ -27,69 +34,75 @@ interface RoleJourney {
   username: string;
   /** Where `(auth)/landing.ts` should put them after login. */
   landing: string;
-  sees: string[];
-  hidden: string[];
+  /** Interfaces this role can reach — asserted on the HUB, not the sidebar. */
+  interfaces: string[];
+  /** Interfaces this role must never be offered, on the hub or anywhere else. */
+  hiddenInterfaces: string[];
+  /** Dashboard areas visible in the dashboard's sidebar — omit if unreachable. */
+  dashboardAreas?: string[];
+  /** Dashboard areas that must stay hidden even inside the dashboard. */
+  hiddenAreas?: string[];
 }
+
+/** Every interface, so "hidden" can be asserted as the complement of "seen". */
+const ALL_INTERFACES = ['/dashboard', '/pos', '/outlet', '/warehouse', '/driver', '/me', '/docs'];
 
 const JOURNEYS: RoleJourney[] = [
   {
     role: 'manager',
     username: 'manager1',
     landing: '/dashboard',
-    sees: [
-      '/approvals',
-      '/pos',
+    // Head office: no outlet-staff create surface, and not a driver.
+    interfaces: ['/dashboard', '/pos', '/warehouse', '/me', '/docs'],
+    hiddenInterfaces: ['/outlet', '/driver'],
+    dashboardAreas: [
       '/dashboard',
-      '/warehouse',
+      '/approvals',
       '/delivery',
       '/purchasing',
       '/finance',
       '/hr',
       '/assets',
-      '/me',
       '/admin',
       '/topology',
     ],
-    // A manager is head-office: no outlet-staff create surface, and not a driver.
-    hidden: ['/outlet', '/driver'],
   },
   {
     role: 'finance',
     username: 'finance1',
     landing: '/finance',
+    // `/finance` IS the dashboard interface — finance simply lands on its own
+    // area inside it rather than on the overview, which they cannot see
+    // (no `dashboard.view`; asserted in `hiddenAreas`).
+    interfaces: ['/dashboard', '/me', '/docs'],
+    hiddenInterfaces: ['/pos', '/outlet', '/warehouse', '/driver'],
     // /approvals is visible: finance holds `payment.verify`, one of the 11
     // approve keys that entry accepts. Getting this wrong the first time is
-    // why the lists are transcribed from nav.ts's real arrays, not summarised.
-    sees: ['/approvals', '/purchasing', '/finance', '/hr', '/assets', '/me', '/admin'],
-    hidden: ['/pos', '/dashboard', '/outlet', '/driver', '/warehouse', '/delivery', '/topology'],
+    // why these lists are transcribed from nav.ts's real arrays, not summarised.
+    dashboardAreas: ['/approvals', '/purchasing', '/finance', '/hr', '/assets', '/admin'],
+    hiddenAreas: ['/dashboard', '/delivery', '/topology'],
   },
   {
     role: 'supervisor',
     username: 'spv_bjm01',
     landing: '/outlet',
-    sees: [
-      '/approvals',
-      '/pos',
-      '/dashboard',
-      '/outlet',
-      '/warehouse',
-      '/delivery',
-      '/purchasing',
-      '/hr',
-      '/assets',
-      '/me',
-    ],
-    hidden: ['/driver', '/finance', '/admin', '/topology'],
+    interfaces: ['/outlet', '/pos', '/dashboard', '/warehouse', '/me', '/docs'],
+    hiddenInterfaces: ['/driver'],
+    dashboardAreas: ['/dashboard', '/approvals', '/delivery', '/purchasing', '/hr', '/assets'],
+    hiddenAreas: ['/finance', '/admin', '/topology'],
   },
   {
     role: 'leader_outlet',
     username: 'ldr_bjm01',
     landing: '/outlet',
-    sees: ['/pos', '/outlet', '/warehouse', '/delivery', '/assets', '/me'],
-    hidden: [
-      '/approvals',
+    // Reaches the dashboard interface through `delivery.read`/`asset.read`,
+    // but only those areas of it — never the overview.
+    interfaces: ['/outlet', '/pos', '/warehouse', '/dashboard', '/me', '/docs'],
+    hiddenInterfaces: ['/driver'],
+    dashboardAreas: ['/delivery', '/assets'],
+    hiddenAreas: [
       '/dashboard',
-      '/driver',
+      '/approvals',
       '/purchasing',
       '/finance',
       '/hr',
@@ -101,47 +114,37 @@ const JOURNEYS: RoleJourney[] = [
     role: 'kasir',
     username: 'kasir1_bjm01',
     landing: '/pos',
-    // The narrowest role in the system: a till and their own payslip.
-    sees: ['/pos', '/me'],
-    hidden: [
-      '/approvals',
-      '/dashboard',
-      '/outlet',
-      '/driver',
-      '/warehouse',
-      '/delivery',
-      '/purchasing',
-      '/finance',
-      '/hr',
-      '/assets',
-      '/admin',
-      '/topology',
-    ],
+    // The narrowest role in the system: a till, the manual, and their own
+    // payslip (`/me` — a dashboard AREA reached from the header's account
+    // menu on any chrome route, not an interface of its own).
+    interfaces: ['/pos', '/me', '/docs'],
+    hiddenInterfaces: ['/outlet', '/warehouse', '/driver'],
   },
   {
     role: 'hr_admin',
     username: 'hradmin1',
     landing: '/hr',
+    interfaces: ['/dashboard', '/me', '/docs'],
+    hiddenInterfaces: ['/pos', '/outlet', '/warehouse', '/driver'],
     // /approvals visible via `hr.leave.approve`.
-    sees: ['/approvals', '/hr', '/me', '/admin'],
-    hidden: [
-      '/pos',
-      '/dashboard',
-      '/outlet',
-      '/driver',
-      '/warehouse',
-      '/delivery',
-      '/purchasing',
-      '/finance',
-      '/assets',
-      '/topology',
-    ],
+    dashboardAreas: ['/approvals', '/hr', '/admin'],
+    hiddenAreas: ['/dashboard', '/delivery', '/purchasing', '/finance', '/assets', '/topology'],
   },
 ];
 
+/** Every href the sidebar (desktop rail or mobile drawer) currently offers. */
+async function sidebarLinks(page: import('@playwright/test').Page): Promise<string[]> {
+  await expect(page.locator('nav a[href], aside a[href]').first()).toBeVisible({
+    timeout: 20_000,
+  });
+  return page
+    .locator('nav a[href], aside a[href]')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('href')!));
+}
+
 for (const journey of JOURNEYS) {
   test.describe(`role journey — ${journey.role}`, () => {
-    test(`lands on ${journey.landing} and sees only its own surfaces`, async ({ page }) => {
+    test(`lands on ${journey.landing} and is offered only its own interfaces`, async ({ page }) => {
       const errors: string[] = [];
       page.on('pageerror', (e) => errors.push(e.message));
 
@@ -155,22 +158,50 @@ for (const journey of JOURNEYS) {
       const navHost = journey.landing === '/pos' ? '/me' : journey.landing;
       if (navHost !== journey.landing) await page.goto(navHost);
 
-      await expect(page.locator('nav a[href], aside a[href]').first()).toBeVisible({
-        timeout: 20_000,
-      });
-      const hrefs = await page
-        .locator('nav a[href], aside a[href]')
-        .evaluateAll((els) => els.map((e) => e.getAttribute('href')!));
+      const hrefs = await sidebarLinks(page);
 
-      for (const href of journey.sees) {
-        expect(hrefs, `${journey.role} should be able to reach ${href}`).toContain(href);
-      }
-      for (const href of journey.hidden) {
+      // The sidebar belongs to ONE interface now. Everyone gets the Beranda
+      // row (the hub is the switcher), and no other interface's entry leaks in.
+      expect(hrefs, `${journey.role} needs the way back to the hub`).toContain('/');
+      for (const href of journey.hiddenInterfaces) {
         expect(hrefs, `${journey.role} must NOT see ${href}`).not.toContain(href);
+      }
+
+      // And the hub itself offers exactly the interfaces this role can reach.
+      await page.goto('/');
+      const hubLinks = await page
+        .locator('main a[href]')
+        .evaluateAll((els) => els.map((e) => e.getAttribute('href')!));
+      for (const href of journey.interfaces) {
+        expect(hubLinks, `${journey.role} should be able to reach ${href}`).toContain(href);
+      }
+      for (const href of ALL_INTERFACES) {
+        if (journey.interfaces.includes(href)) continue;
+        expect(hubLinks, `${journey.role} must NOT be offered ${href}`).not.toContain(href);
       }
 
       expect(errors, `${journey.role} hit a JS error on ${journey.landing}`).toEqual([]);
     });
+
+    if (journey.dashboardAreas) {
+      test('sees only its own areas inside the dashboard', async ({ page }) => {
+        await login(page, journey.username);
+        // Enter the dashboard through an area this role really holds, so a
+        // role without `dashboard.view` is still exercised.
+        await page.goto(journey.dashboardAreas![0]!);
+
+        const hrefs = await sidebarLinks(page);
+
+        for (const href of journey.dashboardAreas!) {
+          expect(hrefs, `${journey.role} should reach ${href} in the dashboard`).toContain(href);
+        }
+        for (const href of journey.hiddenAreas ?? []) {
+          expect(hrefs, `${journey.role} must NOT see ${href} in the dashboard`).not.toContain(
+            href,
+          );
+        }
+      });
+    }
 
     test('their landing surface renders real content, not an error state', async ({ page }) => {
       await login(page, journey.username);

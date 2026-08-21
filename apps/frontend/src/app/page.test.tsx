@@ -25,15 +25,33 @@ function setUser(overrides: Partial<SessionUser>) {
   });
 }
 
+/** Every href that is an AREA inside the dashboard, never a hub card. */
+const DASHBOARD_AREAS = [
+  '/approvals',
+  '/chat',
+  '/delivery',
+  '/purchasing',
+  '/finance',
+  '/hr',
+  '/assets',
+  '/admin',
+  '/topology',
+];
+
+function hrefs(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll('a[href]')).map((a) => a.getAttribute('href')!);
+}
+
 /**
- * The hub is now an INTERFACE DIRECTORY for the all-access roles only (owner's
- * ruling, 2026-08-18): owner and superadmin see one card per unique interface;
- * every other role is redirected past this page to its own surface.
+ * The hub is a directory of the seven interfaces (owner's rulings,
+ * 2026-08-21), and it is no longer owner-only: `employee` (`/me`) became an
+ * interface of its own, so a Kasir has two places to be — the till and their
+ * own account — and gets the same chooser the owner has. Only someone who can
+ * reach a single interface is redirected past it.
  *
- * Like the chooser it replaces, these tests use the REAL `lib/nav.ts` +
- * `usePermissions` (no mock), so they fail the moment the hub's gating drifts
- * from the sidebar's — which is the whole point of deriving the cards from the
- * nav config rather than hand-listing them here.
+ * These tests use the REAL `lib/nav.ts` + `usePermissions` (no mock), so they
+ * fail the moment the hub starts listing something that is not an interface
+ * (the pre-rework hub listed all 14 nav routes) or drifts from `INTERFACES`.
  */
 describe('HomePage (home hub — interface directory)', () => {
   beforeEach(() => {
@@ -41,39 +59,7 @@ describe('HomePage (home hub — interface directory)', () => {
     replace.mockClear();
   });
 
-  it('sends a Kasir straight to /pos — the hub is not theirs to see', () => {
-    setUser({ roleKey: 'kasir', permissions: ['pos.catalog.read', 'payroll.slip.read.own'] });
-    const { container } = render(<HomePage />);
-
-    expect(replace).toHaveBeenCalledWith('/pos');
-    // The redirect is computed during render, so nothing should paint first.
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it('sends a Kepala Gudang to /warehouse even though several surfaces are permitted', () => {
-    // The OLD hub kept a multi-workspace role here on a chooser. That is
-    // exactly the behaviour the owner rejected: only owner/superadmin get a
-    // directory, everyone else goes to work.
-    setUser({
-      roleKey: 'kepala_gudang',
-      permissions: ['delivery.read', 'purchasing.read', 'asset.read', 'delivery.drop.execute'],
-    });
-    const { container } = render(<HomePage />);
-
-    expect(replace).toHaveBeenCalledWith('/warehouse');
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it('sends a Driver to their own job list, not the hub', () => {
-    setUser({ roleKey: 'driver', permissions: ['delivery.drop.execute', 'payroll.slip.read.own'] });
-    render(<HomePage />);
-    expect(replace).toHaveBeenCalledWith('/driver');
-  });
-
-  it('gives an Owner a card per unique interface, including /outlet and /driver', () => {
-    // Owner now holds every permission that gates a nav entry (migration 222 +
-    // the rbac.ts grants) — the two that were missing are asserted by name
-    // below, because their absence is the exact bug this work fixed.
+  it('gives an Owner all seven interfaces — and nothing that is a dashboard area', () => {
     setUser({
       roleKey: 'owner',
       permissions: [...PERMISSION_KEYS],
@@ -82,61 +68,81 @@ describe('HomePage (home hub — interface directory)', () => {
         { id: 'l1', code: 'LJN', name: 'Outlet Loa Janan', type: 'outlet', city: 'Samarinda' },
       ],
     });
-    render(<HomePage />);
+    const { container } = render(<HomePage />);
 
     expect(replace).not.toHaveBeenCalled();
 
     for (const [name, href] of [
       ['Dasbor', '/dashboard'],
-      ['Kasir (POS)', '/pos'],
+      ['Kasir \\(POS\\)', '/pos'],
       ['Outlet', '/outlet'],
-      ['Pengiriman (Driver)', '/driver'],
-      ['Pengiriman (Dispatcher)', '/delivery'],
       ['Gudang Pusat', '/warehouse'],
-      ['Administrasi', '/admin'],
+      ['Pengiriman \\(Driver\\)', '/driver'],
+      ['Akun Saya', '/me'],
       ['Dokumentasi', '/docs'],
     ] as const) {
-      expect(
-        screen.getByRole('link', { name: new RegExp(name.replace(/[()]/g, '\\$&')) }),
-      ).toHaveAttribute('href', href);
+      expect(screen.getByRole('link', { name: new RegExp(name) })).toHaveAttribute('href', href);
     }
 
-    // Every nav surface plus Dokumentasi — asserted as "more than the old
-    // three" rather than a brittle exact count that any new surface breaks.
-    expect(screen.getAllByRole('link').length).toBeGreaterThan(10);
+    // Seven, exactly — the regression this rework fixes is EXTRA cards.
+    expect(screen.getAllByRole('link')).toHaveLength(7);
+
+    for (const href of DASHBOARD_AREAS) {
+      expect(
+        container.querySelector(`a[href="${href}"]`),
+        `${href} is not an interface`,
+      ).toBeNull();
+    }
 
     expect(screen.getByText(/Halo, Siti/)).toBeInTheDocument();
     expect(screen.getByText(/Pemilik · Outlet Loa Janan/)).toBeInTheDocument();
   });
 
-  it('gives a Super Admin the same full directory', () => {
-    setUser({ roleKey: 'superadmin', permissions: [...PERMISSION_KEYS], name: 'Super Admin' });
-    render(<HomePage />);
+  it('gives a Kasir their three: the till, their own account, and the manual', () => {
+    // The old contract redirected a Kasir straight past the hub. Once `/me`
+    // became an interface, that stopped being right — they have somewhere else
+    // to be than the till, so they get the chooser too.
+    setUser({ roleKey: 'kasir', permissions: ['pos.catalog.read', 'payroll.slip.read.own'] });
+    const { container } = render(<HomePage />);
 
     expect(replace).not.toHaveBeenCalled();
-    expect(screen.getByRole('link', { name: /Pengiriman \(Driver\)/ })).toHaveAttribute(
-      'href',
-      '/driver',
-    );
-    expect(screen.getByText(/Super Admin · Semua Lokasi/)).toBeInTheDocument();
+    expect(hrefs(container).sort()).toEqual(['/docs', '/me', '/pos']);
   });
 
-  it('treats an empty locations array as "Semua Lokasi", not an error', () => {
-    setUser({ roleKey: 'owner', permissions: [...PERMISSION_KEYS], locations: [] });
-    render(<HomePage />);
-    expect(screen.getByText(/Pemilik · Semua Lokasi/)).toBeInTheDocument();
-  });
-
-  it('shows an owner with no permissions the empty state, still offering Dokumentasi', () => {
-    // Not a real configuration, but the hub must degrade to something
-    // legible rather than a page of empty section headings.
-    setUser({ roleKey: 'owner', permissions: [] });
-    render(<HomePage />);
+  it('gives a Driver their job list, their account, and the manual', () => {
+    setUser({ roleKey: 'driver', permissions: ['delivery.drop.execute', 'payroll.slip.read.own'] });
+    const { container } = render(<HomePage />);
 
     expect(replace).not.toHaveBeenCalled();
-    expect(screen.getByText('Belum ada akses ke modul manapun')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Dokumentasi/ })).toHaveAttribute('href', '/docs');
-    expect(screen.queryByRole('link', { name: /Dasbor/ })).not.toBeInTheDocument();
+    expect(hrefs(container).sort()).toEqual(['/docs', '/driver', '/me']);
+  });
+
+  it('gives a Kepala Gudang the warehouse plus the dashboard areas they hold', () => {
+    setUser({
+      roleKey: 'kepala_gudang',
+      permissions: ['delivery.read', 'purchasing.read', 'asset.read', 'delivery.drop.execute'],
+    });
+    const { container } = render(<HomePage />);
+
+    const links = hrefs(container);
+    expect(links).toContain('/warehouse');
+    // `delivery.read`/`purchasing.read`/`asset.read` are dashboard areas, so
+    // the dashboard interface is reachable — as a card, not as nine cards.
+    expect(links).toContain('/dashboard');
+    expect(links).toContain('/me');
+    for (const href of DASHBOARD_AREAS) {
+      expect(container.querySelector(`a[href="${href}"]`)).toBeNull();
+    }
+  });
+
+  it('still gives a user with no permissions their own account and the manual', () => {
+    // Neither reading the manual nor opening your own payslip is privileged,
+    // so even a misconfigured account is never left with a dead page.
+    setUser({ roleKey: 'kasir', permissions: [] });
+    const { container } = render(<HomePage />);
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(hrefs(container).sort()).toEqual(['/docs', '/me']);
   });
 
   it('renders nothing before the session user is available', () => {

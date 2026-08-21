@@ -23,7 +23,21 @@ const SIZE_CLASSES: Record<NonNullable<ModalProps['size']>, string> = {
   xl: 'max-w-4xl',
 };
 
-/** Centered modal dialog: focus-trapped, Escape-to-close, scroll-locked. Use `Drawer` for edge-anchored panels. */
+/**
+ * Centered modal dialog: focus-trapped, Escape-to-close, scroll-locked. Use
+ * `Drawer` for edge-anchored panels.
+ *
+ * WHY `onClose` IS HELD IN A REF. Almost every caller passes an inline arrow
+ * (`onClose={() => setOpen(false)}`), which is a new function identity on every
+ * render. With `onClose` in the setup effect's dependency array, that made the
+ * whole effect tear down and re-run on EVERY parent re-render — including the
+ * one caused by typing a character into a field inside the modal. Teardown
+ * restored focus to the trigger and setup then moved focus to the dialog's
+ * first focusable (the close button), so a reason textarea lost focus after
+ * every single keystroke: type one letter, click the box again, type one more.
+ * The ref keeps the handler current while the effect stays keyed on `open`
+ * alone, so focus is set exactly once per opening.
+ */
 export function Modal({
   open,
   onClose,
@@ -37,19 +51,33 @@ export function Modal({
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  // Kept current without re-running the setup effect below — see the header.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const original = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const first = dialogRef.current?.querySelector<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    first?.focus();
+    // Prefer the first FIELD over the first focusable. In DOM order the close
+    // button comes first, so a dialog whose whole point is "type a reason"
+    // used to open with focus on the X — the user had to click into the box
+    // before typing. Falls back to any focusable for dialogs with no fields.
+    const target =
+      dialogRef.current?.querySelector<HTMLElement>(
+        'input:not([type="hidden"]), select, textarea',
+      ) ??
+      dialogRef.current?.querySelector<HTMLElement>(
+        'button, [href], [tabindex]:not([tabindex="-1"])',
+      );
+    target?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
       if (e.key === 'Tab') {
         const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
@@ -72,7 +100,7 @@ export function Modal({
       document.removeEventListener('keydown', onKeyDown);
       previouslyFocused.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open || typeof document === 'undefined') return null;
 

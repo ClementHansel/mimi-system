@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, CalendarX, FileWarning, FileSearch } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { formatMoney } from '@/lib/formatters';
 import { toDateInput } from '@/lib/dates';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
@@ -38,12 +38,43 @@ function BalanceIndicator({ balanced }: { balanced: boolean }) {
   );
 }
 
+/**
+ * Why every tab below tracks an `error` and renders it.
+ *
+ * These panels used to `.catch(() => setReport(null))` and then render
+ * `{!loading && report && …}` — so a 403, a 500, or an empty fiscal-period
+ * list all produced the SAME thing: a date picker above a blank page. The
+ * owner read that (correctly) as "this seems not developed". A report that
+ * cannot be produced has to say so, and say which reason: no period exists
+ * yet, none is selected, the request failed, or the ledger genuinely has
+ * nothing in range.
+ */
+function ReportError({ message }: { message: string }) {
+  const { t } = useI18n();
+  return (
+    <EmptyState
+      icon={FileWarning}
+      title={t('finance.reports.loadError')}
+      description={`${message} — ${t('finance.reports.loadErrorHint')}`}
+      size="sm"
+    />
+  );
+}
+
+function errMsg(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
+}
+
 function TrialBalanceTab() {
   const { t } = useI18n();
   const [periods, setPeriods] = useState<FiscalPeriodRow[]>([]);
   const [periodCode, setPeriodCode] = useState('');
   const [report, setReport] = useState<TrialBalanceReport | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Distinguishes "no periods exist" from "periods not fetched yet" — the
+  // difference between an actionable message and a misleading one.
+  const [periodsLoaded, setPeriodsLoaded] = useState(false);
 
   useEffect(() => {
     api
@@ -52,20 +83,25 @@ function TrialBalanceTab() {
         setPeriods(rows);
         setPeriodCode((prev) => prev || rows[rows.length - 1]?.period_code || '');
       })
-      .catch(() => {});
-  }, []);
+      .catch((err: unknown) => setError(errMsg(err, t('finance.reports.loadError'))))
+      .finally(() => setPeriodsLoaded(true));
+  }, [t]);
 
   useEffect(() => {
     if (!periodCode) return;
     setLoading(true);
+    setError(null);
     api
       .get<TrialBalanceReport>(
         `/accounting/trial-balance?periodCode=${encodeURIComponent(periodCode)}`,
       )
       .then(setReport)
-      .catch(() => setReport(null))
+      .catch((err: unknown) => {
+        setReport(null);
+        setError(errMsg(err, t('finance.reports.loadError')));
+      })
       .finally(() => setLoading(false));
-  }, [periodCode]);
+  }, [periodCode, t]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -73,11 +109,25 @@ function TrialBalanceTab() {
         label={t('finance.reports.period')}
         value={periodCode}
         onValueChange={setPeriodCode}
+        placeholder={t('finance.reports.selectPeriod')}
         options={periods.map((p) => ({ value: p.period_code, label: p.period_code }))}
         wrapperClassName="w-48"
+        disabled={periods.length === 0}
       />
 
       {loading && <p className="text-sm text-text-muted">{t('common.loading')}</p>}
+      {!loading && error && <ReportError message={error} />}
+      {!loading && !error && periodsLoaded && periods.length === 0 && (
+        <EmptyState
+          icon={CalendarX}
+          title={t('finance.reports.noPeriods')}
+          description={t('finance.reports.noPeriodsHint')}
+          size="sm"
+        />
+      )}
+      {!loading && !error && periods.length > 0 && !periodCode && (
+        <EmptyState icon={FileSearch} title={t('finance.reports.selectPeriod')} size="sm" />
+      )}
       {!loading && report && (
         <>
           <div className="overflow-x-auto rounded-lg border border-border">
@@ -151,21 +201,35 @@ function ProfitLossTab() {
   const [range, setRange] = useState<DateRangeValue>({ from: today, to: today });
   const [report, setReport] = useState<ProfitLossReport | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!range.from || !range.to) return;
     setLoading(true);
+    setError(null);
     api
       .get<ProfitLossReport>(`/accounting/profit-loss?from=${range.from}&to=${range.to}`)
       .then(setReport)
-      .catch(() => setReport(null))
+      .catch((err: unknown) => {
+        setReport(null);
+        setError(errMsg(err, t('finance.reports.loadError')));
+      })
       .finally(() => setLoading(false));
-  }, [range.from, range.to]);
+  }, [range.from, range.to, t]);
 
   return (
     <div className="flex flex-col gap-4">
       <DateRangePicker label={t('finance.reports.range')} value={range} onChange={setRange} />
       {loading && <p className="text-sm text-text-muted">{t('common.loading')}</p>}
+      {!loading && error && <ReportError message={error} />}
+      {!loading && !error && !report && (
+        <EmptyState
+          icon={FileSearch}
+          title={t('finance.reports.empty')}
+          description={t('finance.reports.emptyHint')}
+          size="sm"
+        />
+      )}
       {!loading && report && (
         <div className="grid grid-cols-2 gap-4">
           <section className="flex flex-col gap-1.5 rounded-lg border border-border p-3">
@@ -219,16 +283,21 @@ function BalanceSheetTab() {
   const [asOf, setAsOf] = useState(toDateInput(new Date()));
   const [report, setReport] = useState<BalanceSheetReport | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!asOf) return;
     setLoading(true);
+    setError(null);
     api
       .get<BalanceSheetReport>(`/accounting/balance-sheet?asOf=${asOf}`)
       .then(setReport)
-      .catch(() => setReport(null))
+      .catch((err: unknown) => {
+        setReport(null);
+        setError(errMsg(err, t('finance.reports.loadError')));
+      })
       .finally(() => setLoading(false));
-  }, [asOf]);
+  }, [asOf, t]);
 
   function section(title: string, lines: { accountCode: string; name: string; amount: string }[]) {
     const total = sumMoney(lines.map((l) => l.amount));
@@ -261,6 +330,15 @@ function BalanceSheetTab() {
         />
       </label>
       {loading && <p className="text-sm text-text-muted">{t('common.loading')}</p>}
+      {!loading && error && <ReportError message={error} />}
+      {!loading && !error && !report && (
+        <EmptyState
+          icon={FileSearch}
+          title={t('finance.reports.empty')}
+          description={t('finance.reports.emptyHint')}
+          size="sm"
+        />
+      )}
       {!loading && report && (
         <>
           <div className="grid grid-cols-3 gap-4">
@@ -279,19 +357,34 @@ function StockValueTab() {
   const { t } = useI18n();
   const [rows, setRows] = useState<StockValueRow[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     api
       .get<StockValueRow[]>('/accounting/stock-value')
       .then(setRows)
-      .catch(() => setRows([]))
+      .catch((err: unknown) => {
+        // NOT `setRows([])`: an empty warehouse and a failed request are
+        // different facts and must not look alike.
+        setRows(null);
+        setError(errMsg(err, t('finance.reports.loadError')));
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   if (loading) return <p className="text-sm text-text-muted">{t('common.loading')}</p>;
+  if (error) return <ReportError message={error} />;
   if (!rows || rows.length === 0)
-    return <EmptyState title={t('finance.reports.empty')} size="sm" />;
+    return (
+      <EmptyState
+        icon={FileSearch}
+        title={t('finance.reports.empty')}
+        description={t('finance.reports.emptyHint')}
+        size="sm"
+      />
+    );
 
   const grandTotal = sumMoney(rows.map((r) => r.value));
 

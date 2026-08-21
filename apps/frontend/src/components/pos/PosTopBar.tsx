@@ -1,6 +1,7 @@
 'use client';
 
-import { LogOut, Store, ShoppingBag, LockKeyhole } from 'lucide-react';
+import Link from 'next/link';
+import { LogOut, Store, ShoppingBag, LockKeyhole, MessageCircle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Button, TabsList, TabsTrigger } from '@/components/ui';
 import { SyncStatusPill } from '@/components/ui/SyncStatusPill';
@@ -87,6 +88,19 @@ export function PosTopBar() {
       <div className="flex items-center gap-3">
         <SyncStatusPill className="hidden sm:inline-flex" />
         <span className="hidden text-sm font-medium text-text-primary sm:inline">{user?.name}</span>
+        {/* WhatsApp belongs in every interface (owner, 2026-08-21). POS is
+            chromeless — there is no sidebar to carry `nav.myChat` — so the
+            cashier's thread is reached from here. A plain link, not a nested
+            surface: the message thread is a page, and a till mid-transaction
+            should navigate away deliberately. */}
+        <Link
+          href="/me/chat"
+          title={t('nav.myChat')}
+          className="flex min-h-touch items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary hover:bg-surface-sunken hover:text-text-primary"
+        >
+          <MessageCircle className="size-4" aria-hidden />
+          <span className="hidden sm:inline">{t('nav.myChat')}</span>
+        </Link>
         <Button
           type="button"
           variant="ghost"

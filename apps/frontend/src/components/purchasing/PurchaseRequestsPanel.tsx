@@ -12,6 +12,7 @@ import { formatMoney } from '@/lib/formatters';
 import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { Select } from '@/components/ui/Select';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -220,8 +221,23 @@ function CreateRequestModal({
     loadSuppliers.then((r) => setSuppliers(r.rows)).catch(() => {});
   }, [can]);
 
-  const itemOptions = items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }));
+  const itemOptions = items.map((i) => ({
+    value: i.id,
+    label: i.name,
+    // Searchable AND visible: an item is looked up by SKU as often as by name.
+    hint: `${i.sku} · ${i.baseUnit.code}`,
+  }));
   const supplierOptions = suppliers.map((s) => ({ value: s.id, label: s.name }));
+
+  // A purchase is received INTO a warehouse (`location.type === 'warehouse'`),
+  // so those are the destinations offered. If the location table returns none,
+  // fall back to every location rather than presenting an empty required field.
+  const warehouses = locations.filter((l) => l.type === 'warehouse');
+  const destinationOptions = (warehouses.length > 0 ? warehouses : locations).map((l) => ({
+    value: l.id,
+    label: l.name,
+    hint: l.city ?? undefined,
+  }));
 
   function updateLine(idx: number, patch: Partial<LineDraft>) {
     setLines((ls) =>
@@ -290,12 +306,19 @@ function CreateRequestModal({
       <div className="flex flex-col gap-4">
         {error && <p className="text-sm text-danger-600">{error}</p>}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Select
-            label={t('purchasing.requests.location')}
+          {/* Destination is a GUDANG, not any location (owner, 2026-08-21:
+              "input the delivery destination based on the gudang available").
+              Purchased goods are received into a warehouse; offering all ~20
+              outlets here invited a PR nobody could receive. Falls back to the
+              full list only if no warehouse is returned at all, so a
+              misconfigured location table blocks nothing silently. */}
+          <SearchableSelect
+            label={t('purchasing.requests.destination')}
             value={locationId}
             onValueChange={setLocationId}
-            options={locations.map((l) => ({ value: l.id, label: l.name }))}
+            options={destinationOptions}
             placeholder={t('common.selectPlaceholder')}
+            hint={warehouses.length > 0 ? t('purchasing.requests.destinationHint') : undefined}
             required
           />
           <Input
@@ -312,7 +335,7 @@ function CreateRequestModal({
               key={idx}
               className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-2"
             >
-              <Select
+              <SearchableSelect
                 label={t('purchasing.requests.item')}
                 value={line.itemId}
                 options={itemOptions}
@@ -329,7 +352,7 @@ function CreateRequestModal({
                 value={line.estPrice}
                 onChange={(v) => updateLine(idx, { estPrice: v })}
               />
-              <Select
+              <SearchableSelect
                 label={t('purchasing.requests.suggestedSupplier')}
                 value={line.suggestedSupplierId}
                 options={supplierOptions}

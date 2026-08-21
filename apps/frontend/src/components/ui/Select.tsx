@@ -88,11 +88,17 @@ export function Select({
             className,
           )}
         >
-          {placeholder && (
-            <option value="" disabled hidden>
-              {placeholder}
-            </option>
-          )}
+          {/* SELECTABLE, not `disabled hidden`.
+              Every filter in the app uses `placeholder` as its "all" row
+              ("Semua Sumber", "Semua Status", "Semua Supplier"). With the
+              option disabled and hidden, picking any value was a ONE-WAY
+              door: 13 filter dropdowns across finance, purchasing and
+              delivery could never be cleared again without reloading the
+              page. A blank first option is also how a plain HTML select
+              behaves, and a form that must not be left empty still says so
+              with `required` — which the browser enforces on '' — so making
+              this selectable costs the form case nothing. */}
+          {placeholder && <option value="">{placeholder}</option>}
           {options.map((opt) => (
             <option key={opt.value} value={opt.value} disabled={opt.disabled}>
               {opt.label}

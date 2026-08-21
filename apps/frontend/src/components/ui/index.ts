@@ -6,6 +6,7 @@ export * from './Button';
 export * from './Input';
 export * from './Textarea';
 export * from './Select';
+export * from './SearchableSelect';
 export * from './Checkbox';
 export * from './RadioGroup';
 export * from './Card';

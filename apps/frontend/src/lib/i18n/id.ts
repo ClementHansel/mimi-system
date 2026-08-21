@@ -30,7 +30,24 @@ export const id = {
       keuangan: 'Keuangan',
       sdm: 'SDM',
       sistem: 'Sistem',
+      // The sidebar's interface switcher, for roles that work in more than one
+      // interface and have no hub to return to (owner/superadmin get `home`).
+      antarmuka: 'Antarmuka Lain',
+      // Per-interface section headings. `gudang` covers what the owner calls
+      // "the items and their movement": stock on the floor, and the Surat
+      // Jalan that takes it out of the building.
+      gudang: 'Barang & Pergerakan',
+      outlet: 'Outlet',
+      driver: 'Pengiriman',
+      referensi: 'Referensi',
+      // WhatsApp is in every interface (owner, 2026-08-21).
+      pesan: 'Pesan',
+      // The `employee` interface's own section — everything about yourself.
+      personal: 'Personal',
     },
+    // The way back to the hub (`/`) — rendered by the sidebar for owner and
+    // superadmin only, the two roles the hub belongs to.
+    home: 'Beranda',
     approvals: 'Persetujuan Saya',
     pos: 'Kasir (POS)',
     dashboard: 'Dasbor',
@@ -46,6 +63,14 @@ export const id = {
     topology: 'Topologi Perangkat',
     driver: 'Pengiriman (Driver)',
     delivery: 'Pengiriman (Dispatcher)',
+    docs: 'Dokumentasi',
+    // The `employee` interface (`/me`). Titled as the person's own account
+    // rather than "Karyawan": on their phone this is *their* space, not an HR
+    // module about them.
+    employee: 'Akun Saya',
+    // The staff-facing WhatsApp thread (`/me/chat`) — "my messages", as
+    // opposed to `chat` above, which is the head-office inbox of everyone's.
+    myChat: 'Pesan Saya',
   },
 
   auth: {
@@ -93,16 +118,15 @@ export const id = {
     superadmin: 'Super Admin',
   },
 
-  // F-HUB-2 home hub (`app/page.tsx`) — standalone workspace CHOOSER, modeled
-  // on AIRE's live hub (owner-confirmed) but with Mimi's own 3 workspaces.
-  // Reworked from F-BRAND's card-per-destination hub, which the owner
-  // rejected as "a second nav menu, not a simplification". Card
-  // titles/hrefs/permissions still come from `lib/nav.ts` where applicable
-  // (Dasbor/Kasir) — this namespace only supplies the chooser's own chrome
-  // copy and the 3 workspace blurbs, so it can never drift into a 4th or
-  // 15th card.
+  // The home hub (`app/page.tsx`) — a directory of the SIX interfaces
+  // (owner's ruling, 2026-08-21). Titles come from `nav.*` via
+  // `lib/nav.ts`'s `INTERFACES`; this namespace only supplies the hub's own
+  // chrome copy and one blurb per interface, so it can never grow a 7th card
+  // on its own. The per-area blurbs the old card-per-route hub needed
+  // (approvals/purchasing/finance/hr/admin/…) are gone with it: those are
+  // sections inside the dashboard, not interfaces.
   hub: {
-    overline: 'RUANG KERJA',
+    overline: 'ANTARMUKA',
     greeting: 'Halo, {{name}}',
     // A central role (Owner/Manager/Finance/HR Admin) legitimately carries
     // an empty `locations` array — it means "not restricted to one outlet",
@@ -111,46 +135,24 @@ export const id = {
     allOutlets: 'Semua Lokasi',
     multipleOutlets: '{{count}} Lokasi',
     roleAtOutlet: '{{role}} · {{outlet}}',
-    subtitle: 'Pilih tujuan Anda untuk bekerja hari ini',
-    // Owner/Super Admin land on the hub as an interface DIRECTORY; every other
-    // role is redirected straight to its own surface and never sees this page.
-    subtitleAll: 'Semua {{count}} antarmuka yang dapat Anda akses',
-    section: {
-      referensi: 'REFERENSI',
-    },
-    // One sentence per interface, keyed by the `lib/nav.ts` item id.
+    subtitle: 'Pilih antarmuka tempat Anda bekerja hari ini',
+    // One sentence per interface, keyed by its `lib/nav.ts` id.
     surface: {
-      approvals: 'Tinjau dan putuskan dokumen yang menunggu persetujuan Anda.',
-      pos: 'Layani pesanan, terima pembayaran, dan kelola shift serta kas kecil.',
-      dashboard: 'Ringkasan penjualan, stok, dan kinerja seluruh outlet.',
-      outlet: 'Permintaan barang, stok opname, waste, dan kas kecil outlet.',
-      driver: 'Daftar Surat Jalan hari ini: rute, alamat, navigasi, dan serah terima.',
-      warehouse: 'Gudang pusat: penerimaan, stok, dan pemenuhan permintaan outlet.',
-      delivery: 'Buat Surat Jalan, atur rute pengiriman, dan pantau truk.',
-      purchasing: 'Permintaan pembelian, PO ke supplier, dan penerimaan barang.',
-      finance: 'Verifikasi pembayaran, jurnal, dan laporan keuangan.',
-      hr: 'Data karyawan, absensi, shift, cuti, dan penggajian.',
-      assets: 'Aset, kendaraan, jadwal maintenance, dan riwayat servis.',
-      me: 'Absen, slip gaji, dan pengajuan cuti Anda sendiri.',
-      admin: 'Pengguna, hak akses, pengaturan sistem, dan audit log.',
-      topology: 'Topologi perangkat: node cabang, printer, dan status koneksi.',
+      dashboard:
+        'Kantor pusat: ringkasan penjualan dan stok, persetujuan, pengiriman, pembelian, keuangan, SDM, aset, dan administrasi.',
+      pos: 'Layani pesanan, terima pembayaran, dan kelola shift serta kas kecil di kasir cabang.',
+      outlet:
+        'Layar harian outlet: permintaan barang, penerimaan, stok opname, waste, dan kas kecil.',
+      warehouse:
+        'Operasional gudang pusat (frozen, chilled, dry): penerimaan, stok, dan pemenuhan permintaan outlet.',
+      driver:
+        'Layar mobile driver: Surat Jalan hari ini, rute, navigasi, dan serah terima per tujuan.',
+      employee:
+        'Data diri Anda: absensi, slip gaji, dan pengajuan cuti — semua tentang Anda sendiri.',
+      docs: 'Panduan penggunaan langkah demi langkah — baca online atau unduh sebagai PDF.',
     },
-    emptyTitle: 'Belum ada akses ke modul manapun',
+    emptyTitle: 'Belum ada akses ke antarmuka manapun',
     emptyDescription: 'Hubungi admin untuk memberikan akses sesuai peran Anda.',
-    workspace: {
-      dasbor: {
-        description:
-          'Dasbor, gudang pusat, pengiriman, pembelian, keuangan, SDM, aset, dan administrasi.',
-      },
-      kasir: {
-        description: 'Layani pesanan, terima pembayaran, dan kelola shift serta kas kecil.',
-      },
-      dokumentasi: {
-        title: 'Dokumentasi',
-        description:
-          'Panduan penggunaan langkah demi langkah — baca online atau unduh sebagai PDF.',
-      },
-    },
   },
 
   // F-DOCS (BUILD-PLAN W7-03) — the "Dokumentasi" workspace: `app/docs/**`.
@@ -321,6 +323,12 @@ export const id = {
   },
 
   common: {
+    // Used by `SearchableSelect` — the type-to-filter dropdown for long lists
+    // (locations, items, suppliers), where a native <select> opened taller than
+    // the modal it lived in.
+    select: 'Pilih…',
+    searchPlaceholder: 'Cari…',
+    noResults: 'Tidak ada hasil',
     showDetail: 'Lihat detail',
     hideDetail: 'Sembunyikan',
     save: 'Simpan',
@@ -904,6 +912,58 @@ export const id = {
       columnSource: 'Sumber',
       columnStatus: 'Status',
       columnLocation: 'Lokasi',
+      // Human sentences for the GL engine's machine-written `description`
+      // (`<eventType> — <refKind> <uuid>`). Rendered by `JournalDescription`;
+      // the raw string stays on hover and in the detail drawer, so nothing is
+      // lost — the ledger is just readable now (owner, 2026-08-21: "Keterangan
+      // is too confusing for normal user").
+      event: {
+        // The PRD's 16 (§6.2)
+        gudang_purchase: 'Pembelian gudang',
+        gudang_goods_in: 'Barang masuk gudang',
+        gudang_goods_out_to_outlet: 'Barang keluar gudang ke outlet',
+        gudang_return_to_supplier: 'Retur gudang ke supplier',
+        gudang_waste: 'Waste gudang',
+        gudang_stock_adjustment: 'Penyesuaian stok gudang',
+        gudang_stock_revaluation: 'Revaluasi nilai stok gudang',
+        outlet_goods_in_from_warehouse: 'Barang masuk outlet dari gudang',
+        outlet_ingredient_usage: 'Pemakaian bahan di outlet',
+        outlet_sales: 'Penjualan outlet',
+        outlet_waste: 'Waste outlet',
+        outlet_return_to_warehouse: 'Retur outlet ke gudang',
+        outlet_stock_adjustment: 'Penyesuaian stok outlet',
+        outlet_direct_purchase: 'Pembelian langsung oleh outlet',
+        outlet_petty_cash: 'Kas kecil outlet',
+        outlet_operating_expense: 'Biaya operasional outlet',
+        // D-04 extensions (§6.3)
+        payroll_accrual: 'Akrual gaji',
+        payroll_payment: 'Pembayaran gaji',
+        qris_settlement: 'Settlement QRIS',
+        transfer_verified: 'Transfer masuk terverifikasi',
+        platform_settlement: 'Settlement pesanan online',
+        sale_void_reversal: 'Pembatalan penjualan (void)',
+        offline_auth_rejected: 'Otorisasi offline ditolak',
+        petty_cash_topup: 'Pengisian kas kecil',
+        // Not an event type: the engine's own reversal prefix.
+        reversal: 'Pembalikan entri {{entry}}',
+      },
+      // The source document a system entry was posted from.
+      ref: {
+        usage_day: 'rekap pemakaian harian',
+        sale_day: 'rekap penjualan harian',
+        po_receipt: 'penerimaan PO',
+        surat_jalan: 'Surat Jalan',
+        sj: 'Surat Jalan',
+        goods_receipt: 'penerimaan barang',
+        replenishment: 'permintaan outlet',
+        opname: 'stok opname',
+        waste: 'waste',
+        return: 'retur',
+        petty_cash: 'kas kecil',
+        payroll_run: 'run payroll',
+        payment_verification: 'verifikasi pembayaran',
+        pos_sale: 'transaksi kasir',
+      },
       sourceManual: 'Manual',
       sourceSystem: 'Sistem',
       filterSourceAll: 'Semua Sumber',
@@ -1009,6 +1069,17 @@ export const id = {
       },
       period: 'Periode',
       columnAccount: 'Akun',
+      // A report that silently rendered NOTHING when its fetch failed, or when
+      // no fiscal period existed, read as an unbuilt feature (owner,
+      // 2026-08-21: "This seems not developed"). Every tab now says which of
+      // the three states it is in.
+      noPeriods: 'Belum ada periode fiskal',
+      noPeriodsHint:
+        'Buat periode di tab Periode Fiskal terlebih dahulu — Neraca Saldo dihitung per periode.',
+      selectPeriod: 'Pilih periode untuk menampilkan laporan',
+      loadError: 'Laporan gagal dimuat',
+      loadErrorHint: 'Coba muat ulang. Bila masih gagal, laporkan ke admin.',
+      emptyHint: 'Belum ada jurnal yang terposting pada rentang yang dipilih.',
       balanced: 'Seimbang',
       unbalanced: 'Tidak Seimbang',
       empty: 'Tidak ada data untuk ditampilkan.',
@@ -1122,6 +1193,9 @@ export const id = {
       empty: 'Belum ada permintaan pembelian.',
       location: 'Lokasi',
       neededBy: 'Dibutuhkan Tanggal',
+      // Destination is a warehouse, not any location (owner, 2026-08-21).
+      destination: 'Tujuan Pengiriman (Gudang)',
+      destinationHint: 'Barang yang dibeli diterima di gudang ini.',
       item: 'Item',
       qty: 'Jumlah',
       estPrice: 'Estimasi Harga',
@@ -2074,8 +2148,18 @@ export const id = {
       tempAtDrop: 'Suhu saat serah terima',
       signDriver: 'Driver',
       signReceiver: 'Penerima di Outlet',
+      // Three copies per delivery point (owner, 2026-08-21): the paper is
+      // printed in gudang and split between gudang, the receiving outlet, and
+      // the office — each one a complete, separately-signed sheet.
+      copyFor: 'Salinan: {{holder}}',
+      copyHolder: {
+        gudang: 'Gudang Pusat',
+        kantor: 'Kantor',
+      },
+      copyNotice:
+        '{{drops}} tujuan × {{copies}} salinan (gudang, outlet, kantor) = {{pages}} halaman. Siapkan kertas di printer sebelum mencetak.',
       footer:
-        'Dokumen ini adalah bukti pengiriman resmi. Simpan satu rangkap di outlet dan satu rangkap dibawa kembali ke gudang pusat.',
+        'Dokumen ini adalah bukti pengiriman resmi. Tanda tangani ketiga salinan: satu untuk gudang pusat, satu untuk outlet penerima, satu untuk kantor.',
     },
     slip: {
       title: 'Slip Gaji',

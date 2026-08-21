@@ -22,6 +22,7 @@ export function PrintFrame({
   documentNumber,
   ready,
   autoPrint = false,
+  letterhead = true,
   children,
 }: {
   title: string;
@@ -32,6 +33,13 @@ export function PrintFrame({
    * so we never print a half-rendered page. */
   ready: boolean;
   autoPrint?: boolean;
+  /**
+   * Render the frame's own letterhead. Off for a document whose every page is
+   * a self-contained copy carrying its own (the Surat Jalan prints three per
+   * drop — gudang, outlet, kantor), where one letterhead at the top of the
+   * sheet would just duplicate the first page's.
+   */
+  letterhead?: boolean;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -86,16 +94,18 @@ export function PrintFrame({
       </div>
 
       <div className="print-sheet">
-        <header className="print-keep mb-6 flex items-start justify-between border-b-2 border-black pb-3">
-          <div>
-            <p className="font-display text-xl font-bold">Mimi Chicken OS</p>
-            <p className="text-xs">{t('print.company')}</p>
-          </div>
-          <div className="text-right">
-            <p className="font-display text-lg font-bold uppercase">{title}</p>
-            {documentNumber && <p className="font-mono text-sm">{documentNumber}</p>}
-          </div>
-        </header>
+        {letterhead && (
+          <header className="print-keep mb-6 flex items-start justify-between border-b-2 border-black pb-3">
+            <div>
+              <p className="font-display text-xl font-bold">Mimi Chicken OS</p>
+              <p className="text-xs">{t('print.company')}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-display text-lg font-bold uppercase">{title}</p>
+              {documentNumber && <p className="font-mono text-sm">{documentNumber}</p>}
+            </div>
+          </header>
+        )}
 
         {children}
       </div>

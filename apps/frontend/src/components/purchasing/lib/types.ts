@@ -43,6 +43,15 @@ export interface StorageArea {
 export interface LocationOption {
   id: UUID;
   name: string;
+  /**
+   * `GET /locations` returns these too (`LocationService`'s row shape); they
+   * were simply not declared here. Needed now that a purchase's destination
+   * must be a GUDANG — the filter is `type === 'warehouse'` — and that long
+   * location lists are searchable by city.
+   */
+  type?: 'warehouse' | 'outlet' | string;
+  city?: string | null;
+  code?: string;
 }
 
 // ── §4.6 supplier (role-locked pricing — D-20 / Amendment 3) ────────────────

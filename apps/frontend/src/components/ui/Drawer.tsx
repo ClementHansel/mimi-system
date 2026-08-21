@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -37,17 +37,26 @@ export function Drawer({
   side = 'right',
   size = 'md',
 }: DrawerProps) {
+  // Held in a ref so the effect below is keyed on `open` alone: callers pass an
+  // inline arrow, whose new identity on every render would otherwise re-run the
+  // effect (and its scroll-lock/listener churn) on every keystroke inside the
+  // drawer. Same defect as `Modal` documented at length there.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     const original = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKeyDown = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKeyDown = (e: KeyboardEvent) => e.key === 'Escape' && onCloseRef.current();
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.body.style.overflow = original;
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open || typeof document === 'undefined') return null;
 

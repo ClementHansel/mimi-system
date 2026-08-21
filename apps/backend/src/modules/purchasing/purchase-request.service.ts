@@ -26,8 +26,10 @@ import { withWrite } from './db-tx';
 import type {
   ApprovePurchaseRequestDto,
   CreatePurchaseRequestDto,
+  CreatePurchaseRequestFromReplenishmentDto,
   ListPurchaseRequestQueryDto,
   RejectPurchaseRequestDto,
+  UpdatePurchaseRequestDto,
 } from './dto/purchase-request.dto';
 import { PurchaseRequestRepository } from './purchase-request.repository';
 
@@ -47,6 +49,18 @@ export interface PurchaseRequestListRow {
   lineCount: number;
 }
 
+/** One entry in a PR's audit trail (`GET :id/history`). */
+export interface PurchaseRequestHistoryEntry {
+  id: UUID;
+  action: string;
+  actedBy: string | null;
+  roleKey: string | null;
+  reason: string | null;
+  occurredAt: string;
+  before: unknown;
+  after: unknown;
+}
+
 export interface PurchaseRequestDetail {
   id: UUID;
   prNumber: string;
@@ -57,6 +71,18 @@ export interface PurchaseRequestDetail {
   neededBy: string | null;
   rejectionReason: string | null;
   notes: string | null;
+  /**
+   * WHO TOUCHED THIS, AND WHEN (owner, 2026-08-21). `createdAt`/`requestedBy`
+   * are the raising; `updatedAt`/`updatedBy` the last edit (null until one
+   * happens); `approval.steps[]` each approver with their own `actedAt`. The
+   * narrative of what changed is `GET :id/history`, off `audit_log`.
+   */
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+  /** The outlet request this PR was converted from, when it was. */
+  sourceReplenishmentId: UUID | null;
+  sourceReplenishmentNumber: string | null;
   /**
    * CONTRACTS.md §4.11: `GET /api/purchasing/requests/:id` → "PR with lines
    * + `ApprovalDetail`" — DETAIL only (the list row's documented shape,
@@ -164,6 +190,156 @@ export class PurchaseRequestService {
         });
       }
 
+      return this.getDetail(client, id);
+    });
+  }
+
+  /**
+   * Edits a PR — owner's ruling, 2026-08-21 ("PR should be editable").
+   *
+   * Only while it is still the requester's document: `draft`, or `rejected`
+   * (fixing what the approver objected to is the whole point of a rejection).
+   * A `submitted` PR is mid-approval and a `converted` one is already a PO's
+   * source — editing either would change a document someone else has acted on,
+   * so those are conflicts, not silent no-ops.
+   *
+   * Editing a rejected PR returns it to `draft` and clears the stale rejection
+   * reason: the request the approver rejected no longer exists, and leaving
+   * "rejected: price too high" on an amended document would misrepresent it.
+   * The approval trail itself is untouched — `audit_log` and the previous
+   * approval rows still say exactly what happened.
+   */
+  async update(
+    client: PoolClient,
+    actor: ActorContext,
+    id: UUID,
+    dto: UpdatePurchaseRequestDto,
+  ): Promise<PurchaseRequestDetail> {
+    const header = await this.requireHeader(client, id);
+    this.assertLocationInScope(actor, header.location_id);
+    if (dto.locationId) this.assertLocationInScope(actor, dto.locationId);
+
+    const editable: string[] = [PurchaseRequestStatus.DRAFT, PurchaseRequestStatus.REJECTED];
+    if (!editable.includes(header.status)) {
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PR ${id} is '${header.status}' — only a draft or rejected PR can be edited`,
+      });
+    }
+
+    return withWrite(client, async () => {
+      await this.repo.updateHeader(client, {
+        prId: id,
+        locationId: dto.locationId,
+        neededBy: dto.neededBy,
+        notes: dto.notes,
+        // A rejected PR that has been amended is a draft again — see above.
+        status:
+          header.status === PurchaseRequestStatus.REJECTED
+            ? PurchaseRequestStatus.DRAFT
+            : undefined,
+        updatedBy: actor.userId,
+      });
+      if (header.status === PurchaseRequestStatus.REJECTED) {
+        await this.repo.clearRejection(client, id);
+      }
+
+      if (dto.lines) {
+        await this.repo.deleteLines(client, id);
+        for (const line of dto.lines) {
+          await this.repo.insertLine(client, {
+            prId: id,
+            itemId: line.itemId,
+            unitId: line.unitId,
+            qty: line.qty as Qty,
+            estPrice: (line.estPrice ?? '0.00') as Money,
+            suggestedSupplierId: line.suggestedSupplierId ?? null,
+          });
+        }
+      }
+
+      return this.getDetail(client, id);
+    });
+  }
+
+  /**
+   * The PR's audit trail, straight off `audit_log` — who did what, when, and
+   * with what before/after values. Same source and shape as
+   * `replenishment`'s `:id/history`, deliberately: one audit story per system.
+   */
+  async getHistory(client: PoolClient, id: UUID): Promise<PurchaseRequestHistoryEntry[]> {
+    await this.requireHeader(client, id);
+    const rows = await this.repo.history(client, id);
+    return rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      actedBy: r.user_name ?? r.user_id,
+      roleKey: r.role_key,
+      reason: r.reason,
+      occurredAt: r.occurred_at.toISOString(),
+      before: r.before_value,
+      after: r.after_value,
+    }));
+  }
+
+  /**
+   * Turns an outlet's replenishment request into a DRAFT PR (owner: "able to
+   * convert that to PR, and later PR to PO").
+   *
+   * Draft, not submitted: the office still has to price the lines and pick a
+   * supplier, and auto-submitting would push an unpriced request into someone's
+   * approval queue. The outlet's own request is left exactly as it is — it has
+   * its own lifecycle in gudang (fulfil from stock) and a PR is the OTHER answer
+   * to it (buy it in), not a state change of it. The link is kept on the PR
+   * (`source_replenishment_id`) so "which store asked for this?" is answerable
+   * from the document.
+   *
+   * The lines come across at the requested quantity with no price: `est_price`
+   * defaults to 0 and the office fills it in, rather than this inventing a
+   * figure that would look like a quote.
+   */
+  async createFromReplenishment(
+    client: PoolClient,
+    actor: ActorContext,
+    dto: CreatePurchaseRequestFromReplenishmentDto,
+  ): Promise<PurchaseRequestDetail> {
+    this.assertLocationInScope(actor, dto.locationId);
+
+    const source = await this.repo.findReplenishmentForConversion(client, dto.replenishmentId);
+    if (!source) {
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Replenishment request ${dto.replenishmentId} not found`,
+      });
+    }
+    if (source.lines.length === 0) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Replenishment request ${source.request_number} has no lines to convert`,
+      });
+    }
+
+    return withWrite(client, async () => {
+      const prNumber = await this.repo.nextPrNumber(client);
+      const id = await this.repo.insertHeader(client, {
+        prNumber,
+        locationId: dto.locationId,
+        requestedBy: actor.userId,
+        neededBy: dto.neededBy ?? null,
+        notes: dto.notes ?? null,
+        sourceReplenishmentId: source.id,
+      });
+      for (const line of source.lines) {
+        await this.repo.insertLine(client, {
+          prId: id,
+          itemId: line.item_id,
+          unitId: line.unit_id,
+          qty: line.qty_requested as Qty,
+          // No invented price — the office prices it before submitting.
+          estPrice: '0.00' as Money,
+          suggestedSupplierId: null,
+        });
+      }
       return this.getDetail(client, id);
     });
   }
@@ -295,6 +471,11 @@ export class PurchaseRequestService {
       neededBy: h.needed_by ? formatDateOnly(h.needed_by) : null,
       rejectionReason: h.rejection_reason,
       notes: h.notes,
+      createdAt: h.created_at.toISOString(),
+      updatedAt: h.updated_at.toISOString(),
+      updatedBy: h.updated_by_name ?? h.updated_by,
+      sourceReplenishmentId: h.source_replenishment_id,
+      sourceReplenishmentNumber: h.source_replenishment_number,
       approval,
       lines: lines.map((l) => ({
         id: l.id,

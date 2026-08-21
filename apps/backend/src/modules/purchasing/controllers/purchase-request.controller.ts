@@ -1,12 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { RoleKey } from '@mimi/shared';
 import { Audited, RequirePermission } from '../../../common/decorators';
 import type { RequestWithDbContext } from '../../../common/guards/rls-context.guard';
 import {
   ApprovePurchaseRequestDto,
   CreatePurchaseRequestDto,
+  CreatePurchaseRequestFromReplenishmentDto,
   ListPurchaseRequestQueryDto,
   RejectPurchaseRequestDto,
+  UpdatePurchaseRequestDto,
 } from '../dto/purchase-request.dto';
 import { PurchaseRequestService, type ActorContext } from '../purchase-request.service';
 
@@ -36,6 +38,44 @@ export class PurchaseRequestController {
   @Audited({ entityType: 'purchase_request', action: 'purchasing.pr.create' })
   create(@Req() req: RequestWithDbContext, @Body() dto: CreatePurchaseRequestDto) {
     return this.service.create(req.dbClient!, this.actor(req), dto);
+  }
+
+  /**
+   * The PR's audit trail — who created it, who edited it, who approved or
+   * rejected it, each with a timestamp (owner, 2026-08-21). Read permission,
+   * not write: anyone who may see the PR may see what happened to it.
+   */
+  @Get(':id/history')
+  @RequirePermission('purchasing.read')
+  history(@Req() req: RequestWithDbContext, @Param('id') id: string) {
+    return this.service.getHistory(req.dbClient!, id);
+  }
+
+  /**
+   * Edit a draft or rejected PR. `@Audited` is what makes the edit show up in
+   * `:id/history` with its before/after values — the endpoint and the trail are
+   * the same feature, so neither ships without the other.
+   */
+  @Patch(':id')
+  @RequirePermission('purchasing.pr.create')
+  @Audited({ entityType: 'purchase_request', action: 'purchasing.pr.update' })
+  update(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: UpdatePurchaseRequestDto,
+  ) {
+    return this.service.update(req.dbClient!, this.actor(req), id, dto);
+  }
+
+  /** Convert an outlet's replenishment request into a draft PR. */
+  @Post('from-replenishment')
+  @RequirePermission('purchasing.pr.create')
+  @Audited({ entityType: 'purchase_request', action: 'purchasing.pr.create' })
+  createFromReplenishment(
+    @Req() req: RequestWithDbContext,
+    @Body() dto: CreatePurchaseRequestFromReplenishmentDto,
+  ) {
+    return this.service.createFromReplenishment(req.dbClient!, this.actor(req), dto);
   }
 
   @Post(':id/submit')

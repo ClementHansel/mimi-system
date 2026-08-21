@@ -26,7 +26,7 @@
  * scoped-role RLS bugs.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ERR_FORBIDDEN, ERR_PHOTO_REQUIRED, RoleKey } from '@mimi/shared';
+import { ERR_CONFLICT, ERR_FORBIDDEN, ERR_PHOTO_REQUIRED, RoleKey } from '@mimi/shared';
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -282,6 +282,159 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     expect(approved.status).toBe('approved');
     expect(approved.approval).not.toBeNull();
     expect(approved.approval!.currentStep).toBeNull(); // finalized — the documented completion signal.
+  });
+
+  it('PR edit replaces lines, records who edited it, and is refused once submitted', async () => {
+    // Owner's ruling, 2026-08-21: "PR should be editable but shown who make it
+    // and who made the changes". Both halves are asserted here — the edit
+    // itself, and that a document already in someone else's approval queue can
+    // no longer be changed under them.
+    const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+    const session = {
+      role: 'kepala_gudang' as const,
+      userId: kgd.userId,
+      locationIds: [fx.warehouseId],
+    };
+
+    const created = await withRollbackAs(session, (client) => {
+      const { prService } = buildKit();
+      return prService.create(client, kgd, {
+        locationId: fx.warehouseId,
+        neededBy: '2026-12-31',
+        lines: [{ itemId: fx.itemId, qty: '10.000', unitId: fx.unitId, estPrice: '5000.00' }],
+      });
+    });
+    prIds.push(created.id);
+    // Nobody has edited it yet, and saying "edited by <creator>" would be a lie.
+    expect(created.updatedBy).toBeNull();
+
+    const edited = await withRollbackAs(session, (client) => {
+      const { prService } = buildKit();
+      return prService.update(client, kgd, created.id, {
+        neededBy: '2027-01-15',
+        notes: 'stok gudang habis',
+        lines: [{ itemId: fx.itemId, qty: '25.000', unitId: fx.unitId, estPrice: '5200.00' }],
+      });
+    });
+    expect(edited.neededBy).toBe('2027-01-15');
+    expect(edited.notes).toBe('stok gudang habis');
+    // Replaced, not appended: one line in, one line out.
+    expect(edited.lines).toHaveLength(1);
+    expect(edited.lines[0]!.qty).toBe('25.000');
+    expect(edited.updatedBy).not.toBeNull();
+    expect(edited.status).toBe('draft');
+
+    // An omitted field is "leave it alone", never "blank it".
+    const partial = await withRollbackAs(session, (client) => {
+      const { prService } = buildKit();
+      return prService.update(client, kgd, created.id, { neededBy: '2027-02-01' });
+    });
+    expect(partial.notes).toBe('stok gudang habis');
+    expect(partial.lines).toHaveLength(1);
+
+    await withRollbackAs(session, (client) => {
+      const { prService } = buildKit();
+      return prService.submit(client, kgd, created.id);
+    });
+
+    // Mid-approval: editing would change a document the approver is looking at.
+    await expect(
+      withRollbackAs(session, (client) => {
+        const { prService } = buildKit();
+        return prService.update(client, kgd, created.id, { notes: 'diam-diam diubah' });
+      }),
+    ).rejects.toMatchObject({ response: { code: ERR_CONFLICT } });
+  });
+
+  it('editing a rejected PR returns it to draft and drops the stale rejection reason', async () => {
+    const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+    const mgr = actorFor(fx, RoleKey.MANAGER, null);
+    const kgdSession = {
+      role: 'kepala_gudang' as const,
+      userId: kgd.userId,
+      locationIds: [fx.warehouseId],
+    };
+
+    const created = await withRollbackAs(kgdSession, (client) => {
+      const { prService } = buildKit();
+      return prService.create(client, kgd, {
+        locationId: fx.warehouseId,
+        lines: [{ itemId: fx.itemId, qty: '10.000', unitId: fx.unitId, estPrice: '9000.00' }],
+      });
+    });
+    prIds.push(created.id);
+
+    await withRollbackAs(kgdSession, (client) => {
+      const { prService } = buildKit();
+      return prService.submit(client, kgd, created.id);
+    });
+    const rejected = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { prService } = buildKit();
+        return prService.reject(client, mgr, created.id, { reason: 'harga terlalu mahal' });
+      },
+    );
+    expect(rejected.status).toBe('rejected');
+    expect(rejected.rejectionReason).toBe('harga terlalu mahal');
+
+    const amended = await withRollbackAs(kgdSession, (client) => {
+      const { prService } = buildKit();
+      return prService.update(client, kgd, created.id, {
+        lines: [{ itemId: fx.itemId, qty: '10.000', unitId: fx.unitId, estPrice: '7000.00' }],
+      });
+    });
+    // The document the approver rejected no longer exists, so keeping "harga
+    // terlalu mahal" on it would misrepresent the amended request.
+    expect(amended.status).toBe('draft');
+    expect(amended.rejectionReason).toBeNull();
+    expect(amended.lines[0]!.estPrice).toBe('7000.00');
+  });
+
+  it('an outlet replenishment request converts into a draft PR that remembers its source', async () => {
+    // Owner: "a place to see requests from stores properly and able to convert
+    // that to PR". The conversion copies the lines UNPRICED and leaves the
+    // outlet's own request alone — buying it in is the other answer to that
+    // request, not a state change of it.
+    const mgr = actorFor(fx, RoleKey.MANAGER, null);
+    const mgrSession = { role: 'manager' as const, userId: mgr.userId, locationIds: [] };
+
+    const source = await cleanupPool.query<{ id: string; request_number: string; status: string }>(
+      `SELECT id, request_number, status FROM replenishment_requests
+        WHERE status <> 'draft' AND EXISTS (
+          SELECT 1 FROM replenishment_request_lines l WHERE l.request_id = replenishment_requests.id
+        )
+        ORDER BY created_at DESC LIMIT 1`,
+    );
+    const src = source.rows[0];
+    // The seed carries requests across several states; if that ever stops being
+    // true this test says so instead of quietly passing on nothing.
+    expect(src, 'seed must provide a non-draft replenishment request with lines').toBeTruthy();
+
+    const converted = await withRollbackAs(mgrSession, (client) => {
+      const { prService } = buildKit();
+      return prService.createFromReplenishment(client, mgr, {
+        replenishmentId: src!.id,
+        locationId: fx.warehouseId,
+        notes: 'tidak bisa dipenuhi dari stok',
+      });
+    });
+    prIds.push(converted.id);
+
+    expect(converted.status).toBe('draft');
+    expect(converted.locationId).toBe(fx.warehouseId);
+    expect(converted.sourceReplenishmentId).toBe(src!.id);
+    expect(converted.sourceReplenishmentNumber).toBe(src!.request_number);
+    expect(converted.lines.length).toBeGreaterThan(0);
+    // Unpriced on purpose — an invented figure would read as a quote.
+    for (const line of converted.lines) expect(line.estPrice).toBe('0.00');
+
+    // The outlet's request is untouched.
+    const after = await cleanupPool.query<{ status: string }>(
+      `SELECT status FROM replenishment_requests WHERE id = $1`,
+      [src!.id],
+    );
+    expect(after.rows[0]!.status).toBe(src!.status);
   });
 
   it('PO create -> submit -> approve -> issue -> receive posts purchase_in and updates items.avg_cost (FR-PO-02/03/04)', async () => {

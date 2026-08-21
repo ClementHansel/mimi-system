@@ -21,6 +21,7 @@ import type {
   PriceHistoryEntry,
   PurchaseRequestListRow,
   PurchaseRequestDetail,
+  PurchaseRequestHistoryEntry,
   PurchaseOrderListRow,
   PurchaseOrderDetail,
 } from './types';
@@ -138,6 +139,40 @@ export function listPurchaseRequests(
 
 export function getPurchaseRequest(id: string) {
   return api.get<PurchaseRequestDetail>(`/purchasing/requests/${id}`);
+}
+
+/** Edit a draft or rejected PR (owner, 2026-08-21: "PR should be editable"). */
+export function updatePurchaseRequest(
+  id: string,
+  body: {
+    locationId?: string;
+    neededBy?: string;
+    notes?: string;
+    lines?: {
+      itemId: string;
+      qty: string;
+      unitId: string;
+      estPrice?: string;
+      suggestedSupplierId?: string;
+    }[];
+  },
+) {
+  return api.patch<PurchaseRequestDetail>(`/purchasing/requests/${id}`, body);
+}
+
+/** The PR's audit trail: who created, edited, approved or rejected it, when. */
+export function getPurchaseRequestHistory(id: string) {
+  return api.get<PurchaseRequestHistoryEntry[]>(`/purchasing/requests/${id}/history`);
+}
+
+/** Convert an outlet's replenishment request into a draft PR. */
+export function createPurchaseRequestFromReplenishment(body: {
+  replenishmentId: string;
+  locationId: string;
+  neededBy?: string;
+  notes?: string;
+}) {
+  return api.post<PurchaseRequestDetail>('/purchasing/requests/from-replenishment', body);
 }
 
 export function createPurchaseRequest(body: {

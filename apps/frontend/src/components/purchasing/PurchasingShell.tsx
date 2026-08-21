@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ClipboardList, Truck, History, Building2 } from 'lucide-react';
+import { ClipboardList, Truck, History, Building2, Store } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { OutletRequestsPanel } from './OutletRequestsPanel';
 import { PurchaseRequestsPanel } from './PurchaseRequestsPanel';
 import { PurchaseOrdersPanel } from './PurchaseOrdersPanel';
 import { SupplierPriceHistoryPanel } from './SupplierPriceHistoryPanel';
@@ -31,6 +32,16 @@ export function PurchasingShell() {
 
   const tabs = useMemo(
     () => [
+      {
+        // The office's view of what the stores are asking for, and where an
+        // outlet request becomes a PR (owner, 2026-08-21). First tab on
+        // purpose: purchasing starts with somebody asking for something.
+        value: 'outletRequests',
+        labelKey: 'purchasing.tabs.outletRequests',
+        icon: Store,
+        visible: can(['purchasing.read', 'replenishment.read']),
+        content: <OutletRequestsPanel />,
+      },
       {
         value: 'requests',
         labelKey: 'purchasing.tabs.requests',

@@ -19,7 +19,15 @@
  * specifically because of an RLS policy gap being fixed in parallel — treat
  * that `null` as "no payment record visible", never as an implicit "unpaid".
  */
-import type { Money, Qty, UUID, ISODate, ApprovalDetail, PaymentStatus } from '@/lib/shared-types';
+import type {
+  Money,
+  Qty,
+  UUID,
+  ISODate,
+  ISODateTime,
+  ApprovalDetail,
+  PaymentStatus,
+} from '@/lib/shared-types';
 
 // ── shared lookups (kept local; see file-level doc for why not cross-module) ─
 
@@ -152,8 +160,31 @@ export interface PurchaseRequestDetail {
   neededBy: ISODate | null;
   rejectionReason: string | null;
   notes: string | null;
+  /**
+   * Attribution (migration 227). `requestedBy`/`createdAt` is the raising,
+   * `updatedBy`/`updatedAt` the last edit (`updatedBy` null until one happens),
+   * and `approval.steps[]` carries each approver with their own `actedAt`.
+   */
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+  updatedBy: string | null;
+  /** The outlet request this PR was converted from, if it was. */
+  sourceReplenishmentId: UUID | null;
+  sourceReplenishmentNumber: string | null;
   approval: ApprovalDetail | null;
   lines: PurchaseRequestLine[];
+}
+
+/** One `audit_log` entry about a PR — `GET /purchasing/requests/:id/history`. */
+export interface PurchaseRequestHistoryEntry {
+  id: UUID;
+  action: string;
+  actedBy: string | null;
+  roleKey: string | null;
+  reason: string | null;
+  occurredAt: ISODateTime;
+  before: unknown;
+  after: unknown;
 }
 
 // ── §4.11 purchase orders + receiving (FR-PO-01..04) ────────────────────────

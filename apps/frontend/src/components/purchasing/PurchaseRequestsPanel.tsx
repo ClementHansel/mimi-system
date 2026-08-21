@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil, History } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { PurchaseRequestStatus } from '@/lib/shared-types';
 import type { Money, Qty } from '@/lib/shared-types';
-import { fmtDate } from '@/lib/dates';
+import { fmtDate, fmtDateTime } from '@/lib/dates';
 import { formatMoney } from '@/lib/formatters';
 import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
@@ -31,7 +31,9 @@ import {
   getSuppliers,
   getSupplierDirectory,
   getPurchaseRequest,
+  getPurchaseRequestHistory,
   createPurchaseRequest,
+  updatePurchaseRequest,
   submitPurchaseRequest,
   approvePurchaseRequest,
   rejectPurchaseRequest,
@@ -41,10 +43,30 @@ import type {
   LocationOption,
   PurchaseRequestListRow,
   PurchaseRequestDetail,
+  PurchaseRequestHistoryEntry,
 } from './lib/types';
 
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
+}
+
+/**
+ * `audit_log.action` holds the permission-shaped verb the `@Audited()`
+ * interceptor recorded (`purchasing.pr.create`). Mapped explicitly rather than
+ * interpolated into an i18n path: the actions contain dots, so building a key
+ * from one would be read as a nested lookup and miss.
+ * An unmapped action falls back to the raw verb — visible and obviously
+ * technical, which is better than a blank line in an audit trail.
+ */
+const HISTORY_ACTION_KEYS: Record<string, string> = {
+  'purchasing.pr.create': 'purchasing.requests.historyAction.create',
+  'purchasing.pr.update': 'purchasing.requests.historyAction.update',
+  'purchasing.pr.approve': 'purchasing.requests.historyAction.approve',
+};
+
+function historyLabel(action: string, t: (key: string) => string): string {
+  const key = HISTORY_ACTION_KEYS[action];
+  return key ? t(key) : action;
 }
 
 interface LineDraft {
@@ -183,6 +205,7 @@ export function PurchaseRequestsPanel() {
 
       {selectedId && (
         <RequestDrawer
+          locations={locations}
           id={selectedId}
           canApprove={can('purchasing.pr.approve')}
           canSubmit={can('purchasing.pr.create')}
@@ -194,20 +217,40 @@ export function PurchaseRequestsPanel() {
   );
 }
 
+/**
+ * One form for both creating and EDITING a PR (owner, 2026-08-21: "PR should be
+ * editable"). Passing `existing` switches it to edit mode: the fields start
+ * populated and Simpan PATCHes instead of POSTing. Deliberately not a second
+ * component — a divergent edit form is how "the create screen validates it but
+ * the edit screen does not" happens.
+ */
 function CreateRequestModal({
   locations,
+  existing,
   onClose,
   onCreated,
 }: {
   locations: LocationOption[];
+  existing?: PurchaseRequestDetail;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const { t } = useI18n();
   const { can } = usePermissions();
-  const [locationId, setLocationId] = useState('');
-  const [neededBy, setNeededBy] = useState('');
-  const [lines, setLines] = useState<LineDraft[]>([{ ...EMPTY_LINE }]);
+  const isEdit = !!existing;
+  const [locationId, setLocationId] = useState(existing?.locationId ?? '');
+  const [neededBy, setNeededBy] = useState(existing?.neededBy ?? '');
+  const [lines, setLines] = useState<LineDraft[]>(
+    existing
+      ? existing.lines.map((l) => ({
+          itemId: l.itemId,
+          qty: l.qty,
+          unitId: l.unitId,
+          estPrice: l.estPrice,
+          suggestedSupplierId: l.suggestedSupplierId ?? '',
+        }))
+      : [{ ...EMPTY_LINE }],
+  );
   const [items, setItems] = useState<Item[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -263,7 +306,7 @@ function CreateRequestModal({
     setSubmitting(true);
     setError(null);
     try {
-      await createPurchaseRequest({
+      const body = {
         locationId,
         neededBy: neededBy || undefined,
         lines: validLines.map((l) => ({
@@ -273,7 +316,12 @@ function CreateRequestModal({
           estPrice: l.estPrice ?? undefined,
           suggestedSupplierId: l.suggestedSupplierId || undefined,
         })),
-      });
+      };
+      if (existing) {
+        await updatePurchaseRequest(existing.id, body);
+      } else {
+        await createPurchaseRequest(body);
+      }
       onCreated();
     } catch (err) {
       setError(errMsg(err, t('auth.genericError')));
@@ -286,7 +334,11 @@ function CreateRequestModal({
     <Modal
       open
       onClose={onClose}
-      title={t('purchasing.requests.createTitle')}
+      title={
+        isEdit
+          ? t('purchasing.requests.editTitle', { number: existing!.prNumber })
+          : t('purchasing.requests.createTitle')
+      }
       size="lg"
       footer={
         <>
@@ -389,12 +441,14 @@ function CreateRequestModal({
 
 function RequestDrawer({
   id,
+  locations,
   canApprove,
   canSubmit,
   onClose,
   onChanged,
 }: {
   id: string;
+  locations: LocationOption[];
   canApprove: boolean;
   canSubmit: boolean;
   onClose: () => void;
@@ -409,6 +463,12 @@ function RequestDrawer({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [note, setNote] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  // The audit trail is loaded lazily: most people open a PR to read its lines,
+  // not its history, and it is one more round trip per open.
+  const [history, setHistory] = useState<PurchaseRequestHistoryEntry[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -419,6 +479,17 @@ function RequestDrawer({
       .finally(() => setLoading(false));
   }
   useEffect(load, [id]);
+
+  function toggleHistory() {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (next && history === null) {
+      setHistoryError(null);
+      getPurchaseRequestHistory(id)
+        .then(setHistory)
+        .catch((err) => setHistoryError(errMsg(err, t('table.error'))));
+    }
+  }
 
   async function doSubmit() {
     setBusy('submit');
@@ -485,10 +556,25 @@ function RequestDrawer({
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
               <dt className="text-text-muted">{t('purchasing.requests.columnLocation')}</dt>
               <dd className="text-text-primary">{pr.locationName}</dd>
-              <dt className="text-text-muted">{t('purchasing.requests.columnRequestedBy')}</dt>
-              <dd className="text-text-primary">{pr.requestedBy}</dd>
               <dt className="text-text-muted">{t('purchasing.requests.columnNeededBy')}</dt>
               <dd className="text-text-primary">{pr.neededBy ? fmtDate(pr.neededBy) : '—'}</dd>
+              {/* WHO TOUCHED THIS (owner, 2026-08-21). Creation and last edit
+                  here; every approval decision in the timeline below; the full
+                  before/after narrative behind "Riwayat Perubahan". */}
+              <dt className="text-text-muted">{t('purchasing.requests.createdBy')}</dt>
+              <dd className="text-text-primary">
+                {pr.requestedBy} · {fmtDateTime(pr.createdAt)}
+              </dd>
+              <dt className="text-text-muted">{t('purchasing.requests.updatedBy')}</dt>
+              <dd className="text-text-primary">
+                {pr.updatedBy ? `${pr.updatedBy} · ${fmtDateTime(pr.updatedAt)}` : '—'}
+              </dd>
+              {pr.sourceReplenishmentNumber && (
+                <>
+                  <dt className="text-text-muted">{t('purchasing.requests.sourceRequest')}</dt>
+                  <dd className="text-text-primary">{pr.sourceReplenishmentNumber}</dd>
+                </>
+              )}
               {pr.rejectionReason && (
                 <>
                   <dt className="text-text-muted">{t('purchasing.requests.rejectReason')}</dt>
@@ -535,6 +621,83 @@ function RequestDrawer({
               </h3>
               <ApprovalTimeline steps={pr.approval.steps} />
             </section>
+          )}
+
+          {/* Editable only while it is still the requester's document — the
+              server enforces the same rule and answers 409 otherwise. */}
+          {canSubmit &&
+            (pr.status === PurchaseRequestStatus.DRAFT ||
+              pr.status === PurchaseRequestStatus.REJECTED) && (
+              <section className="flex flex-col gap-2 border-t border-border pt-4">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  leftIcon={<Pencil className="size-4" />}
+                  onClick={() => setEditOpen(true)}
+                  className="self-start"
+                >
+                  {t('purchasing.requests.editButton')}
+                </Button>
+                {pr.status === PurchaseRequestStatus.REJECTED && (
+                  <p className="text-xs text-text-muted">
+                    {t('purchasing.requests.editRejectedHint')}
+                  </p>
+                )}
+              </section>
+            )}
+
+          <section className="flex flex-col gap-2 border-t border-border pt-4">
+            <Button
+              size="sm"
+              variant="ghost"
+              leftIcon={<History className="size-4" />}
+              onClick={toggleHistory}
+              className="self-start"
+            >
+              {t('purchasing.requests.historyTitle')}
+            </Button>
+            {historyOpen && (
+              <>
+                {historyError && <p className="text-sm text-danger-600">{historyError}</p>}
+                {!historyError && history === null && (
+                  <p className="text-sm text-text-muted">{t('common.loading')}</p>
+                )}
+                {history?.length === 0 && (
+                  <p className="text-sm text-text-muted">{t('purchasing.requests.historyEmpty')}</p>
+                )}
+                {history && history.length > 0 && (
+                  <ol className="flex flex-col gap-2">
+                    {history.map((h) => (
+                      <li key={h.id} className="border-l-2 border-border pl-3 text-sm">
+                        <p className="text-text-primary">{historyLabel(h.action, t)}</p>
+                        <p className="text-xs text-text-muted">
+                          {h.actedBy ?? '—'}
+                          {h.roleKey ? ` · ${t(`role.${h.roleKey}`)}` : ''} ·{' '}
+                          {fmtDateTime(h.occurredAt)}
+                        </p>
+                        {h.reason && <p className="text-xs text-text-secondary">{h.reason}</p>}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </>
+            )}
+          </section>
+
+          {editOpen && (
+            <CreateRequestModal
+              locations={locations}
+              existing={pr}
+              onClose={() => setEditOpen(false)}
+              onCreated={() => {
+                setEditOpen(false);
+                // History is now stale — drop it so the next open refetches.
+                setHistory(null);
+                toast({ title: t('purchasing.requests.editSuccess'), variant: 'success' });
+                load();
+                onChanged();
+              }}
+            />
           )}
 
           {pr.status === PurchaseRequestStatus.DRAFT && canSubmit && (

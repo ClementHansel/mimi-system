@@ -1123,6 +1123,7 @@ export const id = {
   },
   purchasing: {
     tabs: {
+      outletRequests: 'Permintaan Outlet',
       requests: 'Permintaan Pembelian',
       orders: 'Purchase Order',
       suppliers: 'Supplier',
@@ -1179,6 +1180,33 @@ export const id = {
     },
     filterLocationAll: 'Semua Lokasi',
     filterSupplierAll: 'Semua Supplier',
+    // "Permintaan Outlet" — the office's view of store requests and the
+    // conversion into a PR (owner, 2026-08-21).
+    outletRequests: {
+      intro:
+        'Permintaan barang dari outlet. Yang tidak bisa dipenuhi dari stok gudang bisa diubah menjadi Permintaan Pembelian (PR).',
+      columnNumber: 'No. Permintaan',
+      columnLocation: 'Outlet',
+      columnLines: 'Jumlah Item',
+      columnNeededBy: 'Dibutuhkan',
+      filterLocation: 'Outlet',
+      filterStatusAll: 'Semua Status',
+      empty: 'Belum ada permintaan dari outlet.',
+      convertButton: 'Jadikan PR',
+      notConvertible: 'Hanya permintaan yang sudah diajukan outlet yang bisa dijadikan PR.',
+      convertTitle: 'Jadikan PR — {{number}}',
+      convertDescription:
+        'Item di bawah akan disalin ke PR baru berstatus Draft. Permintaan outlet ini tidak berubah.',
+      convertConfirm: 'Buat PR Draft',
+      convertSuccess: 'PR {{number}} dibuat dari permintaan outlet.',
+      lineCount: '{{count}} item',
+      noLines: 'Permintaan ini tidak punya item.',
+      notes: 'Catatan (opsional)',
+      notesPlaceholder: 'mis. beli di supplier terdekat, stok gudang habis',
+      priceHint:
+        'Harga belum diisi — lengkapi harga perkiraan dan supplier di PR sebelum diajukan.',
+    },
+
     requests: {
       columnNumber: 'No. PR',
       columnLocation: 'Lokasi',
@@ -1196,6 +1224,24 @@ export const id = {
       // Destination is a warehouse, not any location (owner, 2026-08-21).
       destination: 'Tujuan Pengiriman (Gudang)',
       destinationHint: 'Barang yang dibeli diterima di gudang ini.',
+      // Editing + attribution (owner, 2026-08-21: "PR should be editable but
+      // shown who make it and who made the changes, who approved it etc with
+      // time stamps").
+      editTitle: 'Ubah {{number}}',
+      editButton: 'Ubah PR',
+      editSuccess: 'Perubahan PR tersimpan.',
+      editRejectedHint:
+        'PR yang ditolak akan kembali menjadi Draft setelah diubah, lalu bisa diajukan lagi.',
+      createdBy: 'Dibuat Oleh',
+      updatedBy: 'Terakhir Diubah',
+      sourceRequest: 'Dari Permintaan Outlet',
+      historyTitle: 'Riwayat Perubahan',
+      historyEmpty: 'Belum ada perubahan tercatat.',
+      historyAction: {
+        create: 'PR dibuat',
+        update: 'PR diubah',
+        approve: 'Keputusan persetujuan',
+      },
       item: 'Item',
       qty: 'Jumlah',
       estPrice: 'Estimasi Harga',

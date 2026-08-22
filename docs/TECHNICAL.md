@@ -259,7 +259,7 @@ Conventions worth keeping:
 
 - **No HTTPS on the demo box (B-14).** Plain HTTP means no secure context: geolocation and service workers
   are unavailable, so live truck tracking cannot function and the offline _shell_ cannot be exercised
-  there. IndexedDB still works. `:80`/`:443` are currently free on the host.
+  there. IndexedDB still works. `:80`/`:443` are held by a restart-looping neighbour container (`aire-nginx`), which reserves them without listening — see B-14 in PROGRESS.md.
 - **NFR-01 has never been measured.** `perf/` holds a complete k6 suite that has never been executed;
   running it needs k6 plus a representative target, not a laptop.
 - **Offline PIN guessing.** Someone holding a tablet can grind the cached `pin_verifier` outside the app.

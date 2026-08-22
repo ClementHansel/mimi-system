@@ -825,6 +825,76 @@ controls to `PUBLIC_ROUTES`. Neither would fail any other test.
 - **B-3, B-5, B-6** stay blocked on the architect decision, the hardware order and HTTPS respectively.
 - **W7-02 technical docs** untouched this pass.
 
+### 🟠 W6-05 perf — the harness now provably RUNS; the 150-VU gate still has nowhere honest to run
+
+**2026-08-23.** Two separate things were conflated under "the perf harness has never been run", and they
+have different answers now.
+
+**Done: the suite is no longer unexecuted code.** All eight k6 scripts — `smoke.js`, the NFR-01 gate, the
+five per-endpoint scenarios and the sync-backlog script — were loaded by a real k6 (`grafana/k6:latest`,
+`k6 inspect`) for the first time. Every one parses, resolves its imports and produces well-formed options;
+the gate's five scenarios come back with the documented traffic split (90/30/15/10/5 VUs) and a
+`p(95)<3000` threshold. Until now nobody knew whether a single line of it even compiled, and "a harness is
+not a measurement" cut both ways — an unexecuted harness might not have been a harness at all.
+
+**Not done, and not honestly doable on this host: the 150-VU gate itself.** Measured before attempting it:
+
+| The shared VPS        | Value                                      |
+| --------------------- | ------------------------------------------ |
+| Cores                 | **4**                                      |
+| 1-minute load average | **3.46** (before adding any load)          |
+| Running containers    | **46**, across **8** unrelated projects    |
+| Free memory           | ~0 GB free, ~8 GB available (cache-backed) |
+
+Driving 150 VUs into that would measure CPU contention on a box that is already near saturation, not the
+system under test — and it would degrade seven neighbouring projects while doing it. A number produced
+that way would be worse than the honest `NONE` in `ACCEPTANCE.md`, because it would look like evidence.
+
+The suite's own `perf/README.md` says the same thing from the other direction: **"only ever point this at a
+LOCAL stack that is already running. Never at the shared VPS."** That constraint is respected here rather
+than argued with.
+
+**What NFR-01 actually needs:** a dedicated target — a box, or a window on this one with the neighbours
+quiesced — plus someone watching. It is an environment decision, not a code task. `ACCEPTANCE.md` still
+reads `NONE` for NFR-01 and should keep reading `NONE` until a real run exists.
+
+### 🔴 B-14 update 2026-08-23 — attempted via sslip.io, blocked by a NEIGHBOUR's container
+
+The owner chose the sslip.io route (no registrar, no DNS work). It got further than expected and then hit
+the one thing that was always the real question: **who owns `:80`/`:443` on a shared box.**
+
+**What checked out.** `150-109-15-108.sslip.io` and `api.150-109-15-108.sslip.io` both resolve to the box.
+And the switch turns out to be much smaller than `docker-compose.prod.yml` implies: the frontend already
+proxies `/api`, `/socket.io` and `/sync/v1` to the backend via `next.config` rewrites, so ONE hostname
+pointed at `mimi-frontend:3000` serves the whole application over TLS. No `api.` subdomain, no relabelling,
+no restart of the running stack.
+
+The approach built for that was deliberately additive: a standalone Traefik on its own compose project,
+attached to `mimi_mimi-network`, using a FILE provider (the docker provider would need labels on the
+running containers, and labelling means recreating them). `:8080` would have kept working throughout, so a
+failed certificate would have cost nothing.
+
+**What blocked it.** `docker compose up` failed with `Bind for 0.0.0.0:80 failed: port is already
+allocated` — and this is worth writing down, because the earlier reading in this file was wrong:
+
+> `:80`/`:443` are genuinely free (aire's nginx is down)
+
+They are not free. **`aire-nginx` is in a restart loop** (`Restarting (1)`, still, as PROGRESS has said
+since 30 July), and a container that is restarting **keeps its host port reservation between attempts**.
+So `ss -tln` shows nothing listening — which is what produced the earlier "free" conclusion — while
+Docker's allocator still refuses the bind. Both observations are correct; only the inference was wrong.
+
+**Why it stopped there.** Taking those ports means stopping `aire-nginx`: another project's service, on a
+box that carries seven of them, unattended, at 03:00. Broken today is not the same as abandoned, and that
+is not a call to make on someone else's behalf without asking.
+
+Everything was removed cleanly — no Traefik container, no volume, no directory. `aire-nginx` was never
+touched, the mimi stack is healthy, and `http://150.109.15.108:8080/login` still answers 200.
+
+**What it needs from the owner:** a decision on `aire-nginx`. Either it is retired (then mimi takes
+`:80`/`:443` and the Traefik piece above is perhaps twenty minutes), or it is coming back (then mimi needs
+a different port, and a domain, and the two share a front proxy). Nothing else about B-14 is unresolved.
+
 ### 🔴 B-14 — The demo box is HTTP-only, so geolocation and service workers are dead
 
 **Opened:** 2026-08-18 · **Blocks:** live truck tracking (built, cannot function), full offline-first behaviour

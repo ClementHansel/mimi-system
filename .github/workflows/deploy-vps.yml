@@ -176,8 +176,12 @@ jobs:
             # both the internal and the public endpoint from inside the backend
             # container, so a failure is attributable — both failing means
             # credentials, only the public one failing means the proxy.
-            if docker ps --format '{{.Names}}' | grep -q '^mimi-backend$'; then
-              docker cp infrastructure/tls/storage-probe.mjs mimi-backend:/tmp/storage-probe.mjs >/dev/null 2>&1
+            # Absolute path, and non-fatal. This step is its own SSH session and
+            # does NOT inherit the deploy step's `cd`, so a repo-relative path
+            # here silently resolved against $HOME — `docker cp` failed, and
+            # under `set -e` that killed the whole verification step after the
+            # useful output had already scrolled past.
+            if docker ps --format '{{.Names}}' | grep -q '^mimi-backend$'                && docker cp /home/ubuntu/mimi/infrastructure/tls/storage-probe.mjs mimi-backend:/tmp/storage-probe.mjs; then
               probe_out=$(docker exec mimi-backend node /tmp/storage-probe.mjs 2>&1 || true)
               echo "$probe_out" | sed 's/^/  /'
               case "$probe_out" in

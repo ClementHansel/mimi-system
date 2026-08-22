@@ -13,17 +13,32 @@ import { assertAppIsUp, login, USERS } from './support/app';
  * area as `NONE`, blocked on B-14, and it stayed that way for weeks because the
  * assumed fix was a domain and a trusted certificate.
  *
- * It was not. A secure context is a property of the SCHEME, not the port or the
- * certificate's provenance — `https://<ip>:8443` with a self-signed cert is one.
- * That is now live, so this file is the first time the service worker is
- * exercised at all.
+ * ## The two origins, and what each one can prove
  *
- * ## Why it skips instead of failing on the HTTP origin
+ * MEASURED 2026-08-23, and the results are not what the blocker predicted:
  *
- * Run against `http://…:8080` these APIs do not exist, and a red test would be
- * reporting the browser working correctly. The skip is deliberate and the
- * reason is asserted (`isSecureContext`), so a plain-HTTP run says "not
- * applicable" rather than quietly passing.
+ * | Origin                        | isSecureContext | SW registration  |
+ * | ----------------------------- | --------------- | ---------------- |
+ * | `http://127.0.0.1:8080`       | **true**        | **activated**    |
+ * | `https://<public-ip>:8443`    | **true**        | `untrusted-cert` |
+ * | `http://<public-ip>:8080`     | false           | unsupported      |
+ *
+ * `127.0.0.1` is a secure context even over plain HTTP — browsers exempt
+ * loopback — so running this suite ON the box proves the worker, the offline
+ * shell and the no-cached-mutations invariant genuinely work. They do. That is
+ * the first time any of it has been exercised anywhere.
+ *
+ * The self-signed `:8443` origin is ALSO a secure context (a scheme property,
+ * not a certificate-trust one) and unblocks geolocation, camera and PWA
+ * install — but NOT service workers: Chromium refuses to fetch a worker script
+ * over an untrusted certificate, and `ignoreHTTPSErrors` does not extend to
+ * that fetch.
+ *
+ * So the code is proven and the remaining gap is purely certificate trust for
+ * REMOTE users, which is the `aire-nginx` / `:80`-`:443` decision. The
+ * registration test asserts the outcome is one of those two known values
+ * rather than skipping quietly, so the day a trusted cert lands it fails and
+ * says so.
  */
 
 /** True when the origin under test is one where these APIs can exist at all. */

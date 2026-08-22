@@ -858,6 +858,66 @@ than argued with.
 quiesced — plus someone watching. It is an environment decision, not a code task. `ACCEPTANCE.md` still
 reads `NONE` for NFR-01 and should keep reading `NONE` until a real run exists.
 
+### 🟢 Org simulation 2026-08-23 — the real staffing model, and the three bugs it exposed
+
+The owner described the company as it runs: managers over REGIONS rather than the whole chain, every
+outlet staffed as a crew per shift (supervisor + cashier + 2 cooks), Gudang Pusat with 2 staff and 2
+drivers. `database/simulate-org.ts` applies that shape; `database/simulate-day.ts` then drives a real
+trading day through the HTTP API as those people — real logins, real photo uploads, no fixtures.
+
+**The org, live on the box** (applied via `gh workflow run deploy-vps.yml -f reshape_org=true`, opt-in
+and never on a push): 60 supervisors, 60 cashiers, 120 cooks across 20 outlets × 3 shifts, 2 gudang
+staff, 2 drivers, 2 regional managers, 2640 roster rows. Existing people were RENAMED into their crew
+rather than replaced — `spv_bpp01` became `spv_bpp01_p` — because 88 retired accounts would still own
+their attendance, sales and signatures, and HR would open onto people who never resigned.
+
+**Day run: 15 worked, 3 correctly refused, 1 finding.** The till opens, sells and closes; a stock
+request goes supervisor → manager → warehouse queue; Surat Jalan and the driver's job list; the cook
+records spoilage and reads their own record and roster. A cook is refused a cash drawer, a cashier gets
+zero rows from another branch, and — the answer to "geofence at 200 m" — a check-in 5 km out is refused
+with `ERR_GEOFENCE_OUT_OF_RANGE: Check-in is 4994m from the outlet, outside the 200m geofence`.
+
+**Three real bugs, all in the photo path, all found by trying to clock a cook in.**
+
+1. `presign` INSERTed the `attachments` row and never committed, so `RlsCleanupInterceptor` — the guard
+   that exists because of the stock-opname data loss — rolled it back. In production it only warns: the
+   caller got a 200 and an upload URL, the bytes reached MinIO, and `confirm` then failed with
+   "attachment not found". Selfies are mandatory on attendance and photos on waste, so one missing
+   COMMIT made both features impossible.
+2. Presigned URLs pointed at `http://minio:9000` — verified against the live box. No device can resolve
+   that host, and an HTTPS page blocks it as mixed content, so **no photo upload could ever have worked
+   on the deployed system**. Fixed with a separate signing client (`S3_PUBLIC_ENDPOINT`) behind a new
+   nginx origin on :8444. It has to be its own port: SigV4 signs the canonical path, so a proxy
+   stripping `/s3` invalidates every URL it forwards.
+3. Local dev signed every URL with an empty `X-Amz-Credential`, because the service read only
+   `MINIO_ACCESS_KEY`/`_SECRET_KEY` — names that exist only because compose maps
+   `MINIO_ROOT_USER`/`_PASSWORD` onto them.
+
+Now verified end to end from OUTSIDE the box: presign 201 -> PUT 200 -> confirm 201, re-encoded and
+EXIF-stripped, download URL on `150.109.15.108:8444`. The deploy gained a permanent gate for it
+(`infrastructure/tls/storage-probe.mjs`) which signs and PUTs against both endpoints, because "both
+failed" and "only the public one failed" are the difference between a credential problem and a proxy
+problem — a distinction the app's own `SignatureDoesNotMatch` cannot make.
+
+**Two deploys were wasted on a Docker subtlety worth writing down.** `nginx-tls.conf` is bind-mounted as
+a SINGLE FILE, and `git reset --hard` replaces files rather than editing them, so the container stayed
+pinned to the original inode. A corrected proxy header shipped, deployed green, reloaded with
+"configuration file test is successful" — and `nginx -T` still showed the old directive. Only recreating
+the container picks up the new file; the deploy now does that, and prints what nginx actually holds.
+
+**Test fixtures that named seeded people were corrected, not worked around.** `pos/test-support/live-db.ts`
+and the RLS regression spec looked up `kasir1_bpp01` literally, so eight files failed against a valid
+database; they now resolve a crew member by ROLE + LOCATION like the purchasing, opname and waste
+fixtures already did. The e2e suite needed the same treatment. Backend: 913/913.
+
+**The one finding left is a decision, not a defect.** A manager cannot actually be limited to their
+branches: the region is written into `user_locations`, but manager2 still reads 50 rows of Balikpapan's
+sales, because 46 RLS policies across 32 tables name `manager` as unrestricted and `app_is_central()`
+returns true for it. Making the role location-scoped is an RLS design change across those tables.
+Related: there is no cook role, so the 120 cooks are `leader_outlet` with the job title "Juru Masak" and
+inherit `purchasing.po.receive`, `pettycash.create`, `opname.submit` and `return.ship`. Adding `koki` is
+a contract change (`rbac.ts` + `RoleKey` + `ROLE_RANK` + the 009 cache).
+
 ### 🟡 WhatsApp update 2026-08-23 — delivery is now PROVEN against a sandbox; only the credential is missing
 
 The answer to "build it against a sandbox" turned out to have a hard limit worth stating first: **a Meta

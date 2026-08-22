@@ -21,12 +21,16 @@
  *             should be refused and was allowed
  *
  * Usage:
- *   npx tsx database/simulate-day.ts                     # against localhost:4000
- *   API=https://150.109.15.108:8443/api npx tsx database/simulate-day.ts
+ *   npx tsx database/simulate-day.ts        # backend on :4000, DB from DATABASE_MIGRATION_URL
  *
- * The default target is a LOCAL backend on purpose: this writes real sales,
- * attendance and stock movements, and the demo box should be driven explicitly,
- * never by accident.
+ * `API` overrides the backend URL, but the database and the API must be the SAME
+ * environment: the fixtures below (location ids, a product, an item with stock)
+ * are read straight from the database, and pointing the API at another box would
+ * send it ids that do not exist there. Driving the VPS therefore needs a
+ * connection to the VPS database, which is bound to 127.0.0.1 by design.
+ *
+ * It writes real sales, attendance and stock movements, so the target should
+ * always be a deliberate choice rather than a default.
  */
 
 import pg from 'pg';

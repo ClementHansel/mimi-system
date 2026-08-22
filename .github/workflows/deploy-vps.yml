@@ -96,6 +96,28 @@ jobs:
 
             # --remove-orphans is scoped to project `mimi` by -p, so it can only
             # remove containers this stack previously created.
+
+            # Reload nginx explicitly.
+            #
+            # `nginx-tls.conf` is BIND-MOUNTED, so editing it changes nothing
+            # about the `tls` service definition — Compose sees an identical
+            # container and leaves it running with the OLD config still in
+            # memory. That is how a corrected proxy header shipped, deployed
+            # green, and had no effect whatsoever; the previous config change
+            # only took hold because it also added a port, which did force a
+            # recreate.
+            #
+            # `nginx -t` first: a reload with a broken config is refused and
+            # leaves the running server alone, but an untested `-s reload`
+            # turns a typo into a silent no-op. Non-fatal, like every other
+            # TLS step here — :8080 must stay up regardless.
+            if docker ps --format '{{.Names}}' | grep -q '^mimi-tls$'; then
+              if docker exec mimi-tls nginx -t 2>&1; then
+                docker exec mimi-tls nginx -s reload && echo "nginx config reloaded"
+              else
+                echo "::warning::nginx config failed validation — the running config was left untouched"
+              fi
+            fi
           REMOTE
 
       - name: Verify TLS answers alongside HTTP

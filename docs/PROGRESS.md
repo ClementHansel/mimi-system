@@ -1,6 +1,6 @@
 # Mimi Chicken OS — Progress Tracker
 
-**Last updated:** 2026-08-23 — **B-15, B-17, B-13, B-08, D-22b, D-27 and D-30 closed**; B-11 verified resolved and pinned; B-9 wired into CI. Measured today: backend **895/895** (97 files), frontend **499/499** (81 files), shared **257**. Lint, format and both typechecks clean.
+**Last updated:** 2026-08-23 — B-15, B-17, B-13, B-08, D-22b, D-27 and D-30 closed; B-11 verified and pinned; B-9 wired into CI. **All of it verified ON THE SERVER (Linux) and DEPLOYED** — see §1a-0.
 **Maintenance rule:** this file is updated by the coordinator **every time a task or wave completes**, and whenever a blocker opens, changes state, or closes.
 
 Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not started · `[!]` blocked
@@ -724,6 +724,53 @@ and 0 movement rows**. Both tests then die on `StockInsufficientError`.
 
 The fix is for `ensureStock` to post a real movement rather than a bare balance, so the bootstrap and the
 invariant agree. Not done here — it is another module's harness and outside the B-15 scope.
+
+### 🚀 Verified on the server and deployed — 2026-08-23
+
+**New standing rule (owner, 2026-08-23): test and set up on the SERVER, never locally.** The server is
+Linux and the dev box is Windows; verifying on Windows and discovering the difference at deploy time is
+the failure this rule exists to stop. Everything below ran on the VPS.
+
+**How it was verified without touching the owner's demo box:**
+
+- The branch was checked out into a SEPARATE git worktree (`/home/ubuntu/mimi-test`), so the live deploy
+  at `/home/ubuntu/mimi` stayed on `main` throughout.
+- A THROWAWAY Postgres (`mimi-testpg`) was started on the stack's own docker network and migrated + seeded
+  from scratch. The suites commit real rows and drain stock; pointing them at the live demo database would
+  have corrupted the data the owner actually uses.
+- Tests ran inside a `node:22-alpine` container mounted on the worktree. Nothing was installed on a host
+  that carries seven unrelated compose projects — it has no Node at all, and it still doesn't.
+- The production images were built under a separate compose project name (`mimitest`) BEFORE merging, so
+  a build failure could not take the live stack down. Both built.
+
+**Results, all on Linux:** 114 migrations apply clean on an empty database · seed clean · backend
+**895/895** (97 files) · frontend **515/515** (82 files) · shared **257** · sync-protocol **141** ·
+branch-node **18** · lint 0 errors · format clean.
+
+Then merged to `main`. `deploy-vps` green, CI green.
+
+**Confirmed against PRODUCTION after the deploy, not inferred:**
+
+| Check                                       | Result                                                                                                                                                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Migrations 232 + 233 applied                | present in `schema_migrations` on the live database                                                                                                                                            |
+| `approval_codes`, `auth_lockouts`           | both tables exist                                                                                                                                                                              |
+| `approval.code.issue`, `auth.lockout.clear` | both permission keys seeded                                                                                                                                                                    |
+| **`POST /api/auth/pin/verify`**             | **404 — the oracle is genuinely gone from the running system**, not merely deleted from the repo                                                                                               |
+| `GET /api/auth/lockouts/me`                 | 200 `{"locked":false,"hardLocked":false,"lockedUntil":null}`                                                                                                                                   |
+| xlsx export (was 501)                       | 200, correct OOXML content-type, 48 KB, magic bytes `PK`                                                                                                                                       |
+| that workbook, opened by Python             | CRC-valid, every part parses, **1,241 rows of real production data**, decimals intact (`1.200`, `15803.00` — trailing zeros preserved, which is the whole point of the inline-string decision) |
+
+**The smoke job earned itself on its first run.** It failed — and the failure was real, not the job
+misbehaving: 15 of 16 specs passed and `hub.spec.ts`'s "kepala gudang still LANDS on the warehouse"
+timed out, twice, on a warm box. The app was right and the TEST was stale: the seven-interface rework
+made `app/page.tsx` redirect past the hub only for someone who can reach a single interface, and a kepala
+gudang reaches three. The app's own header documents that rule. The assertion had shipped contradicting
+the design it was written alongside, and nothing caught it because e2e ran only by hand — exactly the gap
+B-9 closed. Corrected in `c8f18b1`; the following deploy ran green end to end.
+
+**Server left clean:** test worktree removed, throwaway database and test images deleted, live stack
+healthy on `c8f18b1`.
 
 ### ✅ Gap-closing pass — 2026-08-23
 

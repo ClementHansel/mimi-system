@@ -36,6 +36,39 @@ WA gateway call. Until the client supplies real WA gateway credentials:
   credential store once RISK-P4 is resolved. No backend code or migration
   changes needed for that flip.
 
+## Exercising the flip BEFORE credentials exist (the sandbox)
+
+`WA_ENABLED=false` means the send path is a `return` statement, so for a long
+while nothing downstream of it had ever executed — not the HTTP call, not the
+response handling, not the outbox transition. That is a bad thing to discover
+on the day the client hands over a token.
+
+`apps/backend/src/kernel/notification/channels/test-support/wa-sandbox.ts` is a
+local stand-in for BOTH hops, and it is what the delivery tests run against:
+
+```bash
+pnpm --filter @mimi/backend wa:sandbox      # prints two URLs
+```
+
+- Set the backend's `N8N_WEBHOOK_URL_WA` to the printed `/webhook/wa-notify`
+  and `WA_ENABLED=true` — every WA send in the app now lands in the sandbox
+  transcript (`GET /messages`) instead of nowhere. This is the useful mode for
+  demoing chat.
+- Set this container's `WA_GATEWAY_URL` to the printed `/v22.0/…/messages` to
+  exercise **the workflow itself** — the sandbox mirrors Meta Cloud API's
+  `{ messages: [{ id: "wamid.…" }] }` response — with no credential in place.
+  The `httpHeaderAuth` credential still has to exist in the store; give it any
+  dummy token, the sandbox does not check it.
+- `POST /control/failure-mode {"mode":"gateway-error"}` makes it fail, which is
+  how the retry/error-output wiring on the `HTTP Request` node gets tested at
+  all. `mode` also accepts `timeout` and `malformed-response`.
+
+It is not WhatsApp: nothing reaches a handset, and it says nothing about
+template approval or the 24-hour customer-service window. It proves the
+contract between us and the gateway, which is where our own bugs were — it
+found one, a gateway rejection being recorded as `pending` (still on its way)
+rather than `failed`.
+
 ## First run
 
 ```bash

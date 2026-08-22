@@ -6,6 +6,8 @@ export interface WhatsAppSendResult {
   success: boolean;
   outboxId: string;
   error?: string;
+  /** The gateway's own id for the message (`wamid.…`), when it returned one. */
+  providerMessageId?: string;
 }
 
 /**
@@ -70,13 +72,25 @@ export class WhatsAppChannelService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: recipientPhone, templateKey, params, text: renderedText }),
       });
+      const bodyText = await response.text().catch(() => '');
       if (!response.ok) {
-        const errorText = await response.text().catch(() => `HTTP ${response.status}`);
-        await this.outbox.markFailed(outboxId, errorText);
-        return { success: false, outboxId, error: errorText };
+        await this.outbox.markFailed(outboxId, bodyText || `HTTP ${response.status}`);
+        return { success: false, outboxId, error: bodyText || `HTTP ${response.status}` };
       }
-      await this.outbox.markSent(outboxId);
-      return { success: true, outboxId };
+      // The workflow answers `{ ok: true, messageId }`. Parsed leniently and on
+      // purpose: a gateway that starts returning an empty 200 or a slightly
+      // different envelope must not turn a delivered message into a failure —
+      // the status code is the verdict, the body is only the receipt.
+      let providerMessageId: string | undefined;
+      try {
+        const parsed = JSON.parse(bodyText) as { messageId?: unknown; id?: unknown };
+        const candidate = parsed.messageId ?? parsed.id;
+        if (typeof candidate === 'string' && candidate.length > 0) providerMessageId = candidate;
+      } catch {
+        /* no receipt — still delivered */
+      }
+      await this.outbox.markSent(outboxId, providerMessageId);
+      return { success: true, outboxId, providerMessageId };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await this.outbox.markFailed(outboxId, message);

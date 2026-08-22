@@ -280,9 +280,18 @@ export class ChatService {
           { body },
           body,
         );
+        // `pending` and `failed` are different promises to the sender, and
+        // which one applies depends on WHY the send did not succeed:
+        //   - channel disabled (WA_ENABLED=false): nothing was attempted, the
+        //     outbox row is a queue entry, so `pending` is the truth.
+        //   - channel enabled and the gateway said no: someone tried and it
+        //     did not go. Calling that `pending` shows a staff member a
+        //     message apparently still on its way to a supplier who will never
+        //     receive it — the exact dishonesty this module exists to avoid.
+        const status = result.success ? 'sent' : this.whatsapp.isEnabled() ? 'failed' : 'pending';
         await client.query(
           `UPDATE chat_messages SET delivery_status = $2, outbox_id = $3 WHERE id = $1`,
-          [messageId, result.success ? 'sent' : 'pending', result.outboxId],
+          [messageId, status, result.outboxId],
         );
       } catch (err) {
         // The message stays; only its delivery failed. Swallowing this would

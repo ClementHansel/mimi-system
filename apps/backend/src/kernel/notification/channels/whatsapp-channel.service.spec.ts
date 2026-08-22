@@ -53,7 +53,10 @@ describe('WhatsAppChannelService', () => {
   });
 
   it('WA_ENABLED=true: calls the n8n webhook and marks the outbox row sent on success', async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => '{"ok":true,"messageId":"wamid.HBgNNjI4MTIz"}',
+    });
     globalThis.fetch = fetchSpy as never;
 
     const outbox = {
@@ -80,7 +83,8 @@ describe('WhatsAppChannelService', () => {
       'http://n8n:5678/webhook/wa-notify',
       expect.objectContaining({ method: 'POST' }),
     );
-    expect(outbox.markSent).toHaveBeenCalledWith('outbox-2');
+    expect(outbox.markSent).toHaveBeenCalledWith('outbox-2', 'wamid.HBgNNjI4MTIz');
+    expect(result.providerMessageId).toBe('wamid.HBgNNjI4MTIz');
     expect(outbox.markFailed).not.toHaveBeenCalled();
   });
 

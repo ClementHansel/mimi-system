@@ -44,11 +44,26 @@ export class NotificationOutboxRepository {
     });
   }
 
-  async markSent(id: string): Promise<void> {
+  /**
+   * `providerMessageId` is the gateway's own id for the message (a `wamid.` for
+   * WhatsApp). It is merged into `payload` rather than given a column because
+   * only two of the channels have such a thing and its shape is the provider's
+   * business, not ours. Without it, an outlet reporting "we never got the
+   * notification" is unanswerable: the trail stops at our own word for it.
+   */
+  async markSent(id: string, providerMessageId?: string): Promise<void> {
     await withSystemContext(this.pool, { role: '' }, (client) =>
       client.query(
-        `UPDATE notification_outbox SET status = 'sent', attempts = attempts + 1, sent_at = NOW() WHERE id = $1`,
-        [id],
+        `UPDATE notification_outbox
+            SET status = 'sent',
+                attempts = attempts + 1,
+                sent_at = NOW(),
+                payload = CASE
+                  WHEN $2::text IS NULL THEN payload
+                  ELSE COALESCE(payload, '{}'::jsonb) || jsonb_build_object('providerMessageId', $2::text)
+                END
+          WHERE id = $1`,
+        [id, providerMessageId ?? null],
       ),
     );
   }

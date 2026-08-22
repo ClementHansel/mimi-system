@@ -858,6 +858,39 @@ than argued with.
 quiesced — plus someone watching. It is an environment decision, not a code task. `ACCEPTANCE.md` still
 reads `NONE` for NFR-01 and should keep reading `NONE` until a real run exists.
 
+### 🟡 WhatsApp update 2026-08-23 — delivery is now PROVEN against a sandbox; only the credential is missing
+
+The answer to "build it against a sandbox" turned out to have a hard limit worth stating first: **a Meta
+developer account and test number cannot be created from here.** Registering one needs a Facebook business
+identity, a phone that receives an OTP, and acceptance of Meta's terms — all of which are the owner's to do,
+not an agent's. So a _Meta_ sandbox is still owner-side work.
+
+What could be built, and was, is the part that actually contained the risk. `WA_ENABLED=false` means the
+send path is a `return` statement, so nothing downstream of it had **ever executed in any environment** —
+not the HTTP call, not the response handling, not the outbox transition. The n8n workflow had never run
+either. Both are now exercised by a local sandbox that answers exactly the way each hop answers:
+
+- `POST /webhook/wa-notify` — the contract the BACKEND depends on, with the workflow's own three outcomes
+  (200 `{ok,messageId}` / 400 malformed / 502 gateway error).
+- `POST /v22.0/{id}/messages` — Meta Cloud API's shape, so `WA_GATEWAY_URL` can point at it and the n8n
+  workflow itself runs end to end without a credential.
+- A real HTTP `POST /api/chat/inbound`, secret header included, for the receiving half.
+
+**It found a real bug.** A gateway _rejection_ was recorded as `delivery_status = 'pending'` — the same
+value used for "WA is switched off, this is queued". A purchasing clerk would have sat waiting for a reply
+to a message the gateway had already refused. `pending` now means nothing was attempted and `failed` means
+someone tried and it did not go; the test that pins it fails on the old code (`expected 'pending' to be
+'failed'`), which is the only reason to trust it.
+
+Two smaller gaps closed while proving it: the outbox now keeps the gateway's own `wamid` in its payload, so
+"the supplier says they never got it" is answerable past our own word for it; and the channel no longer
+trusts a status code alone.
+
+**Honest limits.** Nothing here proves a handset receives anything, that a template was approved, or that
+Meta's 24-hour customer-service window permits a send. Those need the credential. What is proven is that on
+the day it arrives, the flip is `WA_ENABLED=true` and a URL — no code change — and that every failure mode
+between us and the gateway is already handled and visible.
+
 ### 🟡 B-14 update 2026-08-23 — CLOSED FOR TESTING on :8443, self-signed, nobody's ports touched
 
 The blocker above framed the choice as "take `:80`/`:443` from `aire-nginx`, or wait for a domain". There

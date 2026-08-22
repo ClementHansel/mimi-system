@@ -100,6 +100,17 @@ services:
   # context, which is the whole point.
   tls:
     image: nginx:1.27-alpine
+    # Both of these are load-bearing, and their absence is what made the first
+    # attempt fail: every other service in the base file joins `mimi-network`
+    # explicitly, so a service that omits `networks` lands on Compose's implicit
+    # `default` network instead — where `frontend` does not resolve. nginx
+    # resolves upstream hostnames AT STARTUP and exits when one is unknown
+    # ("host not found in upstream"), so nothing ever listened on 8443. The
+    # container name is fixed to match the convention the rest of the stack uses
+    # (mimi-postgres, mimi-frontend, …) and the name the deploy step greps for.
+    container_name: mimi-tls
+    networks:
+      - mimi-network
     depends_on:
       - frontend
     volumes:

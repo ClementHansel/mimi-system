@@ -113,11 +113,23 @@ jobs:
 
             # -k: the certificate is self-signed by design, so curl must not
             # judge it. This checks the terminator and the proxy path, not trust.
-            https_code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 https://127.0.0.1:8443/ || echo 000)
+            #
+            # Retried for ~30s rather than probed once: the first attempt checked
+            # two seconds after `Started` and could not tell "nginx is still
+            # warming up" from "nginx is dead". Both looked like 000.
+            https_code=000
+            for attempt in 1 2 3 4 5 6; do
+              https_code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 https://127.0.0.1:8443/ || echo 000)
+              [ "$https_code" = "200" ] && break
+              sleep 5
+            done
             echo "HTTPS :8443 -> $https_code"
             if [ "$https_code" != "200" ]; then
               echo "::warning::HTTPS did not answer 200 (got $https_code) — HTTP is still serving; check the tls container"
-              docker logs --tail 30 mimi-tls 2>&1 || true
+              # `mimi-tls`, matching the container_name the overlay now sets. The
+              # first version grepped a name Compose had not assigned, so the one
+              # diagnostic that would have explained the failure printed nothing.
+              docker logs --tail 40 mimi-tls 2>&1 || docker ps -a --filter name=tls
             fi
           REMOTE
 

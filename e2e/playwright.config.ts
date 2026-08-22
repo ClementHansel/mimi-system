@@ -37,9 +37,17 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : [['list']],
   use: {
     baseURL: BASE_URL,
-    // The demo box is HTTP-only (blocker B-14) and Playwright's Chromium
-    // treats it as an insecure origin, so geolocation and service workers are
-    // unavailable there. Specs must not assume either.
+    // B-14 (updated 2026-08-23): the box now also answers on `https://…:8443`
+    // with a SELF-SIGNED certificate, which is a real secure context — so
+    // service workers, geolocation and PWA install work there and nowhere else.
+    //
+    // `ignoreHTTPSErrors` is what lets Chromium load that origin at all. It is
+    // scoped to this suite and to a box we control; it does NOT weaken anything
+    // in the app. Point `E2E_BASE_URL` at the http://…:8080 origin and the
+    // secure-context specs skip themselves rather than failing (see
+    // `service-worker.spec.ts`), because on that origin the APIs genuinely do
+    // not exist and a red test would be reporting the wrong thing.
+    ignoreHTTPSErrors: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',

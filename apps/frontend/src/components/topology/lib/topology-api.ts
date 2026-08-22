@@ -42,6 +42,19 @@ export function dismissSyncConflict(id: string, reason: string) {
   return api.post<SyncConflictRow>(`/sync/conflicts/${id}/dismiss`, { reason });
 }
 
+/**
+ * Records the outcome of a stock divergence investigation (D-16). The note is
+ * mandatory server-side; `adjustmentId` is the opname/adjustment this was
+ * settled by, when there was one — the endpoint folds it into the stored
+ * resolution text so the trail says which document fixed it.
+ */
+export function resolveReconciliation(id: string, resolution: string, adjustmentId?: string) {
+  return api.post<ReconciliationRow>(`/sync/reconciliations/${id}/resolve`, {
+    resolution,
+    adjustmentId,
+  });
+}
+
 export interface ReconciliationListParams {
   status?: string;
   locationId?: string;

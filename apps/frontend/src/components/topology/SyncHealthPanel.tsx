@@ -15,16 +15,25 @@ import {
 import type { DataTableColumn } from '@/components/ui';
 import { fmtRelative, fmtDate } from '@/lib/dates';
 import { getSyncConflicts, getReconciliations } from './lib/topology-api';
+import { ConflictDetailDrawer } from './ConflictDetailDrawer';
+import { ReconciliationDetailDrawer } from './ReconciliationDetailDrawer';
 import type { SyncConflictRow, ReconciliationRow } from './lib/types';
 
 const QUEUE_OPTIONS = ['conflict', 'exception', 'finance', 'hr'] as const;
 
 /**
- * "Conflict and exception queues from kernel/sync ... surface reconciliation
- * problems that need a human" — read-only visibility for this ticket
- * (resolving/dismissing is CONTRACTS §4.23's `sync.conflict.resolve` and
- * routes into the owning domain screen per `resolveInUrl`, out of F12's
- * scope here).
+ * Conflict and exception queues from `kernel/sync`, plus stock divergences —
+ * the reconciliation problems that need a human.
+ *
+ * No longer read-only (owner, 2026-08-21: "all these need to be clickable and
+ * show the details. and able to do something related to that to resolve it").
+ * F12 shipped this as visibility only, which left an operator staring at
+ * `duplicate_receipt on goods_receipts` with nowhere to go. Both tables are now
+ * row-clickable into a drawer that explains the row and offers the action that
+ * actually fits it — dismissal with a reason where the engine already settled
+ * the race, and a route into the owning document where only a human recount or
+ * an approval can settle it. The endpoints (`sync.conflict.resolve`) existed
+ * all along; nothing called them.
  */
 export function SyncHealthPanel() {
   const { t } = useI18n();
@@ -38,6 +47,12 @@ export function SyncHealthPanel() {
     total: number;
   } | null>(null);
   const [reconLoading, setReconLoading] = useState(true);
+  const [openConflict, setOpenConflict] = useState<SyncConflictRow | null>(null);
+  const [openRecon, setOpenRecon] = useState<ReconciliationRow | null>(null);
+  // Bumped after a successful resolve so both tables refetch — a row that was
+  // just dismissed must not linger in a queue whose whole purpose is "what is
+  // still outstanding".
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     setConflictsLoading(true);
@@ -45,7 +60,7 @@ export function SyncHealthPanel() {
       .then((r) => setConflicts(r))
       .catch(() => setConflicts({ rows: [], total: 0 }))
       .finally(() => setConflictsLoading(false));
-  }, [queue]);
+  }, [queue, reloadToken]);
 
   useEffect(() => {
     setReconLoading(true);
@@ -53,10 +68,16 @@ export function SyncHealthPanel() {
       .then((r) => setReconciliations(r))
       .catch(() => setReconciliations({ rows: [], total: 0 }))
       .finally(() => setReconLoading(false));
-  }, []);
+  }, [reloadToken]);
 
   const conflictColumns: DataTableColumn<SyncConflictRow>[] = [
-    { key: 'kind', header: t('topology.sync.columnKind') },
+    {
+      key: 'kind',
+      header: t('topology.sync.columnKind'),
+      // `double_count` told an operator nothing. The engine's token stays
+      // available in the drawer; the table reads as a sentence.
+      render: (r) => t(`topology.sync.kind.${r.kind}`),
+    },
     {
       key: 'queue',
       header: t('topology.sync.columnQueue'),
@@ -131,6 +152,7 @@ export function SyncHealthPanel() {
             }}
             keyField={(r) => r.id}
             loading={conflictsLoading}
+            onRowClick={(r) => setOpenConflict(r)}
             emptyTitle={t('topology.sync.conflictsEmpty')}
           />
         </CardContent>
@@ -152,11 +174,34 @@ export function SyncHealthPanel() {
               }}
               keyField={(r) => r.id}
               loading={reconLoading}
+              onRowClick={(r) => setOpenRecon(r)}
               emptyTitle={t('topology.sync.reconciliationsEmpty')}
             />
           </CardContent>
         </Card>
       </PermissionGate>
+
+      {openConflict && (
+        <ConflictDetailDrawer
+          conflict={openConflict}
+          onClose={() => setOpenConflict(null)}
+          onResolved={() => {
+            setOpenConflict(null);
+            setReloadToken((n) => n + 1);
+          }}
+        />
+      )}
+
+      {openRecon && (
+        <ReconciliationDetailDrawer
+          row={openRecon}
+          onClose={() => setOpenRecon(null)}
+          onResolved={() => {
+            setOpenRecon(null);
+            setReloadToken((n) => n + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

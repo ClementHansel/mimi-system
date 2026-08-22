@@ -2739,6 +2739,53 @@ export const id = {
       columnExpectedQty: 'Diharapkan',
       columnStoredQty: 'Tercatat',
       columnDivergence: 'Selisih',
+      // Human names for the engine's conflict tokens. The raw token stays
+      // visible in the drawer's payload; a queue an operator has to decode
+      // token by token is a queue nobody works.
+      kind: {
+        double_count: 'Stok opname dihitung dua kali',
+        duplicate_receipt: 'Penerimaan barang ganda',
+        duplicate_inbound: 'Barang masuk ganda',
+        duplicate_platform_order: 'Pesanan online ganda',
+        decision_race: 'Dua keputusan bersamaan',
+        attendance_overlap: 'Absensi bertumpuk',
+        negative_balance: 'Stok jadi minus',
+        offline_auth: 'Otorisasi offline perlu ditinjau',
+        poison: 'Event gagal diproses berulang',
+      },
+      // Conflict detail drawer.
+      detailTitle: 'Detail Konflik',
+      detailEntityId: 'ID Entitas',
+      detailStatus: 'Status',
+      detailWinnerEvent: 'Event yang Dipakai',
+      detailLoserEvent: 'Event yang Ditolak',
+      detailPayload: 'Data Teknis',
+      physicalEffectHint:
+        'Diduga sudah ada dampak fisik: barang mungkin benar-benar berpindah atau uang sudah diterima. Periksa dokumen aslinya sebelum menutup.',
+      resolveTitle: 'Tindak Lanjut',
+      openOwningScreen: 'Buka Dokumen Terkait',
+      domainOnlyHint:
+        'Konflik jenis ini tidak bisa ditutup dari sini — perbaikannya ada di dokumen aslinya (hitung ulang opname, koreksi penerimaan, atau putuskan ulang persetujuan).',
+      dismissReason: 'Alasan Menutup',
+      dismissReasonHint:
+        'Tercatat di jejak audit. Jelaskan mengapa hasil yang dipakai sistem sudah benar.',
+      dismissButton: 'Tutup Konflik',
+      dismissSuccess: 'Konflik ditutup.',
+      // Stock divergence drawer (D-16).
+      reconDetailTitle: 'Detail Selisih Stok',
+      tier: 'Tier {{tier}}',
+      divergenceShort: 'Stok fisik tercatat LEBIH SEDIKIT dari catatan pusat.',
+      divergenceOver: 'Stok fisik tercatat LEBIH BANYAK dari catatan pusat.',
+      reconResolveTitle: 'Tindak Lanjut',
+      reconCountFirstHint:
+        'Selisih hanya bisa dipastikan dengan hitung fisik. Lakukan stok opname dulu, lalu catat hasilnya di sini.',
+      reconOpenOpname: 'Buka Gudang Pusat (Stok Opname)',
+      reconResolutionLabel: 'Hasil Penyelesaian',
+      reconResolutionHint: 'mis. hasil opname 68 kg, selisih 4 kg karena susut saat thawing',
+      reconAdjustmentLabel: 'No. Dokumen Penyesuaian (opsional)',
+      reconAdjustmentHint: 'Nomor opname atau penyesuaian stok yang memperbaiki selisih ini.',
+      reconResolveButton: 'Tandai Selesai',
+      reconResolveSuccess: 'Selisih stok ditandai selesai.',
     },
   },
 } as const;

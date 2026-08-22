@@ -536,6 +536,51 @@ async function main(): Promise<void> {
          SELECT $1,$2,$3,$4,$5 WHERE NOT EXISTS (SELECT 1 FROM employments WHERE employee_id = $1)`,
         [id, position, locationId[locCode], baseSalaryFor(position), isoDate(daysAgo(joinDaysAgo))],
       );
+
+      // KONTRAK KERJA (migration 230). Every employee gets exactly one current
+      // contract, and the TYPE follows the same rule a real HR department would
+      // apply, so the Kontrak tab and the expiry report have something honest
+      // to show:
+      //
+      //   < 90 days  -> `probation` ending at the 3-month mark (the legal cap)
+      //   < 2 years  -> `pkwt`, a 1-year fixed term from the join date
+      //   otherwise  -> `pkwtt`, permanent, no end date
+      //
+      // That mix also means the seeded data exercises all three shapes,
+      // including at least one PKWT close enough to expiry to appear in
+      // "expiring within 90 days" — which is the query most likely to be wrong
+      // if nobody ever looks at real rows.
+      const joinDate = daysAgo(joinDaysAgo);
+      const contractType = joinDaysAgo < 90 ? 'probation' : joinDaysAgo < 730 ? 'pkwt' : 'pkwtt';
+      const contractEnd =
+        contractType === 'pkwtt'
+          ? null
+          : contractType === 'probation'
+            ? isoDate(new Date(joinDate.getTime() + 90 * 86_400_000))
+            : isoDate(new Date(joinDate.getTime() + 365 * 86_400_000));
+      await client.query(
+        `INSERT INTO employment_contracts
+           (contract_number, employee_id, contract_type, position, location_id, base_salary,
+            start_date, end_date, status, signed_at)
+         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$7
+          WHERE NOT EXISTS (SELECT 1 FROM employment_contracts WHERE employee_id = $2)`,
+        [
+          `KONTRAK/${isoDate(joinDate).slice(0, 7).replace('-', '')}/${employeeNumber.slice(-4)}`,
+          id,
+          contractType,
+          position,
+          locationId[locCode],
+          baseSalaryFor(position),
+          isoDate(joinDate),
+          contractEnd,
+          // A fixed term whose end date has already passed is EXPIRED, not
+          // active. Seeding it as active would have produced a database where
+          // the expiry report is wrong on arrival, and where the only thing
+          // that ever produced an `expired` row was the sweep endpoint — so
+          // nobody would notice if the sweep were broken.
+          contractEnd && contractEnd < isoDate(new Date()) ? 'expired' : 'active',
+        ],
+      );
       return id;
     }
     function baseSalaryFor(position: string): number {

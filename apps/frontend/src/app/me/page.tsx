@@ -1,6 +1,6 @@
 'use client';
 
-import { QrCode, FileText, CalendarPlus, UserCircle, HandCoins } from 'lucide-react';
+import { QrCode, FileText, CalendarPlus, UserCircle, HandCoins, FileSignature } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
 import { AbsenPanel } from '@/components/me/AbsenPanel';
@@ -8,6 +8,7 @@ import { SlipGajiPanel } from '@/components/me/SlipGajiPanel';
 import { CutiPanel } from '@/components/me/CutiPanel';
 import { ProfilePanel } from '@/components/me/ProfilePanel';
 import { PinjamanPanel } from '@/components/me/PinjamanPanel';
+import { KontrakPanel } from '@/components/me/KontrakPanel';
 
 /**
  * F11 `me` — the EMPLOYEE INTERFACE (BUILD-PLAN W4-10, promoted to one of the
@@ -15,10 +16,10 @@ import { PinjamanPanel } from '@/components/me/PinjamanPanel';
  * will see to see their own personal data, loan req, leave req, absency,
  * contracts and everything about themself").
  *
- * Five tabs today: Absen, Slip Gaji, Cuti, Data Pribadi, Pinjaman. Contracts
- * are NOT here and are not faked with an empty tab — there is no contracts
- * table anywhere in the schema, so that is a new domain object (HR-side
- * management plus this view), flagged rather than stubbed.
+ * Six tabs: Absen, Slip Gaji, Cuti, Data Pribadi, Pinjaman, Kontrak — the
+ * owner's whole list. Contracts arrived last because they needed a domain
+ * object first (`employment_contracts`, migration 230) rather than a tab over
+ * data that did not exist.
  *
  * MOBILE-FIRST: a
  * phone screen used one-handed in a car park at 6am (NFR-04) — large touch
@@ -62,7 +63,7 @@ export default function MePage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsList className="grid grid-cols-2">
+        <TabsList className="grid grid-cols-3">
           <TabsTrigger value="profile">
             <span className="inline-flex items-center gap-1.5">
               <UserCircle className="size-4" aria-hidden />
@@ -75,6 +76,12 @@ export default function MePage() {
               {t('me.tabs.pinjaman')}
             </span>
           </TabsTrigger>
+          <TabsTrigger value="kontrak">
+            <span className="inline-flex items-center gap-1.5">
+              <FileSignature className="size-4" aria-hidden />
+              {t('me.tabs.kontrak')}
+            </span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="absen">
@@ -85,6 +92,9 @@ export default function MePage() {
         </TabsContent>
         <TabsContent value="pinjaman">
           <PinjamanPanel />
+        </TabsContent>
+        <TabsContent value="kontrak">
+          <KontrakPanel />
         </TabsContent>
         <TabsContent value="slip">
           <SlipGajiPanel />

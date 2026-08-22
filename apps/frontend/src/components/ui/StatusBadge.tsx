@@ -72,6 +72,7 @@ export type StatusDomain =
   | 'leave'
   | 'payrollRun'
   | 'loan'
+  | 'contract'
   | 'asset'
   | 'maintenanceJob'
   | 'fiscalPeriod'
@@ -129,6 +130,9 @@ const VOCAB: Record<string, { tone: Tone; icon: LucideIcon }> = {
   probation: { tone: 'warning', icon: Clock },
   resigned: { tone: 'neutral', icon: LogOut },
   terminated: { tone: 'danger', icon: XCircle },
+  // A lapsed contract is not a failure — it ran its course — but it is not
+  // current either, so it reads as neutral rather than danger.
+  expired: { tone: 'neutral', icon: CalendarClock },
   present: { tone: 'success', icon: CheckCircle2 },
   late: { tone: 'warning', icon: Clock },
   absent: { tone: 'danger', icon: XCircle },

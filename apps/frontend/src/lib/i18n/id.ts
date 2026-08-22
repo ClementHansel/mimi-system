@@ -280,7 +280,8 @@ export const id = {
     saleFailed: 'Transaksi gagal disimpan',
 
     voidRefundTitle: 'Void / Refund',
-    voidRefundOnlineDescription: 'Memerlukan otorisasi supervisor melalui sistem pusat.',
+    voidRefundOnlineDescription:
+      'Memerlukan otorisasi supervisor. Setelah diajukan, supervisor akan memberikan kode 6 digit sekali pakai untuk dimasukkan di sini.',
     voidRefundOfflineDescription:
       'Tidak ada koneksi — otorisasi menggunakan kredensial supervisor tersimpan di perangkat ini (sementara, akan diverifikasi ulang saat tersinkron).',
     voidSubmit: 'Ajukan',
@@ -291,6 +292,14 @@ export const id = {
     voidAmount: 'Jumlah',
     voidApprover: 'Supervisor Penyetuju',
     supervisorPin: 'PIN Supervisor',
+    voidCodeLabel: 'Kode Persetujuan (6 digit)',
+    voidCodeHint: 'Minta kode kepada supervisor. Berlaku 5 menit dan hanya bisa dipakai sekali.',
+    voidCodeSubmit: 'Konfirmasi Kode',
+    voidRequestedWaitingCode:
+      'Permintaan terkirim. Supervisor sudah diberi tahu — masukkan kode yang mereka berikan.',
+    voidCodeRequired: 'Masukkan kode 6 digit dari supervisor',
+    voidLockedTitle: 'Terlalu banyak kode salah',
+    voidLockedDescription: 'Akun ini terkunci. Minta atasan yang lebih tinggi untuk membukanya.',
     voidSelfie: 'Foto Selfie Supervisor',
     voidApprovedTitle: 'Void/refund disetujui',
     voidRequestedTitle: 'Void/refund diajukan',
@@ -521,6 +530,16 @@ export const id = {
     emptyDescription: 'Semua dokumen yang menunggu keputusan Anda akan muncul di sini.',
   },
 
+  approvalCode: {
+    explainer:
+      'Menyetujui dokumen ini akan membuat kode 6 digit sekali pakai. Sampaikan kode itu kepada petugas yang mengajukan agar mereka bisa menyelesaikannya.',
+    issue: 'Setujui & Buat Kode',
+    reissue: 'Buat Kode Baru',
+    issuedTitle: 'Kode persetujuan dibuat',
+    issuedDescription: 'Berlaku sampai {{time}}. Hanya bisa dipakai satu kali.',
+    stillPending: 'Dokumen masih menunggu sampai kode ini dimasukkan oleh petugas yang mengajukan.',
+    issueFailed: 'Gagal membuat kode persetujuan',
+  },
   approvalDetail: {
     backToInbox: 'Kembali ke Persetujuan',
     summary: 'Ringkasan',
@@ -676,6 +695,13 @@ export const id = {
       approved: 'Disetujui',
       paid: 'Sudah Dibayar',
       cancelled: 'Dibatalkan',
+    },
+    // Employment contract lifecycle (W7).
+    contract: {
+      draft: 'Draf',
+      active: 'Berlaku',
+      expired: 'Berakhir',
+      terminated: 'Diputus',
     },
     loan: {
       pending: 'Menunggu',
@@ -2135,6 +2161,7 @@ export const id = {
       // The `employee` interface's own-data tabs (W7).
       profile: 'Data Pribadi',
       pinjaman: 'Pinjaman',
+      kontrak: 'Kontrak',
     },
     absen: {
       noLocation: 'Akun Anda belum terhubung ke lokasi kerja manapun.',
@@ -2208,6 +2235,31 @@ export const id = {
       notEmployeeTitle: 'Akun ini belum terhubung ke data karyawan',
       notEmployeeDescription:
         'Minta Admin SDM menghubungkan akun Anda dengan data karyawan agar absensi, slip gaji, dan pinjaman muncul di sini.',
+    },
+    // Kontrak kerja — read-only view of the employee's own contracts (W7).
+    kontrak: {
+      history: 'Riwayat Kontrak',
+      period: 'Masa Kontrak',
+      noEndDate: 'Tanpa batas waktu',
+      location: 'Penempatan',
+      baseSalary: 'Gaji Pokok (sesuai kontrak)',
+      signedAt: 'Ditandatangani',
+      terminationReason: 'Alasan Pemutusan',
+      viewDocument: 'Lihat Dokumen Kontrak',
+      expiringIn:
+        'Kontrak berakhir dalam {{days}} hari. Hubungi Admin SDM bila belum ada perpanjangan.',
+      expiredAgo: 'Kontrak sudah berakhir {{days}} hari lalu. Hubungi Admin SDM.',
+      emptyTitle: 'Belum ada kontrak tercatat',
+      emptyDescription:
+        'Hubungi Admin SDM bila Anda sudah menandatangani kontrak tetapi belum tampil di sini.',
+      questionsHint:
+        'Kontrak dikelola oleh Admin SDM. Untuk perpanjangan atau salinan resmi, hubungi Admin SDM.',
+      type: {
+        pkwt: 'PKWT (Kontrak Waktu Tertentu)',
+        pkwtt: 'PKWTT (Karyawan Tetap)',
+        probation: 'Masa Percobaan',
+        internship: 'Magang',
+      },
     },
     // Pinjaman (kasbon) — own loans plus the request form. A request goes to
     // the same Keuangan -> Manajer approval chain the office uses.

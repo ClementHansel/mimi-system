@@ -46,6 +46,17 @@ const PERMISSION_ROWS = [
   // ── auth / users / admin ──────────────────────────────────────────────────
   ['auth.pin.set',                        [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
   ['auth.offline_credential.mint',        [true,  true,  false, false, true,  false, false, false, false, true ]],
+  // B-15 (owner decisions 2026-08-22). `approval.code.issue` mints the one-time
+  // code that replaced the static-PIN check; `auth.lockout.clear` frees a caller
+  // who burned their attempts. BOTH are deliberately coarse — the real checks
+  // are in the service: eligibility comes from `eligibleActorsForAction` (the
+  // §5.2 state machine, not a grant table), and clearing a lock additionally
+  // requires the clearer to outrank the locked user by `ROLE_RANK` (Q6), which
+  // is why supervisor holds `auth.lockout.clear` yet cannot free another
+  // supervisor. Kasir/driver/leader_outlet hold neither: none is a named
+  // approver on any chain, so the key would read like an authorization it is not.
+  ['approval.code.issue',                 [true,  true,  true,  true,  true,  false, false, true,  false, true ]],
+  ['auth.lockout.clear',                  [true,  true,  false, true,  true,  false, false, true,  false, true ]],
   ['user.read',                           [true,  true,  true,  false, false, false, false, true,  false, true ]],
   ['user.create',                         [true,  true,  false, false, false, false, false, false, false, true ]],
   ['user.update',                         [true,  true,  false, false, false, false, false, false, false, true ]],
@@ -150,6 +161,12 @@ const PERMISSION_ROWS = [
   // for the `employee` interface. `hr.employee.read` above is the office's
   // "read anyone" key and stays office-only.
   ['hr.employee.read.own',                [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
+  // Employment contracts (kontrak kerja, W7). `read.own` is universal — your own
+  // contract is the point of the `employee` interface's Kontrak tab; reading
+  // anyone's is an office act, and writing one is owner/HR only.
+  ['hr.contract.read.own',                [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
+  ['hr.contract.read',                    [true,  true,  true,  false, true,  false, false, true,  false, true ]],
+  ['hr.contract.manage',                  [true,  false, false, false, false, false, false, true,  false, true ]],
   ['hr.employee.manage',                  [true,  true,  false, false, false, false, false, true,  false, true ]],
   ['hr.leave.request',                    [true,  true,  true,  true,  true,  true,  true,  true,  true, true ]],
   ['hr.leave.approve',                    [true,  true,  false, false, true,  false, false, true,  false, true ]],

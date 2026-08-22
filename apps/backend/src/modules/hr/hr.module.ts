@@ -4,7 +4,9 @@ import { StorageModule } from '../../kernel/storage/storage.module';
 import { SyncEngineModule } from '../../kernel/sync/sync.module';
 import { SyncProjectorRegistry } from '../../kernel/sync/sync-projector-registry.service';
 import { EmployeesController } from './employees/employees.controller';
+import { ContractsController } from './contracts/contracts.controller';
 import { EmployeesService } from './employees/employees.service';
+import { ContractsService } from './contracts/contracts.service';
 import { ShiftsController } from './shifts/shifts.controller';
 import { ShiftsService } from './shifts/shifts.service';
 import { AttendanceController } from './attendance/attendance.controller';
@@ -44,9 +46,16 @@ import { LeaveSyncProjector } from './sync/leave-sync-projector.service';
  */
 @Module({
   imports: [ApprovalsModule, StorageModule, SyncEngineModule],
-  controllers: [EmployeesController, ShiftsController, AttendanceController, LeavesController],
+  controllers: [
+    EmployeesController,
+    ShiftsController,
+    AttendanceController,
+    LeavesController,
+    ContractsController,
+  ],
   providers: [
     EmployeesService,
+    ContractsService,
     ShiftsService,
     AttendanceService,
     LeavesService,

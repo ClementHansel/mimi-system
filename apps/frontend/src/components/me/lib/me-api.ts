@@ -45,6 +45,11 @@ export function getMyEmployee() {
   return api.get<EmployeeDetail>('/hr/employees/me');
 }
 
+/** The caller's own employment contracts — `/hr/contracts/me`. */
+export function getMyContracts() {
+  return api.get<EmploymentContract[]>('/hr/contracts/me');
+}
+
 /** The caller's own kasbon (loans) — `/payroll/loans/me`. */
 export function getMyLoans() {
   return api.get<Paginated<MyLoan>>('/payroll/loans/me');
@@ -145,4 +150,33 @@ export interface MyLoan {
   monthlyInstallment: Money;
   outstanding: Money;
   status: string;
+}
+
+/**
+ * One employment contract, as `/hr/contracts/me` returns it.
+ *
+ * `daysUntilExpiry` is computed SERVER-side in WITA and is null for a permanent
+ * (PKWTT) contract and for anything not active — a terminated contract has no
+ * meaningful countdown, and a device clock must never be what decides whether
+ * someone's contract has lapsed.
+ */
+export interface EmploymentContract {
+  id: string;
+  contractNumber: string;
+  employeeId: string;
+  employeeName: string;
+  employeeNumber: string;
+  contractType: 'pkwt' | 'pkwtt' | 'probation' | 'internship';
+  position: string;
+  locationId: string | null;
+  locationName: string | null;
+  baseSalary: Money | null;
+  startDate: string;
+  endDate: string | null;
+  status: 'draft' | 'active' | 'expired' | 'terminated';
+  signedAt: string | null;
+  documentAttachmentId: string | null;
+  terminationReason: string | null;
+  notes: string | null;
+  daysUntilExpiry: number | null;
 }

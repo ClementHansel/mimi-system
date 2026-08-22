@@ -14,15 +14,7 @@ import {
   type SyncEventEnvelope,
   type SyncPushBatch,
 } from '@mimi/sync-protocol';
-import { SyncEventsRepository } from './sync-events.repository';
-import { SyncConflictsRepository } from './sync-conflicts.repository';
-import { OfflineCredentialsRepository } from './offline-credentials.repository';
-import { RegistryRepository } from './registry.repository';
-import { ConflictDetectorService } from './conflict-detector.service';
-import { OfflineAuthService } from './offline-auth.service';
-import { ReconciliationService } from './reconciliation.service';
-import { SyncIngestService } from './sync-ingest.service';
-import { SyncProjectorRegistry } from './sync-projector-registry.service';
+import { buildIngestKit } from './test-support/ingest-factory';
 import {
   cleanupOrigins,
   closeTestPool,
@@ -45,24 +37,18 @@ const pool = getAppPool();
 // explicitly switches role, which `withSystemContext`/`assertSystemContext` do for the ENGINE's own
 // queries — but a test assertion isn't the engine).
 const assertPool = getOwnerPool();
-const eventsRepo = new SyncEventsRepository(pool);
-const conflictsRepo = new SyncConflictsRepository();
-const registryRepo = new RegistryRepository(pool);
-const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-const offlineAuth = new OfflineAuthService(
-  new OfflineCredentialsRepository(),
-  conflictsRepo,
-  fakeConfig,
-);
-const reconciliation = new ReconciliationService(pool, eventsRepo, conflictsRepo, registryRepo);
-const projectors = new SyncProjectorRegistry(); // empty registry — no Wave 3+ projector registered in this test process
-const ingest = new SyncIngestService(
-  eventsRepo,
-  conflictDetector,
-  offlineAuth,
+// D-14: the real ingest graph, built by the one factory that knows how — see
+// `test-support/ingest-factory.ts`. Hand-assembling these seven constructions
+// in six separate files is what let B-02 regress silently when a signature
+// moved. `projectors` is intentionally empty here: no Wave 3+ projector is
+// registered in this test process.
+const {
+  ingest,
+  events: eventsRepo,
+  conflicts: conflictsRepo,
+  registryRepo,
   reconciliation,
-  projectors,
-);
+} = buildIngestKit(pool, { config: fakeConfig });
 
 let locationId: string;
 let actorUserId: string;

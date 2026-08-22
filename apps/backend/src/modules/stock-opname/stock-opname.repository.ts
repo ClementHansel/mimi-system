@@ -95,15 +95,37 @@ export class StockOpnameRepository {
     return formatCloudDocNumber(DocumentPrefix.STOCK_OPNAME, period, res.rows[0]!.last_number);
   }
 
+  /**
+   * B-11: `id` is optional. The REST path omits it and the database mints one.
+   * The SYNC path supplies the id the DEVICE minted while offline, because
+   * every later event in that opname's life (`area_counted`, `submitted`,
+   * `cancelled`) already references it — a server-minted id would orphan them.
+   *
+   * The document NUMBER is still issued here, never taken from the device:
+   * two tablets counting offline would both mint `SO/202608/0001`, and
+   * `opname_number` is UNIQUE. Same rule the delivery projector follows.
+   */
   async insertOpname(
     client: PoolClient,
-    params: { opnameNumber: string; locationId: UUID; storageAreaId: UUID | null; countedBy: UUID },
+    params: {
+      id?: UUID;
+      opnameNumber: string;
+      locationId: UUID;
+      storageAreaId: UUID | null;
+      countedBy: UUID;
+    },
   ): Promise<UUID> {
     const res = await client.query<{ id: UUID }>(
-      `INSERT INTO stock_opname (opname_number, location_id, storage_area_id, status, counted_by)
-       VALUES ($1, $2, $3, 'counting', $4)
+      `INSERT INTO stock_opname (id, opname_number, location_id, storage_area_id, status, counted_by)
+       VALUES (COALESCE($5::uuid, gen_random_uuid()), $1, $2, $3, 'counting', $4)
        RETURNING id`,
-      [params.opnameNumber, params.locationId, params.storageAreaId, params.countedBy],
+      [
+        params.opnameNumber,
+        params.locationId,
+        params.storageAreaId,
+        params.countedBy,
+        params.id ?? null,
+      ],
     );
     return res.rows[0]!.id;
   }

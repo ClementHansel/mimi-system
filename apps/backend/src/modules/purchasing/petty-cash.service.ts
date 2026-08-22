@@ -117,11 +117,25 @@ export class PettyCashService {
     return { rows: result, total, page, pageSize };
   }
 
+  /**
+   * B-11: `opts.id` is the id the DEVICE minted for a claim recorded while
+   * offline (a supervisor buying onions during an outage). Supplying it makes a
+   * replayed push a no-op instead of a duplicate claim against the cash float.
+   */
   async create(
     client: PoolClient,
     actor: ActorContext,
     dto: CreatePettyCashDto,
+    opts: { id?: UUID } = {},
   ): Promise<PettyCashDetail> {
+    // Idempotency, only for a caller-supplied id.
+    if (opts.id) {
+      const existing = await this.repo.findHeader(client, opts.id);
+      if (existing) {
+        return this.toDetail(client, existing, await this.repo.findLines(client, opts.id));
+      }
+    }
+
     if (dto.lines.length === 0) {
       throw new BadRequestException({
         code: ERR_VALIDATION,
@@ -135,6 +149,7 @@ export class PettyCashService {
 
       const pcNumber = await this.repo.nextPcNumber(client);
       const id = await this.repo.insertHeader(client, {
+        id: opts.id,
         pcNumber,
         locationId: dto.locationId,
         purchasedBy: actor.userId,

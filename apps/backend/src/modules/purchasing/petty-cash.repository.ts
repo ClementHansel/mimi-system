@@ -57,6 +57,7 @@ export class PettyCashRepository {
   async insertHeader(
     client: PoolClient,
     input: {
+      id?: UUID;
       pcNumber: string;
       locationId: UUID;
       purchasedBy: UUID;
@@ -66,8 +67,13 @@ export class PettyCashRepository {
     },
   ): Promise<string> {
     const res = await client.query<{ id: string }>(
-      `INSERT INTO petty_cash (pc_number, location_id, purchased_by, purchase_date, store_name, total_amount)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      // B-11: `id` is optional — the REST path omits it and the database mints
+      // one; the SYNC path supplies the id the DEVICE minted offline, which is
+      // what its `petty_cash_lines` and any later event already reference.
+      // The pc NUMBER is always issued here, never taken from the device: two
+      // outlets claiming offline would both mint the same one.
+      `INSERT INTO petty_cash (id, pc_number, location_id, purchased_by, purchase_date, store_name, total_amount)
+       VALUES (COALESCE($7::uuid, gen_random_uuid()),$1,$2,$3,$4,$5,$6) RETURNING id`,
       [
         input.pcNumber,
         input.locationId,
@@ -75,6 +81,7 @@ export class PettyCashRepository {
         input.purchaseDate,
         input.storeName,
         input.totalAmount,
+        input.id ?? null,
       ],
     );
     return res.rows[0]!.id;

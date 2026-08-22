@@ -129,12 +129,26 @@ export class StockOpnameService {
 
   // ── FR-SO-01: create (targets a location, optionally one storage area — D-15) ──
 
+  /**
+   * B-11: `opts.id` is the id the DEVICE minted for an opname it opened while
+   * offline. Supplying it keeps the whole offline sequence coherent — the
+   * `area_counted`/`submitted` events that follow already name it — and makes
+   * a replayed `opened` event a no-op instead of a second opname.
+   */
   async create(
     client: PoolClient,
     actor: ActorContext,
     dto: CreateOpnameDto,
+    opts: { id?: UUID } = {},
   ): Promise<Opname & { lines: OpnameLine[] }> {
     this.assertLocationInScope(actor, dto.locationId);
+
+    // Idempotency, only for a caller-supplied id: a retried push or a
+    // re-projection sweep must not open the count twice.
+    if (opts.id) {
+      const existing = await this.repo.findHeader(client, opts.id);
+      if (existing) return this.getDetail(client, opts.id);
+    }
 
     if (dto.storageAreaId) {
       const areaLocationId = await this.storageAreaLocationId(client, dto.storageAreaId);
@@ -149,6 +163,7 @@ export class StockOpnameService {
     return withWrite(client, async () => {
       const opnameNumber = await this.repo.nextOpnameNumber(client);
       const id = await this.repo.insertOpname(client, {
+        id: opts.id,
         opnameNumber,
         locationId: dto.locationId,
         storageAreaId: dto.storageAreaId ?? null,

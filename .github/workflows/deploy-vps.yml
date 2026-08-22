@@ -181,8 +181,15 @@ jobs:
             # here silently resolved against $HOME — `docker cp` failed, and
             # under `set -e` that killed the whole verification step after the
             # useful output had already scrolled past.
-            if docker ps --format '{{.Names}}' | grep -q '^mimi-backend$'                && docker cp /home/ubuntu/mimi/infrastructure/tls/storage-probe.mjs mimi-backend:/tmp/storage-probe.mjs; then
-              probe_out=$(docker exec mimi-backend node /tmp/storage-probe.mjs 2>&1 || true)
+            # Copied into the app's OWN directory, not /tmp. Node resolves an
+            # ESM import by walking up from the FILE, so a probe in /tmp cannot
+            # see the container's node_modules and dies on
+            # 'Cannot find package @aws-sdk/client-s3'. NODE_PATH does not help —
+            # it is ignored for ESM.
+            app_dir=$(docker exec mimi-backend pwd 2>/dev/null || echo /app)
+            if docker ps --format '{{.Names}}' | grep -q '^mimi-backend$'                && docker cp /home/ubuntu/mimi/infrastructure/tls/storage-probe.mjs "mimi-backend:$app_dir/storage-probe.mjs"; then
+              probe_out=$(docker exec mimi-backend node "$app_dir/storage-probe.mjs" 2>&1 || true)
+              docker exec mimi-backend rm -f "$app_dir/storage-probe.mjs" >/dev/null 2>&1 || true
               echo "$probe_out" | sed 's/^/  /'
               case "$probe_out" in
                 *"public  : PUT 200"*) echo "  photo upload from a device: WORKING" ;;

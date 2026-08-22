@@ -28,6 +28,7 @@ import bcrypt from 'bcrypt';
 import { createHash } from 'node:crypto';
 import { businessDateOf } from '@mimi/shared';
 import { seedExtended } from './seed-extended.js';
+import { seedGaps } from './seed-gaps.js';
 
 const { Client } = pg;
 
@@ -2215,6 +2216,12 @@ async function main(): Promise<void> {
     // sync/device fixtures. Kept in its own module so this file stays legible;
     // it resolves its own ids from the DB, so ordering is the only coupling.
     await seedExtended(client);
+    // Third pass: the tables the first two still left empty — approvals for
+    // every document that implies one, WhatsApp threads, an opname with a real
+    // variance, returns both ways, truck breadcrumbs. See `seed-gaps.ts` for
+    // what it deliberately does NOT seed (audit_log, sessions, sync_events —
+    // runtime evidence, not demo data).
+    await seedGaps(client);
 
     console.log('\n✓ Seed completed successfully.\n');
     console.log(

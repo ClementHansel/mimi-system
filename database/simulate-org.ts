@@ -50,7 +50,6 @@
 
 import pg from 'pg';
 import bcrypt from 'bcrypt';
-import { businessDateOf } from '@mimi/shared';
 
 const { Client } = pg;
 
@@ -171,8 +170,19 @@ function nameFor(username: string): string {
   return `${FIRST_NAMES[h % FIRST_NAMES.length]} ${LAST_NAMES[(h >>> 5) % LAST_NAMES.length]}`;
 }
 
+/**
+ * The WITA (Asia/Makassar, UTC+8) calendar date — the business day, never
+ * `toISOString().slice(0,10)`.
+ *
+ * `@mimi/shared`'s `businessDateOf` is the canonical implementation and this is
+ * a deliberate 3-line copy of it: this script has to run inside a disposable
+ * node container on the server, where the workspace package is not built, and a
+ * missing `dist/` would fail an ops task for no reason. The offset is fixed —
+ * Indonesia has no daylight saving — so there is nothing here to drift.
+ */
+const WITA_OFFSET_MS = 8 * 60 * 60 * 1000;
 function isoDate(d: Date): string {
-  return businessDateOf(d.toISOString());
+  return new Date(d.getTime() + WITA_OFFSET_MS).toISOString().slice(0, 10);
 }
 function dayOffset(n: number): Date {
   const d = new Date();

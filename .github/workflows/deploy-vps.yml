@@ -9,7 +9,13 @@ name: deploy-vps
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      reshape_org:
+        description: 'Apply the org model (crew per shift, regional managers, 2 gudang + 2 drivers) to the server database'
+        type: boolean
+        default: false
+        required: false
 
 # A second push while a deploy is mid-build would have two `compose up` runs
 # racing on the same project. Queue them instead, and never cancel a running
@@ -41,8 +47,15 @@ jobs:
         env:
           HOST: ${{ secrets.VPS_HOST }}
           USER: ${{ secrets.VPS_USER }}
+          RESHAPE_ORG: ${{ inputs.reshape_org }}
         run: |
-          ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
+          # Passed as an env PREFIX on the remote command rather than
+          # interpolated into the heredoc. The heredoc stays quoted ('REMOTE') so
+          # the runner expands nothing inside it — that is what lets server-side
+          # variables like $DATABASE_MIGRATION_URL resolve on the server, and it
+          # is worth keeping. (`SendEnv` would also need `AcceptEnv` in the
+          # server's sshd config, which is not ours to change.)
+          ssh "$USER@$HOST" RESHAPE_ORG="${RESHAPE_ORG:-false}" bash -euo pipefail <<'REMOTE'
             cd /home/ubuntu/mimi
 
             # .env.vps holds the generated production secrets and lives ONLY on
@@ -93,6 +106,22 @@ jobs:
               -f docker-compose.yml -f docker-compose.vps.yml \
               --env-file .env.vps \
               up -d --build --remove-orphans
+
+            # OPT-IN, never on a push. `simulate-org.ts` renames and creates
+            # LOGINS, so it must be an explicit decision, not a side effect of
+            # shipping code. It is idempotent — a second run reports nothing to
+            # do — and it deactivates rather than deletes, so no history is lost.
+            # Same disposable runner as the migration above; the script is
+            # dependency-light on purpose (pg + bcrypt only) so it does not need
+            # the workspace packages built.
+            if [ "${RESHAPE_ORG:-false}" = "true" ]; then
+              echo "Applying the org model to the server database"
+              docker run --rm --network mimi_mimi-network \
+                -v /home/ubuntu/mimi:/app -w /app/database \
+                -e DATABASE_MIGRATION_URL="$DATABASE_MIGRATION_URL" \
+                node:22-alpine sh -c \
+                'apk add --no-cache python3 make g++ >/dev/null 2>&1; corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.4 --activate >/dev/null 2>&1 && pnpm simulate:org'
+            fi
 
             # --remove-orphans is scoped to project `mimi` by -p, so it can only
             # remove containers this stack previously created.

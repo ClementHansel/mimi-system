@@ -1,6 +1,6 @@
 # Mimi Chicken OS — Progress Tracker
 
-**Last updated:** 2026-08-23 — B-15, B-17, B-13, B-08, D-22b, D-27 and D-30 closed; B-11 verified and pinned; B-9 wired into CI. **All of it verified ON THE SERVER (Linux) and DEPLOYED** — see §1a-0.
+**Last updated:** 2026-08-23 — **B-11 CLOSED** (all four outlet flows now project server-side), on top of B-15, B-17, B-13, B-08, D-22b, D-27, D-30. Everything verified ON THE SERVER (Linux) before merge and deployed. Backend **899/899**, frontend **515/515**, shared **257**.
 **Maintenance rule:** this file is updated by the coordinator **every time a task or wave completes**, and whenever a blocker opens, changes state, or closes.
 
 Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not started · `[!]` blocked
@@ -942,12 +942,65 @@ Bundled with the same fix: `LocalRuntime` needs `listCachedCredentials()` (D-25)
 `ReceivingPanel` rewired to `captureEvidence` + `commitDropReceived`. **Proof is unusually rigorous**: the test builds a real runtime with a `SyncTransport` whose every method _throws if called_, never invokes `start()`/`syncNow()`, and asserts outbox depth 0→1 and idempotence on double-tap. It can only pass if nothing touches the network.
 Still open: the drop _list_ is an online read (no local SJ cache), so §8 row 6's true "blind receipt" is not yet reachable.
 
-### 🔴 B-11 — Four outlet flows have no offline path, contradicting SYNC-PROTOCOL §8
+### ✅ B-11 RESOLVED 2026-08-23 — the four outlet flows now survive an outage end to end
 
-**Owner:** architect decision needed · **Found by:** W4-07 building the outlet UI
-`LocalRuntime` exposes commit helpers for POS, attendance and delivery-drop facts — but **none for `stock_opname`, `waste_records`, `returns`, or `petty_cash`**, and no `SyncEntity`/op mapping exists for them. So an outlet with no internet cannot count stock, record waste, raise a retur, or log a petty-cash purchase.
-**The inconsistency:** SYNC-PROTOCOL §8's degradation matrix lists several of these as offline-capable, and the backend has push-class authority entries for them. Either the device runtime gains helpers, or §8 is describing a system we did not build. **Resolve explicitly rather than by omission** — RISK-02 (unstable branch internet) is the reason offline-first exists.
-**Partially self-inflicted:** W4-07 also reported receiving as uncovered. It is not — `commitDropReceived` exists and was simply not used. That one is being rewired now, and it is the most operationally critical of the set: a delivery arriving during an outage currently cannot be recorded.
+**Opened:** by W4-07 while building the outlet UI · **Closed:** 2026-08-23
+
+**The blocker's own description was out of date, and the truth was worse.** It read "`LocalRuntime` exposes
+commit helpers for POS, attendance and delivery-drop facts — but none for `stock_opname`, `waste_records`,
+`returns`, or `petty_cash`, and no `SyncEntity`/op mapping exists for them". By this week that was wrong in
+both directions:
+
+- All four already had authority-matrix entries WITH `pushOps`, and all four had payload schemas in the
+  sync registry. Three of them (`stock_opname`, `waste_records`, `petty_cash`) already had device commit
+  helpers too. Only `returns` was missing its helpers.
+- What was ACTUALLY missing was the server half. Only `delivery`, `hr` and `pos` ever registered a
+  `SyncProjector`. So a device could queue these facts perfectly well, push them successfully, and the
+  server would log them into `sync_events` and **never create the domain row**.
+
+That last part is the reason this mattered more than the ticket implied.
+`SyncProjectorRegistry.project` returns `{ ok: true, ran: false }` for an `(entity, op)` nobody claimed —
+correct for the many entities that are pull-only or logged-only, and a **silent data-loss trap** for one
+whose entire purpose is offline capture. An outlet with no internet counted stock, photographed spoiled
+chicken, raised a retur and paid cash for onions; all four synced; ingest reported success; nothing existed
+afterwards; and nothing anywhere went red.
+
+**What shipped — four projectors, each calling its module's OWN service:**
+
+| Entity          | Ops projected                                      | Notes                                                                                                                                                             |
+| --------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `waste_records` | `reported`                                         | `approved_offline` deliberately NOT projected — a provisional approval is a claim for §7.4 re-verification, not a write to replay                                 |
+| `stock_opname`  | `opened`, `area_counted`, `submitted`, `cancelled` | `approved`/`rejected` stay online: adjudicating a variance is a conversation, and `pushOps` says so                                                               |
+| `petty_cash`    | `recorded`                                         | actor is the PURCHASER from the payload, not whoever's device pushed the batch — on a shared tablet those differ and the claim must name who handed over the cash |
+| `returns`       | `submitted`, `shipped_back`                        | plus the two missing device helpers, `commitReturnSubmitted`/`commitReturnShippedBack`                                                                            |
+
+**Three rules held throughout, and each is written into the code:**
+
+1. **Call the service, never the tables.** Every projector goes through `WasteService.create`,
+   `StockOpnameService.create/upsertLines/submit/cancel`, `PettyCashService.create`,
+   `ReturnService.create/submit/ship` — so the offline path keeps the same wajib-foto checks, document
+   numbering, approval submission and stock posting as the online one. A projector that inserted rows
+   itself would be a second implementation of each flow, which is exactly the shape of D-27.
+2. **The DEVICE's id is the idempotency key, not `event.eventId`.** A retried push whose ack was lost, or a
+   re-projection sweep off the conflict queue, carries a NEW event id and the SAME document id. Each
+   service gained an optional caller-supplied id and returns the existing row untouched when it already
+   exists.
+3. **The device's document NUMBER is always discarded.** Two outlets offline both mint `SO/202608/0001`,
+   and those columns are UNIQUE. The server issues real numbers; the device's id carries identity. Same
+   rule the delivery projector already followed.
+
+**The verify-first loop paid for itself immediately.** `ReturnSyncProjector` was added to the module's
+constructor but not to its `providers` array — prettier had collapsed that array to one line, so the edit's
+anchor silently missed. Nest cannot resolve such a constructor and **the entire application refuses to
+boot**. `test/app-boot.spec.ts` caught it on the branch, before merge, which is precisely what that spec
+exists for after the original boot incident. Fixed and re-verified before anything reached `main`.
+
+**Verified on the server:** backend **899/899** across 98 files on a freshly migrated + seeded Linux
+database, frontend **515/515**, lint 0 errors, format clean. Deployed; post-deploy e2e smoke green.
+
+**Still online-only, and correctly so:** every `approved`/`rejected`/`verified` decision on these four, plus
+`returns.received_at_warehouse`. Those are adjudications, not captures, and the authority matrix's
+`pushOps` already said so — the projectors simply honour it rather than widening it.
 
 ### ✅ B-07 — Notifications never fired on business events — **RESOLVED**
 
@@ -1244,7 +1297,7 @@ Yes. `audit_log` + `AuditInterceptor` + `@Audited()`, surfaced as **Administrasi
   - **Restore drill: DONE, and it actually restored.** The newest dump was loaded into a throwaway `mimi_restore_drill` database on the same server: 0 errors, and `users`/`sales`/`sj_drops`/`stock_movements`/`employees`/`role_permissions`/`sj_positions` all matched the live counts exactly. The throwaway database was dropped; the live one was never touched (pg_dump only reads).
   - **Still open:** no TLS (blocker B-14 — needs a domain), and `OFFSITE_REMOTE_CMD` is unset, so every dump lives on the same disk as the database it protects. That is fine against "someone dropped a table" and worthless against "the host died" — set it before go-live (NFR-06).
   - Host clock is `Asia/Shanghai`, which is UTC+8 with no DST, so 02:00 there IS 02:00 WITA today. If that host timezone ever changes, the schedule drifts relative to the business day.
-- [ ] W7-02 technical docs · [ ] W7-03 **Bahasa Indonesia manual** + training
+- [x] **W7-02 technical docs — DONE 2026-08-23** → `docs/TECHNICAL.md`. Written for the engineer who inherits this, so it explains what the code cannot: why the layers sit where they do, the four database rules that are load-bearing (the `mimi_app`/`app_user` split, commit-your-own-transaction, `SET LOCAL ROLE` resetting at COMMIT, one writer for `stock_balances`), how an offline fact actually travels and where its silent trap is, and the sharp edges. · [x] W7-03 **Bahasa Indonesia manual** DONE as `/docs` (F-DOCS); training still owed
 - [ ] W7-04 hardware spec — needs owner input (budget, vendor, per-outlet device count)
 - [ ] W7-05 data importer — needs the owner's real files to design against
 

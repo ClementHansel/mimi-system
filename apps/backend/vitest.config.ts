@@ -27,11 +27,34 @@ const alias = {
 // A handful of live-DB specs don't follow the `*.integration.spec|test.ts` naming convention
 // at all (grepped for `DATABASE_MIGRATION_URL`/`getOwnerPool`/`live-db` imports across every
 // spec/test file to find them) — still real Postgres, still needs serialization.
+//
+// The list below is REPRODUCIBLE, not curated by memory. Every live-DB spec
+// imports `live-db`, `getOwnerPool`, or reads `DATABASE_MIGRATION_URL`, so
+// grepping for those three markers across `src` and `test`, minus whatever
+// `INTEGRATION_GLOBS` already matches, yields exactly this set. Re-run that grep
+// when adding a live-DB spec: a file missing from here silently runs in the
+// PARALLEL `unit` project and races the serialized ones.
+//
+// Not hypothetical. The seven specs added below were racing, and it surfaced as
+// `return-gl-posting.spec.ts` failing with `StockInsufficientError ... would
+// drive the balance negative` in full runs while passing alone: two files
+// bootstrap the SAME (location, storage_area, item) balance via `ensureStock`
+// (+100) and reconcile it back to the movement fold in `afterAll`, so run
+// concurrently one file's cleanup deletes the other's bootstrap mid-test.
+// Serializing is the fix; per-file fixture items would be the other one, at the
+// cost of every spec inventing data instead of reading the seed.
 const EXTRA_LIVE_DB_SPECS = [
   'src/common/guards/rls-context.guard.live-db.regression.spec.ts',
   'src/kernel/stock-ledger/stock-ledger.property.spec.ts',
+  'src/kernel/stock-ledger/reconcile-opname.property.spec.ts',
   'src/modules/inventory/inventory.property.spec.ts',
   'src/modules/purchasing/payment-verifications-fulfilment-rls.spec.ts',
+  'src/modules/purchasing/purchase-order-gl-posting.spec.ts',
+  'src/modules/accounting/daily-posting.spec.ts',
+  'src/modules/pos/pos-online-order-gl-posting.spec.ts',
+  'src/modules/stock-opname/stock-opname-gl-posting.spec.ts',
+  'src/modules/waste-return/return-gl-posting.spec.ts',
+  'src/modules/waste-return/waste-gl-posting.spec.ts',
 ];
 
 const INTEGRATION_GLOBS = [

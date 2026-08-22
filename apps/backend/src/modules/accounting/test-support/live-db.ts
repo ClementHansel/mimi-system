@@ -158,13 +158,28 @@ export interface Fixtures {
 /** Reads real seeded rows over the OWNER pool — never inserts (this module's fixtures are all pre-existing seed rows: locations, users, chart_of_accounts, fiscal_periods, posting_rules). */
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
+  // ORDER BY, always, on every fixture SELECT.
+  //
+  // These were bare `LIMIT 1`s, which in Postgres returns whatever row the scan
+  // reaches first — a function of physical heap order, not of the data. That
+  // held together until a seed change rewrote every `locations` row (an
+  // ON CONFLICT UPDATE), which reordered the heap and silently moved
+  // `fixtures.outletId` from a Balikpapan outlet to a Banjarmasin one. The
+  // Banjarmasin outlets have no `pos_shifts` in the seed, so the X6
+  // void-reversal test's `INSERT ... SELECT ... FROM pos_shifts` matched zero
+  // rows and failed with "Cannot read properties of undefined" — a failure that
+  // pointed at the test rather than at the real cause.
+  //
+  // An unordered LIMIT 1 in a fixture is a landmine: it makes the whole suite's
+  // meaning depend on physical row order. Ordering by a stable business key
+  // makes every run pick the same rows.
   const warehouse = await pool.query<{ id: string }>(
-    `SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`,
+    `SELECT id FROM locations WHERE type = 'warehouse' ORDER BY code LIMIT 1`,
   );
   const outlet = await pool.query<{ id: string }>(
-    `SELECT id FROM locations WHERE type = 'outlet' LIMIT 1`,
+    `SELECT id FROM locations WHERE type = 'outlet' ORDER BY code LIMIT 1`,
   );
-  const item = await pool.query<{ id: string }>(`SELECT id FROM items LIMIT 1`);
+  const item = await pool.query<{ id: string }>(`SELECT id FROM items ORDER BY sku LIMIT 1`);
 
   const usersByRole = {} as Record<RoleKey, string>;
   for (const roleKey of Object.values(RoleKey)) {

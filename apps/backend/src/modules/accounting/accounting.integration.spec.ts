@@ -588,12 +588,24 @@ describe('M17 accounting — live DB integration', () => {
     await withRollbackAs(
       { role: RoleKey.OWNER, userId: fixtures.usersByRole[RoleKey.OWNER], locationIds: [] },
       async (client) => {
+        // A sale needs a shift, and the seed only opens shifts at the outlets it
+        // generates sales for — so the outlet comes FROM a real shift rather
+        // than from `fixtures.outletId`, which may legitimately be an outlet
+        // that never traded. Asserting the shift exists (instead of letting an
+        // empty INSERT...SELECT surface as "cannot read property of undefined"
+        // twelve lines later) is what makes a seed gap say so.
+        const shiftRes = await client.query<{ id: string; location_id: string }>(
+          `SELECT id, location_id FROM pos_shifts ORDER BY opened_at DESC LIMIT 1`,
+        );
+        const shift = shiftRes.rows[0];
+        expect(shift, 'seed must provide at least one pos_shift to hang a sale on').toBeTruthy();
+        const outletId = shift!.location_id;
+
         const saleRes = await client.query<{ id: string }>(
           `INSERT INTO sales (receipt_number, client_id, location_id, shift_id, kasir_id, status, subtotal, discount, total, paid_amount, change_amount, occurred_at)
-         SELECT 'TEST-VOID-0001', gen_random_uuid(), $1, ps.id, $2, 'voided', 80000, 0, 80000, 80000, 0, NOW()
-           FROM pos_shifts ps WHERE ps.location_id = $1 LIMIT 1
+         VALUES ('TEST-VOID-0001', gen_random_uuid(), $1, $2, $3, 'voided', 80000, 0, 80000, 80000, 0, NOW())
          RETURNING id`,
-          [fixtures.outletId, fixtures.usersByRole[RoleKey.KASIR]],
+          [outletId, shift!.id, fixtures.usersByRole[RoleKey.KASIR]],
         );
         const saleId = saleRes.rows[0]!.id;
         await client.query(
@@ -602,8 +614,9 @@ describe('M17 accounting — live DB integration', () => {
         );
         await client.query(
           `INSERT INTO stock_movements (location_id, storage_area_id, item_id, movement_type, qty, unit_cost, ref_type, ref_id, occurred_at)
-         SELECT $1, sa.id, $2, 'return_in', 2.000, 15000, 'void_refund', $3, NOW() FROM storage_areas sa WHERE sa.location_id = $1 LIMIT 1`,
-          [fixtures.outletId, fixtures.itemId, saleId],
+         SELECT $1, sa.id, $2, 'return_in', 2.000, 15000, 'void_refund', $3, NOW()
+           FROM storage_areas sa WHERE sa.location_id = $1 ORDER BY sa.code LIMIT 1`,
+          [outletId, fixtures.itemId, saleId],
         );
 
         await postingEngine.postForEvent(client, {
@@ -613,7 +626,7 @@ describe('M17 accounting — live DB integration', () => {
             eventType: 'sale_void_reversal',
             documentType: 'void_refund',
             documentId: saleId,
-            locationId: fixtures.outletId,
+            locationId: outletId,
             amount: '80000.00',
             context: { saleId, type: 'void' },
             occurredAt: new Date().toISOString(),

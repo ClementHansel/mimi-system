@@ -16,7 +16,7 @@
  * `returns.direction` itself), plus a real `ERR_APPROVAL_STEP_ROLE` pin
  * showing a Supervisor cannot approve the supplier leg.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ERR_NOT_FOUND,
   ERR_PHOTO_REQUIRED,
@@ -175,6 +175,22 @@ describe('Waste & Return — live database', () => {
 
   beforeAll(async () => {
     fx = await loadFixtures();
+  });
+
+  // Stock is bootstrapped per TEST, not once per file.
+  //
+  // `ensureStock` writes `stock_balances` directly with no matching
+  // `stock_movements` row (a documented test-bootstrap exception to D-07), and
+  // this file's own `afterEach` cleanup calls `reconcileStockBalance`, which
+  // resets the balance to the FOLD of remaining movements — deleting the
+  // bootstrap along with the test's own rows. So with a single `beforeAll`
+  // bootstrap, only the FIRST test in the file actually had stock; every later
+  // one posted against the seed's fold and failed with
+  // `StockInsufficientError` the moment that fold was below the quantity under
+  // test. It looked like cross-file interference (and was masked for a while
+  // by files racing in the parallel project, which sometimes left extra
+  // balance lying around) — but the file was undermining itself.
+  beforeEach(async () => {
     await ensureStock(fx.outletId, fx.storageAreaOutlet, fx.itemId, '100.000');
     await ensureStock(fx.warehouseId, fx.storageAreaWarehouse, fx.itemId, '100.000');
     await ensureStock(fx.outletId, fx.storageAreaOutlet, fx.itemId2, '100.000');

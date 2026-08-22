@@ -38,7 +38,7 @@
  * `amount` from the event payload) — there is nothing for a separate
  * connection to fail to see.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoleKey, WasteReason } from '@mimi/shared';
 import { Pool } from 'pg';
 
@@ -156,6 +156,22 @@ describe.skipIf(!process.env.DATABASE_URL)(
 
     beforeAll(async () => {
       fx = await loadFixtures();
+    });
+
+    // Stock is bootstrapped per TEST, not once per file.
+    //
+    // `ensureStock` writes `stock_balances` directly with no matching
+    // `stock_movements` row (a documented test-bootstrap exception to D-07), and
+    // this file's own `afterEach` cleanup calls `reconcileStockBalance`, which
+    // resets the balance to the FOLD of remaining movements — deleting the
+    // bootstrap along with the test's own rows. So with a single `beforeAll`
+    // bootstrap, only the FIRST test in the file actually had stock; every later
+    // one posted against the seed's fold and failed with
+    // `StockInsufficientError` the moment that fold was below the quantity under
+    // test. It looked like cross-file interference (and was masked for a while
+    // by files racing in the parallel project, which sometimes left extra
+    // balance lying around) — but the file was undermining itself.
+    beforeEach(async () => {
       await ensureStock(fx.warehouseId, fx.storageAreaWarehouse, fx.itemId, '50.000');
     });
 

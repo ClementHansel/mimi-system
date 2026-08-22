@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthLockoutModule } from '../../kernel/auth-lockout/auth-lockout.module';
 import { SyncEngineModule } from '../../kernel/sync/sync.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -9,7 +10,10 @@ import { OfflineCredentialMintService } from './offline-credential-mint.service'
  * M01 `auth` — owned by Wave 3, agent W3-01 (senior-be).
  *
  * Login, JWT issuance (via `common/jwt`'s `TokenService`), refresh, PIN
- * set/verify, offline credential minting (D-17). CONTRACTS.md §4.1.
+ * SET (D-17 offline credentials), and — since B-15 — the lockout unlock path.
+ * PIN *verification* is gone: `POST /auth/pin/verify` was the oracle, and the
+ * flow it served now runs on one-time approval codes in `kernel/approvals`.
+ * CONTRACTS.md §4.1.
  *
  * Imports `SyncEngineModule` (kernel/sync, W2-D) for `SyncEmitService`
  * (collision rule 6 — every mutation emits a sync event) and, read-only, for
@@ -18,7 +22,7 @@ import { OfflineCredentialMintService } from './offline-credential-mint.service'
  * documented consumer.
  */
 @Module({
-  imports: [SyncEngineModule],
+  imports: [SyncEngineModule, AuthLockoutModule],
   controllers: [AuthController],
   providers: [AuthService, AuthRepository, OfflineCredentialMintService],
 })

@@ -281,4 +281,58 @@ export class AuthRepository {
       [userId],
     );
   }
+  /**
+   * B-17 — the role key of an arbitrary user, for the rank comparison that
+   * governs who may unlock whose credential.
+   *
+   * `users_select`'s RLS is central-or-self, so this succeeds for the head
+   * office callers this is written for and returns nothing for anyone else —
+   * which fails closed, since a missing role is treated as rank 0 by the caller
+   * only after an explicit not-found refusal.
+   */
+  async findRoleKeyByUserId(client: PoolClient, userId: UUID): Promise<string | null> {
+    const res = await client.query<{ role_key: string }>(
+      `SELECT r.key AS role_key FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = $1`,
+      [userId],
+    );
+    return res.rows[0]?.role_key ?? null;
+  }
+
+  /**
+   * B-17 — the two columns needed to mint an offline unlock code, read through
+   * `app_offline_credential_for_verification` (migration 206).
+   *
+   * NOT a plain `SELECT` on `offline_credentials`: that table's RLS is
+   * `app_is_self(user_id)` with no central arm, so head office querying a
+   * supervisor's credential directly gets zero rows — silently, which is worse
+   * than an error. The SECURITY DEFINER function is the sanctioned path, and it
+   * deliberately cannot return `pin_verifier`, so this feature can never hand a
+   * central role a crackable PIN hash. See migration 206's header, which made
+   * that argument first.
+   *
+   * `revoked_at` comes back so the CALLER can refuse a revoked credential —
+   * unlocking one that head office already killed would resurrect exactly the
+   * authorization someone deliberately revoked.
+   */
+  async findCredentialForUnlock(
+    client: PoolClient,
+    credentialId: string,
+  ): Promise<{ userId: string; bindingSecretEnc: Buffer; revokedAt: Date | null } | null> {
+    const res = await client.query<{
+      user_id: string;
+      binding_secret_enc: Buffer;
+      revoked_at: Date | null;
+    }>(
+      `SELECT user_id, binding_secret_enc, revoked_at
+         FROM app_offline_credential_for_verification($1)`,
+      [credentialId],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    return {
+      userId: row.user_id,
+      bindingSecretEnc: row.binding_secret_enc,
+      revokedAt: row.revoked_at,
+    };
+  }
 }

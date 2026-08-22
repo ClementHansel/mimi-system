@@ -1,7 +1,8 @@
-import { ForbiddenException, NotImplementedException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import type { Response } from 'express';
 import { can, ERR_FORBIDDEN, RoleKey } from '@mimi/shared';
 import { writeCsv } from './csv-writer.util';
+import { writeXlsx } from './xlsx-writer.util';
 
 export type ReportFormat = 'json' | 'csv' | 'xlsx';
 
@@ -33,7 +34,17 @@ export interface CsvShape<T> {
   toRow: (row: T) => readonly (string | number | boolean | null | undefined)[];
 }
 
-/** Shared by both send functions below — the xlsx-501 and csv-attachment paths are identical either way. */
+/**
+ * Shared by both send functions below — csv and xlsx render the SAME rows
+ * through the same `CsvShape`, so the two formats can never disagree about
+ * what a report contains.
+ *
+ * D-22b (fixed 2026-08-23): `xlsx` used to throw 501 here on all ten report
+ * endpoints, while CONTRACTS §4.19 advertised it. `xlsx-writer.util.ts` is a
+ * dependency-free writer built on Node's own `zlib`; see its header for why
+ * that beat adding `exceljs` for this particular job, and for the limits it
+ * accepts in exchange.
+ */
 function sendNonJson<T>(
   res: Response,
   format: ReportFormat,
@@ -42,11 +53,21 @@ function sendNonJson<T>(
   csv: CsvShape<T>,
 ): void {
   if (format === 'xlsx') {
-    throw new NotImplementedException({
-      message:
-        'xlsx generation requires adding an npm dependency (exceljs or xlsx) — neither is present in this workspace. ' +
-        'This is a blocker pending an architect decision; use format=csv in the meantime.',
-    });
+    const book = writeXlsx(
+      csv.header,
+      rows.map((r) => csv.toRow(r)),
+      filenameBase,
+    );
+    res.status(200);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filenameBase}.xlsx"`);
+    // `res.send` on a Buffer writes it verbatim; `Content-Length` comes from
+    // the Buffer's own length, so no chunked-encoding surprise for Excel.
+    res.send(book);
+    return;
   }
   // format === 'csv' — direct file-stream attachment (never the `{url}`-via-StorageService
   // option CONTRACTS.md also allows): keeps every export endpoint's behavior identical and

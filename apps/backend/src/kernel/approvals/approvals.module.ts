@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
+import { AuthLockoutModule } from '../auth-lockout/auth-lockout.module';
 import { NotificationModule } from '../notification/notification.module';
+import { ApprovalCodeRepository } from './approval-code.repository';
+import { ApprovalCodeService } from './approval-code.service';
 import { ApprovalsController } from './approvals.controller';
 import { ApprovalsRepository } from './approvals.repository';
 import { ApprovalService } from './approvals.service';
@@ -32,10 +35,18 @@ import { ApprovalService } from './approvals.service';
  * `ApprovalsModule` and `NotificationModule` side by side for its own
  * `payroll_slip` notify call.
  */
+/**
+ * `ApprovalCodeService` (B-15) is exported alongside `ApprovalService` because
+ * the domain module that owns a document is the one that must REDEEM its code —
+ * `PosVoidRefundService` calls `redeem()` immediately before `approve()`, in the
+ * same transaction, so a code cannot be spent without the decision it authorises
+ * also committing. `AuthLockoutModule` comes in for the attempt limiter that
+ * redemption enforces.
+ */
 @Module({
-  imports: [NotificationModule],
+  imports: [NotificationModule, AuthLockoutModule],
   controllers: [ApprovalsController],
-  providers: [ApprovalsRepository, ApprovalService],
-  exports: [ApprovalService],
+  providers: [ApprovalsRepository, ApprovalService, ApprovalCodeRepository, ApprovalCodeService],
+  exports: [ApprovalService, ApprovalCodeService],
 })
 export class ApprovalsModule {}

@@ -5,6 +5,8 @@
  */
 export { ApprovalsModule } from './approvals.module';
 export { ApprovalService } from './approvals.service';
+export { ApprovalCodeService } from './approval-code.service';
+export type { IssuedCode, RedeemedCode } from './approval-code.service';
 export type {
   ApprovalDetailRow,
   ApprovalStepDetailRow,

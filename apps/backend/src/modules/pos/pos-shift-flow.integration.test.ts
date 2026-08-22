@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  ApprovalDocumentType,
   businessDateOf,
   OnlinePlatform,
   OnlineOrderStatus,
@@ -18,6 +19,8 @@ import { PosOnlineOrderService } from './services/pos-online-order.service';
 import { PosCashVarianceService } from './services/pos-cash-variance.service';
 import { PosDailyStockService } from './services/pos-daily-stock.service';
 import {
+  buildApprovalCodeService,
+  clearAuthLockouts,
   buildApprovalService,
   buildEventBus,
   buildNotificationService,
@@ -57,9 +60,11 @@ function services(pool = getAppPool(), eventBus = buildEventBus()) {
     catalog: new PosCatalogService(),
     shifts: new PosShiftService(pool, approvals, notifications),
     sales: new PosSaleService(pool, stockLedger, buildPaymentVerificationsService(pool)),
+    approvalCodes: buildApprovalCodeService(pool),
     voidRefunds: new PosVoidRefundService(
       pool,
       approvals,
+      buildApprovalCodeService(pool),
       stockLedger,
       syncEmit,
       notifications,
@@ -74,10 +79,13 @@ function services(pool = getAppPool(), eventBus = buildEventBus()) {
 let fx: OutletFixture;
 
 beforeAll(async () => {
+  // B-15 — a wrong code commits a lockout row that outlives every rollback.
+  await clearAuthLockouts();
   fx = await loadOutletFixture();
 }, 30_000);
 
 afterAll(async () => {
+  await clearAuthLockouts();
   await closePool();
 });
 
@@ -204,30 +212,37 @@ describe('POS — full shift, live database', () => {
         });
         expect(requested.status).toBe('pending');
 
-        // The approval is a SEPARATE real actor (Supervisor) — in production this is a second HTTP
+        // The AUTHORIZATION is a separate real actor (Supervisor) — in production a second HTTP
         // request with its own `RlsContextGuard` pass; `switchActor` simulates that on this same
         // transaction so the test still sees the Kasir's just-written request (see that helper's
-        // header). `verifyPin`'s `users_select` RLS read (`app_is_self(id)`) is exactly why this
-        // matters: staying "as Kasir" would make the Supervisor's own PIN row invisible.
+        // header).
+        //
+        // B-15: the supervisor no longer approves at the till. They ISSUE a one-time code from
+        // their own session, and the kasir redeems it — so the session that commits the decision
+        // is the KASIR's, while the decision itself is recorded against the supervisor.
         await switchActor(client, {
           userId: fx.supervisorId,
           roleKey: 'supervisor',
           locationIds: [fx.locationId],
         });
-        const approved = await svc.voidRefunds.approve(
-          client,
-          requested.voidRefundId,
-          fx.supervisorId,
-          RoleKey.SUPERVISOR,
-          fx.supervisorPin,
-        );
-        expect(approved.status).toBe('approved');
-        expect(approved.offlineAuthorized).toBe(false);
+        const issued = await svc.approvalCodes.issue(client, {
+          documentType: ApprovalDocumentType.VOID_REFUND,
+          documentId: requested.voidRefundId,
+          approver: { userId: fx.supervisorId, roleKey: RoleKey.SUPERVISOR },
+        });
         await switchActor(client, {
           userId: fx.kasirId,
           roleKey: 'kasir',
           locationIds: [fx.locationId],
         });
+        const approved = await svc.voidRefunds.approve(
+          client,
+          requested.voidRefundId,
+          fx.kasirId,
+          issued.code,
+        );
+        expect(approved.status).toBe('approved');
+        expect(approved.offlineAuthorized).toBe(false);
 
         const voidedSale = await svc.sales.getById(client, cashSale.id);
         expect(voidedSale.status).toBe(SaleStatus.VOIDED);

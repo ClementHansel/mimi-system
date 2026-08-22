@@ -114,3 +114,71 @@ jobs:
             docker compose -p mimi logs --tail 40 frontend backend
             exit 1
           REMOTE
+
+  # ── B-9: the e2e suite finally runs somewhere other than a laptop ──────────
+  #
+  # It runs AFTER the deploy, against the box that was just deployed, and it
+  # cannot "fail the deploy" — the stack is already live by the time this
+  # starts. What it can do is fail the RUN, loudly and on the commit that
+  # caused it, which is the honest shape for a post-deploy check. Rolling back
+  # automatically was considered and rejected: this stack has one shared
+  # database and no blue/green, so an automatic rollback would be a second
+  # unattended change on top of a bad one.
+  #
+  # SCOPE — a smoke subset, not all 41 specs. `hub` and `session-recovery`
+  # between them cover the two failures that have actually reached the deployed
+  # box: a blank white page from a half-valid session, and the hub rendering
+  # the wrong surfaces for a role. `print` is included because both printable
+  # documents are reached through real buttons and it is the cheapest proof
+  # that an authenticated non-trivial page still renders. The heavier journeys
+  # stay a manual `pnpm e2e` run: several mutate demo data, and a suite that
+  # quietly rewrites the demo box on every push is worse than one nobody runs.
+  e2e-smoke:
+    name: Post-deploy e2e smoke
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Chromium only. Both Playwright projects (`desktop` = Desktop Chrome,
+      # `mobile` = Pixel 7) are Chromium-based, so nothing else is ever
+      # launched, and installing three browsers to use one costs minutes of CI
+      # time on every deploy.
+      - name: Install Playwright Chromium
+        run: pnpm --filter @mimi/e2e exec playwright install --with-deps chromium
+
+      - name: Smoke the deployed box
+        env:
+          # Same public URL the owner uses. Kept in a secret rather than
+          # hardcoded so moving the box (or finally getting a domain — B-14)
+          # does not need a workflow edit.
+          E2E_BASE_URL: ${{ secrets.VPS_PUBLIC_URL }}
+        run: |
+          if [ -z "${E2E_BASE_URL:-}" ]; then
+            echo "::error::VPS_PUBLIC_URL secret is not set — the smoke would" \
+                 "silently run against localhost and pass with nothing served."
+            exit 1
+          fi
+          pnpm --filter @mimi/e2e exec playwright test \
+            tests/hub.spec.ts tests/session-recovery.spec.ts tests/print.spec.ts
+
+      - name: Upload the report when it fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-smoke-report
+          path: e2e/playwright-report
+          retention-days: 7

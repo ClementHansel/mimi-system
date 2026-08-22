@@ -808,11 +808,21 @@ export class ApprovalService {
    * WA reply must never approve anything. `documentType`+`documentId` is
    * exactly what `GET /api/approvals/:documentType/:documentId`
    * (`approvals.controller.ts`) already keys its own detail read on, so the
-   * frontend route this points at is assumed to mirror that same shape
-   * (`/approvals/:documentType/:documentId`). No `FRONTEND-BFF-CONTRACT.md`
-   * exists in this repo to confirm the exact FE route name — flagged in the
-   * kernel report; FE should confirm or the path suffix here should be
-   * adjusted to match. `APP_WEB_BASE_URL` is read directly from `process.env`
+   * frontend route this points at mirrors that same shape
+   * (`/approvals/:documentType/:documentId`).
+   *
+   * B-13 CLOSED 2026-08-23: that route was ASSUMED when this was written and
+   * did not actually exist — every approval notification, WhatsApp included,
+   * carried a link that 404'd, which is worse than sending nothing. Both halves
+   * exist now (`app/approvals/[documentType]/[documentId]/page.tsx` for the
+   * link, `app/approvals/page.tsx` for the inbox `getPending()` feeds), and two
+   * tests stop them drifting apart: the shape is pinned below in
+   * `approvals.integration.spec.ts`, and the ROUTE'S EXISTENCE is pinned in
+   * `apps/frontend/src/app/approvals/deep-link-route.test.tsx` — a filesystem
+   * assertion, because the failure mode is a folder rename that no amount of
+   * rendering would catch.
+   *
+   * `APP_WEB_BASE_URL` is read directly from `process.env`
    * (not via `ConfigService`) so this stays a same-shaped optional add rather
    * than a third constructor dependency every bare `new ApprovalService(...)`
    * call site would also need to tolerate.

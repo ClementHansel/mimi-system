@@ -15,15 +15,15 @@
  *   central-role-bypass primitive every system-context caller in this
  *   codebase now shares (read-only import; that file is W1-D's, not
  *   modified here).
- * - `logout`, `me`, `setPin`, `verifyPin` (self-check path), and the
- *   offline-credential endpoints run on the caller's own already-scoped
- *   `request.dbClient` like any other authenticated endpoint.
- * - `verifyPin`'s cross-user case (a kasir submitting a SUPERVISOR's userId
- *   + PIN, FR-POS-03) needs to read a DIFFERENT user's `pin_hash` than the
- *   caller's own — `users_select`'s RLS (central role OR self) would block
- *   that under the caller's own context, so this one lookup also uses
- *   `withSystemContext` on a dedicated connection, matching the documented
- *   pattern.
+ * - `logout`, `me`, `setPin` and the offline-credential endpoints run on the
+ *   caller's own already-scoped `request.dbClient` like any other
+ *   authenticated endpoint.
+ * - There is no longer a cross-user PIN read of any kind. `verifyPin` used to
+ *   sit here and reach a DIFFERENT user's `pin_hash` through
+ *   `withSystemContext`, which was legitimate as plumbing and fatal as a
+ *   feature — it made the endpoint an unthrottled PIN oracle (B-15). It was
+ *   deleted rather than fixed; FR-POS-03's "a supervisor authorises at the
+ *   till" now runs on one-time approval codes in `kernel/approvals`.
  */
 import {
   BadRequestException,
@@ -34,39 +34,42 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import { Pool, PoolClient } from 'pg';
 import { compare } from 'bcrypt';
 import { randomUUID } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import {
   can,
+  encodeUnlockCode,
   ERR_AUTH_INVALID_CREDENTIALS,
-  ERR_AUTH_PIN_INVALID,
   ERR_AUTH_TOKEN_INVALID,
   ERR_FORBIDDEN,
   ERR_NOT_FOUND,
   ERR_VALIDATION,
   permissionsForRole,
+  ROLE_RANK,
   SyncEntity,
+  unlockCodeMessage,
   type LoginRes,
   type Me,
   type OfflineCredentialRes,
   type RoleKey,
+  type UUID,
 } from '@mimi/shared';
 import { DATABASE_POOL } from '../../common/database/database-pool.provider';
 import { ScopeService } from '../../common/scope/scope.service';
 import { TokenService } from '../../common/jwt/token.service';
-import { accessSecret } from '../../common/jwt/jwt-secrets';
 import type { JwtAccessPayload, JwtRefreshPayload } from '../../common/jwt/jwt-payload.interface';
 import {
   assertSystemContext,
-  withSystemContext,
   SYSTEM_CENTRAL_ROLE,
+  withSystemContext,
 } from '../../common/database/system-context';
+import { decryptBindingSecret, encKeyFromConfig } from '../../kernel/sync/binding-crypto';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { AuthRepository } from './auth.repository';
 import { OfflineCredentialMintService } from './offline-credential-mint.service';
-import { hashPin, verifyPin as verifyPinHash } from './pin-hash.util';
+import { hashPin } from './pin-hash.util';
 import { parseDurationMs } from './duration.util';
 import { hashRefreshToken, verifyRefreshTokenHash } from './token-hash.util';
 import type {
@@ -74,8 +77,8 @@ import type {
   OfflineCredentialRefreshDto,
   RefreshDto,
   RevokeCredentialDto,
+  OfflineUnlockCodeDto,
   SetPinDto,
-  VerifyPinDto,
 } from './auth.dto';
 
 export interface RequestMeta {
@@ -84,12 +87,9 @@ export interface RequestMeta {
 }
 
 const REFRESH_DEFAULT_MS = 7 * 86_400_000;
-const VERIFIER_TOKEN_TTL = '5m';
 
 @Injectable()
 export class AuthService {
-  private readonly verifierJwt: JwtService;
-
   constructor(
     private readonly repo: AuthRepository,
     private readonly mintService: OfflineCredentialMintService,
@@ -98,12 +98,7 @@ export class AuthService {
     private readonly syncEmit: SyncEmitService,
     private readonly config: ConfigService,
     @Inject(DATABASE_POOL) private readonly pool: Pool,
-  ) {
-    this.verifierJwt = new JwtService({
-      secret: accessSecret(config),
-      signOptions: { expiresIn: VERIFIER_TOKEN_TTL },
-    });
-  }
+  ) {}
 
   // ── login ────────────────────────────────────────────────────────────────
 
@@ -371,53 +366,117 @@ export class AuthService {
   }
 
   /**
-   * NOT a `request.dbClient` case despite running behind `JwtAuthGuard` +
-   * `RlsContextGuard` (this route is `(any)`, not `@Public()`) — deliberately
-   * re-examined per the coordinator's cross-module RLS-defect sweep (a
-   * service silently querying an unprivileged `this.pool` connection instead
-   * of the guard-scoped one, as happened in the supplier module).
+   * `verifyPin` USED TO LIVE HERE, and its deletion is the fix for B-15.
    *
-   * `context: 'pos_override'` (FR-POS-03) is a genuine CROSS-USER read: the
-   * CALLER is a kasir's authenticated session, but `dto.userId` names a
-   * DIFFERENT person (the supervisor physically present at the register) —
-   * the caller's own `request.dbClient` is scoped to the CALLER's identity
-   * (`users_select` RLS: central role OR `app_is_self(id)`), and a kasir is
-   * neither central nor the supervisor, so their own dbClient would read
-   * ZERO rows for `dto.userId` — not an error, just silently wrong, which is
-   * worse than the supplier bug because it wouldn't even throw. This is
-   * exactly the kind of legitimate escalation `common/database/system
-   * -context.ts` exists for (the SAME central-role bypass an Owner already
-   * has, asserted transactionally, never touching the caller's own
-   * connection) — reused here via `withSystemContext` rather than the
-   * hand-rolled BEGIN/COMMIT `login`/`refresh` need (those also thread a
-   * SECOND phase re-scoping to a newly-verified identity; this is a single
-   * bypassed read with no further phase, which is exactly what
-   * `withSystemContext` is for).
+   * It accepted an arbitrary `userId`, read that user under a central RLS
+   * bypass, and returned whether a submitted 6-digit PIN was correct — with no
+   * rate limit, no lockout and no audit row. Any authenticated caller could
+   * brute-force any other account's PIN, and because `offline_credentials
+   * .pin_verifier` is minted from the same `users.pin_hash`, what leaked was
+   * the credential that authorises voids and discounts on an offline tablet.
+   *
+   * The owner's decision (Q0=C / Q8, 2026-08-22) was not to rate-limit it but
+   * to remove the standing secret it exposed. Its job — "let the till prove a
+   * supervisor authorised this" — is now done by
+   * `POST /api/approvals/:documentType/:documentId/code`: the approver
+   * authorises from their own session and gets a ONE-TIME code, single-use,
+   * bound to one document, valid five minutes, with the caller (never the
+   * approver) locked out after five wrong tries. See
+   * `kernel/approvals/approval-code.service.ts`.
+   *
+   * Nothing consumed the `pin_verified` token this used to mint, so nothing
+   * broke by deleting it. Do not reintroduce a "check this user's PIN"
+   * endpoint: there is no shape of it that is not an oracle.
    */
-  async verifyPin(
-    dto: VerifyPinDto,
-  ): Promise<{ ok: true; verifierToken: string; expiresAt: string }> {
-    await withSystemContext(this.pool, { role: SYSTEM_CENTRAL_ROLE }, async (client) => {
-      const target = await this.repo.findUserAuthById(client, dto.userId);
-      if (!target || !target.is_active || !target.pin_hash) {
-        throw new UnauthorizedException({ code: ERR_AUTH_PIN_INVALID, message: 'Invalid PIN' });
-      }
-      const ok = await verifyPinHash(dto.pin, target.pin_hash);
-      if (!ok) {
-        throw new UnauthorizedException({ code: ERR_AUTH_PIN_INVALID, message: 'Invalid PIN' });
-      }
-    });
-
-    const verifierToken = this.verifierJwt.sign({
-      sub: dto.userId,
-      context: dto.context,
-      purpose: 'pin_verified',
-    });
-    const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
-    return { ok: true, verifierToken, expiresAt };
-  }
 
   // ── offline credential lifecycle (D-17) ─────────────────────────────────
+
+  /**
+   * B-17 — mints the code that unlocks a credential a tablet has locked out,
+   * for a supervisor who is standing in an outlet with no internet.
+   *
+   * ## Why this exists at all
+   *
+   * Five wrong PINs on a device locks the cached credential. Online that is
+   * recoverable by re-issuing the credential; OFFLINE it used to mean that
+   * supervisor could not authorise anything for the rest of the outage — during
+   * exactly the conditions offline-first exists for. The recovery channel is the
+   * one an isolated outlet still has: a phone call to head office.
+   *
+   * The tablet shows a 6-digit challenge, someone here types it in, and the
+   * 8-character answer this returns is read back down the line. The device
+   * verifies it against the binding secret it already holds, with no
+   * connectivity at any point.
+   *
+   * ## What actually authorises the caller
+   *
+   * `auth.lockout.clear` gets them to this method. What decides it is the same
+   * rule as the online unlock (owner Q6): the caller must STRICTLY outrank the
+   * credential's owner by `ROLE_RANK`. A supervisor frees a kasir; nobody frees
+   * a peer. The owner's role is read from the database, never taken from the
+   * request, because a caller-supplied role would make the check bypassable by
+   * the one person it constrains.
+   *
+   * ## What this deliberately cannot reach
+   *
+   * `findCredentialForUnlock` goes through migration 206's SECURITY DEFINER
+   * function, which returns `user_id` and `binding_secret_enc` and CANNOT return
+   * `pin_verifier`. So the offline recovery path never gives a central role an
+   * argon2id hash of somebody's PIN — which would have been a step back toward
+   * B-15, the blocker this work just closed.
+   */
+  async issueOfflineUnlockCode(
+    credentialId: UUID,
+    dto: OfflineUnlockCodeDto,
+    caller: JwtAccessPayload,
+    client: PoolClient,
+  ): Promise<{ code: string; credentialId: UUID }> {
+    const cred = await this.repo.findCredentialForUnlock(client, credentialId);
+    if (!cred) {
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Credential not found' });
+    }
+    if (cred.revokedAt) {
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message: 'This credential was revoked. Issue a new one instead of unlocking it.',
+      });
+    }
+
+    // The owner's role goes through a SYSTEM context, not the caller's client.
+    // `users_select` is central-or-self, so a SUPERVISOR unlocking a KASIR — the
+    // primary case this feature exists for — reads zero rows on their own
+    // connection and the whole thing fails with a misleading "owner not found".
+    // Caught by the test below that asserts a supervisor CAN unlock a kasir; the
+    // rank check itself is unchanged and still decides the outcome.
+    const ownerRole = await withSystemContext(
+      this.pool,
+      { role: SYSTEM_CENTRAL_ROLE },
+      (systemClient) => this.repo.findRoleKeyByUserId(systemClient, cred.userId as UUID),
+    );
+    if (!ownerRole) {
+      throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Credential owner not found' });
+    }
+    const callerRank = ROLE_RANK[caller.roleKey as RoleKey] ?? 0;
+    const ownerRank = ROLE_RANK[ownerRole as RoleKey] ?? 0;
+    if (callerRank <= ownerRank) {
+      throw new ForbiddenException({
+        code: ERR_FORBIDDEN,
+        message:
+          'Only someone of higher authority than the credential holder may unlock it. Escalate to a manager.',
+      });
+    }
+
+    const k = decryptBindingSecret(cred.bindingSecretEnc, encKeyFromConfig(this.config));
+    // The message and the encoding come from `@mimi/shared` so the device
+    // derives the identical code. Defining either of them twice is how the
+    // §7.3 binding HMAC ended up with two different joiner characters and broke
+    // every offline approval silently — see that fixture's header.
+    const hex = createHmac('sha256', k)
+      .update(unlockCodeMessage(credentialId, dto.challenge), 'utf8')
+      .digest('hex');
+
+    return { code: encodeUnlockCode(hex), credentialId };
+  }
 
   async refreshOfflineCredential(
     dto: OfflineCredentialRefreshDto,

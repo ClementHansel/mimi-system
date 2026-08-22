@@ -42,7 +42,14 @@ import type {
   OfflineCredentialClaims,
   PinAttemptState,
 } from '../types';
-import { PIN_MAX_ATTEMPTS } from '../constants';
+import { PIN_BACKOFF_MS_BY_FAILURE_COUNT, PIN_MAX_ATTEMPTS } from '../constants';
+import {
+  UNLOCK_CHALLENGE_LENGTH,
+  UNLOCK_MAX_ATTEMPTS,
+  encodeUnlockCode,
+  unlockCodeMatches,
+  unlockCodeMessage,
+} from '@mimi/shared';
 import { evaluateExpiryProvability, type ExpiryProvability } from '../clock/clock';
 import type { PinVerifier } from './pin-verifier';
 import { noopSignatureVerifier, type SignatureVerifier } from './signature-verifier';
@@ -145,9 +152,14 @@ export async function cacheCredential(
     cachedAt: new Date().toISOString(),
   };
   await db.store<CachedCredentialRecord>('credentials').put(record);
-  await db
-    .store<PinAttemptState>('pin_attempts')
-    .put({ credentialId: res.credentialId, failedAttempts: 0, lockedOut: false });
+  await db.store<PinAttemptState>('pin_attempts').put({
+    credentialId: res.credentialId,
+    failedAttempts: 0,
+    lockedOut: false,
+    lockedUntil: undefined,
+    unlockChallenge: undefined,
+    unlockAttempts: undefined,
+  });
   return { cached: true };
 }
 
@@ -169,6 +181,144 @@ export async function isRevoked(db: LocalDatabase, credentialId: UUID): Promise<
 export async function isLockedOut(db: LocalDatabase, credentialId: UUID): Promise<boolean> {
   const state = await db.store<PinAttemptState>('pin_attempts').get(credentialId);
   return state?.lockedOut ?? false;
+}
+
+/**
+ * B-17 — milliseconds left on the soft cooldown, or 0 if the credential can be
+ * tried right now.
+ *
+ * Reads the device clock, which an operator can move. That is accepted rather
+ * than defended: the cooldown is a speed bump against fat fingers and casual
+ * guessing, and anyone able to change the tablet's clock already has the device
+ * in their hands, which is the threat `PIN_MAX_ATTEMPTS` — a terminal count, not
+ * a timer — is there for. The two are deliberately different kinds of limit.
+ */
+export async function remainingCooldownMs(
+  db: LocalDatabase,
+  credentialId: UUID,
+  nowIso: string = new Date().toISOString(),
+): Promise<number> {
+  const state = await db.store<PinAttemptState>('pin_attempts').get(credentialId);
+  if (!state?.lockedUntil) return 0;
+  const remaining = new Date(state.lockedUntil).getTime() - new Date(nowIso).getTime();
+  return remaining > 0 ? remaining : 0;
+}
+
+/**
+ * B-17 — the challenge to read to head office, or `null` if this credential is
+ * not terminally locked (in which case there is nothing to recover from).
+ */
+export async function getUnlockChallenge(
+  db: LocalDatabase,
+  credentialId: UUID,
+): Promise<{ challenge: string; attemptsLeft: number } | null> {
+  const state = await db.store<PinAttemptState>('pin_attempts').get(credentialId);
+  if (!state?.lockedOut || !state.unlockChallenge) return null;
+  return {
+    challenge: state.unlockChallenge,
+    attemptsLeft: Math.max(0, UNLOCK_MAX_ATTEMPTS - (state.unlockAttempts ?? 0)),
+  };
+}
+
+export type RedeemUnlockOutcome =
+  | { ok: true }
+  | { ok: false; reason: 'not_locked' | 'no_challenge' | 'invalid'; attemptsLeft: number }
+  | { ok: false; reason: 'attempts_exhausted'; attemptsLeft: 0 };
+
+/**
+ * B-17 — verifies an unlock code read over the phone and, if it is right,
+ * brings a terminally-locked credential back to life ON THE DEVICE, with no
+ * connectivity.
+ *
+ * The device can do this alone because it already holds `k`: head office
+ * computed `HMAC(k, unlock‖v1‖credentialId‖challenge)` from its own copy, and
+ * this recomputes the same thing. Both sides derive it through the SAME
+ * `@mimi/shared` helpers — the §7.3 binding HMAC was once defined twice, agreed
+ * in prose and disagreed in bytes, and broke every offline approval silently.
+ *
+ * Wrong codes are capped at `UNLOCK_MAX_ATTEMPTS`. That cap is enforced by code
+ * running on hardware the attacker may be holding, so it is the code's 40 bits
+ * of entropy doing the real work; the cap is there to stop casual grinding and
+ * to make the terminal state honest rather than infinite.
+ */
+export async function redeemUnlockCode(
+  db: LocalDatabase,
+  credentialId: UUID,
+  submittedCode: string,
+): Promise<RedeemUnlockOutcome> {
+  const attemptsStore = db.store<PinAttemptState>('pin_attempts');
+  const state = await attemptsStore.get(credentialId);
+  if (!state?.lockedOut) return { ok: false, reason: 'not_locked', attemptsLeft: 0 };
+  if (!state.unlockChallenge) return { ok: false, reason: 'no_challenge', attemptsLeft: 0 };
+
+  const used = state.unlockAttempts ?? 0;
+  if (used >= UNLOCK_MAX_ATTEMPTS) {
+    return { ok: false, reason: 'attempts_exhausted', attemptsLeft: 0 };
+  }
+
+  const cached = await db.store<CachedCredentialRecord>('credentials').get(credentialId);
+  if (!cached) return { ok: false, reason: 'no_challenge', attemptsLeft: 0 };
+
+  const expected = encodeUnlockCode(
+    await hmacSha256Hex(cached.claims.k, unlockCodeMessage(credentialId, state.unlockChallenge)),
+  );
+
+  if (!unlockCodeMatches(expected, submittedCode)) {
+    const unlockAttempts = used + 1;
+    await attemptsStore.put({ ...state, unlockAttempts });
+    const attemptsLeft = Math.max(0, UNLOCK_MAX_ATTEMPTS - unlockAttempts);
+    return attemptsLeft === 0
+      ? { ok: false, reason: 'attempts_exhausted', attemptsLeft: 0 }
+      : { ok: false, reason: 'invalid', attemptsLeft };
+  }
+
+  // Back to a clean slate — including `failedAttempts`, because leaving the PIN
+  // counter at 5 would send the credential straight back into a terminal lock on
+  // the next mistyped digit, which is not what "unlocked" means to the person
+  // who just spent a phone call getting here.
+  await attemptsStore.put({
+    credentialId,
+    failedAttempts: 0,
+    lockedOut: false,
+    lockedUntil: undefined,
+    unlockChallenge: undefined,
+    unlockAttempts: undefined,
+  });
+  return { ok: true };
+}
+
+/**
+ * Six digits from a CSPRNG. `crypto.getRandomValues` and never `Math.random()`:
+ * a predictable challenge would let anyone who knows `k`'s message format
+ * precompute codes, and — unlike `crypto.subtle` — `getRandomValues` is
+ * available on an insecure origin, which the demo box still is (B-14).
+ */
+function generateUnlockChallenge(): string {
+  const max = 10 ** UNLOCK_CHALLENGE_LENGTH;
+  const buf = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(buf);
+  // Rejection-free modulo bias is not worth chasing for a non-secret nonce, but
+  // the value is still drawn from a CSPRNG so it cannot be guessed ahead.
+  return String(buf[0]! % max).padStart(UNLOCK_CHALLENGE_LENGTH, '0');
+}
+
+/** Shared HMAC path with `computeBindingHmac`, kept in one place so both use the same Web Crypto call. */
+async function hmacSha256Hex(kBase64: string, message: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error('Web Crypto SubtleCrypto is unavailable in this environment');
+  const key = await subtle.importKey(
+    'raw',
+    base64ToBytes(kBase64) as unknown as BufferSource,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const sig = await subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(message) as unknown as BufferSource,
+  );
+  return bytesToHex(new Uint8Array(sig));
 }
 
 /** Display-safe summary of a cached credential — everything a Wave 4 approval UI needs to LIST which supervisors have a usable offline credential on this device, without exposing the binding secret `k` or the raw token. */
@@ -228,9 +378,19 @@ export type AuthorizeOfflineOutcome =
   | { ok: true; meta: OfflineAuthorizationMeta }
   | {
       ok: false;
+      /** Only on `cooling_down` — how long until this credential can be tried again. */
+      retryAfterSeconds?: number;
       reason:
         | 'revoked'
         | 'locked_out'
+        /**
+         * B-17 — the SOFT, self-clearing cooldown. Distinct from `locked_out`
+         * on purpose: one means "wait 30 seconds", the other means "this
+         * credential is dead until the device is online again", and telling a
+         * supervisor the second when the first is true would send them looking
+         * for connectivity they do not need.
+         */
+        | 'cooling_down'
         | 'expired'
         | 'scope_exceeded'
         | 'selfie_required'
@@ -256,6 +416,20 @@ export async function authorizeOffline(
 
   if (await isRevoked(db, input.credentialId)) return { ok: false, reason: 'revoked' };
   if (await isLockedOut(db, input.credentialId)) return { ok: false, reason: 'locked_out' };
+
+  // B-17 — the soft cooldown is checked BEFORE the PIN is verified, for the
+  // same reason the server checks its lock before reading the code row: an
+  // attempt that never reaches the verifier must not be able to tell you
+  // anything, and argon2id at m=64MiB is slow enough that letting a
+  // cooling-down caller run it is also a free way to hang the tablet.
+  const cooling = await remainingCooldownMs(db, input.credentialId, nowIso);
+  if (cooling > 0) {
+    return {
+      ok: false,
+      reason: 'cooling_down',
+      retryAfterSeconds: Math.ceil(cooling / 1000),
+    };
+  }
 
   const provability: ExpiryProvability = evaluateExpiryProvability(
     input.occurredAt,
@@ -292,7 +466,25 @@ export async function authorizeOffline(
   if (!valid) {
     const failedAttempts = attemptState.failedAttempts + 1;
     const lockedOut = failedAttempts >= PIN_MAX_ATTEMPTS;
-    await attemptsStore.put({ credentialId: input.credentialId, failedAttempts, lockedOut });
+    const backoffMs = PIN_BACKOFF_MS_BY_FAILURE_COUNT[failedAttempts];
+    // A terminal lock supersedes the cooldown rather than stacking with it —
+    // `lockedUntil` on a dead credential would imply it comes back on its own.
+    const lockedUntil =
+      !lockedOut && backoffMs
+        ? new Date(new Date(nowIso).getTime() + backoffMs).toISOString()
+        : undefined;
+    await attemptsStore.put({
+      credentialId: input.credentialId,
+      failedAttempts,
+      lockedOut,
+      lockedUntil,
+      // B-17 — the moment the credential goes terminal, mint the challenge the
+      // supervisor will read down the phone. Generated HERE rather than when
+      // the unlock screen opens, so it is stable for the whole call: a
+      // challenge that changed while head office was computing the answer would
+      // invalidate the code being read back.
+      ...(lockedOut ? { unlockChallenge: generateUnlockChallenge(), unlockAttempts: 0 } : {}),
+    });
     return { ok: false, reason: 'pin_invalid' };
   }
 
@@ -301,6 +493,9 @@ export async function authorizeOffline(
     credentialId: input.credentialId,
     failedAttempts: 0,
     lockedOut: false,
+    lockedUntil: undefined,
+    unlockChallenge: undefined,
+    unlockAttempts: undefined,
   });
 
   const binding = await computeBindingHmac(cached.claims.k, {

@@ -1528,7 +1528,12 @@ describe('ApprovalService × NotificationService — B-07 (live DB, real notify(
       const row = after[0]!;
       expect(row.type).toBe('approval_pending');
       expect(row.body).toContain(documentId);
-      expect(row.body).toContain('/approvals/replenishment_request/');
+      // B-13 — assert the WHOLE path, not the prefix and the id separately: a
+      // link ending at `/approvals/replenishment_request/` with the id loose
+      // somewhere else in the body would satisfy two separate `toContain`s and
+      // still 404. The route this must resolve to is pinned on the frontend
+      // side by `app/approvals/deep-link-route.test.tsx`.
+      expect(row.body).toContain(`/approvals/replenishment_request/${documentId}`);
     });
   });
 

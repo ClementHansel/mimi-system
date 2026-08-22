@@ -176,7 +176,40 @@ export interface CredentialRevocationRecord {
 export interface PinAttemptState {
   credentialId: UUID;
   failedAttempts: number;
+  /**
+   * TERMINAL. Reached at `PIN_MAX_ATTEMPTS`, and not self-clearing — the
+   * credential is dead on this device until it is re-issued online (B-17's
+   * offline recovery path is not built yet; see docs/PROGRESS.md).
+   */
   lockedOut: boolean;
+  /**
+   * B-17 — the SOFT, self-clearing cooldown that now precedes `lockedOut`
+   * (ISO timestamp, absent when not backing off).
+   *
+   * Mirrors the online ladder the owner accepted for B-15 Q5, and exists for
+   * the same reason: a mistyped digit is not an attack, and an outlet with no
+   * internet that burns its supervisor's credential on five fat-fingered
+   * attempts has no way back until connectivity returns. Backing off first
+   * recovers that case with no human process at all — which is the only kind
+   * of recovery available to a device in a dead zone.
+   */
+  lockedUntil?: ISODateTime;
+  /**
+   * B-17 — the 6-digit challenge this device generated when it locked the
+   * credential, read to head office over the phone. Present only while
+   * `lockedOut` is true.
+   *
+   * Generated ONCE per lock and kept, not regenerated per attempt: the
+   * supervisor is mid-phone-call, and a challenge that changed under them would
+   * invalidate the code being read back to them as they type it.
+   */
+  unlockChallenge?: string;
+  /**
+   * Wrong unlock codes entered against the CURRENT challenge. At
+   * `UNLOCK_MAX_ATTEMPTS` the credential is beyond offline recovery and waits
+   * for the device to come back online.
+   */
+  unlockAttempts?: number;
 }
 
 // ── §4.7 attachment side-channel ──────────────────────────────────────────────

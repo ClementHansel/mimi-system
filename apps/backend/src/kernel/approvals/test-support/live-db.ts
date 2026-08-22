@@ -72,7 +72,12 @@ let ownerPool: Pool | undefined;
 let appPool: Pool | undefined;
 
 /** Fixture setup/teardown ONLY — never construct `ApprovalService`/`ApprovalsRepository` against this pool. */
-function getOwnerPool(): Pool {
+/**
+ * Exported for B-15's lockout suite, which must read state COMMITTED by
+ * another connection (`recordFailure` deliberately owns its own transaction).
+ * Fixture-side only — never the code under test.
+ */
+export function getOwnerPool(): Pool {
   ownerPool ??= new Pool({ connectionString: OWNER_URL, max: 5 });
   return ownerPool;
 }

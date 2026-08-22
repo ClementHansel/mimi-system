@@ -181,21 +181,30 @@ export class PosController {
     return result;
   }
 
+  /**
+   * B-15 — redeems the one-time code the approver issued, and commits their
+   * decision.
+   *
+   * THE GUARD MOVED, AND THAT IS THE POINT: it was `pos.void.approve` (a key a
+   * kasir does not hold), which forced the supervisor to log in at the register
+   * and is why the unlimited `POST /auth/pin/verify` oracle existed as the
+   * workaround. It is now `pos.void.request` — the person AT THE TILL, who
+   * raised the void, is the one who types the code. Authority to approve is
+   * carried by the code itself and verified in `ApprovalCodeService.redeem`,
+   * which resolves the approver from the code row; it is never inferred from
+   * this session. Per owner Q2, gating on the till role (rather than binding to
+   * one named cashier) is deliberate: shifts get swapped and people call in
+   * sick, and any cashier on that branch must be able to finish the sale.
+   */
   @Post('void-refunds/:id/approve')
-  @RequirePermission('pos.void.approve')
+  @RequirePermission('pos.void.request')
   @Audited({ entityType: 'void_refund', action: 'pos.void.approve' })
   async approveVoid(
     @Req() req: RequestWithDbContext,
     @Param('id') id: UUID,
     @Body() dto: ApproveVoidDto,
   ): Promise<{ id: UUID; status: VoidRefundStatus; offlineAuthorized: boolean }> {
-    const result = await this.voidRefunds.approve(
-      req.dbClient!,
-      id,
-      req.user!.sub,
-      req.user!.roleKey as RoleKey,
-      dto.pin,
-    );
+    const result = await this.voidRefunds.approve(req.dbClient!, id, req.user!.sub, dto.code);
     await req.dbClient!.query('COMMIT');
     return result;
   }

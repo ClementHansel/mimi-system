@@ -58,23 +58,27 @@ export interface Item {
 
 // ── §4.0 approvals ───────────────────────────────────────────────────────────
 
-export interface ApprovalStep {
-  stepNo: number;
-  approverRole: string;
-  state: 'pending' | 'approved' | 'rejected' | 'skipped';
-  actedBy: string | null;
-  actedAt: ISODateTime | null;
-  reason: string | null;
-  offlineAuthorized: boolean;
-  reverificationStatus: 'verified' | 'failed' | 'unprovable' | null;
-}
+/**
+ * D-30 (fixed 2026-08-23) — these two shapes are now IMPORTED, not restated.
+ *
+ * This module used to declare its own `ApprovalDetail`/`ApprovalStep`, and the
+ * copy drifted exactly as duplicated contracts do: `currentStep` — the
+ * documented "chain complete" signal, added to `@mimi/shared` precisely so
+ * consumers would stop inferring completion by scanning `steps` for the first
+ * `pending` entry — was added to the shared type and never reached here. The
+ * fix landed in the contract and changed nothing, which is the whole lesson:
+ * adding to a shared type achieves nothing if nobody imports from it.
+ *
+ * `ApprovalStep` is kept as a local ALIAS of the canonical
+ * `ApprovalStepDetail` so the existing call sites in this module read
+ * unchanged; the alias is a name, not a second definition.
+ */
+import type { ApprovalDetail, ApprovalStepDetail as ApprovalStep } from '@/lib/shared-types';
 
-export interface ApprovalDetail {
-  approvalId: UUID;
-  state: string;
-  amount: Money | null;
-  steps: ApprovalStep[];
-}
+// Re-exported as well as imported: other files in this module import these two
+// names from here, and the local bindings above are what the shapes further
+// down this file refer to.
+export type { ApprovalDetail, ApprovalStep };
 
 // ── §4.8 stock-opname ────────────────────────────────────────────────────────
 

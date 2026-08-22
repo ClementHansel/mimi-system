@@ -1,18 +1,15 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
 import type { Pool, PoolClient } from 'pg';
 import { DATABASE_POOL } from '../../../common/database/database-pool.provider';
 import {
   ApprovalDocumentType,
-  ERR_AUTH_PIN_INVALID,
   ERR_CONFLICT,
   ERR_NOT_FOUND,
   ERR_VALIDATION,
@@ -27,6 +24,7 @@ import {
   type UUID,
   type VoidRefundType,
 } from '@mimi/shared';
+import { ApprovalCodeService } from '../../../kernel/approvals/approval-code.service';
 import { ApprovalService } from '../../../kernel/approvals/approvals.service';
 import { NotificationService } from '../../../kernel/notification/notification.service';
 import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.service';
@@ -81,6 +79,7 @@ export class PosVoidRefundService {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     private readonly approvals: ApprovalService,
+    private readonly approvalCodes: ApprovalCodeService,
     private readonly stockLedger: StockLedgerService,
     private readonly syncEmit: SyncEmitService,
     private readonly notifications: NotificationService,
@@ -170,14 +169,42 @@ export class PosVoidRefundService {
     return { voidRefundId: voidId, status: 'pending' };
   }
 
+  /**
+   * B-15 (owner Q0=C, Q8, 2026-08-22) — the ONLINE approval path, now driven by
+   * a one-time code instead of a standing PIN.
+   *
+   * WHAT CHANGED AND WHY IT LOOKS BACKWARDS: `redeemerUserId` is the person at
+   * the till (a kasir), and the decision is recorded against `approverUserId`,
+   * who is not the caller. That inversion is the feature. Before, this endpoint
+   * demanded the SUPERVISOR's own session plus their PIN, which meant the
+   * supervisor had to physically log in at the register — and the parallel
+   * `POST /auth/pin/verify` existed precisely to avoid that, verifying an
+   * arbitrary user's PIN from anyone's session with no limit (B-15). There were
+   * two PIN paths and the safer-looking one was the hole.
+   *
+   * Now there is one: the approver authorises from wherever they are
+   * (`POST /api/approvals/void_refund/:id/code`), and the code they relay is
+   * what proves it here. `redeem()` throws unless the code matches THIS
+   * document and THIS redeemer, so the kasir's session can commit the decision
+   * without ever holding the authority to make it.
+   *
+   * Redemption and decision share this transaction on purpose: a code must not
+   * be spendable unless the approval it authorises commits with it.
+   */
   async approve(
     client: PoolClient,
     voidId: UUID,
-    actorUserId: UUID,
-    actorRole: RoleKey,
-    pin: string,
+    redeemerUserId: UUID,
+    code: string,
   ): Promise<{ id: UUID; status: VoidRefundStatus; offlineAuthorized: boolean }> {
-    await this.verifyPin(client, actorUserId, pin);
+    const redeemed = await this.approvalCodes.redeem(client, {
+      documentType: ApprovalDocumentType.VOID_REFUND,
+      documentId: voidId,
+      code,
+      redeemerUserId,
+    });
+    const actorUserId = redeemed.approverUserId;
+    const actorRole = redeemed.approverRole;
 
     const row = await this.loadVoidRefund(client, voidId);
     if (row.status !== 'pending') {
@@ -467,24 +494,6 @@ export class PosVoidRefundService {
       context: { saleId: voidRow.sale_id, type: voidRow.type },
       occurredAt: new Date().toISOString(),
     });
-  }
-
-  private async verifyPin(client: PoolClient, actorUserId: UUID, pin: string): Promise<void> {
-    const res = await client.query<{ pin_hash: string | null }>(
-      `SELECT pin_hash FROM users WHERE id = $1`,
-      [actorUserId],
-    );
-    const hash = res.rows[0]?.pin_hash;
-    if (!hash) {
-      throw new ForbiddenException({
-        code: ERR_AUTH_PIN_INVALID,
-        message: 'This user has no PIN configured',
-      });
-    }
-    const ok = await bcrypt.compare(pin, hash);
-    if (!ok) {
-      throw new ForbiddenException({ code: ERR_AUTH_PIN_INVALID, message: 'Invalid PIN' });
-    }
   }
 
   private async loadSaleForVoid(client: PoolClient, saleId: UUID): Promise<SaleForVoid> {

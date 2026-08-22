@@ -40,6 +40,19 @@ const ERROR_CODES = {
   ERR_APPROVAL_STEP_ROLE: 'ERR_APPROVAL_STEP_ROLE',
   ERR_APPROVAL_INVALID_TRANSITION: 'ERR_APPROVAL_INVALID_TRANSITION',
   ERR_APPROVAL_ALREADY_DECIDED: 'ERR_APPROVAL_ALREADY_DECIDED',
+  /**
+   * B-15 one-time approval codes. `INVALID` covers both a wrong code and a
+   * code that exists but belongs to a different document or a different
+   * redeemer — deliberately one code, because distinguishing them for the
+   * caller is exactly the oracle this feature exists to remove.
+   */
+  ERR_APPROVAL_CODE_INVALID: 'ERR_APPROVAL_CODE_INVALID',
+  /** The code was right but its 5-minute window closed, or it was already used. */
+  ERR_APPROVAL_CODE_EXPIRED: 'ERR_APPROVAL_CODE_EXPIRED',
+  /** The CALLER (never the approver — Q4) has burned their attempts. */
+  ERR_APPROVAL_CODE_LOCKED: 'ERR_APPROVAL_CODE_LOCKED',
+  /** No live code to redeem: the approver has not authorised this document yet. */
+  ERR_APPROVAL_CODE_NOT_ISSUED: 'ERR_APPROVAL_CODE_NOT_ISSUED',
   /** C1 opname disputes block submit→approve. */
   ERR_DISPUTES_OPEN: 'ERR_DISPUTES_OPEN',
   /** Action attempted offline outside SYNC-PROTOCOL §7.6's closed list. */
@@ -147,6 +160,10 @@ export const {
   ERR_APPROVAL_STEP_ROLE,
   ERR_APPROVAL_INVALID_TRANSITION,
   ERR_APPROVAL_ALREADY_DECIDED,
+  ERR_APPROVAL_CODE_INVALID,
+  ERR_APPROVAL_CODE_EXPIRED,
+  ERR_APPROVAL_CODE_LOCKED,
+  ERR_APPROVAL_CODE_NOT_ISSUED,
   ERR_DISPUTES_OPEN,
   ERR_OFFLINE_NOT_ELIGIBLE,
   ERR_STOCK_INSUFFICIENT,

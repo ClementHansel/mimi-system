@@ -1,15 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import {
-  convertQty,
-  divQty,
-  ERR_NOT_FOUND,
-  isZeroQty,
-  SyncEntity,
-  ZERO_QTY,
-  type Qty,
-  type UUID,
-} from '@mimi/shared';
+import { explodeRecipeLines, ERR_NOT_FOUND, SyncEntity, type Qty, type UUID } from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { withWrite } from './db-tx';
 import { PutRecipeDto } from './dto/recipe.dto';
@@ -157,17 +148,19 @@ export class RecipeService {
    * shape.
    */
   static explodeForSale(recipe: Recipe, qtySold: Qty): UsageLine[] {
-    // A sale of zero consumes nothing, full stop — `convertQty`'s factor > 0
-    // guard (correct for a STORED `unit_conversions.factor`, which the DB
-    // CHECK constraint never allows to be zero) does not apply to this
-    // internal scaling ratio, which legitimately IS zero whenever qtySold is
-    // zero. Special-cased rather than relaxing `convertQty` itself — that
-    // function's zero-rejection is exactly right for its real callers.
-    if (isZeroQty(qtySold)) {
-      return recipe.lines.map((line) => ({ itemId: line.itemId, qty: ZERO_QTY }));
-    }
-    const ratio = divQty(qtySold, recipe.yieldQty, 6);
-    return recipe.lines.map((line) => ({ itemId: line.itemId, qty: convertQty(line.qty, ratio) }));
+    // The zero-sale special case (a sale of zero consumes nothing, which
+    // `convertQty`'s factor > 0 guard would otherwise reject) moved into the
+    // shared helper along with the rest of the formula — see its header.
+    //
+    // D-27 — the formula itself lives in `@mimi/shared`'s `explodeRecipeLines`.
+    // It used to be written out here AND again in `modules/pos`'s
+    // `recipe-usage.util`, and the two had already diverged: the POS copy
+    // dropped the yield division, mis-posting stock for every batch recipe.
+    // Both now call the same function, so a future change lands in one place.
+    return explodeRecipeLines(recipe.lines, qtySold, recipe.yieldQty).map(({ line, qty }) => ({
+      itemId: line.itemId,
+      qty,
+    }));
   }
 
   /** DB-backed convenience wrapper: loads the recipe then explodes it. */

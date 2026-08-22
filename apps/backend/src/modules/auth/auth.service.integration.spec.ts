@@ -294,51 +294,26 @@ describe('AuthService.refresh — live DB, token rotation', () => {
   });
 });
 
-describe('AuthService.verifyPin — live DB, cross-user read (FR-POS-03)', () => {
-  it("a kasir-initiated call verifying a DIFFERENT (supervisor) user's PIN succeeds when correct", async () => {
-    const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
-    const pinHash = await hashPin(TEST_PIN);
-    const supervisorId = await insertTestUser({
-      username: `w301-verifypin-${Date.now()}`,
-      name: 'Test Verify Pin',
-      roleKey: 'supervisor',
-      passwordHash,
-      pinHash,
-    });
-    try {
-      const service = buildAuthService(getAppPool());
-      const res = await service.verifyPin({
-        userId: supervisorId,
-        pin: TEST_PIN,
-        context: 'pos_override',
-      });
-      expect(res.ok).toBe(true);
-      expect(res.verifierToken).toBeTruthy();
-    } finally {
-      await deleteTestUser(supervisorId);
-    }
-  });
-
-  it('rejects the wrong PIN for that same cross-user case', async () => {
-    const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
-    const pinHash = await hashPin(TEST_PIN);
-    const supervisorId = await insertTestUser({
-      username: `w301-verifypin-bad-${Date.now()}`,
-      name: 'Test Verify Pin Bad',
-      roleKey: 'supervisor',
-      passwordHash,
-      pinHash,
-    });
-    try {
-      const service = buildAuthService(getAppPool());
-      await expect(
-        service.verifyPin({ userId: supervisorId, pin: '000000', context: 'pos_override' }),
-      ).rejects.toMatchObject({
-        response: { code: 'ERR_AUTH_PIN_INVALID' },
-      });
-    } finally {
-      await deleteTestUser(supervisorId);
-    }
+describe('B-15 — the PIN oracle is gone, and must stay gone', () => {
+  /**
+   * This file used to hold two tests proving `AuthService.verifyPin` could
+   * verify ANOTHER user's PIN across a system context. Both passed. Neither was
+   * wrong about the code — the code was wrong: that capability, offered to any
+   * authenticated caller with no limit, WAS blocker B-15.
+   *
+   * They are replaced by their inverse rather than deleted quietly, because a
+   * removed test is invisible and a reintroduced endpoint would be too. The
+   * flow those tests covered (FR-POS-03, a supervisor authorising at the till)
+   * now runs on one-time approval codes — see
+   * `kernel/approvals/approval-code.integration.spec.ts`.
+   */
+  it('AuthService exposes no PIN-verification method at all', () => {
+    const service = buildAuthService(getAppPool());
+    expect((service as unknown as Record<string, unknown>).verifyPin).toBeUndefined();
+    // `setPin` must survive: a PIN is still the credential for the OFFLINE
+    // path (`offline_credentials.pin_verifier`), which no server-issued code
+    // can replace while the outlet has no internet.
+    expect(typeof (service as unknown as Record<string, unknown>).setPin).toBe('function');
   });
 });
 

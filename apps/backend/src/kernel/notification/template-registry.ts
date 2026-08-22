@@ -78,6 +78,37 @@ export const NOTIFICATION_TEMPLATES = {
     // BOTH, so naming the class is what makes the alert actionable rather than "temperature out of range".
     requiredParams: ['recordedTemp', 'minTemp', 'maxTemp', 'goodsClass', 'context', 'locationName'],
   },
+  /**
+   * B-15 — the one-time approval code, delivered to the APPROVER who just
+   * authorised a document. All three channels: the whole point is that the
+   * approver can be away from the outlet (Q2 — a swapped shift, someone off
+   * sick) and still read the code off their own phone. WhatsApp is listed
+   * even though `WA_ENABLED=false` today, so it starts working the moment
+   * credentials exist without another code change (RISK-P4).
+   *
+   * This is the ONLY template whose params carry a live secret. It is
+   * deliberately short-lived (5 minutes, single-use), which is what makes
+   * putting it through an ordinary notification channel acceptable at all.
+   */
+  approval_code_issued: {
+    key: 'approval_code_issued',
+    channels: ['in_app', 'email', 'whatsapp'],
+    // `documentId` is deliberately NOT here. It is passed for the audit trail
+    // but has no place in the copy: a supervisor reading a WhatsApp message
+    // needs the code and what it is for, not a UUID.
+    requiredParams: ['documentType', 'code', 'minutes'],
+  },
+  /**
+   * B-15 Q9 — someone burned their approval-code attempts. Goes to the people
+   * who can actually clear it plus the locked user, so a stalled till is
+   * visible rather than mysterious. No WhatsApp: this is an operational alert,
+   * not something worth a message to a personal phone at 23:00.
+   */
+  auth_lockout: {
+    key: 'auth_lockout',
+    channels: ['in_app', 'email'],
+    requiredParams: ['userName', 'attempts'],
+  },
   outlet_offline: {
     key: 'outlet_offline',
     channels: ['in_app', 'email'],

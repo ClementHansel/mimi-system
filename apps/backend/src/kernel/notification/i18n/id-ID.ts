@@ -50,6 +50,14 @@ export const ID_ID_NOTIFICATION_TEXT: Record<string, NotificationText> = {
     title: 'Peringatan suhu rantai dingin — {{goodsClass}}',
     body: 'Suhu {{recordedTemp}}°C terdeteksi di luar batas untuk {{goodsClass}} ({{minTemp}}°C – {{maxTemp}}°C) pada {{context}} ({{locationName}}).',
   },
+  approval_code_issued: {
+    title: 'Kode persetujuan: {{code}}',
+    body: 'Kode persetujuan untuk {{documentType}} adalah {{code}}. Berlaku {{minutes}} menit dan hanya bisa dipakai satu kali. Sampaikan kode ini hanya kepada petugas yang mengajukan.',
+  },
+  auth_lockout: {
+    title: 'Akun terkunci: {{userName}}',
+    body: '{{userName}} salah memasukkan kode persetujuan {{attempts}} kali dan sekarang terkunci. Atasan yang lebih tinggi harus membuka kuncinya sebelum bisa mencoba lagi.',
+  },
   outlet_offline: {
     title: 'Outlet offline: {{locationName}}',
     body: '{{locationName}} terputus dari server sejak {{lastSeenAt}}. Mohon segera diperiksa.',

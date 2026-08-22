@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg';
 import type { Money, Qty, UUID } from '@mimi/shared';
-import { convertQty, divQty, formatQty, isZeroQty, parseQty } from '@mimi/shared';
+import { convertQty, formatQty, isZeroQty, parseQty, recipeScaleRatio } from '@mimi/shared';
 
 /**
  * Recipe explosion (FR-POS-06) — turns a set of sold/voided `{productId,
@@ -110,8 +110,12 @@ export async function explodeRecipeUsage(
     const recipeRow = recipeRes.rows[0];
     if (!recipeRow) continue;
 
-    // Same ratio `RecipeService.explodeForSale` computes: qtySold / yieldQty.
-    const ratio = divQty(line.qty, recipeRow.yield_qty, 6);
+    // D-27 — the ratio comes from `@mimi/shared`, not from a second copy of
+    // the arithmetic written out here. THIS call site is the one that had
+    // diverged: it omitted the yield division entirely, so every batch recipe
+    // mis-posted stock on every sale, invisible only because all 39 seeded
+    // recipes yield 1. Sharing the function is what stops that recurring.
+    const ratio = recipeScaleRatio(line.qty, recipeRow.yield_qty);
 
     const linesRes = await client.query<RecipeLineRow>(
       `SELECT rl.item_id, rl.qty AS recipe_qty, rl.unit_id AS recipe_unit_id, i.base_unit_id, i.avg_cost

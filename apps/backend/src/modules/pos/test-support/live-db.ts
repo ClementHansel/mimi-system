@@ -1,6 +1,9 @@
 import { Pool, type PoolClient } from 'pg';
 import { EventBus } from '../../../kernel/events/event-bus.service';
+import { ApprovalCodeRepository } from '../../../kernel/approvals/approval-code.repository';
+import { ApprovalCodeService } from '../../../kernel/approvals/approval-code.service';
 import { ApprovalsRepository } from '../../../kernel/approvals/approvals.repository';
+import { AuthLockoutService } from '../../../kernel/auth-lockout/auth-lockout.service';
 import { ApprovalService } from '../../../kernel/approvals/approvals.service';
 import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.service';
 import { StockMovedEventEmitter } from '../../../kernel/stock-ledger/stock-ledger-events';
@@ -94,6 +97,25 @@ export interface RlsContext {
  * test's OWN rolled-back `client`/transaction, so it never durably touches
  * seed data.
  */
+/**
+ * Clears any `auth_lockouts` rows the fixture users accumulated (B-15).
+ *
+ * REQUIRED in any suite that provokes a wrong approval code. A failed attempt
+ * is recorded on its OWN committed transaction — deliberately, so that rolling
+ * back the rejected request cannot erase the security counter — which means it
+ * SURVIVES `withRollback` like nothing else in these suites does. Without this,
+ * three runs of a wrong-code test hard-lock the seeded kasir and every later
+ * run fails with `ERR_APPROVAL_CODE_LOCKED` for reasons that have nothing to do
+ * with what is being tested.
+ *
+ * Runs over the OWNER pool because clearing another user's lock is exactly the
+ * rank-gated operation `AuthLockoutService.clear` exists for, and a test
+ * harness should not have to hold a role to tidy up after itself.
+ */
+export async function clearAuthLockouts(): Promise<void> {
+  await getOwnerPool().query('DELETE FROM auth_lockouts');
+}
+
 export async function neutralizeOpenShifts(client: PoolClient, locationId: string): Promise<void> {
   await client.query(
     `UPDATE pos_shifts SET status = 'closed' WHERE location_id = $1 AND status = 'open'`,
@@ -244,6 +266,25 @@ export function buildEventBus(): EventBus {
 
 export function buildApprovalService(): ApprovalService {
   return new ApprovalService(new ApprovalsRepository());
+}
+
+/**
+ * B-15 — the one-time approval code service, wired the way production wires it.
+ *
+ * It takes the real `Pool` because two of its paths deliberately open their OWN
+ * committed transaction (recording a failed attempt, and the lockout it feeds).
+ * A fake pool here would make the limiter tests pass while proving nothing:
+ * the whole point of that design is that the write survives the rollback of the
+ * request it rejected.
+ */
+export function buildApprovalCodeService(pool: Pool = getAppPool()): ApprovalCodeService {
+  return new ApprovalCodeService(
+    pool,
+    new ApprovalCodeRepository(),
+    new ApprovalsRepository(),
+    new AuthLockoutService(pool),
+    buildNotificationService(pool),
+  );
 }
 
 /** `PosSaleService`'s escalated `payment_verifications` write for a bank-transfer sale (FR-ACCT-03). */

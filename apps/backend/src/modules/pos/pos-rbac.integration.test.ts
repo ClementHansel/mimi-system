@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import * as bcrypt from 'bcrypt';
 import type { PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  ApprovalDocumentType,
+  ERR_APPROVAL_CODE_INVALID,
+  ERR_APPROVAL_CODE_NOT_ISSUED,
   ERR_APPROVAL_STEP_ROLE,
-  ERR_AUTH_PIN_INVALID,
   ERR_REASON_REQUIRED,
   PaymentMethod,
   RoleKey,
@@ -15,6 +16,8 @@ import { PosSaleService } from './services/pos-sale.service';
 import { PosVoidRefundService } from './services/pos-void-refund.service';
 import { PosCashVarianceService } from './services/pos-cash-variance.service';
 import {
+  buildApprovalCodeService,
+  clearAuthLockouts,
   buildApprovalService,
   buildEventBus,
   buildNotificationService,
@@ -23,7 +26,6 @@ import {
   buildSyncEmitService,
   closePool,
   getAppPool,
-  getOwnerPool,
   loadOutletFixture,
   neutralizeOpenShifts,
   switchActor,
@@ -40,13 +42,16 @@ import {
  * substitute for calling the code) — same live-DB discipline as
  * `pos-shift-flow.integration.test.ts`.
  *
- * Seed users only ever have a PIN for central/supervisor roles
- * (`database/seed.ts`'s `withPin: true` list) — a Kasir has none. To prove
- * the ROLE gate specifically (`ERR_APPROVAL_STEP_ROLE`), not merely the PIN
- * gate (`ERR_AUTH_PIN_INVALID`), the "kasir with a PIN" test temporarily
- * gives the seed Kasir a real bcrypt PIN hash via the OWNER pool and
- * restores the original value in `finally` — the only place this suite
- * durably touches seed data, and it always cleans up.
+ * REWRITTEN FOR B-15 (2026-08-22). These tests used to feed a PIN to
+ * `voidRefunds.approve` and assert `ERR_AUTH_PIN_INVALID`. That parameter no
+ * longer exists: approval is carried by a ONE-TIME CODE the approver issues
+ * from their own session, and the kasir at the till merely redeems it.
+ *
+ * The role gate consequently MOVED, and these tests now pin it where it
+ * actually lives — on `ApprovalCodeService.issue`. A kasir is refused a code
+ * for their own void before any credential is involved at all, which is a
+ * stronger property than the old "a kasir with a valid PIN is still refused":
+ * there is nothing for them to hold a valid credential FOR.
  */
 
 function services(pool = getAppPool()) {
@@ -58,9 +63,11 @@ function services(pool = getAppPool()) {
   return {
     shifts: new PosShiftService(pool, approvals, notifications),
     sales: new PosSaleService(pool, stockLedger, buildPaymentVerificationsService(pool)),
+    approvalCodes: buildApprovalCodeService(pool),
     voidRefunds: new PosVoidRefundService(
       pool,
       approvals,
+      buildApprovalCodeService(pool),
       stockLedger,
       syncEmit,
       notifications,
@@ -73,10 +80,13 @@ function services(pool = getAppPool()) {
 let fx: OutletFixture;
 
 beforeAll(async () => {
+  // B-15 — a wrong code commits a lockout row that outlives every rollback.
+  await clearAuthLockouts();
   fx = await loadOutletFixture();
 }, 30_000);
 
 afterAll(async () => {
+  await clearAuthLockouts();
   await closePool();
 });
 
@@ -105,7 +115,7 @@ async function openShiftWithCashSale(client: PoolClient, svc: ReturnType<typeof 
 }
 
 describe('POS RBAC — negative and positive paths, live database', () => {
-  it('a Kasir with NO pin_hash configured is rejected at the PIN gate before the role gate is ever reached', async () => {
+  it('redeeming before anyone has authorised anything is refused, and does NOT count as a failed attempt', async () => {
     await withRollback(
       { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
       async (client) => {
@@ -117,75 +127,99 @@ describe('POS RBAC — negative and positive paths, live database', () => {
           reason: 'test',
         });
 
+        // Distinct from a WRONG code on purpose. If "nothing issued" burned an
+        // attempt, anyone could lock a till out of service by hammering a void
+        // no supervisor had looked at yet — a denial of service handed to the
+        // attacker for free, and the mirror image of the mistake Q4 avoided by
+        // locking the caller rather than the approver.
         await expect(
-          svc.voidRefunds.approve(
-            client,
-            requested.voidRefundId,
-            fx.kasirId,
-            RoleKey.KASIR,
-            '000000',
-          ),
+          svc.voidRefunds.approve(client, requested.voidRefundId, fx.kasirId, '000000'),
         ).rejects.toMatchObject({
-          response: { code: ERR_AUTH_PIN_INVALID },
+          response: { code: ERR_APPROVAL_CODE_NOT_ISSUED },
         });
       },
     );
   }, 30_000);
 
-  it('a Kasir CANNOT approve their own void even WITH a correct PIN — ApprovalService rejects the role, not just the credential', async () => {
-    const KASIR_TEST_PIN = '999999';
-    const ownerPool = getOwnerPool();
-    const original = await ownerPool.query<{ pin_hash: string | null }>(
-      'SELECT pin_hash FROM users WHERE id = $1',
-      [fx.kasirId],
+  it('a Kasir cannot issue an approval code for their OWN void — the role gate now sits on issue, before any credential exists', async () => {
+    await withRollback(
+      { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
+      async (client) => {
+        const svc = services();
+        const { sale } = await openShiftWithCashSale(client, svc);
+        const requested = await svc.voidRefunds.requestVoid(client, sale.id, fx.kasirId, {
+          clientId: randomUUID(),
+          type: VoidRefundType.VOID,
+          reason: 'test — kasir self-approval attempt',
+        });
+
+        // §5.2: only SUPERVISOR (+ rank-override MANAGER/OWNER) may act on
+        // `void_refund.approve`. `ApprovalCodeService.issue` reads that through
+        // the same `resolveEligibleRoles`/`isRoleAuthorized` pair the kernel's
+        // own `decide()` uses, so the two cannot disagree about who may approve.
+        await expect(
+          svc.approvalCodes.issue(client, {
+            documentType: ApprovalDocumentType.VOID_REFUND,
+            documentId: requested.voidRefundId,
+            approver: { userId: fx.kasirId, roleKey: RoleKey.KASIR },
+          }),
+        ).rejects.toMatchObject({
+          response: { code: ERR_APPROVAL_STEP_ROLE },
+        });
+
+        const stillPending = await client.query('SELECT status FROM void_refunds WHERE id = $1', [
+          requested.voidRefundId,
+        ]);
+        expect(stillPending.rows[0].status).toBe('pending');
+      },
     );
-    const testHash = await bcrypt.hash(KASIR_TEST_PIN, 10);
-    await ownerPool.query('UPDATE users SET pin_hash = $2 WHERE id = $1', [fx.kasirId, testHash]);
-
-    try {
-      await withRollback(
-        { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
-        async (client) => {
-          const svc = services();
-          const { sale } = await openShiftWithCashSale(client, svc);
-          const requested = await svc.voidRefunds.requestVoid(client, sale.id, fx.kasirId, {
-            clientId: randomUUID(),
-            type: VoidRefundType.VOID,
-            reason: 'test — kasir self-approval attempt',
-          });
-
-          // The PIN is now genuinely valid — proves the REJECTION below is the role gate
-          // (`ApprovalService.decide()`'s `resolveEligibleRoles`/`isRoleAuthorized`,
-          // `packages/shared/src/approvals/state-machine.ts` §5.2: only SUPERVISOR (+ rank-override
-          // MANAGER/OWNER) may act on `void_refund.approve`), not a PIN failure.
-          await expect(
-            svc.voidRefunds.approve(
-              client,
-              requested.voidRefundId,
-              fx.kasirId,
-              RoleKey.KASIR,
-              KASIR_TEST_PIN,
-            ),
-          ).rejects.toMatchObject({
-            response: { code: ERR_APPROVAL_STEP_ROLE },
-          });
-
-          // And the void is genuinely still pending — the rejected attempt had NO side effect.
-          const stillPending = await client.query('SELECT status FROM void_refunds WHERE id = $1', [
-            requested.voidRefundId,
-          ]);
-          expect(stillPending.rows[0].status).toBe('pending');
-        },
-      );
-    } finally {
-      await ownerPool.query('UPDATE users SET pin_hash = $2 WHERE id = $1', [
-        fx.kasirId,
-        original.rows[0]?.pin_hash ?? null,
-      ]);
-    }
   }, 30_000);
 
-  it('a Supervisor (the eligible role) CAN approve the same void — proves the gate is role-specific, not a blanket block', async () => {
+  it('a wrong code is refused even when a real one is outstanding, and the void stays pending', async () => {
+    await withRollback(
+      { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
+      async (client) => {
+        const svc = services();
+        const { sale } = await openShiftWithCashSale(client, svc);
+        const requested = await svc.voidRefunds.requestVoid(client, sale.id, fx.kasirId, {
+          clientId: randomUUID(),
+          type: VoidRefundType.VOID,
+          reason: 'test — wrong code',
+        });
+
+        await switchActor(client, {
+          userId: fx.supervisorId,
+          roleKey: 'supervisor',
+          locationIds: [fx.locationId],
+        });
+        const issued = await svc.approvalCodes.issue(client, {
+          documentType: ApprovalDocumentType.VOID_REFUND,
+          documentId: requested.voidRefundId,
+          approver: { userId: fx.supervisorId, roleKey: RoleKey.SUPERVISOR },
+        });
+
+        // Deliberately a DIFFERENT six digits from the one just issued.
+        const wrong = issued.code === '000000' ? '111111' : '000000';
+        await switchActor(client, {
+          userId: fx.kasirId,
+          roleKey: 'kasir',
+          locationIds: [fx.locationId],
+        });
+        await expect(
+          svc.voidRefunds.approve(client, requested.voidRefundId, fx.kasirId, wrong),
+        ).rejects.toMatchObject({
+          response: { code: ERR_APPROVAL_CODE_INVALID },
+        });
+
+        const stillPending = await client.query('SELECT status FROM void_refunds WHERE id = $1', [
+          requested.voidRefundId,
+        ]);
+        expect(stillPending.rows[0].status).toBe('pending');
+      },
+    );
+  }, 30_000);
+
+  it('the supervisor issues, the KASIR redeems, and the decision is recorded against the SUPERVISOR', async () => {
     await withRollback(
       { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
       async (client) => {
@@ -197,21 +231,84 @@ describe('POS RBAC — negative and positive paths, live database', () => {
           reason: 'test — supervisor approval path',
         });
 
-        // `verifyPin` reads the ACTING user's own `pin_hash` under `users_select`'s `app_is_self`
-        // policy — switch the session to the Supervisor first (see `switchActor`'s header).
+        // The supervisor authorises from their own session. In the field they
+        // are frequently not at this till at all — that is the entire point of
+        // the owner's Q2 (swapped shifts, someone off sick).
         await switchActor(client, {
           userId: fx.supervisorId,
           roleKey: 'supervisor',
           locationIds: [fx.locationId],
         });
+        const issued = await svc.approvalCodes.issue(client, {
+          documentType: ApprovalDocumentType.VOID_REFUND,
+          documentId: requested.voidRefundId,
+          approver: { userId: fx.supervisorId, roleKey: RoleKey.SUPERVISOR },
+        });
+        expect(issued.code).toMatch(/^\d{6}$/);
+        // Q3 — the code is bound to the requester, not handed to whoever asks.
+        expect(issued.redeemableByUserId).toBe(fx.kasirId);
+
+        // Back at the till: the KASIR's session commits the approval.
+        await switchActor(client, {
+          userId: fx.kasirId,
+          roleKey: 'kasir',
+          locationIds: [fx.locationId],
+        });
         const approved = await svc.voidRefunds.approve(
           client,
           requested.voidRefundId,
-          fx.supervisorId,
-          RoleKey.SUPERVISOR,
-          fx.supervisorPin,
+          fx.kasirId,
+          issued.code,
         );
         expect(approved.status).toBe('approved');
+
+        // The accountability assertion, and the reason this test exists: the
+        // kasir drove the request, but the record must name the supervisor.
+        const row = await client.query<{ approved_by: string }>(
+          'SELECT approved_by FROM void_refunds WHERE id = $1',
+          [requested.voidRefundId],
+        );
+        expect(row.rows[0]!.approved_by).toBe(fx.supervisorId);
+      },
+    );
+  }, 30_000);
+
+  it('a code is single-use — the same code cannot approve a second time', async () => {
+    await withRollback(
+      { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
+      async (client) => {
+        const svc = services();
+        const { sale } = await openShiftWithCashSale(client, svc);
+        const requested = await svc.voidRefunds.requestVoid(client, sale.id, fx.kasirId, {
+          clientId: randomUUID(),
+          type: VoidRefundType.VOID,
+          reason: 'test — replay',
+        });
+
+        await switchActor(client, {
+          userId: fx.supervisorId,
+          roleKey: 'supervisor',
+          locationIds: [fx.locationId],
+        });
+        const issued = await svc.approvalCodes.issue(client, {
+          documentType: ApprovalDocumentType.VOID_REFUND,
+          documentId: requested.voidRefundId,
+          approver: { userId: fx.supervisorId, roleKey: RoleKey.SUPERVISOR },
+        });
+        await switchActor(client, {
+          userId: fx.kasirId,
+          roleKey: 'kasir',
+          locationIds: [fx.locationId],
+        });
+        await svc.voidRefunds.approve(client, requested.voidRefundId, fx.kasirId, issued.code);
+
+        // Second use: the row is `consumed`, so there is no ACTIVE code to find
+        // — the same answer a caller gets before anything was issued.
+        await expect(
+          svc.voidRefunds.approve(client, requested.voidRefundId, fx.kasirId, issued.code),
+        ).rejects.toMatchObject({
+          response: { code: ERR_APPROVAL_CODE_NOT_ISSUED },
+        });
       },
     );
   }, 30_000);

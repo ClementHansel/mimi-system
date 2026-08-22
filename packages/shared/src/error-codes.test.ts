@@ -9,10 +9,11 @@ import {
 } from './error-codes';
 
 describe('ErrorCode — closed literal union, same discipline as PermissionKey/SettingsKey', () => {
-  it('lists 39 codes with no duplicates', () => {
-    // 37 + ERR_NODE_QUEUE_PENDING + ERR_NODE_UNREACHABLE (BUILD-PLAN D-26, node-gateway drain-before-off).
-    expect(ERROR_CODE_LIST).toHaveLength(39);
-    expect(new Set(ERROR_CODE_LIST).size).toBe(39);
+  it('lists 43 codes with no duplicates', () => {
+    // 37 + ERR_NODE_QUEUE_PENDING + ERR_NODE_UNREACHABLE (BUILD-PLAN D-26, node-gateway drain-before-off)
+    // + the four B-15 approval-code outcomes (INVALID / EXPIRED / LOCKED / NOT_ISSUED).
+    expect(ERROR_CODE_LIST).toHaveLength(43);
+    expect(new Set(ERROR_CODE_LIST).size).toBe(43);
   });
 
   it('includes the two codes swept in from CONTRACTS.md/W1-D that were missing before this sweep', () => {

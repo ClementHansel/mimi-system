@@ -31,6 +31,7 @@ import {
   rejectReplenishment,
 } from './lib/approvals-api';
 import { ApprovalActionPanel } from './ApprovalActionPanel';
+import { IssueApprovalCodePanel } from './IssueApprovalCodePanel';
 import {
   ReplenishmentApproveForm,
   type AmendmentInput,
@@ -292,6 +293,18 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
                 <CardTitle>{t('approvalDetail.actionTitle')}</CardTitle>
               </CardHeader>
               <CardContent>
+                {/* B-15 — for a code-issued type (void_refund) the approver's
+                    action is minting a one-time code, not closing the document:
+                    the cashier holding the sale open is the one who finishes it.
+                    Reject still runs through the normal panel below. */}
+                {config.codeIssueSupported && (
+                  <div className="mb-4">
+                    <IssueApprovalCodePanel
+                      documentType={config.documentType}
+                      documentId={documentId}
+                    />
+                  </div>
+                )}
                 {isReplenishment && replenishment ? (
                   <ReplenishmentApproveForm
                     replenishment={replenishment}

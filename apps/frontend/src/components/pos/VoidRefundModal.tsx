@@ -6,6 +6,8 @@ import { useI18n } from '@/lib/i18n';
 import {
   Modal,
   Button,
+  Card,
+  CardContent,
   Input,
   MoneyInput,
   Select,
@@ -19,6 +21,7 @@ import { useConnectivityStore } from '@/stores/connectivity-store';
 import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 import type { ActorMeta } from '@/lib/local/api/local-runtime';
 import type { Money, UUID } from '@/lib/shared-types';
+import { getUnlockChallenge, redeemUnlockCode } from '@/lib/local/credentials/offline-credentials';
 import {
   mintClientId,
   listCachedApproverCredentials,
@@ -28,10 +31,25 @@ import { usePosShiftStore } from './shift-store';
 
 /**
  * Void/refund (FR-POS-03) — ALWAYS requires supervisor authorization, never
- * kasir-only (SYNC-PROTOCOL §8 row 3). Online routes through the real
- * approval chain (a supervisor's PIN against the server); offline/LAN uses a
- * cached credential + PIN and is explicitly provisional — labeled "awaiting
- * verification", never shown as a done deal, per this surface's brief.
+ * kasir-only (SYNC-PROTOCOL §8 row 3).
+ *
+ * ONLINE, since B-15 (owner Q8, 2026-08-22), this is a TWO-STEP flow and the
+ * modal stays open between the steps:
+ *
+ *   1. The kasir submits the request. Eligible supervisors are notified.
+ *   2. A supervisor authorises it from their own screen — anywhere, which is
+ *      the point (a swapped shift, someone off sick) — and reads back a
+ *      six-digit one-time code. The kasir types it here to finish.
+ *
+ * The modal does not close between the two, because closing it would strand a
+ * pending void with no obvious way back to it, and the code expires in five
+ * minutes. The supervisor's PIN field is GONE from the online path: there is no
+ * longer any standing secret to type, which is what B-15 was.
+ *
+ * OFFLINE/LAN is unchanged and still PIN-based against a cached credential —
+ * no server exists to mint a code when the outlet has no internet. It remains
+ * explicitly provisional, labeled "awaiting verification", never shown as a
+ * done deal.
  */
 export function VoidRefundModal({
   open,
@@ -55,6 +73,16 @@ export function VoidRefundModal({
   const [reason, setReason] = useState('');
   const [amount, setAmount] = useState<Money | null>(null);
   const [pin, setPin] = useState('');
+  const [code, setCode] = useState('');
+  /** Set once the online request exists — this is what flips the modal to step 2. */
+  const [pendingVoidId, setPendingVoidId] = useState<UUID | null>(null);
+  /**
+   * B-17 — set when the SELECTED offline credential is terminally locked on this
+   * device. Carries the challenge to read down the phone and how many unlock
+   * attempts are left.
+   */
+  const [unlock, setUnlock] = useState<{ challenge: string; attemptsLeft: number } | null>(null);
+  const [unlockCode, setUnlockCode] = useState('');
   const [selfie, setSelfie] = useState<{ file: File; preview: string } | null>(null);
   const [approvers, setApprovers] = useState<CachedApproverOption[]>([]);
   const [credentialId, setCredentialId] = useState('');
@@ -67,14 +95,71 @@ export function VoidRefundModal({
       .catch(() => setApprovers([]));
   }, [open, isOnline, runtime]);
 
+  // B-17 — a locked credential must announce itself BEFORE the supervisor types
+  // a PIN that cannot possibly work. Three sessions of this project were lost to
+  // features that existed but were unreachable by the role that needed them; an
+  // unlock path nobody is shown is the same failure.
+  useEffect(() => {
+    if (!open || isOnline || !credentialId) {
+      setUnlock(null);
+      return;
+    }
+    getUnlockChallenge(runtime.db, credentialId as UUID)
+      .then(setUnlock)
+      .catch(() => setUnlock(null));
+  }, [open, isOnline, credentialId, runtime]);
+
+  async function handleUnlock() {
+    if (!credentialId) return;
+    const outcome = await redeemUnlockCode(runtime.db, credentialId as UUID, unlockCode);
+    if (outcome.ok) {
+      setUnlock(null);
+      setUnlockCode('');
+      toast({ title: t('pos.voidUnlockSuccess'), variant: 'success' });
+      return;
+    }
+    setUnlockCode('');
+    if (outcome.reason === 'attempts_exhausted') {
+      setUnlock({ challenge: unlock?.challenge ?? '', attemptsLeft: 0 });
+      toast({ title: t('pos.voidUnlockExhausted'), variant: 'danger' });
+      return;
+    }
+    setUnlock((prev) => (prev ? { ...prev, attemptsLeft: outcome.attemptsLeft } : prev));
+    toast({
+      title: t('pos.voidUnlockInvalid'),
+      description: t('pos.voidUnlockAttemptsLeft', { count: String(outcome.attemptsLeft) }),
+      variant: 'danger',
+    });
+  }
+
+  const awaitingCode = isOnline && pendingVoidId !== null;
+
   async function handleSubmit() {
-    if (!reason.trim()) {
+    if (awaitingCode) {
+      if (!/^\d{6}$/.test(code)) {
+        toast({ title: t('pos.voidCodeRequired'), variant: 'danger' });
+        return;
+      }
+    } else if (!reason.trim()) {
       toast({ title: t('validation.reasonRequired'), variant: 'danger' });
       return;
     }
     setSubmitting(true);
     try {
       if (isOnline) {
+        // STEP 2 — a request already exists and we are redeeming the
+        // supervisor's code. Kept separate from step 1 so a wrong code costs a
+        // retry, never a duplicate void request.
+        if (pendingVoidId) {
+          await api.post(`/api/pos/void-refunds/${pendingVoidId}/approve`, { code });
+          toast({ title: t('pos.voidApprovedTitle'), variant: 'success' });
+          recordVoid();
+          onClose();
+          return;
+        }
+
+        // STEP 1 — raise the request and wait for a code. Nothing is approved
+        // yet, and the copy says so rather than implying the void is done.
         const clientId = mintClientId();
         const req = await api.post<{ voidRefundId: UUID; status: string }>(
           `/api/pos/sales/${saleId}/void-request`,
@@ -85,16 +170,14 @@ export function VoidRefundModal({
             amount: amount ?? undefined,
           },
         );
-        if (pin) {
-          await api.post(`/api/pos/void-refunds/${req.voidRefundId}/approve`, { pin });
-          toast({ title: t('pos.voidApprovedTitle'), variant: 'success' });
-        } else {
-          toast({
-            title: t('pos.voidRequestedTitle'),
-            description: t('pos.voidAwaitingApproval'),
-            variant: 'info',
-          });
-        }
+        setPendingVoidId(req.voidRefundId);
+        toast({
+          title: t('pos.voidRequestedTitle'),
+          description: t('pos.voidRequestedWaitingCode'),
+          variant: 'info',
+        });
+        setSubmitting(false);
+        return;
       } else {
         if (!credentialId) {
           toast({ title: t('pos.voidNoCredential'), variant: 'danger' });
@@ -118,9 +201,16 @@ export function VoidRefundModal({
           actor,
         });
         if (!result.authorization.ok) {
+          // B-17 — a cooldown carries how long to wait. "Try again shortly" with
+          // no number is the kind of message that gets tapped repeatedly, which
+          // is exactly what the cooldown is trying to stop.
+          const wait = result.authorization.retryAfterSeconds;
           toast({
             title: t('pos.voidAuthFailed'),
-            description: t(`pos.voidAuthReason.${result.authorization.reason}`),
+            description:
+              wait !== undefined
+                ? t('pos.voidAuthReasonCoolingDownFor', { seconds: String(wait) })
+                : t(`pos.voidAuthReason.${result.authorization.reason}`),
             variant: 'danger',
           });
           setSubmitting(false);
@@ -157,7 +247,7 @@ export function VoidRefundModal({
             {t('common.cancel')}
           </Button>
           <Button variant="danger" onClick={handleSubmit} loading={submitting}>
-            {t('pos.voidSubmit')}
+            {awaitingCode ? t('pos.voidCodeSubmit') : t('pos.voidSubmit')}
           </Button>
         </>
       }
@@ -169,28 +259,34 @@ export function VoidRefundModal({
             {t('pos.voidOfflineBadge')}
           </Badge>
         )}
-        <Select
-          label={t('pos.voidType')}
-          value={type}
-          onValueChange={(v) => setType(v as 'void' | 'refund')}
-          options={[
-            { value: 'void', label: t('pos.voidTypeVoid') },
-            { value: 'refund', label: t('pos.voidTypeRefund') },
-          ]}
-        />
-        <Textarea
-          label={t('common.reason')}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          required
-          rows={2}
-        />
-        <MoneyInput
-          label={t('pos.voidAmount')}
-          value={amount}
-          onChange={setAmount}
-          hint={t('common.optional')}
-        />
+        {!awaitingCode && (
+          <Select
+            label={t('pos.voidType')}
+            value={type}
+            onValueChange={(v) => setType(v as 'void' | 'refund')}
+            options={[
+              { value: 'void', label: t('pos.voidTypeVoid') },
+              { value: 'refund', label: t('pos.voidTypeRefund') },
+            ]}
+          />
+        )}
+        {!awaitingCode && (
+          <Textarea
+            label={t('common.reason')}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            required
+            rows={2}
+          />
+        )}
+        {!awaitingCode && (
+          <MoneyInput
+            label={t('pos.voidAmount')}
+            value={amount}
+            onChange={setAmount}
+            hint={t('common.optional')}
+          />
+        )}
 
         {!isOnline && (
           <Select
@@ -201,14 +297,81 @@ export function VoidRefundModal({
             options={approvers.map((a) => ({ value: a.credentialId, label: t(`role.${a.role}`) }))}
           />
         )}
-        <Input
-          label={t('pos.supervisorPin')}
-          type="password"
-          inputMode="numeric"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          required
-        />
+        {/* Online step 2: the one-time code the supervisor read out. Not a
+            password field — the cashier is typing digits someone just told them
+            over the phone and needs to see whether they got them right. */}
+        {awaitingCode && (
+          <Input
+            label={t('pos.voidCodeLabel')}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+            hint={t('pos.voidCodeHint')}
+            required
+          />
+        )}
+        {/* B-17 — the offline recovery panel. Shown INSTEAD of nothing at all,
+            which is what a supervisor used to get after five wrong PINs during
+            an outage: a dead credential and no way back until connectivity
+            returned. */}
+        {!isOnline && unlock && (
+          <Card className="border-warning-600/30 bg-warning-50/40">
+            <CardContent className="flex flex-col gap-2 p-3">
+              <div className="text-sm font-medium text-warning-700">{t('pos.voidUnlockTitle')}</div>
+              <p className="text-sm text-fg-muted">{t('pos.voidUnlockExplainer')}</p>
+              <div>
+                <div className="text-xs text-fg-subtle">{t('pos.voidUnlockChallengeLabel')}</div>
+                {/* Monospace and spaced out: this is read aloud down a phone line. */}
+                <div
+                  className="font-mono text-3xl font-bold tracking-[0.3em]"
+                  data-testid="unlock-challenge"
+                >
+                  {unlock.challenge}
+                </div>
+              </div>
+              {unlock.attemptsLeft > 0 ? (
+                <>
+                  <Input
+                    label={t('pos.voidUnlockCodeLabel')}
+                    value={unlockCode}
+                    autoComplete="one-time-code"
+                    maxLength={9}
+                    onChange={(e) => setUnlockCode(e.target.value)}
+                    hint={t('pos.voidUnlockAttemptsLeft', {
+                      count: String(unlock.attemptsLeft),
+                    })}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-fit"
+                    onClick={handleUnlock}
+                  >
+                    {t('pos.voidUnlockSubmit')}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-danger-700">{t('pos.voidUnlockExhausted')}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        {/* The supervisor's standing PIN survives ONLY on the offline path,
+            where there is no server to mint a code. Showing it online is what
+            B-15 was. */}
+        {!isOnline && (
+          <Input
+            label={t('pos.supervisorPin')}
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            required
+          />
+        )}
         {!isOnline && (
           <PhotoCapture
             label={t('pos.voidSelfie')}

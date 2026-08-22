@@ -172,7 +172,13 @@ describe('ApprovalDetailView', () => {
     expect(screen.getByText(/menunggu persetujuan pihak lain/)).toBeInTheDocument();
   });
 
-  it('shows the reject-only panel (with its unsupported-approve explanation) to a caller who DOES hold pos.void.approve', async () => {
+  /**
+   * B-15 — this used to assert an "approve needs PIN verification" explainer.
+   * There is no PIN step any more: the approver's action on a void is to mint a
+   * ONE-TIME CODE the cashier redeems at the till, so the screen offers that
+   * button instead. Reject is unchanged and still a plain reason POST.
+   */
+  it('offers the issue-a-code action (not a plain approve) to a caller who holds pos.void.approve', async () => {
     setPermissions(['pos.void.approve']);
     mockDetail(
       {
@@ -200,7 +206,7 @@ describe('ApprovalDetailView', () => {
 
     expect(await screen.findByRole('button', { name: 'Tolak' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Setujui' })).not.toBeInTheDocument();
-    expect(screen.getByText(/verifikasi PIN/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Setujui & Buat Kode/ })).toBeInTheDocument();
   });
 
   it('renders an offline-authorized step pending re-verification distinctly from a confirmed one', async () => {

@@ -99,14 +99,20 @@ const ALLOWED_UNGUARDED: Record<string, string> = {
   // `location_id` is readable by anyone authenticated.
   'StorageController.getUrl': 'scope-enforced in StorageService.assertEntityScope',
 
-  // ⚠ KNOWN GAP, not a clearance — see blocker B-15 in PROGRESS.md.
-  // This takes an ARBITRARY `userId`, never reads `req.user`, runs under
-  // `withSystemContext` (bypassing RLS) and returns a signed `pin_verified`
-  // token. Any authenticated caller can therefore test PIN guesses against
-  // any other user, unthrottled. It is allowlisted only so this sweep can
-  // guard every OTHER route; the mitigation is a product decision (a naive
-  // per-target lockout would let anyone disable a supervisor mid-shift).
-  'AuthController.verifyPin': 'KNOWN GAP — see B-15; allowlisted, not accepted',
+  // B-15 — a user reading their OWN lockout state. Takes no parameter and
+  // never can: the service reads `req.user.sub`, so there is nothing to point
+  // at someone else. It exists so a blocked till can say "locked, ask your
+  // supervisor" instead of failing with a bare 403, and `auth_lockouts`' RLS
+  // (central-or-self) is the real boundary underneath it.
+  'AuthController.myLockout': 'self-only read; no parameter, RLS central-or-self',
+
+  // B-15 CLOSED 2026-08-22 — `AuthController.verifyPin` was allowlisted here as
+  // a KNOWN GAP (an unthrottled PIN oracle over an arbitrary `userId`). The
+  // route no longer exists: the endpoint was deleted, not exempted, and the
+  // flow it served now runs on one-time approval codes
+  // (`kernel/approvals/approval-code.service.ts`). Its entry is gone rather
+  // than reworded, because an allowlist that keeps entries for deleted routes
+  // stops being a list of accepted risks.
 };
 
 let app: INestApplication | undefined;

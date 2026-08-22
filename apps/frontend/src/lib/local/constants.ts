@@ -42,6 +42,21 @@ export const DEFAULT_MAX_OFFLINE_WINDOW_MS = 24 * 60 * 60 * 1000; // §6.4 setti
 // ── §7.3 offline authorization ────────────────────────────────────────────────
 export const PIN_MAX_ATTEMPTS = 5;
 
+/**
+ * B-17 — the offline PIN backoff ladder, in milliseconds, indexed by failure
+ * count. Deliberately the SAME shape and the same numbers as the server-side
+ * ladder in `kernel/auth-lockout/auth-lockout.service.ts` (B-15 Q5): a
+ * supervisor should not have to learn two different rules depending on whether
+ * the outlet happens to have internet at that moment.
+ *
+ * Counts below the first entry are free. At `PIN_MAX_ATTEMPTS` the credential
+ * goes terminally `lockedOut` instead, which no cooldown clears.
+ */
+export const PIN_BACKOFF_MS_BY_FAILURE_COUNT: Readonly<Record<number, number>> = {
+  3: 30_000,
+  4: 120_000,
+};
+
 // ── payload envelope cap (§2.1) ────────────────────────────────────────────────
 export const MAX_PAYLOAD_BYTES = 256 * 1024;
 

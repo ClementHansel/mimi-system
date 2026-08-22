@@ -55,6 +55,10 @@ const EXTRA_LIVE_DB_SPECS = [
   'src/modules/stock-opname/stock-opname-gl-posting.spec.ts',
   'src/modules/waste-return/return-gl-posting.spec.ts',
   'src/modules/waste-return/waste-gl-posting.spec.ts',
+  // B-08 — boots the WHOLE app and binds a real socket. It must be serialized
+  // for a stronger reason than the others: two of these running at once would
+  // race for ports and for the same `audit_log` rows they count.
+  'test/audit-http.e2e.spec.ts',
 ];
 
 const INTEGRATION_GLOBS = [

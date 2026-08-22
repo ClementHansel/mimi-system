@@ -45,3 +45,11 @@ export * from './cart';
 
 // API resource shapes (CONTRACTS.md §4 core interfaces)
 export * from './interfaces';
+
+// B-17 — offline credential unlock codes, shared so the device and the server
+// cannot drift on the derivation (see that file's header for why that matters).
+export * from './offline/unlock-code';
+
+// D-27 — the recipe-explosion formula, shared so `modules/product` and
+// `modules/pos` cannot drift on it again (they already did once).
+export * from './recipe/explosion';

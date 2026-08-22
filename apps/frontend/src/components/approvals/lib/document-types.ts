@@ -13,9 +13,11 @@ import { ApprovalDocumentType } from '@/lib/shared-types';
  * `approveSupported: false` marks the two document types whose real
  * "decide" action isn't a plain `{note?}`/`{reason}` POST this generic panel
  * can drive honestly:
- * - `void_refund` approve requires a PIN re-entry (`{pin}` — APR-02, D-17),
- *   a distinct verified-identity flow (`/auth/pin/verify`) this screen does
- *   not own and should not half-reimplement.
+ * - `void_refund` is not approved by a plain POST from here. Since B-15 the
+ *   approver AUTHORISES it on this screen (`codeIssueSupported`) and receives a
+ *   one-time code; the void itself is completed at the till when the cashier
+ *   redeems that code. The old note here described a PIN re-entry against
+ *   `/auth/pin/verify` — that endpoint was the blocker and no longer exists.
  * - `payment_verification`'s Owner approval step is folded into
  *   `POST /api/accounting/payments/:id/pay` (§5.8) — there is no standalone
  *   "approve" endpoint; the decision happens in the Finance/payment module.
@@ -38,6 +40,15 @@ export interface DocumentTypeConfig {
   reasonRequiredOnApprove?: boolean;
   /** replenishment_request only — approve accepts a per-line `amendments[]` (FR-LOG-13). */
   supportsAmend?: boolean;
+  /**
+   * B-15 — this document type is authorised by issuing a ONE-TIME CODE
+   * (`POST /api/approvals/:documentType/:documentId/code`) that someone else
+   * redeems, rather than by a decide POST from this screen. Currently
+   * `void_refund`: the cashier is holding the sale open and must be the one to
+   * finish it, so the approver's act is minting the code, not closing the
+   * document.
+   */
+  codeIssueSupported?: boolean;
 }
 
 export const DOCUMENT_TYPE_CONFIG: Record<ApprovalDocumentType, DocumentTypeConfig> = {
@@ -55,7 +66,7 @@ export const DOCUMENT_TYPE_CONFIG: Record<ApprovalDocumentType, DocumentTypeConf
     basePath: '/pos/void-refunds',
     labelKey: 'approvals.documentType.void_refund',
     approveSupported: false,
-    approveUnsupportedKey: 'approvalDetail.approveUnsupported.voidRefund',
+    codeIssueSupported: true,
     rejectPermission: 'pos.void.approve',
   },
   [ApprovalDocumentType.PURCHASE_REQUEST]: {

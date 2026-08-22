@@ -23,6 +23,7 @@ import {
 } from '@mimi/shared';
 import { checkGeofence } from '../geofence.util';
 import {
+  getDefaultGeofenceRadiusM,
   getLateGraceMinutes,
   getMaxOfflineWindowHours,
   getOvertimeSettings,
@@ -571,6 +572,15 @@ export class AttendanceService {
     return { id: res.rows[0]!.id, locationId: res.rows[0]!.location_id };
   }
 
+  /**
+   * The location's geofence centre and its EFFECTIVE radius.
+   *
+   * `locations.geofence_radius_m` is nullable as of migration 229: NULL means
+   * inherit `settings('hr.geofence_radius_m')` (200 m — owner, 2026-08-21) and
+   * a number means this outlet was deliberately overridden. Resolved here so
+   * check-in and check-out cannot drift apart, and so the number the Absen
+   * screen displays is the number this endpoint will enforce.
+   */
   private async resolveLocation(
     client: PoolClient,
     locationId: UUID,
@@ -578,12 +588,14 @@ export class AttendanceService {
     const res = await client.query<{
       latitude: string | null;
       longitude: string | null;
-      geofence_radius_m: number;
+      geofence_radius_m: number | null;
     }>('SELECT latitude, longitude, geofence_radius_m FROM locations WHERE id = $1', [locationId]);
     if (res.rows.length === 0)
       throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Location not found' });
     const row = res.rows[0]!;
     if (row.latitude === null || row.longitude === null) {
+      // Without a centre there is no fence to measure against, and inventing
+      // one would either lock everyone out or let anyone clock in from home.
       throw new BadRequestException({
         code: ERR_VALIDATION,
         message: 'This location has no geofence center configured',
@@ -592,7 +604,7 @@ export class AttendanceService {
     return {
       latitude: row.latitude,
       longitude: row.longitude,
-      geofenceRadiusM: row.geofence_radius_m,
+      geofenceRadiusM: row.geofence_radius_m ?? (await getDefaultGeofenceRadiusM(client)),
     };
   }
 

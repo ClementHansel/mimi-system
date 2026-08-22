@@ -1496,6 +1496,23 @@ export const id = {
         phone: 'No. Telepon',
         geofenceRadius: 'Radius Geofence (m)',
         storageAreas: 'Area Penyimpanan',
+        // GEOFENCE (owner, 2026-08-21: attendance fenced at 200 m of the outlet).
+        // These fields did not exist, so an outlet created here had no centre and
+        // every check-in at it failed.
+        geofenceTitle: 'Geofence Absensi',
+        geofenceHint:
+          'Titik pusat outlet untuk absensi. Tanpa titik ini, karyawan di outlet tersebut tidak bisa absen.',
+        latitude: 'Latitude',
+        longitude: 'Longitude',
+        coordsHint: 'Gunakan tombol di bawah saat Anda berada di lokasi outlet.',
+        useCurrentPosition: 'Ambil Lokasi Saya Sekarang',
+        geoUnsupported: 'Perangkat ini tidak mendukung GPS.',
+        geoDenied: 'Izin lokasi ditolak — aktifkan GPS lalu coba lagi.',
+        radius: 'Radius (meter)',
+        radiusDefault: 'Ikuti pengaturan (200 m)',
+        radiusInherited: 'Ikuti pengaturan ({{radius}} m)',
+        radiusHint:
+          'Kosongkan untuk mengikuti pengaturan sistem. Isi hanya bila outlet ini perlu radius berbeda.',
         addArea: 'Tambah Area',
         areaCode: 'Kode Area',
         areaName: 'Nama Area',

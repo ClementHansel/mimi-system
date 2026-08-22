@@ -23,7 +23,19 @@ export const CURRENCY = 'IDR';
 // ── D-05 / D-15 geofence & cold-chain defaults ────────────────────────────────
 
 /** `locations.geofence_radius_m` default (FR-HR-01). */
-export const DEFAULT_GEOFENCE_RADIUS_M = 100;
+/**
+ * Attendance geofence radius in metres — the fallback when
+ * `settings('hr.geofence_radius_m')` is unreadable, and the number a fresh
+ * deployment seeds.
+ *
+ * 200, not 100 (owner, 2026-08-21). A civilian GPS fix is routinely 20-50 m
+ * off, worse under a canopy or beside a building, so a 100 m circle left a
+ * cashier standing at their own till unable to clock in — and POUT-01..03 turn
+ * a failed check-in into an *alpha*, i.e. a wage deduction. The authority at
+ * runtime is the setting (per-location override in
+ * `locations.geofence_radius_m`); this constant only covers a missing row.
+ */
+export const DEFAULT_GEOFENCE_RADIUS_M = 200;
 
 /**
  * @deprecated STALE — modeled `settings['coldchain.frozen']` as one static

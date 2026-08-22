@@ -52,7 +52,16 @@ export interface GeofenceCheck {
   withinRadius: boolean | null;
 }
 
-/** Combines the raw distance with the location's configured radius (`locations.geofence_radius_m`, default 100 m) into the one shape every geofence display (Absen, attendance review) needs. */
+/**
+ * Combines the raw distance with the location's EFFECTIVE radius into the one
+ * shape every geofence display (Absen, attendance review) needs.
+ *
+ * The radius comes from `GET /locations/:id` (`geofenceRadiusM`), already
+ * resolved server-side: a location's own value when it has one, otherwise the
+ * `hr.geofence_radius_m` setting — 200 m as of migration 229. Never a constant
+ * here: the number this screen shows has to be the number check-in enforces, or
+ * an employee is told they are inside a fence the server then refuses them at.
+ */
 export function evaluateGeofence(
   capturedLat: string,
   capturedLng: string,

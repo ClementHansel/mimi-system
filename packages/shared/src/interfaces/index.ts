@@ -142,7 +142,15 @@ export interface Location {
   phone: string | null;
   latitude: string | null;
   longitude: string | null;
+  /**
+   * EFFECTIVE attendance geofence radius in metres — resolved server-side from
+   * this location's own value, or `settings('hr.geofence_radius_m')` when it has
+   * none (migration 229). Never null, so a client measuring an employee's
+   * distance always has the same number the check-in endpoint will enforce.
+   */
   geofenceRadiusM: number;
+  /** True when this location overrides the default rather than inheriting it. */
+  geofenceRadiusIsOverride: boolean;
   isActive: boolean;
   storageAreaCount: number;
 }

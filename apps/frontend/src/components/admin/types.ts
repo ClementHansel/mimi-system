@@ -35,7 +35,10 @@ export interface Location {
   phone: string | null;
   latitude: string | null;
   longitude: string | null;
+  /** EFFECTIVE radius (own value, else the `hr.geofence_radius_m` default). */
   geofenceRadiusM: number;
+  /** True when this location overrides the default rather than inheriting it. */
+  geofenceRadiusIsOverride: boolean;
   isActive: boolean;
   storageAreaCount: number;
 }

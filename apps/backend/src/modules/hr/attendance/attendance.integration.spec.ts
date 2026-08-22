@@ -168,6 +168,53 @@ describe('AttendanceService (integration, live Postgres)', () => {
     });
   });
 
+  it('a location with no radius of its own inherits the 200 m setting — 150 m away clocks in', async () => {
+    // The owner's 2026-08-21 requirement, and the guard for BOTH halves of
+    // migration 229 at once: the radius is 200, and the SETTING is what supplies
+    // it. 150 m is the interesting distance — outside the old 100 m fence, inside
+    // the new one — so this fails if the radius is reverted OR if the resolver
+    // goes back to reading `locations.geofence_radius_m` alone.
+    if (!dbAvailable) return;
+    const kasir = selfEmployee();
+    const rls = { userId: kasir.userId, roleKey: RoleKey.KASIR, locationIds: [kasir.locationId] };
+    const user = toJwtPayload(rls);
+
+    // Assert the outlet INHERITS rather than assuming it: a deliberate override
+    // would make the rest of this test measure something else entirely.
+    const rawRadius = await asRequest(rls, (client) =>
+      client.query<{ geofence_radius_m: number | null }>(
+        'SELECT geofence_radius_m FROM locations WHERE id = $1',
+        [fixtures.outletId],
+      ),
+    );
+    expect(rawRadius.rows[0]!.geofence_radius_m).toBeNull();
+    expect(fixtures.outletRadiusM).toBe(200);
+
+    await withCleanSlate(kasir.employeeId, async () => {
+      const dto: CheckAttendanceDto = {
+        clientId: nextClientId(),
+        locationId: fixtures.outletId,
+        // Due north by ~150 m: one degree of latitude is ~111_320 m, and moving
+        // along the meridian keeps longitude out of the arithmetic.
+        lat: String(fixtures.outletLat + 150 / 111_320),
+        lng: String(fixtures.outletLng),
+        accuracyM: 12,
+        selfieAttachmentId: fixtures.attachmentId,
+      };
+
+      const row = await asRequest(rls, (client) => service.checkIn(client, user, dto));
+      expect(row.geofenceOk).toBe(true);
+
+      const raw = await asRequest(rls, (client) =>
+        client.query('SELECT check_in_distance_m FROM attendance WHERE id = $1', [row.id]),
+      );
+      // Recorded, and genuinely beyond the old fence — not a 20 m check-in that
+      // would have passed either way.
+      expect(raw.rows[0].check_in_distance_m).toBeGreaterThan(140);
+      expect(raw.rows[0].check_in_distance_m).toBeLessThan(160);
+    });
+  });
+
   it('check-in OUTSIDE the configured radius is rejected with ERR_GEOFENCE_OUT_OF_RANGE and the measured distance in details', async () => {
     if (!dbAvailable) return;
     const kasir = selfEmployee();

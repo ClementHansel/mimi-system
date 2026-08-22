@@ -179,7 +179,20 @@ export async function loadHrFixtures(): Promise<HrFixtures> {
     longitude: string;
     geofence_radius_m: number;
   }>(
-    `SELECT id, latitude, longitude, geofence_radius_m FROM locations WHERE type = 'outlet' AND latitude IS NOT NULL LIMIT 1`,
+    // COALESCE, exactly like `AttendanceService.resolveLocation`: since
+    // migration 229 `geofence_radius_m` is NULL for every location that
+    // inherits the `hr.geofence_radius_m` default (200 m), so a fixture reading
+    // the raw column would hand every geofence test `null` and quietly compute
+    // nonsense "outside the radius" coordinates.
+    `SELECT l.id, l.latitude, l.longitude,
+            COALESCE(
+              l.geofence_radius_m,
+              (SELECT value::text::int FROM settings WHERE key = 'hr.geofence_radius_m'),
+              200
+            ) AS geofence_radius_m
+       FROM locations l
+      WHERE l.type = 'outlet' AND l.latitude IS NOT NULL
+      LIMIT 1`,
   );
   const outletRow = outlet.rows[0];
   if (!outletRow) throw new Error('Seed data has no outlet with a geofence center configured.');

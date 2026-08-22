@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import {
   ANNUAL_LEAVE_QUOTA_DAYS,
+  DEFAULT_GEOFENCE_RADIUS_M,
   DEFAULT_LATE_GRACE_MINUTES,
   DEFAULT_MAX_OFFLINE_WINDOW_HOURS,
   DEFAULT_OVERTIME_SETTINGS,
@@ -26,6 +27,20 @@ async function readSetting<T>(client: PoolClient, key: SettingsKey, fallback: T)
   if (res.rows.length === 0 || res.rows[0]!.value === null || res.rows[0]!.value === undefined)
     return fallback;
   return res.rows[0]!.value as T;
+}
+
+/**
+ * The DEFAULT attendance geofence radius in metres (`hr.geofence_radius_m`,
+ * 200 as of migration 229).
+ *
+ * A location's own `geofence_radius_m` overrides this when it is non-NULL;
+ * NULL — the normal case — means inherit. Before 229 that column was NOT NULL
+ * with a default, so it always won and this setting was decorative: an owner
+ * raising the radius in Pengaturan would have seen nothing change anywhere,
+ * with no error to explain why.
+ */
+export async function getDefaultGeofenceRadiusM(client: PoolClient): Promise<number> {
+  return readSetting<number>(client, 'hr.geofence_radius_m', DEFAULT_GEOFENCE_RADIUS_M);
 }
 
 export async function getLateGraceMinutes(client: PoolClient): Promise<number> {

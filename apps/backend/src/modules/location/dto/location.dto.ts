@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ValidateIf,
   IsBoolean,
   IsIn,
   IsInt,
@@ -81,10 +82,17 @@ export class CreateLocationDto {
   @Matches(DECIMAL_RE)
   longitude?: string;
 
+  /**
+   * Attendance geofence radius in metres, or NULL to INHERIT the
+   * `hr.geofence_radius_m` default (200 m — migration 229). Nullable on
+   * purpose: `undefined` (omitted) means "leave it as it is", and without an
+   * explicit null there would be no way to remove an override once set.
+   */
   @IsOptional()
+  @ValidateIf((o: { geofenceRadiusM?: number | null }) => o.geofenceRadiusM !== null)
   @IsInt()
   @Min(0)
-  geofenceRadiusM?: number;
+  geofenceRadiusM?: number | null;
 }
 
 /** `PATCH /api/locations/:id` body — partial of `CreateLocationDto` (CONTRACTS.md §4.3). */
@@ -127,8 +135,15 @@ export class UpdateLocationDto {
   @Matches(DECIMAL_RE)
   longitude?: string | null;
 
+  /**
+   * Attendance geofence radius in metres, or NULL to INHERIT the
+   * `hr.geofence_radius_m` default (200 m — migration 229). Nullable on
+   * purpose: `undefined` (omitted) means "leave it as it is", and without an
+   * explicit null there would be no way to remove an override once set.
+   */
   @IsOptional()
+  @ValidateIf((o: { geofenceRadiusM?: number | null }) => o.geofenceRadiusM !== null)
   @IsInt()
   @Min(0)
-  geofenceRadiusM?: number;
+  geofenceRadiusM?: number | null;
 }

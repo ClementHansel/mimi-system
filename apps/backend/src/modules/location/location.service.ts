@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { SyncEntity, type Paginated, type UUID } from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
+import { getDefaultGeofenceRadiusM } from '../hr/hr-settings.util';
 import { withWrite } from './db-tx';
 import { CreateLocationDto, ListLocationsQueryDto, UpdateLocationDto } from './dto/location.dto';
 
@@ -15,7 +16,7 @@ export interface LocationRow {
   phone: string | null;
   latitude: string | null;
   longitude: string | null;
-  geofence_radius_m: number;
+  geofence_radius_m: number | null;
   is_active: boolean;
   storage_area_count: string;
 }
@@ -30,7 +31,15 @@ export interface Location {
   phone: string | null;
   latitude: string | null;
   longitude: string | null;
+  /**
+   * EFFECTIVE radius in metres: this location's own value, or the
+   * `hr.geofence_radius_m` default when it has none (migration 229). Resolved
+   * before the row leaves the API so no client has to know about the fallback —
+   * the Absen screen must measure against exactly what check-in enforces.
+   */
   geofenceRadiusM: number;
+  /** True when this location overrides the default rather than inheriting it. */
+  geofenceRadiusIsOverride: boolean;
   isActive: boolean;
   storageAreaCount: number;
 }
@@ -46,7 +55,18 @@ export interface Location {
 export class LocationService {
   constructor(private readonly sync: SyncEmitService) {}
 
-  private map(row: LocationRow): Location {
+  /**
+   * Resolves each row's EFFECTIVE geofence radius before it leaves the API.
+   *
+   * `geofence_radius_m` is nullable (migration 229) — NULL means "inherit
+   * `hr.geofence_radius_m`". Clients must never have to know that: the Absen
+   * screen measures the employee's distance against this number, so if it
+   * arrived as null the phone would either show no fence or fall back to a
+   * hardcoded guess, and the two sides would disagree about whether someone is
+   * at work. `geofenceRadiusIsOverride` keeps the distinction available for the
+   * one screen that genuinely needs it (Admin's location editor).
+   */
+  private map(row: LocationRow, defaultRadiusM: number): Location {
     return {
       id: row.id,
       code: row.code,
@@ -57,7 +77,8 @@ export class LocationService {
       phone: row.phone,
       latitude: row.latitude,
       longitude: row.longitude,
-      geofenceRadiusM: row.geofence_radius_m,
+      geofenceRadiusM: row.geofence_radius_m ?? defaultRadiusM,
+      geofenceRadiusIsOverride: row.geofence_radius_m !== null,
       isActive: row.is_active,
       storageAreaCount: parseInt(row.storage_area_count, 10),
     };
@@ -101,7 +122,13 @@ export class LocationService {
       params,
     );
 
-    return { rows: rowsRes.rows.map((r) => this.map(r)), total, page, pageSize };
+    const defaultRadiusM = await getDefaultGeofenceRadiusM(client);
+    return {
+      rows: rowsRes.rows.map((r) => this.map(r, defaultRadiusM)),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   /** The 4 Kalimantan cities (FR-LOG-01) — distinct, non-null, from active locations. */
@@ -116,14 +143,17 @@ export class LocationService {
     const res = await client.query<LocationRow>(`${this.baseSelect} WHERE l.id = $1`, [id]);
     if (!res.rows[0])
       throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: 'Location not found' });
-    return this.map(res.rows[0]);
+    return this.map(res.rows[0], await getDefaultGeofenceRadiusM(client));
   }
 
   async create(client: PoolClient, dto: CreateLocationDto, actorUserId: string): Promise<Location> {
     return withWrite(client, async () => {
       const res = await client.query<{ id: string }>(
+        // NULL, not COALESCE(..., 100): an omitted radius means "inherit
+        // `hr.geofence_radius_m`" (migration 229), and baking 100 in here would
+        // silently give every new outlet a permanent override at the old value.
         `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude, geofence_radius_m)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, COALESCE($9, 100))
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          RETURNING id`,
         [
           dto.code,

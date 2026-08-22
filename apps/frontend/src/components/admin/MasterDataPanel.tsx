@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, MapPin } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
@@ -847,8 +847,60 @@ function LocationFormModal({
   const [city, setCity] = useState(location?.city ?? '');
   const [address, setAddress] = useState(location?.address ?? '');
   const [phone, setPhone] = useState(location?.phone ?? '');
+  /**
+   * GEOFENCE CENTRE + RADIUS (owner, 2026-08-21: "make the attendance system
+   * properly so it can be geo fenced at 200M of the outlet location").
+   *
+   * These fields did not exist. Coordinates were seed-only, so any outlet
+   * created through this form had NULL lat/lng and every check-in there failed
+   * with "This location has no geofence center configured" — an attendance
+   * outage created by adding an outlet, with nothing in this form to hint at
+   * the cause.
+   *
+   * The radius is left EMPTY by default and empty means inherit
+   * `hr.geofence_radius_m` (200 m). Typing a number makes this outlet an
+   * override — which is why the field says which default it is overriding
+   * rather than pre-filling 200 and turning every new outlet into a permanent
+   * override at today's value.
+   */
+  const [latitude, setLatitude] = useState(location?.latitude ?? '');
+  const [longitude, setLongitude] = useState(location?.longitude ?? '');
+  const [radius, setRadius] = useState(
+    location?.geofenceRadiusIsOverride ? String(location.geofenceRadiusM) : '',
+  );
+  const [locating, setLocating] = useState(false);
+  const inheritedRadiusM =
+    location && !location.geofenceRadiusIsOverride ? location.geofenceRadiusM : null;
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  /**
+   * Capture the phone's current position as the centre. This is how the centre
+   * actually gets set correctly: someone stands at the outlet and taps once.
+   * Typing coordinates from a map is where transposed lat/lng and dropped
+   * decimals come from — and a centre that is wrong by a kilometre locks the
+   * whole outlet out of clocking in.
+   */
+  function useCurrentPosition() {
+    if (!navigator.geolocation) {
+      setError(t('admin.masterData.locations.geoUnsupported'));
+      return;
+    }
+    setLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLatitude(pos.coords.latitude.toFixed(6));
+        setLongitude(pos.coords.longitude.toFixed(6));
+        setLocating(false);
+      },
+      () => {
+        setError(t('admin.masterData.locations.geoDenied'));
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  }
 
   async function submit() {
     setSubmitting(true);
@@ -860,6 +912,11 @@ function LocationFormModal({
       city,
       address: address || undefined,
       phone: phone || undefined,
+      latitude: latitude || undefined,
+      longitude: longitude || undefined,
+      // Empty means inherit — sent as null so a PATCH can CLEAR an override,
+      // which `undefined` (omitted) could never express.
+      geofenceRadiusM: radius === '' ? null : Number(radius),
     };
     try {
       if (location) await api.patch(`/locations/${location.id}`, body);
@@ -939,6 +996,52 @@ function LocationFormModal({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
+
+        <div className="col-span-2 flex flex-col gap-1 border-t border-border pt-3">
+          <p className="text-sm font-semibold text-text-primary">
+            {t('admin.masterData.locations.geofenceTitle')}
+          </p>
+          <p className="text-xs text-text-muted">{t('admin.masterData.locations.geofenceHint')}</p>
+        </div>
+        <Input
+          label={t('admin.masterData.locations.latitude')}
+          value={latitude}
+          onChange={(e) => setLatitude(e.target.value)}
+          placeholder="-1.265000"
+          hint={t('admin.masterData.locations.coordsHint')}
+        />
+        <Input
+          label={t('admin.masterData.locations.longitude')}
+          value={longitude}
+          onChange={(e) => setLongitude(e.target.value)}
+          placeholder="116.831000"
+        />
+        <div className="col-span-2 flex flex-wrap items-end gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            leftIcon={<MapPin className="size-4" />}
+            loading={locating}
+            onClick={useCurrentPosition}
+          >
+            {t('admin.masterData.locations.useCurrentPosition')}
+          </Button>
+          <Input
+            label={t('admin.masterData.locations.radius')}
+            type="number"
+            inputMode="numeric"
+            value={radius}
+            onChange={(e) => setRadius(e.target.value)}
+            placeholder={
+              inheritedRadiusM
+                ? t('admin.masterData.locations.radiusInherited', { radius: inheritedRadiusM })
+                : t('admin.masterData.locations.radiusDefault')
+            }
+            hint={t('admin.masterData.locations.radiusHint')}
+            wrapperClassName="w-56"
+          />
+        </div>
       </div>
     </Modal>
   );

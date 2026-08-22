@@ -102,10 +102,24 @@ export class WasteService {
     return { rows: result, total, page, pageSize };
   }
 
+  /**
+   * B-11: `batchId` is optional and defaults to a fresh UUID, which is what the
+   * REST path passes (nothing to correlate — the request IS the origin).
+   *
+   * The SYNC path passes the batch id the DEVICE minted while offline, because
+   * that id is the only idempotency key the two paths share: a re-projection
+   * sweep, or a device that retries a push whose ack was lost, must not file
+   * the same waste twice. Handing the caller's id through here — rather than
+   * letting `WasteSyncProjector` write `waste_records` itself — is what keeps
+   * the offline path on the SAME wajib-foto check, the same numbering and the
+   * same approval submission as the online one. A second implementation of
+   * "file a waste report" is exactly the divergence D-27 was about.
+   */
   async create(
     client: PoolClient,
     actor: ActorContext,
     dto: CreateWasteDto,
+    opts: { batchId?: UUID } = {},
   ): Promise<WasteListRow[]> {
     this.assertLocationInScope(actor, dto.locationId);
     if (dto.photoAttachmentIds.length === 0) {
@@ -115,8 +129,19 @@ export class WasteService {
       });
     }
 
+    // Idempotency, and ONLY for a caller-supplied batch id: an existing batch
+    // means this exact report already landed (a retried push, a re-projection),
+    // so return it rather than filing a duplicate. The REST path cannot reach
+    // this branch — its id is freshly minted and cannot already exist.
+    if (opts.batchId) {
+      const existing = await this.repo.findByBatch(client, opts.batchId);
+      if (existing.length > 0) {
+        return Promise.all(existing.map((r) => this.toListRow(client, r)));
+      }
+    }
+
     return withWrite(client, async () => {
-      const batchId = randomUUID();
+      const batchId = opts.batchId ?? randomUUID();
       const recordIds: string[] = [];
       for (const item of dto.items) {
         const wasteNumber = await this.repo.nextWasteNumber(client);

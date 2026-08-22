@@ -906,13 +906,35 @@ async function main(): Promise<void> {
     }
     const productDefs: ProductDef[] = [];
     let prodSeq = 1;
-    function addProduct(name: string, category: string, price: number, ingredients: string[]) {
+    /**
+     * D-28: `yieldQty` is how many sellable units ONE execution of the recipe
+     * produces. It defaults to 1 (make one, sell one), which is genuinely
+     * right for a piece of fried chicken.
+     *
+     * It is NOT right for everything, and that mattered: every seeded recipe
+     * used to be 1, so `line.qty x (qtySold / yieldQty)` — the explosion
+     * formula — had its division exercised by nothing in the shared fixture.
+     * `modules/pos` had silently DROPPED that division and mis-posted stock for
+     * every batch recipe, and 13 tests missed it because no seeded recipe could
+     * tell the two formulas apart (D-27).
+     *
+     * The two batch products below are modelled the way the kitchen actually
+     * works: you cook a pot of rice or a batch of sambal and portion it out.
+     */
+    function addProduct(
+      name: string,
+      category: string,
+      price: number,
+      ingredients: string[],
+      yieldQty = 1,
+    ) {
       productDefs.push({
         code: `PRD${String(prodSeq++).padStart(3, '0')}`,
         name,
         category,
         price,
         ingredients,
+        yieldQty,
       });
     }
     const fillet = 'Ayam Fillet Berbumbu Original';
@@ -975,8 +997,8 @@ async function main(): Promise<void> {
       'Beras Premium',
       'Box Nasi Besar',
     ]);
-    addProduct('Nasi Putih', 'Tambahan', 6000, ['Beras Premium', 'Box Nasi Kecil']);
-    addProduct('Sambal Bawang Cup', 'Tambahan', 3000, ['Sambal Bawang', 'Cup Sambal']);
+    addProduct('Nasi Putih', 'Tambahan', 6000, ['Beras Premium', 'Box Nasi Kecil'], 10);
+    addProduct('Sambal Bawang Cup', 'Tambahan', 3000, ['Sambal Bawang', 'Cup Sambal'], 20);
     addProduct('Sambal Terasi Cup', 'Tambahan', 3000, ['Sambal Terasi', 'Cup Sambal']);
     addProduct('Sambal Matah Cup', 'Tambahan', 3500, ['Sambal Matah', 'Cup Sambal']);
     addProduct('Kentang Goreng', 'Tambahan', 12000, ['Kentang', 'Minyak Goreng Kemasan']);
@@ -1075,9 +1097,9 @@ async function main(): Promise<void> {
     }
     for (const p of productDefs) {
       const recipeRes = await client.query(
-        `INSERT INTO recipes (product_id, yield_qty) VALUES ($1, 1)
+        `INSERT INTO recipes (product_id, yield_qty) VALUES ($1, $2)
          ON CONFLICT (product_id) DO NOTHING RETURNING id`,
-        [productId[p.name]],
+        [productId[p.name], p.yieldQty],
       );
       const recipeId =
         recipeRes.rows[0]?.id ??
@@ -1089,7 +1111,18 @@ async function main(): Promise<void> {
         await client.query(
           `INSERT INTO recipe_lines (recipe_id, item_id, qty, unit_id)
            VALUES ($1,$2,$3,$4) ON CONFLICT (recipe_id, item_id) DO NOTHING`,
-          [recipeId, iid, (Math.round(rnd(5, 30) * 10) / 100).toFixed(3), unitId['kg']],
+          // `recipe_lines.qty` is per BATCH, not per sellable unit, so it scales
+          // with `yieldQty`. Doing it this way keeps per-unit consumption —
+          // qty / yieldQty — identical to what it was before D-28, so the
+          // division path becomes real WITHOUT moving any existing test's
+          // numbers. A batch recipe whose line qty had stayed per-unit would
+          // have quietly divided every ingredient by 10 or 20 instead.
+          [
+            recipeId,
+            iid,
+            ((Math.round(rnd(5, 30) * 10) / 100) * p.yieldQty).toFixed(3),
+            unitId['kg'],
+          ],
         );
       }
     }

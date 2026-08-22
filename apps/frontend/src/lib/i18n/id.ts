@@ -1613,6 +1613,172 @@ export const id = {
       empty: 'Belum ada catatan audit.',
     },
     settings: {
+      // REDESIGNED SETTINGS SCREEN (owner, 2026-08-21: "this is confusing for
+      // normal user"). The old table showed the raw key plus the developer's
+      // English description and no value at all. Everything below is the
+      // owner-facing layer: section names, per-setting names, and — the part
+      // that was missing entirely — what changing each one actually DOES.
+      columnSetting: 'Pengaturan',
+      columnValue: 'Nilai Saat Ini',
+      searchPlaceholder: 'Cari pengaturan…',
+      searchEmpty: 'Tidak ada pengaturan yang cocok.',
+      valueLabel: 'Nilai',
+      enabledLabel: 'Aktif',
+      rawJsonLabel: 'Nilai Mentah (JSON)',
+      showRaw: 'Tampilkan nilai mentah (JSON)',
+      hideRaw: 'Sembunyikan nilai mentah',
+      noSpecHelp:
+        'Pengaturan teknis. Ubah hanya bila Anda tahu dampaknya — nilai disimpan apa adanya.',
+      section: {
+        approval: 'Persetujuan',
+        attendance: 'Absensi & Cuti',
+        payroll: 'Penggajian',
+        pos: 'Kasir & Offline',
+        coldchain: 'Rantai Dingin',
+        sync: 'Sinkronisasi & Notifikasi',
+        company: 'Profil Perusahaan',
+        other: 'Lainnya',
+      },
+      sectionHint: {
+        approval: 'Batas nilai yang menentukan siapa harus menyetujui sebuah dokumen.',
+        attendance: 'Aturan absen di outlet dan kuota cuti tahunan.',
+        payroll: 'Lembur, potongan, dan aturan penggajian.',
+        pos: 'Batas di kasir dan aturan saat perangkat sedang offline.',
+        coldchain: 'Batas suhu untuk barang beku selama pengiriman.',
+        sync: 'Toleransi sinkronisasi antar perangkat dan kanal notifikasi.',
+        company: 'Identitas perusahaan yang dicetak di dokumen dan slip gaji.',
+        other: 'Pengaturan teknis lain.',
+      },
+      unit: {
+        minutes: '{{n}} menit',
+        hours: '{{n}} jam',
+        metres: '{{n}} m',
+        days: '{{n}} hari',
+        count: '{{n}}×',
+        percent: '{{n}}%',
+      },
+      unitHint: {
+        minutes: 'Dalam menit.',
+        hours: 'Dalam jam.',
+        metres: 'Dalam meter.',
+        days: 'Dalam hari.',
+        count: 'Jumlah maksimum.',
+        percent: 'Dalam persen.',
+      },
+      spec: {
+        field: {
+          managerAbove: 'Wajib disetujui Manajer di atas',
+          ownerAbove: 'Wajib disetujui Pemilik di atas',
+          annualLeave: 'Cuti tahunan',
+          marriageLeave: 'Cuti menikah',
+          ratePerHour: 'Tarif lembur per jam',
+          minMinutes: 'Minimal lembur dihitung',
+          perLateMinute: 'Potongan per menit terlambat',
+          sickPaid: 'Sakit tetap dibayar',
+          permissionPaid: 'Izin tetap dibayar',
+          perAbsentDay: 'Potongan per hari alpha',
+          mode: 'Mode',
+          splitRule: 'Aturan pembagian',
+          pct: 'Toleransi selisih harga',
+          minC: 'Suhu minimum (°C)',
+          maxC: 'Suhu maksimum (°C)',
+          companyName: 'Nama perusahaan',
+          address: 'Alamat',
+          city: 'Kota',
+        },
+        void: {
+          label: 'Batas Void/Refund',
+          help: 'Void atau refund di kasir di atas nilai ini wajib disetujui Manajer. Di bawahnya, kasir bisa memprosesnya sendiri.',
+        },
+        opname: {
+          label: 'Batas Selisih Stok Opname',
+          help: 'Stok opname dengan nilai selisih di atas ini wajib disetujui Manajer sebelum stok dikoreksi.',
+        },
+        po: {
+          label: 'Batas Pesanan Pembelian (PO)',
+          help: 'PO dengan total di atas nilai ini wajib disetujui Pemilik, bukan hanya Manajer.',
+        },
+        payment: {
+          label: 'Batas Verifikasi Pembayaran',
+          help: 'Pembayaran di atas nilai ini wajib diverifikasi Pemilik sebelum dianggap lunas.',
+        },
+        approvalMode: {
+          label: 'Mode Persetujuan per Dokumen',
+          help: 'Menentukan apakah sebuah jenis dokumen perlu persetujuan manusia atau lewat otomatis.',
+          elsewhere:
+            'Diatur di layar Mode Persetujuan, bukan di sini — di sana ada pengaman saat sebuah rantai persetujuan dimatikan.',
+        },
+        geofence: {
+          label: 'Radius Absensi (Geofence)',
+          help: 'Jarak maksimum dari titik outlet agar karyawan bisa absen. Terlalu kecil membuat karyawan gagal absen padahal sudah di lokasi (GPS ponsel biasanya melenceng 20–50 m).',
+        },
+        lateGrace: {
+          label: 'Toleransi Keterlambatan',
+          help: 'Menit setelah jam shift yang masih dihitung tepat waktu. Lewat dari ini, absensi ditandai terlambat dan bisa terkena potongan.',
+        },
+        leaveQuotas: {
+          label: 'Kuota Cuti',
+          help: 'Jumlah hari cuti per karyawan per tahun. Dipakai saat pengajuan cuti memeriksa sisa kuota.',
+        },
+        overtime: {
+          label: 'Lembur',
+          help: 'Tarif lembur per jam dan lama minimum agar lembur dihitung. Di bawah minimum, kelebihan jam tidak dibayar.',
+        },
+        deductions: {
+          label: 'Potongan Absensi',
+          help: 'Potongan gaji karena terlambat atau tidak masuk, dan apakah sakit/izin tetap dibayar.',
+        },
+        statutory: {
+          label: 'Mode Payroll Statutori (PPh21 & BPJS)',
+          help: 'Bila aktif, perhitungan gaji menyertakan iuran BPJS dan potongan PPh21.',
+          elsewhere:
+            'Diatur lewat tab Payroll Statutori — ada langkah konfirmasi karena mengubahnya mempengaruhi seluruh perhitungan gaji.',
+        },
+        soShortfall: {
+          label: 'Pembebanan Selisih Stok ke Gaji',
+          help: 'Aturan saat selisih stok opname dibebankan ke karyawan yang sedang bertugas.',
+        },
+        cashVariance: {
+          label: 'Batas Selisih Kas Kasir',
+          help: 'Selisih kas saat tutup shift di atas nilai ini otomatis membuat usulan koreksi kas untuk ditinjau.',
+        },
+        qris: {
+          label: 'Mode QRIS',
+          help: 'Cara pembayaran QRIS dijalankan: statis (satu kode tercetak) atau dinamis per transaksi.',
+        },
+        selfieAbove: {
+          label: 'Selfie Wajib untuk Otorisasi Offline',
+          help: 'Saat perangkat offline, persetujuan di atas nilai ini wajib disertai selfie penyetuju sebagai bukti.',
+        },
+        offlineCap: {
+          label: 'Batas Jumlah Otorisasi Offline',
+          help: 'Berapa kali satu kredensial offline boleh dipakai sebelum perangkat harus online lagi.',
+        },
+        offlineTtl: {
+          label: 'Masa Berlaku Kredensial Offline',
+          help: 'Berapa lama kredensial otorisasi offline tetap berlaku sebelum perangkat wajib online.',
+        },
+        coldchain: {
+          label: 'Batas Suhu Barang Beku',
+          help: 'Rentang suhu yang dianggap aman selama pengiriman beku. Di luar rentang ini, pengiriman ditandai pelanggaran rantai dingin.',
+        },
+        offlineWindow: {
+          label: 'Batas Waktu Offline',
+          help: 'Berapa lama sebuah perangkat boleh offline sebelum data yang dikirimnya ditandai perlu ditinjau.',
+        },
+        priceVariance: {
+          label: 'Toleransi Selisih Harga',
+          help: 'Selisih harga antar perangkat di bawah persentase ini dianggap wajar dan tidak masuk antrean rekonsiliasi.',
+        },
+        waEnabled: {
+          label: 'Kanal WhatsApp',
+          help: 'Bila nonaktif, pesan WhatsApp hanya dicatat di sistem dan tidak benar-benar dikirim.',
+        },
+        company: {
+          label: 'Profil Perusahaan',
+          help: 'Nama dan alamat yang dicetak di Surat Jalan, slip gaji, dan dokumen resmi lain.',
+        },
+      },
       title: 'Pengaturan',
       description:
         'Parameter sistem: profil perusahaan, ambang persetujuan, dan mode payroll statutori.',

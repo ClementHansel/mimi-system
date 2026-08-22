@@ -5,54 +5,120 @@ import { useI18n } from '@/lib/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDateTime } from '@/lib/dates';
-import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { Modal } from '@/components/ui/Modal';
-import { Button } from '@/components/ui/Button';
-import { Textarea } from '@/components/ui/Textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { PayrollStatutoryCard } from './PayrollStatutoryCard';
+import { SettingDetailModal } from './SettingDetailModal';
+import {
+  SETTING_SECTIONS,
+  sectionFor,
+  specFor,
+  type SettingSection,
+} from './lib/settings-registry';
+import { formatSettingValue } from './lib/settings-format';
 import type { Setting } from './types';
 
 /**
- * F10 admin — Settings (CONTRACTS §4.20 M20). General namespaced settings
- * (company profile, approval thresholds, HR/sync parameters, …) plus the
- * payroll-statutory card. `payroll.statutory` itself never appears editable
- * in the general table below — the server rejects a raw PUT on that key with
- * `ERR_USE_WIZARD`, so the only path to it is `PayrollStatutoryCard`'s
- * enable/disable actions.
+ * F10 admin — Settings (CONTRACTS §4.20 M20), redesigned on the owner's
+ * 2026-08-21 verdict: "this is confusing for normal user".
+ *
+ * What it used to be: one flat table of 22 rows showing the RAW KEY
+ * (`approval.threshold.opname`), the developer's English description ("Stock
+ * opname manager escalation threshold (§5.4)"), who changed it and when — and
+ * no value. The single question anyone opens this screen with ("what IS the
+ * void limit right now?") could not be answered without clicking into a JSON
+ * textarea.
+ *
+ * What it is now: grouped by the part of the business it governs, each row
+ * naming the setting in Indonesian and SHOWING ITS VALUE formatted for its type
+ * (Rp 200.000, 200 m, 5 menit, Ya/Tidak). The detail modal explains what
+ * changing it does and edits it through typed fields —
+ * `settings-registry.ts` holds that mapping.
+ *
+ * `payroll.statutory` and `approval.mode` stay read-only here and point at
+ * their own screens: the server rejects a raw PUT on the first
+ * (`ERR_USE_WIZARD`) and the second has guard rails around switching an
+ * approval chain off that a raw edit would bypass.
  */
 export function SettingsPanel() {
   const { t } = useI18n();
   const { can } = usePermissions();
   const [settings, setSettings] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Setting | null>(null);
+  const [q, setQ] = useState('');
 
   function reload() {
     setLoading(true);
+    setError(null);
     api
       .get<Setting[]>('/settings')
       .then(setSettings)
+      // A failed load used to leave an empty table that looked like "no
+      // settings exist" — indistinguishable from a 403.
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')))
       .finally(() => setLoading(false));
   }
-  useEffect(reload, []);
+  useEffect(reload, [t]);
 
   const columns: DataTableColumn<Setting>[] = [
-    { key: 'key', header: t('admin.settings.columnKey') },
-    { key: 'description', header: t('admin.settings.columnDescription') },
+    {
+      key: 'key',
+      header: t('admin.settings.columnSetting'),
+      render: (r) => {
+        const spec = specFor(r.key);
+        return (
+          <div className="flex flex-col">
+            <span className="text-text-primary">{spec ? t(spec.labelKey) : r.key}</span>
+            {/* The raw key stays visible but subordinate: support needs it,
+                the owner does not read it first. */}
+            <span className="font-mono text-xs text-text-muted">{r.key}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'value',
+      header: t('admin.settings.columnValue'),
+      // THE column the old table did not have.
+      render: (r) => (
+        <span className="font-medium tabular-nums text-text-primary">
+          {formatSettingValue(r.key, r.value, t)}
+        </span>
+      ),
+    },
     {
       key: 'updatedBy',
       header: t('admin.settings.columnUpdatedBy'),
-      render: (r) => r.updatedBy ?? '—',
-    },
-    {
-      key: 'updatedAt',
-      header: t('admin.settings.columnUpdatedAt'),
-      render: (r) => fmtDateTime(r.updatedAt),
+      render: (r) => (
+        <span className="text-text-secondary">
+          {r.updatedBy ? `${r.updatedBy} · ${fmtDateTime(r.updatedAt)}` : '—'}
+        </span>
+      ),
     },
   ];
+
+  const query = q.trim().toLowerCase();
+  const visible = settings.filter((setting) => {
+    if (!query) return true;
+    const spec = specFor(setting.key);
+    const label = spec ? t(spec.labelKey).toLowerCase() : '';
+    // Searchable by BOTH the human name and the raw key — an owner types
+    // "geofence", a developer pastes `hr.geofence_radius_m`.
+    return setting.key.toLowerCase().includes(query) || label.includes(query);
+  });
+
+  const bySection = new Map<SettingSection, Setting[]>();
+  for (const setting of visible) {
+    const section = sectionFor(setting.key);
+    const list = bySection.get(section) ?? [];
+    list.push(setting);
+    bySection.set(section, list);
+  }
 
   return (
     <Tabs defaultValue="general">
@@ -60,30 +126,64 @@ export function SettingsPanel() {
         <TabsTrigger value="general">{t('admin.settings.tabGeneral')}</TabsTrigger>
         <TabsTrigger value="payroll">{t('admin.settings.tabPayroll')}</TabsTrigger>
       </TabsList>
+
       <TabsContent value="general">
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           <p className="text-sm text-text-secondary">{t('admin.settings.description')}</p>
-          <DataTable
-            columns={columns}
-            data={{
-              rows: settings.filter((s) => !s.key.startsWith('payroll.statutory')),
-              total: settings.length,
-              page: 1,
-              pageSize: settings.length || 1,
-            }}
-            keyField={(r) => r.key}
-            loading={loading}
-            onRowClick={can('settings.manage') ? (r) => setEditing(r) : undefined}
+
+          <Input
+            placeholder={t('admin.settings.searchPlaceholder')}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            wrapperClassName="w-72"
           />
+
+          {error && <p className="text-sm text-danger-600">{error}</p>}
+
+          {loading && <p className="text-sm text-text-muted">{t('common.loading')}</p>}
+
+          {!loading &&
+            !error &&
+            SETTING_SECTIONS.map((section) => {
+              const rows = bySection.get(section) ?? [];
+              // Empty sections are dropped rather than rendered as headings
+              // with nothing under them — including when a search narrows to
+              // one area.
+              if (rows.length === 0) return null;
+              return (
+                <Card key={section}>
+                  <CardHeader>
+                    <CardTitle>{t(`admin.settings.section.${section}`)}</CardTitle>
+                    <p className="text-sm text-text-muted">
+                      {t(`admin.settings.sectionHint.${section}`)}
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <DataTable
+                      columns={columns}
+                      data={{ rows, total: rows.length, page: 1, pageSize: rows.length || 1 }}
+                      keyField={(r) => r.key}
+                      onRowClick={can('settings.read') ? (r) => setEditing(r) : undefined}
+                    />
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+          {!loading && !error && visible.length === 0 && (
+            <p className="text-sm text-text-muted">{t('admin.settings.searchEmpty')}</p>
+          )}
         </div>
       </TabsContent>
+
       <TabsContent value="payroll">
         <PermissionGate permission="payroll.statutory.read" showMessage>
           <PayrollStatutoryCard />
         </PermissionGate>
       </TabsContent>
+
       {editing && (
-        <SettingEditModal
+        <SettingDetailModal
           setting={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -93,71 +193,5 @@ export function SettingsPanel() {
         />
       )}
     </Tabs>
-  );
-}
-
-function SettingEditModal({
-  setting,
-  onClose,
-  onSaved,
-}: {
-  setting: Setting;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const { t } = useI18n();
-  const [raw, setRaw] = useState(JSON.stringify(setting.value, null, 2));
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function submit() {
-    setError(null);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      setError(t('admin.settings.invalidJson'));
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await api.put(`/settings/${setting.key}`, { value: parsed });
-      toast({ title: t('admin.settings.updateSuccess'), variant: 'success' });
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.genericError'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`${t('admin.settings.editTitle')} — ${setting.key}`}
-      size="lg"
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button onClick={submit} loading={submitting}>
-            {t('common.save')}
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-2">
-        {error && <p className="text-sm text-danger-600">{error}</p>}
-        <Textarea
-          value={raw}
-          onChange={(e) => setRaw(e.target.value)}
-          hint={t('admin.settings.rawJsonHint')}
-          rows={10}
-          className="font-mono text-xs"
-        />
-      </div>
-    </Modal>
   );
 }

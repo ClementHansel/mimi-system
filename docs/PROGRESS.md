@@ -9,19 +9,19 @@ Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not sta
 
 ## 1. At a glance
 
-| Wave                      | Tasks  | Done   | State                                                                                        |
-| ------------------------- | ------ | ------ | -------------------------------------------------------------------------------------------- |
-| **0 — Contracts**         | 2      | 2      | ✅ complete                                                                                  |
-| **1 — Foundation**        | 5      | 5      | ✅ complete · **Gate G1 closed**                                                             |
-| **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                                             |
-| **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                                    |
-| **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                  |
-| **5 — Completion**        | 8      | 6      | 🔄 print + inbox DONE; node field package DONE, installer/signing owed; WA live test blocked |
-| **5b — Owner UI round**   | 8      | 8      | ✅ complete · QA-ISOLATION closed (803/0 on a fresh DB)                                      |
-| **5c — IA rework**        | 6      | 4      | 🔄 F-HUB-2/F-POS-2/F-DOCS/FIX-SECURECTX done; FIX-LOADS unverified; **F-UX in flight now**   |
-| **6 — QA**                | 7      | 5      | 🔄 W6-00/01/03/04/06 DONE; W6-02 partial (B-14); W6-05 harness **still unrun**               |
-| **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups scheduled & restore-drilled; W7-01 open on TLS (B-14)           |
-| **Totals**                | **67** | **57** | **85%**                                                                                      |
+| Wave                      | Tasks  | Done   | State                                                                                                 |
+| ------------------------- | ------ | ------ | ----------------------------------------------------------------------------------------------------- |
+| **0 — Contracts**         | 2      | 2      | ✅ complete                                                                                           |
+| **1 — Foundation**        | 5      | 5      | ✅ complete · **Gate G1 closed**                                                                      |
+| **2 — Kernel**            | 6      | 6      | ✅ complete · **Gate G2 closed**                                                                      |
+| **3 — Domain backend**    | 10     | 10     | ✅ complete · gate closed                                                                             |
+| **4 — BE finish + FE**    | 10     | 10     | ✅ complete                                                                                           |
+| **5 — Completion**        | 8      | 6      | 🔄 print + inbox DONE; node field package DONE, installer/signing owed; WA live test blocked          |
+| **5b — Owner UI round**   | 8      | 8      | ✅ complete · QA-ISOLATION closed (803/0 on a fresh DB)                                               |
+| **5c — IA rework**        | 6      | 4      | 🔄 F-HUB-2/F-POS-2/F-DOCS/FIX-SECURECTX done; FIX-LOADS unverified; **F-UX in flight now**            |
+| **6 — QA**                | 7      | 5      | 🔄 W6-00/01/03/04/06 DONE; W6-02 partial; W6-05 scripts now provably load, 150-VU gate needs a target |
+| **7 — Deploy & handover** | 5      | 1      | 🔄 deployed + CI/CD; backups scheduled & restore-drilled; W7-01 open on TLS (B-14)                    |
+| **Totals**                | **67** | **57** | **85%**                                                                                               |
 
 **Outside the wave register** — four owner-driven rounds landed 2026-08-20/21 and are tracked in §2, not
 here: B-16 general-ledger wiring (closed), supplier management UI (done), the driver interface upgrade
@@ -900,10 +900,15 @@ grepped `mimi-tls` before the overlay set that `container_name`, so the one log 
 explained it printed nothing. `:8080` answered 200 throughout both failures, by design: the deploy treats
 only the HTTP check as fatal, so a broken TLS config cannot take the box down.
 
-### 🔴 B-14 update 2026-08-23 — attempted via sslip.io, blocked by a NEIGHBOUR's container
+### 🟠 B-14 side-note 2026-08-23 — the sslip.io + `:80`/`:443` attempt, and why the port really is held
 
-The owner chose the sslip.io route (no registrar, no DNS work). It got further than expected and then hit
-the one thing that was always the real question: **who owns `:80`/`:443` on a shared box.**
+**Superseded on the substance by the `:8443` note above, which is the better answer.** This attempt framed
+the choice as "take `:80`/`:443`, or wait for a domain" and missed that a secure context is a property of
+the SCHEME, not the port — so self-signed TLS on a high port unblocks the features today without needing
+anyone's ports. Kept for the one durable finding it did produce, below.
+
+The owner chose the sslip.io route (no registrar, no DNS work). It got as far as the question that still
+governs a TRUSTED certificate: **who owns `:80`/`:443` on a shared box.**
 
 **What checked out.** `150-109-15-108.sslip.io` and `api.150-109-15-108.sslip.io` both resolve to the box.
 And the switch turns out to be much smaller than `docker-compose.prod.yml` implies: the frontend already
@@ -933,9 +938,11 @@ is not a call to make on someone else's behalf without asking.
 Everything was removed cleanly — no Traefik container, no volume, no directory. `aire-nginx` was never
 touched, the mimi stack is healthy, and `http://150.109.15.108:8080/login` still answers 200.
 
-**What it needs from the owner:** a decision on `aire-nginx`. Either it is retired (then mimi takes
-`:80`/`:443` and the Traefik piece above is perhaps twenty minutes), or it is coming back (then mimi needs
-a different port, and a domain, and the two share a front proxy). Nothing else about B-14 is unresolved.
+**What this still gates:** a TRUSTED certificate, and only that. Let's Encrypt needs `:80` (HTTP-01) or
+`:443` (TLS-ALPN-01), and sslip.io offers no API for DNS-01. So the `aire-nginx` decision is the gate for
+a browser-trusted cert — retire it and mimi takes the ports (the Traefik piece above is then perhaps twenty
+minutes), or keep it and the two need a shared front proxy and a real domain. **Testing the
+secure-context features is no longer blocked on any of that** — see the `:8443` note above.
 
 ### 🔴 B-14 — The demo box is HTTP-only, so geolocation and service workers are dead
 

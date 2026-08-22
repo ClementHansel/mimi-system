@@ -112,7 +112,8 @@ const JOURNEYS: RoleJourney[] = [
   },
   {
     role: 'kasir',
-    username: 'kasir1_bjm01',
+    // The morning cashier at BJM01 — `<slot>_<outlet>_<shift>`, see support/app.ts.
+    username: 'kasir_bjm01_p',
     landing: '/pos',
     // The narrowest role in the system: a till, the manual, and their own
     // payslip (`/me` — a dashboard AREA reached from the header's account

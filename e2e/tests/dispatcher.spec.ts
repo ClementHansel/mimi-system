@@ -5,7 +5,7 @@ import { login, USERS } from './support/app';
  * The gudang side of delivery: route planning and the live board.
  *
  * Gated on `delivery.sj.create`, which is kepala_gudang's — so these specs run
- * as `kepalagudang1`, not owner. That distinction is itself worth encoding:
+ * as the warehouse account (`USERS.kepalaGudang`), not owner. That distinction is itself worth encoding:
  * the owner can see the Surat Jalan and the map but deliberately cannot plan
  * the route, and a spec written as owner would have "proved" the planner was
  * missing.

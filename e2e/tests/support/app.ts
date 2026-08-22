@@ -11,11 +11,20 @@ import { expect, type Page } from '@playwright/test';
 export const DEMO_PASSWORD = process.env.E2E_PASSWORD ?? 'password123';
 export const DEMO_PIN = process.env.E2E_PIN ?? '123456';
 
-/** Seeded usernames, by the role each one exercises. */
+/**
+ * Seeded usernames, by the role each one exercises.
+ *
+ * These follow `database/simulate-org.ts`'s scheme, which is the org the
+ * business actually runs: crew usernames read `<slot>_<outlet>_<shift>`
+ * (`spv_bpp01_p`, `kasir_smd03_m`), warehouse staff are `gudang1`/`gudang2`,
+ * and there are exactly two drivers. Before that, this file named
+ * `seed.ts`'s raw output (`kepalagudang1`) and the whole suite failed the first
+ * time the org was reshaped — against a perfectly healthy box.
+ */
 export const USERS = {
   superadmin: 'superadmin',
   owner: 'owner',
-  kepalaGudang: 'kepalagudang1',
+  kepalaGudang: 'gudang1',
   driver: 'driver1',
 } as const;
 

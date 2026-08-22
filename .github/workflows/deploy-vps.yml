@@ -97,27 +97,26 @@ jobs:
             # --remove-orphans is scoped to project `mimi` by -p, so it can only
             # remove containers this stack previously created.
 
-            # Reload nginx explicitly.
+            # RECREATE the TLS container, do not reload it.
             #
-            # `nginx-tls.conf` is BIND-MOUNTED, so editing it changes nothing
-            # about the `tls` service definition — Compose sees an identical
-            # container and leaves it running with the OLD config still in
-            # memory. That is how a corrected proxy header shipped, deployed
-            # green, and had no effect whatsoever; the previous config change
-            # only took hold because it also added a port, which did force a
-            # recreate.
+            # `nginx-tls.conf` is bind-mounted as a SINGLE FILE, and `git reset
+            # --hard` above does not edit files in place — it writes a new one and
+            # renames it over the old. A single-file bind mount is pinned to the
+            # INODE it was created with, so the container keeps serving the file
+            # that existed when it started, and `nginx -s reload` dutifully
+            # re-reads that same stale inode.
             #
-            # `nginx -t` first: a reload with a broken config is refused and
-            # leaves the running server alone, but an untested `-s reload`
-            # turns a typo into a silent no-op. Non-fatal, like every other
-            # TLS step here — :8080 must stay up regardless.
-            if docker ps --format '{{.Names}}' | grep -q '^mimi-tls$'; then
-              if docker exec mimi-tls nginx -t 2>&1; then
-                docker exec mimi-tls nginx -s reload && echo "nginx config reloaded"
-              else
-                echo "::warning::nginx config failed validation — the running config was left untouched"
-              fi
-            fi
+            # That cost two deploys of confusion: a corrected proxy header was
+            # committed, deployed green, reloaded with "configuration file test is
+            # successful" — and `nginx -T` still showed the old directive. Only
+            # replacing the container picks up a new file. It is an nginx
+            # container; recreating it costs about a second on :8443/:8444 and
+            # never touches :8080.
+            docker compose -p mimi \
+              -f docker-compose.yml -f docker-compose.vps.yml \
+              --env-file .env.vps \
+              up -d --force-recreate --no-deps tls
+            echo "tls container recreated so the mounted config is actually the current one"
           REMOTE
 
       - name: Verify TLS answers alongside HTTP

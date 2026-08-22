@@ -8,7 +8,9 @@
     "migrate": "tsx migrate.ts",
     "migrate:status": "tsx migrate.ts --status",
     "seed": "tsx seed.ts",
-    "reset": "tsx reset.ts"
+    "reset": "tsx reset.ts",
+    "import": "tsx import.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@mimi/shared": "workspace:*",

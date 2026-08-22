@@ -1,0 +1,4 @@
+sku,name,category,base_unit,storage_type,is_sellable,shelf_life_days,barcode
+IMP-AYM-01,Ayam Fillet Impor,Ayam Segar,kg,frozen,no,180,
+IMP-BMB-01,Bumbu Geprek Impor,Bumbu,kg,dry,no,365,
+IMP-MNM-01,Air Mineral 600ml Impor,Minuman Kemasan,pcs,dry,yes,,8991234567890

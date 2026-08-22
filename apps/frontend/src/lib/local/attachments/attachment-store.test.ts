@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createTestDatabase } from '../test-support/fixtures';
 import {
   captureAttachment,
@@ -8,6 +8,23 @@ import {
   type AttachmentUploader,
 } from './attachment-store';
 import type { AttachmentRecord } from '../types';
+
+/**
+ * This file is legitimately slow, and it kept crossing vitest's 5s default
+ * under full-suite CPU contention — an intermittent "Test timed out" that
+ * looked like a product flake and was not one. Twice it hit the eviction test,
+ * once T-09; nothing was ever wrong with the assertions.
+ *
+ * WHY it is slow: the two cap tests must create `ATTACHMENT_CAP_COUNT` (500)
+ * blobs to reach the boundary they exercise, and every `captureAttachment`
+ * hashes its content and calls `getAll()` on the fake store — so the loop is
+ * O(n²) record copies plus 500 sha256s, twice in this file.
+ *
+ * The alternative fix would be making the cap injectable so tests could use a
+ * cap of 5. That is a nicer test and a worse production API — a knob whose only
+ * caller is a test — so the timeout is raised instead, deliberately.
+ */
+vi.setConfig({ testTimeout: 30_000 });
 
 function blobOf(content: string, mime = 'image/jpeg'): Blob {
   return new Blob([content], { type: mime });

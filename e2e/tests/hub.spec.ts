@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { expectLandsOn, login, mainLinks, pathOf, USERS } from './support/app';
+import { expectLandsOn, login, mainLinks, USERS } from './support/app';
 
 /**
  * The hub contract, per the owner's 2026-08-21 rulings: the system has SEVEN
@@ -61,19 +61,24 @@ test.describe('home hub', () => {
     await expect(page.locator('body')).toContainText('Gudang Pusat');
   });
 
-  test('kepala gudang still LANDS on the warehouse, but may return to the hub', async ({
+  test('kepala gudang lands on the HUB, because more than one interface is theirs', async ({
     page,
   }) => {
     await login(page, USERS.kepalaGudang);
 
-    // Landing is unchanged: you start in your work, not in a menu.
-    await expectLandsOn(page, '/warehouse');
+    // Corrected 2026-08-23, caught by the new post-deploy smoke job (B-9) on
+    // its first real run. This asserted `/warehouse` — "landing is unchanged:
+    // you start in your work, not in a menu" — which was true before the
+    // seven-interface rework and stopped being true with it. `app/page.tsx`
+    // now redirects past the hub ONLY for someone who can reach a single
+    // interface ("a directory of a single card is a pointless click"), and a
+    // kepala gudang reaches three: Gudang Pusat, Akun Saya and the manual.
+    //
+    // The test was wrong, not the app — the app's own header documents this
+    // rule. It went unnoticed because e2e ran only by hand until now, which is
+    // precisely the gap the smoke job closed.
+    await expectLandsOn(page, '/');
 
-    // But the hub no longer bounces them: they can reach Gudang Pusat, their
-    // own account, and the manual, so a chooser is meaningful.
-    await page.goto('/');
-    await page.waitForURL((url) => url.pathname === '/');
-    expect(pathOf(page)).toBe('/');
     const links = await mainLinks(page);
     expect(links).toContain('/warehouse');
     for (const href of UNIVERSAL_INTERFACES) {

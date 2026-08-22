@@ -64,6 +64,29 @@ function stableUuid(seed: string): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
 }
 
+/**
+ * Allocates a document number THROUGH `document_counters`, exactly as the
+ * repositories do (`stock-opname.repository.ts`, `return.repository.ts`, …).
+ *
+ * Hardcoding `OPN/202608/0001` here instead cost a CI run: the counter stayed at
+ * zero, so the FIRST real `opname.create()` in the test suite generated that
+ * same number and died on `stock_opname_opname_number_key` — 15 failures, none
+ * of them in the code under test. A seeded document that skips the counter is a
+ * landmine for whatever runs next; the payroll suite already carries a
+ * hand-written workaround for the same mistake made with loans.
+ */
+async function nextDocNumber(client: pg.Client, prefix: string): Promise<string> {
+  const period = new Date().toISOString().slice(0, 7).replace('-', '');
+  const res = await client.query<{ last_number: number }>(
+    `INSERT INTO document_counters (doc_type, period, last_number) VALUES ($1, $2, 1)
+     ON CONFLICT (doc_type, period) DO UPDATE SET last_number = document_counters.last_number + 1
+     RETURNING last_number`,
+    [prefix, period],
+  );
+  const seq = String(res.rows[0]!.last_number).padStart(4, '0');
+  return `${prefix}/${period}/${seq}`;
+}
+
 function daysAgo(n: number): Date {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -273,7 +296,7 @@ export async function seedGaps(client: pg.Client): Promise<void> {
            VALUES ($1,$2,$3,'submitted',$4,$5,$6,'seed:opname-submitted')
            RETURNING id`,
           [
-            `OPN/${new Date().toISOString().slice(0, 7).replace('-', '')}/0001`,
+            await nextDocNumber(client, 'OPN'),
             gdg.id,
             area.id,
             kepalaGudang,
@@ -373,7 +396,7 @@ export async function seedGaps(client: pg.Client): Promise<void> {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          RETURNING id`,
         [
-          `RTN/${new Date().toISOString().slice(0, 7).replace('-', '')}/000${i + 1}`,
+          await nextDocNumber(client, 'RET'),
           def.direction,
           def.from,
           def.to,

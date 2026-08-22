@@ -165,6 +165,28 @@ jobs:
               *) echo "::warning::object storage is not answering on :8444 (got $s3_code) — photo uploads (attendance selfie, waste photo) will fail; check the tls container" ;;
             esac
 
+            # WHAT THE PROXY IS ACTUALLY RUNNING. `nginx -T` dumps the config
+            # nginx currently holds, not the file on disk — the two diverge
+            # whenever a bind-mounted config changes without a reload, which is
+            # exactly the trap that hid a broken storage proxy for two deploys.
+            docker exec mimi-tls nginx -T 2>/dev/null \
+              | awk '/listen 8444/,/^}/' | grep -i 'proxy_set_header Host' \
+              | sed 's/^/  storage proxy: /' || true
+
+            # END TO END: can a device actually upload? Signs and PUTs against
+            # both the internal and the public endpoint from inside the backend
+            # container, so a failure is attributable — both failing means
+            # credentials, only the public one failing means the proxy.
+            if docker ps --format '{{.Names}}' | grep -q '^mimi-backend$'; then
+              docker cp infrastructure/tls/storage-probe.mjs mimi-backend:/tmp/storage-probe.mjs >/dev/null 2>&1
+              probe_out=$(docker exec mimi-backend node /tmp/storage-probe.mjs 2>&1 || true)
+              echo "$probe_out" | sed 's/^/  /'
+              case "$probe_out" in
+                *"public  : PUT 200"*) echo "  photo upload from a device: WORKING" ;;
+                *) echo "::warning::photo upload from a device is NOT working — attendance selfies and waste photos will fail. See the probe output above." ;;
+              esac
+            fi
+
             if [ "$https_code" != "200" ]; then
               echo "::warning::HTTPS did not answer 200 (got $https_code) — HTTP is still serving; check the tls container"
               # `mimi-tls`, matching the container_name the overlay now sets. The

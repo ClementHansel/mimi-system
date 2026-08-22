@@ -478,6 +478,46 @@ export class LocalRuntime {
 
   // ── Waste records (block 080-089) — class B, device-originable per authority-matrix.ts ──
 
+  /**
+   * B-11 — a retur raised while the outlet has no internet.
+   *
+   * `returnId` is minted on the DEVICE and is the identity the whole retur
+   * carries from here: the server projector honours it rather than issuing its
+   * own, so `commitReturnShippedBack` below (and any later pull) name the same
+   * row. The document NUMBER is still issued by the server — two outlets
+   * offline would otherwise mint the same one.
+   *
+   * `submitted`, not `created`: raising a retur offline means the form was
+   * filled in AND handed over. There is no offline "draft" worth syncing.
+   */
+  async commitReturnSubmitted(returnId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, {
+      entity: SyncEntity.RETURNS,
+      op: 'submitted',
+      entityId: returnId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
+  }
+
+  /**
+   * B-11 — the goods physically left the outlet.
+   *
+   * Legal only once the retur has been APPROVED, which is an online act, so in
+   * practice this is queued during a LATER outage than the one that produced
+   * `commitReturnSubmitted`. `ReturnService.ship` re-checks the status on
+   * arrival and refuses otherwise; the device does not get to decide that.
+   */
+  async commitReturnShippedBack(returnId: UUID, data: unknown, actor: ActorMeta) {
+    return commitFact(this.db, {
+      entity: SyncEntity.RETURNS,
+      op: 'shipped_back',
+      entityId: returnId,
+      data,
+      meta: toPayloadMeta(actor),
+    });
+  }
+
   async commitWasteReported(batchId: UUID, data: unknown, actor: ActorMeta) {
     return commitFact(this.db, {
       entity: SyncEntity.WASTE_RECORDS,

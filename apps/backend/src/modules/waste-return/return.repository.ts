@@ -71,11 +71,17 @@ export class ReturnRepository {
       toLocationId: UUID | null;
       supplierId: UUID | null;
       requestedBy: UUID;
+      /** B-11: the id the DEVICE minted for a retur raised offline. Omitted by the REST path. */
+      id?: UUID;
     },
   ): Promise<string> {
     const res = await client.query<{ id: string }>(
-      `INSERT INTO returns (return_number, direction, from_location_id, to_location_id, supplier_id, requested_by)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      // The return NUMBER is always issued server-side, never taken from the
+      // device: two outlets raising a retur offline both mint the same one and
+      // `return_number` is UNIQUE. The device's ID is what carries identity,
+      // because its `return_lines` and later `shipped_back` already name it.
+      `INSERT INTO returns (id, return_number, direction, from_location_id, to_location_id, supplier_id, requested_by)
+       VALUES (COALESCE($7::uuid, gen_random_uuid()),$1,$2,$3,$4,$5,$6) RETURNING id`,
       [
         input.returnNumber,
         input.direction,
@@ -83,6 +89,7 @@ export class ReturnRepository {
         input.toLocationId,
         input.supplierId,
         input.requestedBy,
+        input.id ?? null,
       ],
     );
     return res.rows[0]!.id;

@@ -11,6 +11,7 @@ import { WasteRepository } from './waste.repository';
 import { WasteService } from './waste.service';
 import { ReturnRepository } from './return.repository';
 import { ReturnService } from './return.service';
+import { ReturnSyncProjector } from './services/return-sync-projector.service';
 import { WasteSyncProjector } from './services/waste-sync-projector.service';
 
 /**
@@ -40,9 +41,11 @@ export class WasteReturnModule implements OnModuleInit {
   constructor(
     private readonly registry: SyncProjectorRegistry,
     private readonly wasteProjector: WasteSyncProjector,
+    private readonly returnProjector: ReturnSyncProjector,
   ) {}
 
   onModuleInit(): void {
     this.registry.register(this.wasteProjector);
+    this.registry.register(this.returnProjector);
   }
 }

@@ -116,11 +116,24 @@ export class ReturnService {
     return this.toDetail(client, header, lines);
   }
 
+  /**
+   * B-11: `opts.id` is the id the DEVICE minted for a retur raised while
+   * offline. Supplying it keeps the rest of that retur's offline life coherent
+   * (`shipped_back` already names it) and makes a replayed push a no-op rather
+   * than a second retur for the same goods.
+   */
   async create(
     client: PoolClient,
     actor: ActorContext,
     dto: CreateReturnDto,
+    opts: { id?: UUID } = {},
   ): Promise<ReturnDetail> {
+    // Idempotency, only for a caller-supplied id.
+    if (opts.id) {
+      const existing = await this.repo.findHeader(client, opts.id);
+      if (existing) return this.getDetail(client, opts.id);
+    }
+
     this.assertLocationInScope(actor, dto.fromLocationId);
     if (dto.direction === ReturnDirection.OUTLET_TO_WAREHOUSE && !dto.toLocationId) {
       throw new BadRequestException({
@@ -164,6 +177,7 @@ export class ReturnService {
     return withWrite(client, async () => {
       const returnNumber = await this.repo.nextReturnNumber(client);
       const id = await this.repo.insertHeader(client, {
+        id: opts.id,
         returnNumber,
         direction: dto.direction,
         fromLocationId: dto.fromLocationId,

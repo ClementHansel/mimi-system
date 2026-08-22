@@ -184,6 +184,13 @@ jobs:
   # database and no blue/green, so an automatic rollback would be a second
   # unattended change on top of a bad one.
   #
+  # `service-worker.spec.ts` is included even though most of it SKIPS here: the
+  # public origin is plain HTTP, so it is not a secure context and the worker
+  # APIs do not exist. What still runs is worth having on every deploy — it
+  # guards the PWA manifest, and it RECORDS the secure-context state of the
+  # deployed box as an annotation. The day that box gets a trusted certificate,
+  # those skips turn into real assertions with no workflow change.
+  #
   # SCOPE — a smoke subset, not all 41 specs. `hub` and `session-recovery`
   # between them cover the two failures that have actually reached the deployed
   # box: a blank white page from a half-valid session, and the hub rendering
@@ -232,7 +239,7 @@ jobs:
             exit 1
           fi
           pnpm --filter @mimi/e2e exec playwright test \
-            tests/hub.spec.ts tests/session-recovery.spec.ts tests/print.spec.ts
+            tests/hub.spec.ts tests/session-recovery.spec.ts tests/print.spec.ts             tests/service-worker.spec.ts
 
       - name: Upload the report when it fails
         if: failure()

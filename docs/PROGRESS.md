@@ -891,6 +891,45 @@ Meta's 24-hour customer-service window permits a send. Those need the credential
 the day it arrives, the flip is `WA_ENABLED=true` and a URL — no code change — and that every failure mode
 between us and the gateway is already handled and visible.
 
+### ✅ B-6 / W6-02 service-worker half — RESOLVED 2026-08-23, and the worker actually works
+
+**Blocked since 2026-08-19 on B-14.** `public/sw.js` had never registered anywhere, ever: the demo box was
+plain HTTP, so `navigator.serviceWorker` was literally `undefined` and `ACCEPTANCE.md` recorded the whole
+area as `NONE`. The assumed unblock was a domain and a trusted certificate.
+
+**It needed neither.** `e2e/tests/service-worker.spec.ts` now exercises it, and the measured results are:
+
+| Origin                     | `isSecureContext` | SW registration  |
+| -------------------------- | ----------------- | ---------------- |
+| `http://127.0.0.1:8080`    | **true**          | **activated**    |
+| `https://<public-ip>:8443` | **true**          | `untrusted-cert` |
+| `http://<public-ip>:8080`  | false             | unsupported      |
+
+Browsers exempt **loopback** from the secure-context requirement, so running the suite ON the box proves
+the real thing. It passes:
+
+- the worker **registers and reaches `activated`**;
+- **the offline shell renders** — network cut, page reloaded, and the app comes back instead of Chromium's
+  `ERR_INTERNET_DISCONNECTED`. That is the precache path working, proven rather than assumed;
+- **no mutating request is ever in a cache** — `sw.js` states that as the invariant protecting §2.2's
+  exactly-once semantics, and the caches are inspected directly for `!GET` or `/sync/v1` entries;
+- the PWA manifest is installable (name, `start_url`, icons).
+
+**What the self-signed `:8443` route does NOT do, contrary to what one might assume from "it's a secure
+context now":** service workers still refuse to register there. Chromium will not fetch a worker SCRIPT
+over a connection whose certificate it does not trust, and Playwright's `ignoreHTTPSErrors` does not extend
+to that fetch — it lets the page load, nothing more. So `:8443` genuinely unblocks geolocation, camera and
+PWA install, and genuinely does not unblock the offline shell for a REMOTE user.
+
+**Net position:** the service-worker code is proven correct and is no longer an unknown. What remains is
+certificate trust for remote clients — a real tablet at `https://<ip>:8443` gets no offline shell — which
+is the `aire-nginx` / `:80`-`:443` decision and nothing else. The registration test asserts the outcome is
+one of the two KNOWN values rather than skipping silently, so the day a trusted cert lands it goes red and
+says to delete that branch.
+
+Added to the post-deploy smoke job. Most of it skips against the public HTTP origin; what still runs
+guards the manifest and records the deployed box's secure-context state on every deploy.
+
 ### 🟡 B-14 update 2026-08-23 — CLOSED FOR TESTING on :8443, self-signed, nobody's ports touched
 
 The blocker above framed the choice as "take `:80`/`:443` from `aire-nginx`, or wait for a domain". There

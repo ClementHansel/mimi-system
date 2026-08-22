@@ -52,6 +52,30 @@ jobs:
             git fetch --prune origin main
             git reset --hard origin/main
 
+            # TLS (B-14): a self-signed certificate, generated HERE and never in
+            # git — a committed private key is a published private key. Created
+            # once and reused, so a redeploy does not invalidate the exception a
+            # tester already accepted in their browser.
+            #
+            # SAN carries the bare IP as well as the CN, because this box has no
+            # hostname yet: without `IP:` in subjectAltName, browsers reject the
+            # cert outright instead of offering the "accept anyway" that makes
+            # the origin a secure context.
+            mkdir -p /home/ubuntu/mimi/certs
+            if [ ! -f /home/ubuntu/mimi/certs/mimi.crt ]; then
+              openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+                -keyout /home/ubuntu/mimi/certs/mimi.key \
+                -out /home/ubuntu/mimi/certs/mimi.crt \
+                -subj "/CN=150.109.15.108/O=Mimi Chicken OS/C=ID" \
+                -addext "subjectAltName=IP:150.109.15.108,DNS:localhost" \
+                -addext "keyUsage=digitalSignature,keyEncipherment" \
+                -addext "extendedKeyUsage=serverAuth"
+              chmod 600 /home/ubuntu/mimi/certs/mimi.key
+              echo "generated a self-signed certificate"
+            else
+              echo "certificate already present — reusing it"
+            fi
+
             # Apply pending migrations BEFORE rebuilding. Missing this step meant
             # migration 220 (an RLS fix) sat unapplied while the code that assumed
             # it shipped — the stack would come up "healthy" and quietly behave as
@@ -72,6 +96,29 @@ jobs:
 
             # --remove-orphans is scoped to project `mimi` by -p, so it can only
             # remove containers this stack previously created.
+          REMOTE
+
+      - name: Verify TLS answers alongside HTTP
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          USER: ${{ secrets.VPS_USER }}
+        # HTTP is the fallback and its failure is fatal; HTTPS failing is loud
+        # but NOT fatal, because a TLS misconfiguration must never be able to
+        # take a working box offline — the whole reason 8080 was kept.
+        run: |
+          ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
+            http_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 http://127.0.0.1:8080/ || echo 000)
+            echo "HTTP  :8080 -> $http_code"
+            [ "$http_code" = "200" ] || { echo "::error::plain HTTP is down"; exit 1; }
+
+            # -k: the certificate is self-signed by design, so curl must not
+            # judge it. This checks the terminator and the proxy path, not trust.
+            https_code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 https://127.0.0.1:8443/ || echo 000)
+            echo "HTTPS :8443 -> $https_code"
+            if [ "$https_code" != "200" ]; then
+              echo "::warning::HTTPS did not answer 200 (got $https_code) — HTTP is still serving; check the tls container"
+              docker logs --tail 30 mimi-tls 2>&1 || true
+            fi
           REMOTE
 
       - name: Refresh reporting rollups

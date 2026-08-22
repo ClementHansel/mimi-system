@@ -38,8 +38,8 @@ services:
     logging: &vps-logging
       driver: json-file
       options:
-        max-size: "20m"
-        max-file: "5"
+        max-size: '20m'
+        max-file: '5'
 
   redis:
     logging: *vps-logging
@@ -51,7 +51,7 @@ services:
   # Assigning it a profile that is never activated keeps it out of the stack
   # instead of leaving a permanently-unhealthy container on a shared box.
   n8n:
-    profiles: ["wa"]
+    profiles: ['wa']
 
   backend:
     build:
@@ -72,8 +72,8 @@ services:
     volumes: []
     environment:
       NODE_ENV: production
-      HOSTNAME: "0.0.0.0"
-      PORT: "3000"
+      HOSTNAME: '0.0.0.0'
+      PORT: '3000'
       # Same-origin: the browser only ever talks to this container, whose Next
       # rewrites proxy /api and /sync/v1 to the backend over mimi-network. That
       # is why no backend port needs publishing at all.
@@ -82,7 +82,35 @@ services:
     # so it can be moved without editing this file; 0.0.0.0 is required because
     # the base file's 127.0.0.1 binding would make it unreachable off-box.
     ports:
-      - "0.0.0.0:${FRONTEND_PUBLIC_PORT:-8080}:3000"
+      - '0.0.0.0:${FRONTEND_PUBLIC_PORT:-8080}:3000'
+    logging: *vps-logging
+
+  # TLS terminator (B-14). A browser refuses geolocation, camera and service
+  # workers on an insecure origin, which kills three SHIPPED features on the
+  # HTTP port: driver truck tracking, attendance selfie + GPS, and PWA install
+  # on the outlet tablets. This puts the same frontend behind HTTPS.
+  #
+  # ON A HIGH PORT, deliberately — see choice 2 above. :443 is free on this host
+  # only because a neighbour's nginx is crash-looping; claiming it would break
+  # them the moment they fix it. 8443 costs an ugly URL and touches nobody.
+  #
+  # The certificate is SELF-SIGNED and generated on the host at deploy time
+  # (deploy-vps.yml), never committed — a private key in git is a private key
+  # published. Browsers warn once; after accepting, the origin is a secure
+  # context, which is the whole point.
+  tls:
+    image: nginx:1.27-alpine
+    depends_on:
+      - frontend
+    volumes:
+      - ./infrastructure/tls/nginx-tls.conf:/etc/nginx/conf.d/mimi-tls.conf:ro
+      # `map` cannot live in a conf.d server file, so the upgrade map is written
+      # as its own http-level snippet by the deploy step.
+      - ./infrastructure/tls/upgrade-map.conf:/etc/nginx/conf.d/00-upgrade-map.conf:ro
+      - /home/ubuntu/mimi/certs:/etc/nginx/certs:ro
+    ports:
+      - '0.0.0.0:${FRONTEND_TLS_PORT:-8443}:8443'
+    restart: unless-stopped
     logging: *vps-logging
 
 # ---------------------------------------------------------------------------
@@ -92,6 +120,9 @@ services:
 #      have it proxy this stack. Do not let both bind the port.
 #   3. Swap this overlay for docker-compose.prod.yml (Traefik + Let's Encrypt),
 #      set DOMAIN and ACME_EMAIL, and drop FRONTEND_PUBLIC_PORT.
-# Until then the stack is HTTP-only on a non-standard port, which is fine for
-# a demo but NOT acceptable for real payroll data.
+# Until then the stack answers on BOTH ports: 8080 plain HTTP (kept as the
+# fallback, so a TLS misconfiguration can never take the box offline) and 8443
+# HTTPS with a self-signed cert (a secure context, which is what unblocks
+# geolocation, camera and PWA install). Neither is acceptable for real payroll
+# data on a public address — that needs the hostname + Let's Encrypt path above.
 # ---------------------------------------------------------------------------

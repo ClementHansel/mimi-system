@@ -26,16 +26,28 @@ import { WasteSyncProjector } from './services/waste-sync-projector.service';
  * the return's own `direction` column — this module supplies real document
  * ids and never re-derives that routing.
  *
- * B-11: `WasteSyncProjector` self-registers with `kernel/sync`'s
- * `SyncProjectorRegistry` in `onModuleInit`, the same way `DeliveryModule`
- * does. Without it an offline waste report synced up, landed in `sync_events`,
- * and never became a `waste_records` row — silently, because the registry
- * treats an unhandled `(entity, op)` as success.
+ * B-11: `WasteSyncProjector` and `ReturnSyncProjector` self-register with
+ * `kernel/sync`'s `SyncProjectorRegistry` in `onModuleInit`, the same way
+ * `DeliveryModule` does. Without them an offline waste report or retur synced
+ * up, landed in `sync_events`, and never became a domain row — silently,
+ * because the registry treats an unhandled `(entity, op)` as success.
+ *
+ * Both must appear in `providers` as well as in the constructor. Omitting one
+ * there is not a subtle failure: Nest cannot resolve the constructor argument
+ * and the ENTIRE application refuses to boot. `test/app-boot.spec.ts` caught
+ * exactly that here, which is what that spec is for.
  */
 @Module({
   imports: [ApprovalsModule, StockLedgerModule, SyncEngineModule, EventsModule],
   controllers: [WasteController, ReturnController],
-  providers: [WasteRepository, WasteService, ReturnRepository, ReturnService, WasteSyncProjector],
+  providers: [
+    WasteRepository,
+    WasteService,
+    ReturnRepository,
+    ReturnService,
+    WasteSyncProjector,
+    ReturnSyncProjector,
+  ],
 })
 export class WasteReturnModule implements OnModuleInit {
   constructor(

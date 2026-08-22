@@ -123,6 +123,11 @@ export class ItemService {
       params.push(query.active);
       where.push(`i.is_active = $${params.length}`);
     }
+    // Ingredients vs what the POS can sell — see `ListItemsQueryDto.sellable`.
+    if (query.sellable !== undefined) {
+      params.push(query.sellable);
+      where.push(`i.is_sellable = $${params.length}`);
+    }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
     const countRes = await client.query<{ count: string }>(
@@ -199,6 +204,8 @@ export class ItemService {
       if (dto.baseUnitId !== undefined) set('base_unit_id', dto.baseUnitId);
       if (dto.storageType !== undefined) set('storage_type', dto.storageType);
       if (dto.isSellable !== undefined) set('is_sellable', dto.isSellable);
+      // Both directions: `DELETE /items/:id` only ever switched an item OFF.
+      if (dto.isActive !== undefined) set('is_active', dto.isActive);
       if (dto.shelfLifeDays !== undefined) set('shelf_life_days', dto.shelfLifeDays);
       if (dto.tempMin !== undefined) set('temp_min', dto.tempMin);
       if (dto.tempMax !== undefined) set('temp_max', dto.tempMax);

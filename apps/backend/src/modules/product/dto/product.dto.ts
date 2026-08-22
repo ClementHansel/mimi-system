@@ -103,4 +103,14 @@ export class UpdateProductDto {
   @IsInt()
   @Min(0)
   sortOrder?: number;
+
+  /**
+   * Take a product off the POS menu, or put it back (owner, 2026-08-21).
+   * `products.is_active` existed from migration 012 and nothing could ever
+   * change it: no PATCH field, no deactivate route. A sold-out or seasonal line
+   * could not be hidden from the till at all.
+   */
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

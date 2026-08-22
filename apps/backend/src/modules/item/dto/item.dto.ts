@@ -36,6 +36,18 @@ export class ListItemsQueryDto {
   @IsBoolean()
   active?: boolean;
 
+  /**
+   * Separates INGREDIENTS from what the POS can sell (owner, 2026-08-21:
+   * "separate ingredients and the actual items"). `items` legitimately holds
+   * both — raw chicken and a bottled drink are both stock — but a Data Master
+   * list that mixes them is unusable for either job, and there was no way to
+   * ask for one or the other.
+   */
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  sellable?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -122,6 +134,16 @@ export class UpdateItemDto {
   @IsOptional()
   @IsBoolean()
   isSellable?: boolean;
+
+  /**
+   * REACTIVATION (owner, 2026-08-21: "this need to be able to activate and
+   * deactivate"). `DELETE /items/:id` set `is_active = false` and there was no
+   * route back — a one-way door, so a seasonal item switched off in error had to
+   * be fixed in the database. PATCH now carries it both ways.
+   */
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 
   @IsOptional()
   @IsInt()

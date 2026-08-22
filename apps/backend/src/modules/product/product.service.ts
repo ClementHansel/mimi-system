@@ -228,6 +228,10 @@ export class ProductService {
       if (dto.price !== undefined) set('price', dto.price);
       if (dto.photoAttachmentId !== undefined) set('photo_attachment_id', dto.photoAttachmentId);
       if (dto.sortOrder !== undefined) set('sort_order', dto.sortOrder);
+      // Takes a product off the POS menu, or puts it back. `products.is_active`
+      // has existed since migration 012 with nothing able to change it — a
+      // sold-out or seasonal line could not be hidden from the till at all.
+      if (dto.isActive !== undefined) set('is_active', dto.isActive);
 
       if (sets.length > 0) {
         params.push(id);

@@ -87,8 +87,16 @@ export function QtyInput({
             'placeholder:text-text-muted transition-colors focus-visible:border-brand-500',
             'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-text-muted',
             error ? 'border-danger-600' : 'border-border-strong',
-            unitCode && 'pr-12',
+            // ORDER MATTERS HERE. `cn()` is tailwind-merge: when two classes set
+            // the same property, the LAST one wins and the earlier is dropped.
+            // `SIZE_CLASSES` carries `px-*`, which sets padding on BOTH sides —
+            // so a side-specific padding listed BEFORE it (the room reserved for
+            // the affix below) was silently deleted, the value rendered flush to
+            // the edge, and the absolutely-positioned affix sat on top of it.
+            // That is the garbled "2,6"/"kg" overlap the owner reported in the
+            // recipe modal. Size first, affix padding after.
             SIZE_CLASSES[size],
+            unitCode && 'pr-12',
           )}
         />
         {unitCode && (

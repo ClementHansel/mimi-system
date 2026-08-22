@@ -89,11 +89,21 @@ export function MoneyInput({
             onChange(parseMoneyInput(draft));
           }}
           className={cn(
-            'w-full rounded-md border bg-surface-raised pl-8 text-right tabular-nums text-text-primary',
+            'w-full rounded-md border bg-surface-raised text-right tabular-nums text-text-primary',
             'placeholder:text-text-muted transition-colors focus-visible:border-brand-500',
             'disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-text-muted',
             error ? 'border-danger-600' : 'border-border-strong',
+            // ORDER MATTERS HERE. `cn()` is tailwind-merge: when two classes set
+            // the same property, the LAST one wins and the earlier is dropped.
+            // `SIZE_CLASSES` carries `px-*`, which sets padding on BOTH sides —
+            // so a side-specific padding listed BEFORE it (the room reserved for
+            // the affix below) was silently deleted, the value rendered flush to
+            // the edge, and the absolutely-positioned affix sat on top of it.
+            // That is the garbled "2,6"/"kg" overlap the owner reported in the
+            // recipe modal. Size first, affix padding after.
             SIZE_CLASSES[size],
+            // Room for the "Rp" prefix.
+            'pl-8',
             className,
           )}
         />

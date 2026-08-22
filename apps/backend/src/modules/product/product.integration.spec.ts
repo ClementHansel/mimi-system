@@ -151,6 +151,34 @@ describe('ProductService / RecipeService (live database)', () => {
     expect(result.deactivated).toBe(true);
   });
 
+  it('puts a deactivated product back on the POS menu', async () => {
+    // The half of "activate and deactivate" (owner, 2026-08-21) that was
+    // entirely missing: `products.is_active` has existed since migration 012
+    // and NOTHING could set it back to true — no PATCH field, no route — so a
+    // sold-out or seasonal line, once hidden, stayed hidden for good.
+    const created = await withRollback((client) =>
+      productService.create(
+        client,
+        { code: nextCode('PRD'), name: 'Seasonal', category: 'Minuman', price: '9000.00' },
+        ACTOR,
+        SYSTEM_USER,
+        null,
+      ),
+    );
+    createdProductIds.push(created.id);
+
+    await withRollback((client) => productService.deactivate(client, created.id, ACTOR));
+    const off = await withRollback((client) =>
+      productService.getById(client, created.id, SYSTEM_USER, null),
+    );
+    expect(off.isActive).toBe(false);
+
+    const back = await withRollback((client) =>
+      productService.update(client, created.id, { isActive: true }, ACTOR, SYSTEM_USER, null),
+    );
+    expect(back.isActive).toBe(true);
+  });
+
   it('404s on a nonexistent product', async () => {
     await expect(
       withRollback((client) =>

@@ -129,6 +129,87 @@ describe('ItemService / ItemCategoryService / UnitService (live database)', () =
     expect(deactivated.deactivated).toBe(true);
   });
 
+  it('reactivates a deactivated item — deactivation is no longer a one-way door', async () => {
+    // Owner, 2026-08-21: "this need to be able to activate and deactivate".
+    // `DELETE /items/:id` set `is_active = false` and nothing could set it back,
+    // so an item switched off by mistake needed a database fix. PATCH carries
+    // it both ways now, and this asserts the round trip rather than just the
+    // one direction that already worked.
+    const created = await withRollback((client) =>
+      itemService.create(
+        client,
+        {
+          sku: nextCode('SKU'),
+          name: 'Toggle Me',
+          baseUnitId: fixtures.baseUnitId,
+          storageType: ItemStorageType.DRY,
+        },
+        ACTOR,
+      ),
+    );
+    createdItemIds.push(created.id);
+    expect(created.isActive).toBe(true);
+
+    await withRollback((client) => itemService.deactivate(client, created.id, ACTOR));
+    const off = await withRollback((client) => itemService.getById(client, created.id, false));
+    expect(off.isActive).toBe(false);
+
+    const back = await withRollback((client) =>
+      itemService.update(client, created.id, { isActive: true }, ACTOR),
+    );
+    expect(back.isActive).toBe(true);
+  });
+
+  it('filters ingredients from sellable stock via ?sellable=', async () => {
+    // The separation the owner asked for, on the real column (`is_sellable`)
+    // rather than a UI-only notion: `items` holds raw chicken AND bottled
+    // drinks, and one flat list served neither the kitchen nor the till.
+    const ingredient = await withRollback((client) =>
+      itemService.create(
+        client,
+        {
+          sku: nextCode('SKU'),
+          name: 'Bahan Only',
+          baseUnitId: fixtures.baseUnitId,
+          storageType: ItemStorageType.FROZEN,
+          isSellable: false,
+        },
+        ACTOR,
+      ),
+    );
+    createdItemIds.push(ingredient.id);
+    const sellable = await withRollback((client) =>
+      itemService.create(
+        client,
+        {
+          sku: nextCode('SKU'),
+          name: 'Sellable Only',
+          baseUnitId: fixtures.baseUnitId,
+          storageType: ItemStorageType.DRY,
+          isSellable: true,
+        },
+        ACTOR,
+      ),
+    );
+    createdItemIds.push(sellable.id);
+
+    const ingredientsOnly = await withRollback((client) =>
+      itemService.list(client, { sellable: false, pageSize: 200 }, false),
+    );
+    const ids = ingredientsOnly.rows.map((r) => r.id);
+    expect(ids).toContain(ingredient.id);
+    expect(ids).not.toContain(sellable.id);
+    // Every row the filter returned really is an ingredient — not just the two
+    // this test made.
+    expect(ingredientsOnly.rows.every((r) => !r.isSellable)).toBe(true);
+
+    const sellableOnly = await withRollback((client) =>
+      itemService.list(client, { sellable: true, pageSize: 200 }, false),
+    );
+    expect(sellableOnly.rows.map((r) => r.id)).toContain(sellable.id);
+    expect(sellableOnly.rows.every((r) => r.isSellable)).toBe(true);
+  });
+
   it('404s on a nonexistent item', async () => {
     await expect(
       withRollback((client) =>

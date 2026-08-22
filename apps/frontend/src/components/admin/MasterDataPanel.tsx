@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Drawer } from '@/components/ui/Drawer';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { Badge } from '@/components/ui/Badge';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { QtyInput } from '@/components/ui/QtyInput';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
@@ -42,14 +43,67 @@ function errMsg(err: unknown, fallback: string): string {
 }
 
 // ── Items ────────────────────────────────────────────────────────────────
+/**
+ * INGREDIENTS vs SELLABLE STOCK (owner, 2026-08-21: "separate ingredients and
+ * the actual items and category for POS").
+ *
+ * `items` legitimately holds both — raw chicken and a bottled drink are both
+ * stock — but one flat list served neither job. A cook looking for a recipe
+ * ingredient and a manager checking what the till can ring up were reading the
+ * same 200-row table. The filter is on `is_sellable`, which is the actual
+ * distinction in the schema, not a new field invented for the UI.
+ *
+ * `''` = both, deliberately still available: purchasing and stock-opname care
+ * about everything in the warehouse regardless of which side of this line it
+ * falls on.
+ */
+type SellableFilter = '' | 'true' | 'false';
+
 function ItemsSection({ categories, units }: { categories: ItemCategory[]; units: Unit[] }) {
   const { t } = useI18n();
   const { can } = usePermissions();
   const [q, setQ] = useState('');
+  const [sellable, setSellable] = useState<SellableFilter>('');
+  const [active, setActive] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const { data, loading, error, reload } = useApiList<Item>('/items', { q, page, pageSize });
+  const { data, loading, error, reload } = useApiList<Item>('/items', {
+    q,
+    sellable,
+    active,
+    page,
+    pageSize,
+  });
   const [editing, setEditing] = useState<Item | null | 'new'>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  /**
+   * Activate / deactivate (owner: "this need to be able to activate and
+   * deactivate"). Before this there was only `DELETE /items/:id`, which set
+   * `is_active = false` with no route back — an item switched off by mistake
+   * needed a database fix. PATCH carries it both ways now.
+   *
+   * Deactivating is NOT a delete: history, recipes and past movements keep
+   * referring to the row. That is why the copy says nonaktif, not hapus.
+   */
+  async function toggleActive(item: Item) {
+    setToggling(item.id);
+    try {
+      await api.patch(`/items/${item.id}`, { isActive: !item.isActive });
+      toast({
+        title: t(
+          item.isActive ? 'admin.masterData.items.deactivated' : 'admin.masterData.items.activated',
+          { name: item.name },
+        ),
+        variant: 'success',
+      });
+      reload();
+    } catch (err) {
+      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+    } finally {
+      setToggling(null);
+    }
+  }
 
   const columns: DataTableColumn<Item>[] = [
     { key: 'sku', header: t('admin.masterData.items.columnSku'), sortable: true },
@@ -67,28 +121,90 @@ function ItemsSection({ categories, units }: { categories: ItemCategory[]; units
     { key: 'storageType', header: t('admin.masterData.items.columnStorageType') },
     {
       key: 'isSellable',
-      header: t('admin.masterData.items.columnSellable'),
-      render: (r) => (r.isSellable ? t('common.yes') : t('common.no')),
+      header: t('admin.masterData.items.columnKind'),
+      // The distinction the owner asked for, stated as a KIND rather than a
+      // yes/no on a column header nobody can parse at a glance.
+      render: (r) => (
+        <Badge variant={r.isSellable ? 'info' : 'neutral'}>
+          {t(
+            r.isSellable
+              ? 'admin.masterData.items.kindSellable'
+              : 'admin.masterData.items.kindIngredient',
+          )}
+        </Badge>
+      ),
     },
     {
       key: 'isActive',
       header: t('admin.masterData.items.columnStatus'),
-      render: (r) => (r.isActive ? t('admin.users.statusActive') : t('admin.users.statusInactive')),
+      render: (r) => (
+        <Badge variant={r.isActive ? 'success' : 'neutral'}>
+          {r.isActive ? t('admin.users.statusActive') : t('admin.users.statusInactive')}
+        </Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: t('common.actions'),
+      render: (r) =>
+        can('item.manage') ? (
+          <Button
+            size="sm"
+            variant="outline"
+            loading={toggling === r.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              void toggleActive(r);
+            }}
+          >
+            {t(r.isActive ? 'common.deactivate' : 'common.activate')}
+          </Button>
+        ) : null,
     },
   ];
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <Input
-          placeholder={t('admin.masterData.items.searchPlaceholder')}
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(1);
-          }}
-          wrapperClassName="w-72"
-        />
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-2">
+          <Input
+            placeholder={t('admin.masterData.items.searchPlaceholder')}
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+            wrapperClassName="w-72"
+          />
+          <Select
+            label={t('admin.masterData.items.filterKind')}
+            value={sellable}
+            onValueChange={(v) => {
+              setSellable(v as SellableFilter);
+              setPage(1);
+            }}
+            placeholder={t('admin.masterData.items.kindAll')}
+            options={[
+              { value: 'false', label: t('admin.masterData.items.kindIngredient') },
+              { value: 'true', label: t('admin.masterData.items.kindSellable') },
+            ]}
+            wrapperClassName="w-48"
+          />
+          <Select
+            label={t('admin.masterData.items.columnStatus')}
+            value={active}
+            onValueChange={(v) => {
+              setActive(v);
+              setPage(1);
+            }}
+            placeholder={t('admin.masterData.items.statusAll')}
+            options={[
+              { value: 'true', label: t('admin.users.statusActive') },
+              { value: 'false', label: t('admin.users.statusInactive') },
+            ]}
+            wrapperClassName="w-40"
+          />
+        </div>
         <PermissionGate permission="item.manage">
           <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
             {t('admin.masterData.items.createButton')}
@@ -378,13 +494,69 @@ function CategoriesUnitsSection({
 }
 
 // ── Products & Recipes ──────────────────────────────────────────────────
+/**
+ * The POS MENU — products and their recipes, which is a different thing from the
+ * warehouse's items even though a recipe joins the two. Kept visibly distinct
+ * (its own category vocabulary, its own active flag) per the owner's
+ * 2026-08-21 note about separating ingredients from "the actual items and
+ * category for POS".
+ */
 function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
   const { t } = useI18n();
   const { can } = usePermissions();
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const { data, loading, error, reload } = useApiList<Product>('/products', { q, page, pageSize });
+  // `category` here is the POS menu vocabulary ('Ayam', 'Minuman', 'Tambahan') —
+  // free text on `products`, NOT an `item_categories` row. Offering the real
+  // values from `/products/categories` is what stops a fourth spelling of
+  // "Minuman" appearing on the till.
+  const [category, setCategory] = useState('');
+  const [active, setActive] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
+  const [toggling, setToggling] = useState<string | null>(null);
+  const { data, loading, error, reload } = useApiList<Product>('/products', {
+    q,
+    category,
+    active,
+    page,
+    pageSize,
+  });
+
+  useEffect(() => {
+    api
+      .get<string[]>('/products/categories')
+      .then(setCategories)
+      .catch(() => {});
+  }, []);
+
+  /**
+   * Takes a product off the POS menu, or puts it back. `products.is_active` has
+   * existed since migration 012 with nothing able to change it — a sold-out or
+   * seasonal line could not be hidden from the till at all, which is the half of
+   * the owner's "activate and deactivate" that was entirely missing rather than
+   * merely one-way.
+   */
+  async function toggleActive(product: Product) {
+    setToggling(product.id);
+    try {
+      await api.patch(`/products/${product.id}`, { isActive: !product.isActive });
+      toast({
+        title: t(
+          product.isActive
+            ? 'admin.masterData.products.deactivated'
+            : 'admin.masterData.products.activated',
+          { name: product.name },
+        ),
+        variant: 'success',
+      });
+      reload();
+    } catch (err) {
+      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+    } finally {
+      setToggling(null);
+    }
+  }
   const [editing, setEditing] = useState<Product | null | 'new'>(null);
   const [recipeFor, setRecipeFor] = useState<Product | null>(null);
 
@@ -406,39 +578,86 @@ function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
     {
       key: 'isActive',
       header: t('admin.masterData.products.columnStatus'),
-      render: (r) => (r.isActive ? t('admin.users.statusActive') : t('admin.users.statusInactive')),
+      render: (r) => (
+        <Badge variant={r.isActive ? 'success' : 'neutral'}>
+          {r.isActive ? t('admin.users.statusActive') : t('admin.users.statusInactive')}
+        </Badge>
+      ),
     },
     {
       key: 'actions',
       header: t('common.actions'),
-      render: (r) =>
-        can('recipe.manage') ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.stopPropagation();
-              setRecipeFor(r);
-            }}
-          >
-            {t('admin.masterData.products.editRecipe')}
-          </Button>
-        ) : null,
+      render: (r) => (
+        <div className="flex items-center gap-2">
+          {can('recipe.manage') && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRecipeFor(r);
+              }}
+            >
+              {t('admin.masterData.products.editRecipe')}
+            </Button>
+          )}
+          {can('product.manage') && (
+            <Button
+              size="sm"
+              variant="outline"
+              loading={toggling === r.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                void toggleActive(r);
+              }}
+            >
+              {t(r.isActive ? 'common.deactivate' : 'common.activate')}
+            </Button>
+          )}
+        </div>
+      ),
     },
   ];
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
-        <Input
-          placeholder={t('admin.masterData.products.searchPlaceholder')}
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(1);
-          }}
-          wrapperClassName="w-72"
-        />
+        <div className="flex flex-wrap items-end gap-2">
+          <Input
+            placeholder={t('admin.masterData.products.searchPlaceholder')}
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+            wrapperClassName="w-72"
+          />
+          <Select
+            label={t('admin.masterData.products.columnCategory')}
+            value={category}
+            onValueChange={(v) => {
+              setCategory(v);
+              setPage(1);
+            }}
+            placeholder={t('admin.masterData.products.categoryAll')}
+            options={categories.map((c) => ({ value: c, label: c }))}
+            wrapperClassName="w-48"
+          />
+          <Select
+            label={t('admin.masterData.products.columnStatus')}
+            value={active}
+            onValueChange={(v) => {
+              setActive(v);
+              setPage(1);
+            }}
+            placeholder={t('admin.masterData.items.statusAll')}
+            options={[
+              { value: 'true', label: t('admin.users.statusActive') },
+              { value: 'false', label: t('admin.users.statusInactive') },
+            ]}
+            wrapperClassName="w-40"
+          />
+        </div>
         <PermissionGate permission="product.manage">
           <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
             {t('admin.masterData.products.createButton')}
@@ -688,8 +907,11 @@ function RecipeModal({
                 onChange={(v) =>
                   setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qty: v ?? '0' } : l)))
                 }
-                unitCode={line.unitCode}
-                wrapperClassName="w-40"
+                // No `unitCode` here: the Satuan select sitting immediately to
+                // the right IS the unit, and is the editable one. Showing it
+                // inside the number field as well printed the same unit twice
+                // per row for no gain.
+                wrapperClassName="w-32"
               />
               <Select
                 label={idx === 0 ? t('admin.masterData.products.recipeUnit') : undefined}

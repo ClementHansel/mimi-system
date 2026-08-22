@@ -308,13 +308,28 @@ export const id = {
     voidAuthFailed: 'Otorisasi gagal',
     voidAuthReason: {
       revoked: 'Kredensial supervisor telah dicabut',
-      locked_out: 'Terlalu banyak percobaan PIN salah — kredensial terkunci',
+      locked_out:
+        'Terlalu banyak percobaan PIN salah — kredensial terkunci sampai perangkat kembali online',
+      cooling_down: 'Terlalu banyak percobaan. Coba lagi sebentar.',
       expired: 'Kredensial supervisor telah kedaluwarsa',
       scope_exceeded: 'Jumlah melebihi batas otorisasi offline supervisor ini',
       selfie_required: 'Foto selfie wajib untuk jumlah sebesar ini',
       pin_invalid: 'PIN salah',
       not_cached: 'Tidak ada kredensial supervisor tersimpan di perangkat ini',
     },
+    voidAuthReasonCoolingDownFor:
+      'Terlalu banyak percobaan PIN salah. Coba lagi dalam {{seconds}} detik.',
+    voidUnlockTitle: 'Kredensial supervisor terkunci di perangkat ini',
+    voidUnlockExplainer:
+      'Hubungi kantor pusat dan bacakan kode tantangan di bawah. Mereka akan memberikan kode pembuka 8 karakter.',
+    voidUnlockChallengeLabel: 'Kode tantangan (bacakan ke kantor pusat)',
+    voidUnlockCodeLabel: 'Kode pembuka dari kantor pusat',
+    voidUnlockSubmit: 'Buka Kunci',
+    voidUnlockAttemptsLeft: 'Sisa percobaan: {{count}}',
+    voidUnlockSuccess: 'Kredensial dibuka. Silakan masukkan PIN supervisor.',
+    voidUnlockInvalid: 'Kode pembuka salah',
+    voidUnlockExhausted:
+      'Percobaan habis. Kredensial ini hanya bisa dipulihkan setelah perangkat kembali online.',
     voidProvisionalTitle: 'Void/refund tersimpan (sementara)',
     voidProvisionalDescription: 'Menunggu verifikasi ulang oleh sistem pusat saat tersinkron.',
     voidFailed: 'Gagal memproses void/refund',
@@ -345,6 +360,11 @@ export const id = {
     delete: 'Hapus',
     remove: 'Hapus',
     edit: 'Ubah',
+    // Activate / deactivate, used by Data Master's item and product lists.
+    // NOT delete: history, recipes and stock movements keep referring to a
+    // deactivated row, so the copy must not promise removal.
+    activate: 'Aktifkan',
+    deactivate: 'Nonaktifkan',
     create: 'Tambah',
     submit: 'Ajukan',
     approve: 'Setujui',
@@ -1438,6 +1458,15 @@ export const id = {
         columnUnit: 'Satuan',
         columnStorageType: 'Jenis Simpan',
         columnSellable: 'Bisa Dijual',
+        // The ingredient / sellable split (owner, 2026-08-21).
+        columnKind: 'Jenis',
+        kindIngredient: 'Bahan',
+        kindSellable: 'Bisa Dijual',
+        kindAll: 'Semua Jenis',
+        filterKind: 'Jenis Item',
+        statusAll: 'Semua Status',
+        activated: '{{name}} diaktifkan.',
+        deactivated: '{{name}} dinonaktifkan.',
         columnStatus: 'Status',
         sku: 'SKU',
         name: 'Nama',
@@ -1489,6 +1518,9 @@ export const id = {
         category: 'Kategori',
         price: 'Harga Jual',
         editRecipe: 'Ubah Resep',
+        categoryAll: 'Semua Kategori',
+        activated: '{{name}} ditampilkan kembali di POS.',
+        deactivated: '{{name}} disembunyikan dari POS.',
         recipeTitle: 'Resep — {{name}}',
         yieldQty: 'Hasil (Yield)',
         addLine: 'Tambah Bahan',

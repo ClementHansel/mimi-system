@@ -175,9 +175,20 @@ async function main(): Promise<void> {
       lng: number,
     ): Promise<string> {
       const res = await client.query(
-        `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude, geofence_radius_m)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,100)
-         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+        // `geofence_radius_m` deliberately OMITTED (NULL): since migration 229
+        // NULL means "inherit `settings('hr.geofence_radius_m')`" — 200 m. The
+        // seed used to write a literal 100 here, which made every seeded outlet
+        // a permanent per-location OVERRIDE at the old radius: 229 nulled them,
+        // and then the next seed put 100 straight back, so a freshly seeded box
+        // silently ignored the setting. CI caught exactly that.
+        `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (code) DO UPDATE SET
+           name = EXCLUDED.name,
+           -- An existing box re-seeded after 229 must also drop the stale
+           -- override, or "inherit the setting" would only ever apply to
+           -- brand-new deployments.
+           geofence_radius_m = CASE WHEN locations.geofence_radius_m = 100 THEN NULL ELSE locations.geofence_radius_m END
          RETURNING id`,
         [
           code,

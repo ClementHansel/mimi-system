@@ -22,6 +22,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PoolClient } from 'pg';
 import { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import { compressAndStripExif, isProcessableImage } from './image-processing.util';
+import { withWrite } from './db-tx';
 
 const PRESIGN_UPLOAD_TTL_SECONDS = 15 * 60; // 15 minutes to complete an upload
 const PRESIGN_DOWNLOAD_TTL_SECONDS = 10 * 60; // 10 minutes to view/download
@@ -156,7 +157,19 @@ interface AttachmentRow {
 @Injectable()
 export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
+  /** Server-side object operations — reaches MinIO on the container network. */
   private readonly client: S3Client;
+  /**
+   * Signs URLs that a BROWSER OR PHONE will open. Same credentials, different
+   * host, and it must be a separate client: SigV4 signs the host and path, so a
+   * URL signed for `minio:9000` and then opened against a public address fails
+   * the signature check rather than merely being unreachable.
+   *
+   * Falls back to `client` when no public endpoint is configured, which is the
+   * correct behaviour for local development where `localhost:9000` is already
+   * the address both sides use.
+   */
+  private readonly signingClient: S3Client;
   private readonly bucket: string;
 
   constructor(private readonly config: ConfigService) {
@@ -167,16 +180,50 @@ export class StorageService implements OnModuleInit {
       this.config.get<string>('S3_ENDPOINT') ?? `${ssl ? 'https' : 'http'}://${host}:${port}`;
     this.bucket = this.config.get<string>('MINIO_BUCKET', 'mimi-storage');
 
-    this.client = new S3Client({
-      region: this.config.get<string>('S3_REGION', 'us-east-1'),
-      endpoint,
-      forcePathStyle: true,
-      credentials: {
-        accessKeyId: this.config.get<string>('MINIO_ACCESS_KEY', ''),
-        secretAccessKey: this.config.get<string>('MINIO_SECRET_KEY', ''),
-      },
-    });
-    this.logger.log(`Object storage configured: endpoint=${endpoint} bucket=${this.bucket}`);
+    // `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` is what `.env` and
+    // `docker-compose.yml` actually define; `MINIO_ACCESS_KEY`/`_SECRET_KEY` is
+    // what compose then maps them onto for this service. Reading only the
+    // latter meant that running the backend OUTSIDE compose (`pnpm dev`) built
+    // an S3 client with empty credentials — every presigned URL came back with
+    // an empty `X-Amz-Credential` and MinIO answered 400, so no photo could be
+    // uploaded in local development and nothing said why.
+    const credentials = {
+      accessKeyId:
+        this.config.get<string>('MINIO_ACCESS_KEY') ??
+        this.config.get<string>('MINIO_ROOT_USER', ''),
+      secretAccessKey:
+        this.config.get<string>('MINIO_SECRET_KEY') ??
+        this.config.get<string>('MINIO_ROOT_PASSWORD', ''),
+    };
+    const region = this.config.get<string>('S3_REGION', 'us-east-1');
+
+    this.client = new S3Client({ region, endpoint, forcePathStyle: true, credentials });
+
+    // The address a device can actually reach. On the VPS the internal endpoint
+    // is `http://minio:9000`, which a phone cannot resolve and which a page
+    // served over HTTPS would refuse as mixed content — so uploads were
+    // impossible on the deployed box even though `presign` returned 200.
+    //
+    // It must be an ORIGIN, not a path prefix: SigV4 signs the canonical URI, so
+    // a proxy that strips `/s3` gives MinIO a different path than was signed and
+    // the request fails. Hence a dedicated port in front of MinIO rather than a
+    // sub-path on the app's own port (`infrastructure/tls/nginx-tls.conf`).
+    const publicEndpoint = this.config.get<string>('S3_PUBLIC_ENDPOINT');
+    this.signingClient = publicEndpoint
+      ? new S3Client({ region, endpoint: publicEndpoint, forcePathStyle: true, credentials })
+      : this.client;
+
+    this.logger.log(
+      `Object storage configured: endpoint=${endpoint} bucket=${this.bucket}` +
+        (publicEndpoint
+          ? ` presigned-url host=${publicEndpoint}`
+          : ' presigned URLs use the internal endpoint (set S3_PUBLIC_ENDPOINT for a device-reachable one)'),
+    );
+    if (!credentials.accessKeyId) {
+      this.logger.warn(
+        'No object-storage credentials found (MINIO_ACCESS_KEY / MINIO_ROOT_USER are both unset) — every presigned URL will be rejected by the storage server.',
+      );
+    }
   }
 
   async onModuleInit(): Promise<void> {
@@ -200,7 +247,26 @@ export class StorageService implements OnModuleInit {
     return `${prefix ? prefix + '/' : ''}${randomUUID()}-${safeName}`;
   }
 
+  /**
+   * Wrapped in `withWrite` because it INSERTS the `attachments` row.
+   *
+   * It was not, and that was a data-loss bug of the kind this codebase already
+   * has a guard for: `RlsCleanupInterceptor` rolls back any request that never
+   * committed, so the row vanished while the caller still received a 200 and a
+   * working upload URL. The bytes then landed in MinIO and `confirm` failed
+   * with "attachment not found" — which is every attendance check-in (selfie
+   * mandatory) and every waste record (photo mandatory). See `./db-tx.ts`.
+   */
   async presign(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    dto: PresignRequest,
+    clientAttachmentId?: string,
+  ): Promise<PresignResult> {
+    return withWrite(client, () => this.presignInTx(client, user, dto, clientAttachmentId));
+  }
+
+  private async presignInTx(
     client: PoolClient,
     user: JwtAccessPayload,
     dto: PresignRequest,
@@ -234,7 +300,7 @@ export class StorageService implements OnModuleInit {
         // upload completed) — idempotent: re-presign the SAME object key
         // rather than minting a second row for the same capture.
         const retryUploadUrl = await getSignedUrl(
-          this.client,
+          this.signingClient,
           new PutObjectCommand({
             Bucket: this.bucket,
             Key: row.object_key,
@@ -274,7 +340,7 @@ export class StorageService implements OnModuleInit {
     );
 
     const uploadUrl = await getSignedUrl(
-      this.client,
+      this.signingClient,
       new PutObjectCommand({ Bucket: this.bucket, Key: objectKey, ContentType: dto.mimeType }),
       { expiresIn: PRESIGN_UPLOAD_TTL_SECONDS },
     );
@@ -297,7 +363,26 @@ export class StorageService implements OnModuleInit {
     return result.rows[0]!;
   }
 
+  /**
+   * Also wrapped: the image path UPDATEs `attachments` with the post-processing
+   * mime type, size and sha256. Same missing-COMMIT bug as `presign` — a
+   * confirmed photo would report a hash the row did not keep.
+   *
+   * The transaction does span the S3 round trip, which is not free. It is still
+   * the right trade: the alternative is committing the row before the object is
+   * known to exist, which is the failure mode that produces an attachment
+   * pointing at nothing.
+   */
   async confirm(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    id: string,
+    sha256Hint?: string,
+  ): Promise<AttachmentDto> {
+    return withWrite(client, () => this.confirmInTx(client, user, id, sha256Hint));
+  }
+
+  private async confirmInTx(
     client: PoolClient,
     user: JwtAccessPayload,
     id: string,
@@ -384,7 +469,7 @@ export class StorageService implements OnModuleInit {
     }
 
     const url = await getSignedUrl(
-      this.client,
+      this.signingClient,
       new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }),
       {
         expiresIn: PRESIGN_DOWNLOAD_TTL_SECONDS,
@@ -404,7 +489,7 @@ export class StorageService implements OnModuleInit {
     this.assertEntityScope(user, locationScope, row);
 
     const url = await getSignedUrl(
-      this.client,
+      this.signingClient,
       new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }),
       {
         expiresIn: PRESIGN_DOWNLOAD_TTL_SECONDS,

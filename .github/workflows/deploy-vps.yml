@@ -124,6 +124,25 @@ jobs:
               sleep 5
             done
             echo "HTTPS :8443 -> $https_code"
+
+            # Object storage on :8444. Checked because a phone cannot upload an
+            # attendance selfie without it, and the failure is INVISIBLE from the
+            # app: `presign` still answers 200 and hands out a URL that simply
+            # cannot be reached. Anonymous MinIO answers 403 AccessDenied on `/`,
+            # which is a perfectly good liveness signal — what matters is that
+            # something on the other side of TLS is speaking S3.
+            s3_code=000
+            for attempt in 1 2 3 4 5 6; do
+              s3_code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 https://127.0.0.1:8444/ || echo 000)
+              case "$s3_code" in 200|403|404) break ;; esac
+              sleep 5
+            done
+            echo "HTTPS :8444 (object storage) -> $s3_code"
+            case "$s3_code" in
+              200|403|404) ;;
+              *) echo "::warning::object storage is not answering on :8444 (got $s3_code) — photo uploads (attendance selfie, waste photo) will fail; check the tls container" ;;
+            esac
+
             if [ "$https_code" != "200" ]; then
               echo "::warning::HTTPS did not answer 200 (got $https_code) — HTTP is still serving; check the tls container"
               # `mimi-tls`, matching the container_name the overlay now sets. The

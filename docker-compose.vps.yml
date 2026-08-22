@@ -64,6 +64,12 @@ services:
     volumes: []
     environment:
       NODE_ENV: production
+      # The origin a PHONE can reach, used only for signing presigned URLs.
+      # `MINIO_ENDPOINT` (minio:9000) stays as-is for server-side object
+      # operations. These must be two different values: SigV4 signs the host, so
+      # one client cannot serve both, and handing a device the internal name is
+      # what made every photo upload impossible on this box.
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-https://150.109.15.108:8444}
     logging: *vps-logging
 
   frontend:
@@ -113,6 +119,11 @@ services:
       - mimi-network
     depends_on:
       - frontend
+      # `minio` is in this list for the same reason `networks` is above: nginx
+      # resolves every upstream hostname AT STARTUP and exits if one is unknown,
+      # so an unstarted minio would take the whole TLS terminator down —
+      # including :8443, which has nothing to do with storage.
+      - minio
     volumes:
       - ./infrastructure/tls/nginx-tls.conf:/etc/nginx/conf.d/mimi-tls.conf:ro
       # `map` cannot live in a conf.d server file, so the upgrade map is written
@@ -121,6 +132,10 @@ services:
       - /home/ubuntu/mimi/certs:/etc/nginx/certs:ro
     ports:
       - '0.0.0.0:${FRONTEND_TLS_PORT:-8443}:8443'
+      # Object storage over TLS. Presigned upload/download URLs point at this
+      # port, so it is as load-bearing as 8443: without it a phone cannot upload
+      # an attendance selfie, and `presign` still returns 200 while it fails.
+      - '0.0.0.0:${STORAGE_TLS_PORT:-8444}:8444'
     restart: unless-stopped
     logging: *vps-logging
 

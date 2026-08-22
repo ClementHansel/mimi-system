@@ -61,16 +61,36 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
       // robust to reseeding. On the OWNER pool: mimi_app has no standing
       // privilege to read `users` without SET ROLE, and this lookup is not
       // the thing under test.
-      const userRes = await ownerPool.query<{ id: string }>(
-        `SELECT id FROM users WHERE username = 'kasir1_bpp01'`,
+      // Any active kasir will do — this test is about the guard's RLS context,
+      // not about a particular seeded person. Naming one tied the test to
+      // `seed.ts`'s username scheme, which changed when outlets were reshaped
+      // into per-shift crews.
+      //
+      // The outlet code comes back WITH the user rather than being written in
+      // here: the oracle below counts that outlet's sales and compares it to
+      // what the kasir can see, so a hardcoded code silently becomes a
+      // comparison between two different outlets the moment the chosen kasir
+      // is not from that one. It failed exactly that way (`64 !== 0`).
+      const userRes = await ownerPool.query<{ id: string; code: string }>(
+        `SELECT u.id, l.code
+           FROM users u
+           JOIN roles r ON r.id = u.role_id AND r.key = 'kasir'
+           JOIN user_locations ul ON ul.user_id = u.id
+           JOIN locations l ON l.id = ul.location_id AND l.type = 'outlet'
+          WHERE u.is_active
+            -- The outlet must actually HAVE sales, or the "a kasir sees fewer
+            -- rows than an unscoped connection" assertion proves nothing.
+            AND EXISTS (SELECT 1 FROM sales s WHERE s.location_id = l.id)
+          ORDER BY u.username
+          LIMIT 1`,
       );
       if (!userRes.rows[0]) {
         throw new Error(
-          "Seeded user 'kasir1_bpp01' not found — run `pnpm db:migrate && pnpm db:seed` before this test.",
+          'No active kasir at an outlet with sales — run `pnpm db:migrate && pnpm db:seed` before this test.',
         );
       }
       kasirUserId = userRes.rows[0].id;
-      kasirOutletCode = 'BPP01';
+      kasirOutletCode = userRes.rows[0].code;
 
       guard = new RlsContextGuard(appPool, new ScopeService(), new Reflector());
     });
@@ -131,7 +151,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
       // it, then the REAL RlsContextGuard on the REAL mimi_app pool — no
       // mocks, no hand-issued `SET ROLE` anywhere in this file.
       const request: RequestWithDbContext = {
-        user: { sub: kasirUserId, username: 'kasir1_bpp01', roleKey: 'kasir', locationIds: [] },
+        user: { sub: kasirUserId, username: 'kasir-under-test', roleKey: 'kasir', locationIds: [] },
       };
       const activated = await guard.canActivate(makeContext(request));
       expect(activated).toBe(true);
@@ -147,7 +167,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
           `[RLS regression] sales visible — unscoped: ${totalSales}, ${kasirOutletCode} oracle: ${outletSales}, Kasir via real guard: ${kasirSales}`,
         );
 
-        expect(kasirSales).toBe(outletSales); // == 64 against the current seed, not 418.
+        expect(kasirSales).toBe(outletSales); // their own outlet's count, not the whole company's.
         expect(kasirSales).toBeLessThan(totalSales);
 
         // Column/role-gated table (CONTRACTS §1.14: ROLE(owner,manager,finance,kepala_gudang))
@@ -179,7 +199,7 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
       const managerId = managerRes.rows[0]!.id;
 
       const requestKasir: RequestWithDbContext = {
-        user: { sub: kasirUserId, username: 'kasir1_bpp01', roleKey: 'kasir', locationIds: [] },
+        user: { sub: kasirUserId, username: 'kasir-under-test', roleKey: 'kasir', locationIds: [] },
       };
       await guard.canActivate(makeContext(requestKasir));
       const kasirClient = requestKasir.dbClient!;

@@ -198,18 +198,32 @@ export async function loadOutletFixture(): Promise<OutletFixture> {
     );
   const { id: locationId, code: locationCode, area_id: kitchenLineAreaId } = outlet.rows[0];
 
-  const kasirUsername = `kasir1_${locationCode.toLowerCase()}`;
-  const supervisorUsername = `spv_${locationCode.toLowerCase()}`;
+  // Resolved by ROLE + LOCATION, deliberately not by username.
+  //
+  // This used to look up the literal `kasir1_<code>` / `spv_<code>` that
+  // `seed.ts` happens to mint, and it broke the moment the org was reshaped into
+  // per-shift crews (`kasir_<code>_p`, …) — eight test files failed on missing
+  // seed data while the database was in fact correctly populated. What these
+  // tests actually need is "a kasir at this outlet", which is what the
+  // purchasing, opname and waste fixtures already ask for; this one was the
+  // odd one out. `ORDER BY u.username` only keeps the choice deterministic.
+  const crewMember = async (roleKey: string) =>
+    pool.query<{ id: string; username: string }>(
+      `SELECT u.id, u.username
+         FROM users u
+         JOIN roles r ON r.id = u.role_id AND r.key = $1
+         JOIN user_locations ul ON ul.user_id = u.id AND ul.location_id = $2
+        WHERE u.is_active
+        ORDER BY u.username
+        LIMIT 1`,
+      [roleKey, locationId],
+    );
 
-  const kasir = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [
-    kasirUsername,
-  ]);
-  const supervisor = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [
-    supervisorUsername,
-  ]);
+  const kasir = await crewMember('kasir');
+  const supervisor = await crewMember('supervisor');
   if (!kasir.rows[0] || !supervisor.rows[0]) {
     throw new Error(
-      `Seed data is missing '${kasirUsername}'/'${supervisorUsername}' for outlet ${locationCode}.`,
+      `Seed data has no active kasir/supervisor assigned to outlet ${locationCode} — run \`pnpm db:seed\` first.`,
     );
   }
 
@@ -245,10 +259,10 @@ export async function loadOutletFixture(): Promise<OutletFixture> {
     locationCode,
     kitchenLineAreaId,
     kasirId: kasir.rows[0].id,
-    kasirUsername,
+    kasirUsername: kasir.rows[0].username,
     supervisorId: supervisor.rows[0].id,
-    supervisorUsername,
-    supervisorPin: '123456', // database/seed.ts's DEMO_PIN, seeded for every `spv_*` user (`withPin: true`)
+    supervisorUsername: supervisor.rows[0].username,
+    supervisorPin: '123456', // database/seed.ts's DEMO_PIN — every supervisor is seeded `withPin: true`
     ownerId: owner.rows[0].id,
     managerId: manager.rows[0].id,
     productId: product.rows[0].id,

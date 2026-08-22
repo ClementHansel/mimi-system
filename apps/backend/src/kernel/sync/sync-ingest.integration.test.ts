@@ -42,13 +42,7 @@ const assertPool = getOwnerPool();
 // in six separate files is what let B-02 regress silently when a signature
 // moved. `projectors` is intentionally empty here: no Wave 3+ projector is
 // registered in this test process.
-const {
-  ingest,
-  events: eventsRepo,
-  conflicts: conflictsRepo,
-  registryRepo,
-  reconciliation,
-} = buildIngestKit(pool, { config: fakeConfig });
+const { ingest } = buildIngestKit(pool, { config: fakeConfig });
 
 let locationId: string;
 let actorUserId: string;

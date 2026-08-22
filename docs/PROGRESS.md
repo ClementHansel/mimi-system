@@ -52,15 +52,15 @@ engineer. Ordered by what stops a go-live, not by wave number.
 
 ### A. Blocked on the owner / client — no code will unblock these
 
-| #   | Item                                                                                   | What is needed                                                                                                                        |
-| --- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| A-1 | **B-14 — HTTPS.** No TLS, so geolocation and service workers are dead on the box       | A domain name + a decision on who owns `:80`/`:443` on the shared VPS. Then Traefik + Let's Encrypt                                   |
-| A-3 | **RISK-P4 — WhatsApp gateway credentials.** `WA_ENABLED=false`                         | Real n8n + gateway credentials. Blocks W5-08's live test and the new chat's delivery proof                                            |
-| A-4 | **Offsite backups.** `OFFSITE_REMOTE_CMD` unset — dumps sit on the database's own disk | An offsite target (rclone/S3) chosen by the owner. NFR-06                                                                             |
-| A-5 | **W7-04 hardware spec**                                                                | Budget, vendor, per-outlet device count                                                                                               |
-| A-6 | **W7-05 data importer**                                                                | The owner's real master-data files to design against                                                                                  |
-| A-7 | **GL history backfill** (B-16 aftermath)                                               | Owner's call. `POST /api/accounting/daily-posting` backfills sales per day; the document-side events have **no** backfill written yet |
-| A-8 | **RISK-P5 — branch node at scale**                                                     | A PM change order — ~20 mini-PCs installed across 4 cities                                                                            |
+| #   | Item                                                                                                                                      | What is needed                                                                                                                                          |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A-1 | **B-14 — HTTPS.** Testable now: self-signed TLS on `:8443` (secure context, so geolocation/camera/PWA work). A TRUSTED cert still blocked | A decision on `aire-nginx`, which holds `:80`/`:443` while restart-looping. Let's Encrypt needs one of those ports; DNS-01 is not available on sslip.io |
+| A-3 | **RISK-P4 — WhatsApp gateway credentials.** `WA_ENABLED=false`                                                                            | Real n8n + gateway credentials. Blocks W5-08's live test and the new chat's delivery proof                                                              |
+| A-4 | **Offsite backups.** `OFFSITE_REMOTE_CMD` unset — dumps sit on the database's own disk                                                    | An offsite target (rclone/S3) chosen by the owner. NFR-06                                                                                               |
+| A-5 | **W7-04 hardware spec**                                                                                                                   | Budget, vendor, per-outlet device count                                                                                                                 |
+| A-6 | **W7-05 data importer**                                                                                                                   | The owner's real master-data files to design against                                                                                                    |
+| A-7 | **GL history backfill** (B-16 aftermath)                                                                                                  | Owner's call. `POST /api/accounting/daily-posting` backfills sales per day; the document-side events have **no** backfill written yet                   |
+| A-8 | **RISK-P5 — branch node at scale**                                                                                                        | A PM change order — ~20 mini-PCs installed across 4 cities                                                                                              |
 
 ### B. Engineering work still owed
 
@@ -132,17 +132,17 @@ was verified on the live box, not inferred from a passing unit test.
 
 ### Not done — carried into the next session
 
-| Item                                                   | Why it is open                                                                                                                                                    |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **B-14 — HTTPS** (see ACTIVE BLOCKERS)                 | Needs a domain + TLS, not code. Blocks live truck tracking entirely and degrades offline-first; everything else works over HTTP today                             |
-| **Backups sit on the same disk as the database**       | `OFFSITE_REMOTE_CMD` unset. Protects against a bad `DELETE`, not against losing the host. Needs an offsite target (rclone/S3) chosen by the owner                 |
-| **B-15 — PIN verification is an unthrottled oracle**   | Any authenticated caller can guess any user's PIN. Mitigation is a product decision — see the blocker                                                             |
-| **Live truck tracking cannot function**                | Built and deployed, but browsers refuse geolocation on an insecure origin. Unblocks itself the moment B-14 closes                                                 |
-| **Live-DB suites drain GDG stock**                     | Several `COMMIT` real movements instead of rolling back, so each full run draws the warehouse down. **Mitigated** (GDG stocked 10× deeper), root cause untouched  |
-| **`attachment-store.test.ts` is flaky**                | Failed 2 of ~8 full runs, passes every time in isolation, has never failed in CI. No fix attempted — guessing at someone else's package is worse than flagging it |
-| **e2e is not wired into any pipeline**                 | Runs by hand via `pnpm e2e`. A post-deploy smoke job is the obvious next step but would need browser install in CI and a decision on failing a deploy on it       |
-| **`/driver` renders empty for owner/superadmin**       | `my-jobs` is a personal queue keyed on a `drivers` row neither account has. Working as designed; noted so it is not re-reported as a bug                          |
-| **Pre-hydration clicks are silently ignored app-wide** | Only the login form guards it. Elsewhere the first click on a server-rendered control can do nothing, with no feedback                                            |
+| Item                                                   | Why it is open                                                                                                                                                               |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B-14 — HTTPS** (see ACTIVE BLOCKERS)                 | Self-signed TLS is live on `:8443`, so truck tracking, attendance GPS/selfie and PWA install are testable. A trusted cert needs `:80`/`:443`, i.e. the `aire-nginx` decision |
+| **Backups sit on the same disk as the database**       | `OFFSITE_REMOTE_CMD` unset. Protects against a bad `DELETE`, not against losing the host. Needs an offsite target (rclone/S3) chosen by the owner                            |
+| **B-15 — PIN verification is an unthrottled oracle**   | Any authenticated caller can guess any user's PIN. Mitigation is a product decision — see the blocker                                                                        |
+| **Live truck tracking cannot function**                | UNBLOCKED for testing as of 2026-08-23: reachable over `https://150.109.15.108:8443` (self-signed), which is a secure context, so geolocation is permitted                   |
+| **Live-DB suites drain GDG stock**                     | Several `COMMIT` real movements instead of rolling back, so each full run draws the warehouse down. **Mitigated** (GDG stocked 10× deeper), root cause untouched             |
+| **`attachment-store.test.ts` is flaky**                | Failed 2 of ~8 full runs, passes every time in isolation, has never failed in CI. No fix attempted — guessing at someone else's package is worse than flagging it            |
+| **e2e is not wired into any pipeline**                 | Runs by hand via `pnpm e2e`. A post-deploy smoke job is the obvious next step but would need browser install in CI and a decision on failing a deploy on it                  |
+| **`/driver` renders empty for owner/superadmin**       | `my-jobs` is a personal queue keyed on a `drivers` row neither account has. Working as designed; noted so it is not re-reported as a bug                                     |
+| **Pre-hydration clicks are silently ignored app-wide** | Only the login form guards it. Elsewhere the first click on a server-rendered control can do nothing, with no feedback                                                       |
 
 ---
 
@@ -857,6 +857,48 @@ than argued with.
 **What NFR-01 actually needs:** a dedicated target — a box, or a window on this one with the neighbours
 quiesced — plus someone watching. It is an environment decision, not a code task. `ACCEPTANCE.md` still
 reads `NONE` for NFR-01 and should keep reading `NONE` until a real run exists.
+
+### 🟡 B-14 update 2026-08-23 — CLOSED FOR TESTING on :8443, self-signed, nobody's ports touched
+
+The blocker above framed the choice as "take `:80`/`:443` from `aire-nginx`, or wait for a domain". There
+was a third option: **a high port.** A secure context is a property of the SCHEME, not the port number —
+`https://150.109.15.108:8443` is exactly as secure-context as `https://example.com` as far as the browser's
+feature gating is concerned.
+
+**Live now, verified from off-box:**
+
+```
+https://150.109.15.108:8443/        200   TLS handshake 111ms
+https://150.109.15.108:8443/manifest.json  200
+http://150.109.15.108:8080/         200   (kept, unchanged)
+subject=CN=150.109.15.108, O=Mimi Chicken OS, C=ID
+X509v3 Subject Alternative Name: IP Address:150.109.15.108, DNS:localhost
+```
+
+**What this unblocks** — the three features that were dead, not broken: driver truck tracking (geolocation),
+attendance selfie + GPS geofence from a phone (camera + geolocation), and PWA install on the outlet tablets
+(service worker). All three need a secure context and nothing else. A tester accepts the certificate warning
+once per device.
+
+**What it does NOT do.** The certificate is self-signed, so every visitor sees a warning first. That is
+fine for testing and unacceptable for a public production address. A real certificate still needs `:80` or
+`:443` — Let's Encrypt's HTTP-01 challenge wants `:80`, TLS-ALPN-01 wants `:443`, and DNS-01 needs a DNS
+API that sslip.io does not have. So the `aire-nginx` decision recorded above is still the gate for a
+_trusted_ cert; it is no longer the gate for _testing the features_.
+
+**How it is built** (`infrastructure/tls/nginx-tls.conf`, `tls` service in `docker-compose.vps.yml`):
+nginx terminating TLS in front of `mimi-frontend:3000` — one container, because Next's rewrites already
+carry `/api`, `/socket.io` and `/sync/v1` internally, which is the same insight the sslip.io attempt
+reached. Carries the WebSocket upgrade headers (socket.io drives the topology tree and truck tracking) and
+raises the body limit to 25 MB so a phone-camera selfie is not rejected by a proxy default. The key is
+generated on the host at deploy time and never enters git.
+
+**Two things went wrong on the way, both recorded at the code:** the container omitted `networks:` and so
+landed on Compose's implicit `default` network, where `frontend` does not resolve — nginx resolves upstream
+names at startup and exits, so nothing listened and the check read `000`. And the deploy's diagnostic
+grepped `mimi-tls` before the overlay set that `container_name`, so the one log dump that would have
+explained it printed nothing. `:8080` answered 200 throughout both failures, by design: the deploy treats
+only the HTTP check as fatal, so a broken TLS config cannot take the box down.
 
 ### 🔴 B-14 update 2026-08-23 — attempted via sslip.io, blocked by a NEIGHBOUR's container
 

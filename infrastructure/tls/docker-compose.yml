@@ -1,0 +1,82 @@
+# B-14 — trusted TLS for the demo box, WITHOUT a domain.
+#
+# ## What this is
+#
+# A standalone Traefik that terminates TLS on :443 with a real Let's Encrypt
+# certificate for `150-109-15-108.sslip.io`, and proxies to the ALREADY-RUNNING
+# `mimi-frontend` container. It is a separate compose project (`-p mimitls`) on
+# purpose: `docker compose -p mimi ... up` never touches it, so a deploy cannot
+# take TLS down and a TLS change cannot restart the app.
+#
+# ## Why sslip.io and no domain
+#
+# Let's Encrypt will not issue for a bare IP address, so `https://150.109.15.108`
+# can only ever be self-signed. `sslip.io` resolves any `<dashed-ip>.sslip.io`
+# name to that IP, giving a real HOSTNAME to certify — and HTTP-01 proves
+# control of it by answering on port 80, which needs no registrar and no DNS
+# API. (DNS-01 would need control of sslip.io's TXT records, which we do not
+# have. That asymmetry is why port 80 matters here and a domain would not.)
+#
+# ## The port 80 / port 443 story — read before changing anything
+#
+# These ports were held by `aire-nginx`, a DIFFERENT compose project on this
+# shared box. It had been crash-looping since 30 July (`host not found in
+# upstream "n8n"` — its n8n container is gone), so aire had no working public
+# entry point either way, but a RESTARTING container keeps its Docker port
+# reservation between attempts: `ss` showed nothing listening while Docker still
+# refused the bind.
+#
+# It was stopped with the owner's explicit approval (2026-08-23):
+#
+#     docker stop aire-nginx      # what was done — durable, `unless-stopped`
+#     docker start aire-nginx     # how to give the ports back
+#
+# If aire ever needs :80/:443 again, this stack has to move or the two have to
+# share one front proxy. Nothing here is load-bearing for mimi's own
+# `:8080` — that keeps working untouched, which is deliberate: TLS is additive.
+#
+# ## Why the file provider rather than docker labels
+#
+# The docker provider would need labels on `mimi-frontend`, and adding labels
+# means RECREATING that container — a restart of the demo box for a change whose
+# whole point is to be additive. A file provider needs nothing from it.
+#
+#   docker compose -f infrastructure/tls/docker-compose.yml -p mimitls up -d
+
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: mimi-tls-le
+    restart: unless-stopped
+    command:
+      - '--providers.file.directory=/etc/traefik/dynamic'
+      - '--providers.file.watch=true'
+      - '--entrypoints.web.address=:80'
+      # Everything on :80 goes to HTTPS. The ACME HTTP-01 challenge still works:
+      # Traefik answers `/.well-known/acme-challenge/**` itself, ahead of any
+      # user router or redirect.
+      - '--entrypoints.web.http.redirections.entrypoint.to=websecure'
+      - '--entrypoints.web.http.redirections.entrypoint.scheme=https'
+      - '--entrypoints.websecure.address=:443'
+      - '--certificatesresolvers.letsencrypt.acme.httpchallenge=true'
+      - '--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web'
+      - '--certificatesresolvers.letsencrypt.acme.email=hansel@gaiada.com'
+      - '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json'
+      - '--log.level=INFO'
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      # Named volume, NOT a bind mount: losing acme.json means re-requesting
+      # certificates, and Let's Encrypt rate-limits duplicate requests hard.
+      - certs:/letsencrypt
+      - ./dynamic:/etc/traefik/dynamic:ro
+    networks: [mimi]
+
+volumes:
+  certs:
+
+networks:
+  mimi:
+    external: true
+    name: mimi_mimi-network

@@ -1,0 +1,25 @@
+# Routes the certified hostname to the already-running frontend container.
+#
+# ONE upstream serves the whole application: `next.config.ts`'s rewrites proxy
+# `/api/**`, `/socket.io/**` and `/sync/v1/**` to the backend from inside the
+# frontend container. So there is no `api.` subdomain here and no second
+# certificate — the browser only ever talks to one origin, which also means no
+# CORS surface to configure.
+http:
+  routers:
+    mimi:
+      rule: 'Host(`150-109-15-108.sslip.io`)'
+      entryPoints: [websecure]
+      service: mimi-frontend
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    mimi-frontend:
+      loadBalancer:
+        servers:
+          # Container name on `mimi_mimi-network`; Docker's embedded DNS
+          # resolves it. Port 3000 is the container's own port, not the
+          # published 8080 — going through the host would be a pointless hop
+          # and would break if the published port ever changed.
+          - url: 'http://mimi-frontend:3000'

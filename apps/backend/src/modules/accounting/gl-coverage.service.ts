@@ -74,7 +74,14 @@ interface Probe {
   refType: string;
   scope: string;
   table: string;
-  /** SQL predicate selecting documents that SHOULD have posted by now. */
+  /**
+   * SQL predicate selecting documents that SHOULD have posted by now.
+   *
+   * MUST qualify its columns with the `d.` alias: the query joins
+   * `journal_entries`, which has its OWN `status` column, so a bare `status`
+   * is ambiguous and Postgres rejects the whole query at runtime. It compiles
+   * fine and fails in production, which is exactly what it did.
+   */
   terminal: string;
   /** Column that dates the document, for the window in the report. */
   dateColumn: string;
@@ -85,7 +92,7 @@ const PROBES: readonly Probe[] = [
     refType: 'waste_record',
     scope: 'approved waste records (JOUT-04 / JGUD-05)',
     table: 'waste_records',
-    terminal: `status = 'approved'`,
+    terminal: `d.status = 'approved'`,
     dateColumn: 'approved_at',
   },
   {
@@ -96,28 +103,28 @@ const PROBES: readonly Probe[] = [
     // status — the shipped leg is 'in_transit'. Guessing here would have
     // reported zero gaps forever, which is the worst possible failure for a
     // report whose entire job is to find them.
-    terminal: `status IN ('in_transit', 'received', 'completed')`,
+    terminal: `d.status IN ('in_transit', 'received', 'completed')`,
     dateColumn: 'shipped_at',
   },
   {
     refType: 'stock_adjustment',
     scope: 'approved stock opnames (JOUT-05 / JGUD-06)',
     table: 'stock_opname',
-    terminal: `status = 'adjusted'`,
+    terminal: `d.status = 'adjusted'`,
     dateColumn: 'approved_at',
   },
   {
     refType: 'petty_cash',
     scope: 'verified petty-cash claims (JOUT-07 / JOUT-08)',
     table: 'petty_cash',
-    terminal: `status = 'verified'`,
+    terminal: `d.status = 'verified'`,
     dateColumn: 'verified_at',
   },
   {
     refType: 'surat_jalan',
     scope: 'dispatched Surat Jalan (JGUD-03)',
     table: 'surat_jalan',
-    terminal: `status IN ('in_transit', 'completed')`,
+    terminal: `d.status IN ('in_transit', 'completed')`,
     dateColumn: 'dispatched_at',
   },
   {
@@ -126,7 +133,7 @@ const PROBES: readonly Probe[] = [
     table: 'sj_drops',
     // Also from the CHECK constraint: a drop never reaches 'received'. It
     // completes, with or without a discrepancy, and both post.
-    terminal: `status IN ('completed', 'completed_discrepancy')`,
+    terminal: `d.status IN ('completed', 'completed_discrepancy')`,
     dateColumn: 'received_at',
   },
 ];

@@ -170,16 +170,23 @@ export class DailyPostingController {
  * writing something that posts historical money somebody has to be able to see
  * what it would post. This answers that and changes nothing.
  *
- * Gated on `accounting.journal.post` rather than a read key on purpose — the
- * number it returns is only meaningful to whoever could act on it, and it
- * exposes the shape of the ledger's own gaps.
+ * Gated on `accounting.journal.read`, NOT on `.post`. The first attempt used
+ * `.post` on the reasoning that the number only matters to whoever could act
+ * on it — which locked out the one person the report exists for: **owner
+ * deliberately does not hold `accounting.journal.post`**, that being the
+ * segregation-of-duties boundary, and owner is who decides whether to backfill
+ * production. A report its audience cannot open is not a report.
+ *
+ * `.read` is also the honest classification: this returns COUNTS and DATE
+ * WINDOWS, never amounts, and "which journal entries are missing" is a
+ * question about the journal.
  */
 @Controller('accounting/gl-coverage')
 export class GlCoverageController {
   constructor(private readonly coverage: GlCoverageService) {}
 
   @Get()
-  @RequirePermission('accounting.journal.post')
+  @RequirePermission('accounting.journal.read')
   report(@Req() req: RequestWithDbContext) {
     return this.coverage.report(req.dbClient!);
   }

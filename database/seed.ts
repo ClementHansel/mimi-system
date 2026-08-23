@@ -29,6 +29,7 @@ import { createHash } from 'node:crypto';
 import { businessDateOf } from '@mimi/shared';
 import { seedExtended } from './seed-extended.js';
 import { seedGaps } from './seed-gaps.js';
+import { applyOrgModel } from './org-model.js';
 
 const { Client } = pg;
 
@@ -2248,6 +2249,25 @@ async function main(): Promise<void> {
     // purchasing chain past the PO, stock operations, finance, assets and the
     // sync/device fixtures. Kept in its own module so this file stays legible;
     // it resolves its own ids from the DB, so ordering is the only coupling.
+    // ── THE ORG, as the business actually runs ────────────────────────────
+    //
+    // Everything above builds the raw cast (one supervisor, one leader, two
+    // cashiers per outlet, eight drivers). This reshapes it into the owner's
+    // model — a crew PER SHIFT of supervisor + cashier + 2 cooks, managers over
+    // regions, Gudang Pusat with 2 staff and 2 drivers — so a freshly seeded dev
+    // or CI database IS the business rather than a placeholder that has to be
+    // fixed up afterwards.
+    //
+    // Placed BEFORE `seedExtended`/`seedGaps` deliberately: those two attribute
+    // transactions, approvals and documents to specific people, and the cast has
+    // to be final before anything is signed by one of them. Running it after
+    // would leave history attributed to accounts the model then renamed.
+    //
+    // The model lives in `org-model.ts` because `simulate-org.ts` also applies it
+    // — to an already-seeded database that must not be reset. One definition, so
+    // the two cannot disagree about what a shift is.
+    await applyOrgModel(client);
+
     await seedExtended(client);
     // Third pass: the tables the first two still left empty — approvals for
     // every document that implies one, WhatsApp threads, an opname with a real
@@ -2258,7 +2278,7 @@ async function main(): Promise<void> {
 
     console.log('\n✓ Seed completed successfully.\n');
     console.log(
-      `Demo login: any seeded username (e.g. "owner", "manager1", "spv_bpp01") / password "${DEMO_PASSWORD}"`,
+      `Demo login: any seeded username (e.g. "owner", "manager_pusat", "spv_bpp01_p", "koki1_bpp01_p") / password "${DEMO_PASSWORD}"`,
     );
     console.log(`Demo PIN (owner/manager/kepala_gudang/supervisor): "${DEMO_PIN}"\n`);
   } catch (error) {

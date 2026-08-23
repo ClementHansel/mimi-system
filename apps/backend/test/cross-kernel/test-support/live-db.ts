@@ -199,7 +199,9 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
       `SELECT u.id FROM users u
          JOIN roles r ON r.id = u.role_id
         WHERE r.key = ANY($1::text[])
-        ORDER BY array_position($1::text[], r.key), u.username
+        ORDER BY array_position($1::text[], r.key),
+                   EXISTS (SELECT 1 FROM user_locations ul WHERE ul.user_id = u.id),
+                   u.username
         LIMIT 1`,
       [roleKey === 'leader_outlet' ? ['koki', 'kasir'] : [roleKey]],
     );

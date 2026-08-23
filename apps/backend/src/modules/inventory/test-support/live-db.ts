@@ -275,6 +275,12 @@ export async function loadFixtures(): Promise<Fixtures> {
            JOIN roles r ON r.id = u.role_id
            JOIN user_locations ul ON ul.user_id = u.id
           WHERE r.key = ANY($1::text[]) AND ul.location_id = $2
+          -- Prefer a holder with NO location assignment. Since migration 235 a
+          -- manager is confined to the branches given to them, so "a manager"
+          -- for a fixture has to mean the head-office one: a regional manager
+          -- cannot approve a document at an outlet outside their region, and a
+          -- spec picking one at random would pass or fail depending on which
+          -- outlet the fixture happened to choose. FALSE sorts before TRUE.
           ORDER BY array_position($1::text[], r.key), u.username
           LIMIT 1`,
         [wanted, outletId],

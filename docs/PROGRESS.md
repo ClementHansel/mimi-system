@@ -52,15 +52,15 @@ engineer. Ordered by what stops a go-live, not by wave number.
 
 ### A. Blocked on the owner / client — no code will unblock these
 
-| #   | Item                                                                                                                                      | What is needed                                                                                                                                          |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A-1 | **B-14 — HTTPS.** Testable now: self-signed TLS on `:8443` (secure context, so geolocation/camera/PWA work). A TRUSTED cert still blocked | A decision on `aire-nginx`, which holds `:80`/`:443` while restart-looping. Let's Encrypt needs one of those ports; DNS-01 is not available on sslip.io |
-| A-3 | **RISK-P4 — WhatsApp gateway credentials.** `WA_ENABLED=false`                                                                            | Real n8n + gateway credentials. Blocks W5-08's live test and the new chat's delivery proof                                                              |
-| A-4 | **Offsite backups.** `OFFSITE_REMOTE_CMD` unset — dumps sit on the database's own disk                                                    | An offsite target (rclone/S3) chosen by the owner. NFR-06                                                                                               |
-| A-5 | **W7-04 hardware spec**                                                                                                                   | Budget, vendor, per-outlet device count                                                                                                                 |
-| A-6 | **W7-05 data importer**                                                                                                                   | The owner's real master-data files to design against                                                                                                    |
-| A-7 | **GL history backfill** (B-16 aftermath)                                                                                                  | Owner's call. `POST /api/accounting/daily-posting` backfills sales per day; the document-side events have **no** backfill written yet                   |
-| A-8 | **RISK-P5 — branch node at scale**                                                                                                        | A PM change order — ~20 mini-PCs installed across 4 cities                                                                                              |
+| #   | Item                                                                                                                                                                                                                                                                      | What is needed                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A-1 | **B-14 — HTTPS.** Testable now: self-signed TLS on `:8443` (secure context, so geolocation/camera/PWA work). A TRUSTED cert still blocked                                                                                                                                 | A decision on `aire-nginx`, which holds `:80`/`:443` while restart-looping. Let's Encrypt needs one of those ports; DNS-01 is not available on sslip.io |
+| A-3 | **RISK-P4 — WhatsApp gateway credentials.** `WA_ENABLED=false`                                                                                                                                                                                                            | Real n8n + gateway credentials. Blocks W5-08's live test and the new chat's delivery proof                                                              |
+| A-4 | **Offsite backups.** `OFFSITE_REMOTE_CMD` unset — dumps sit on the database's own disk                                                                                                                                                                                    | An offsite target (rclone/S3) chosen by the owner. NFR-06                                                                                               |
+| A-5 | **W7-04 hardware spec**                                                                                                                                                                                                                                                   | Budget, vendor, per-outlet device count                                                                                                                 |
+| A-6 | **W7-05 data importer**                                                                                                                                                                                                                                                   | The owner's real master-data files to design against                                                                                                    |
+| A-7 | **GL history backfill** — now MEASURABLE via `GET /api/accounting/gl-coverage` (read-only). On the demo box the document-side gap is **2 documents**, both pre-dating the B-16 wiring. Re-run it after go-live before deciding whether a backfill engine is worth writing | owner decision, now informed                                                                                                                            |
+| A-8 | **RISK-P5 — branch node at scale**                                                                                                                                                                                                                                        | A PM change order — ~20 mini-PCs installed across 4 cities                                                                                              |
 
 ### B. Engineering work still owed
 
@@ -1075,6 +1075,51 @@ touched, the mimi stack is healthy, and `http://150.109.15.108:8080/login` still
 a browser-trusted cert — retire it and mimi takes the ports (the Traefik piece above is then perhaps twenty
 minutes), or keep it and the two need a shared front proxy and a real domain. **Testing the
 secure-context features is no longer blocked on any of that** — see the `:8443` note above.
+
+### 🟢 A-7 — the GL history gap is now MEASURABLE, and on this box it is two documents
+
+**2026-08-23.** B-16 wired twelve posting rules that had never fired, but wiring only covers documents
+approved AFTER it landed. The sales side is backfillable per-day via `POST /api/accounting/daily-posting`;
+the DOCUMENT side had no backfill, and — more to the point — nobody could say how much history was even
+missing. Backfilling production is the owner's decision, and that decision needs a number.
+
+`GET /api/accounting/gl-coverage` is that number. **Read-only**: it posts nothing and is safe to call on
+production at any time. For each document type it anti-joins terminal documents against
+`journal_entries` on `(ref_type, ref_id)` with `source = 'system'` — that triple being the engine's own
+idempotency key — and reports how many have no entry, plus the date window.
+
+**Measured on the demo box, 2026-08-23:**
+
+| Document type      | Terminal | Unposted | Window     |
+| ------------------ | -------- | -------- | ---------- |
+| `waste_record`     | 0        | 0        | —          |
+| `return`           | 0        | 0        | —          |
+| `stock_adjustment` | 0        | 0        | —          |
+| `petty_cash`       | 0        | 0        | —          |
+| `surat_jalan`      | 1        | **1**    | 2026-08-17 |
+| `sj_drops`         | 1        | **1**    | 2026-08-17 |
+| **Total**          |          | **2**    |            |
+
+Both predate the B-16 wiring (2026-08-19/20), which is exactly the shape the blocker predicted. **Two
+documents is not worth writing a backfill engine for** — it is worth a manual entry, or leaving alone on a
+demo box. That is the useful answer, and it is the opposite of what "no backfill exists" implied.
+
+**Caveat that matters for the real deployment:** this box holds seeded demo data with days of history, not
+a live outlet with months of it. Run the same endpoint after go-live and the number will mean something
+different. The point of the endpoint is that it can be re-run at any time and answers honestly.
+
+**Gated on `accounting.journal.read`, not `.post`** — the first version used `.post` and locked out the
+one person the report exists for: owner deliberately does not hold that key (segregation of duties) and
+owner is who decides on a backfill. A report its audience cannot open is not a report.
+
+**Two bugs of mine, both worth recording.** The first version returned HTTP 500 in production:
+`column reference "status" is ambiguous`, because `journal_entries` has its own `status` column and the
+per-probe predicate did not qualify with the table alias. It typechecked (the predicates are strings) and
+the whole accounting suite passed, because **nothing executed the query**. The real fix was
+`gl-coverage.integration.spec.ts`, which runs every probe against the real schema. Separately, two of the
+six probes named statuses that do not exist — `returns` has no `'shipped'` (it is `'in_transit'`) and
+`sj_drops` never reaches `'received'` (it `'completed'`s) — caught by reading the live CHECK constraints
+rather than trusting memory. Either would have reported zero gaps forever while looking correct.
 
 ### 🔴 B-14 — The demo box is HTTP-only, so geolocation and service workers are dead
 

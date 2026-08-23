@@ -21,22 +21,23 @@
  *             should be refused and was allowed
  *
  * Usage:
- *   npx tsx database/simulate-day.ts        # backend on :4000, DB from DATABASE_MIGRATION_URL
+ *   npx tsx database/simulate-day.ts                          # localhost:4000
+ *   API=https://150.109.15.108:8443/api npx tsx simulate-day.ts   # the demo box
  *
- * `API` overrides the backend URL, but the database and the API must be the SAME
- * environment: the fixtures below (location ids, a product, an item with stock)
- * are read straight from the database, and pointing the API at another box would
- * send it ids that do not exist there. Driving the VPS therefore needs a
- * connection to the VPS database, which is bound to 127.0.0.1 by design.
+ * It needs NOTHING but the API. Every fixture below (locations and their
+ * coordinates, a sellable product, an item with stock and its unit) is read over
+ * HTTP as the owner, so this can be pointed at any environment that is running —
+ * which is the point: the next move is a separate staging server, and a
+ * simulation that only works against a database on localhost could not follow it
+ * there. It used to read those fixtures straight from Postgres, which meant the
+ * API and the database had to be the same host and the demo box (whose Postgres
+ * is bound to 127.0.0.1, correctly) could never be driven at all.
  *
  * It writes real sales, attendance and stock movements, so the target should
  * always be a deliberate choice rather than a default.
  */
 
-import pg from 'pg';
 import { randomUUID, createHash } from 'node:crypto';
-
-const { Client } = pg;
 
 const API = process.env.API ?? 'http://127.0.0.1:4000/api';
 const PASSWORD = 'password123';
@@ -208,55 +209,75 @@ interface Fixtures {
   gudangId: string;
 }
 
-async function loadFixtures(): Promise<Fixtures> {
-  const client = new Client({
-    connectionString:
-      process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi',
-  });
-  await client.connect();
-  try {
-    const locs = (
-      await client.query<{ code: string; id: string; latitude: string; longitude: string }>(
-        `SELECT code, id, latitude, longitude FROM locations`,
-      )
-    ).rows;
-    const locationId: Record<string, string> = {};
-    const coords: Record<string, { lat: string; lng: string }> = {};
-    for (const l of locs) {
-      locationId[l.code] = l.id;
-      coords[l.code] = { lat: String(l.latitude), lng: String(l.longitude) };
-    }
-    const products = (
-      await client.query<{ id: string; price: string }>(
-        `SELECT id, price FROM products WHERE is_active ORDER BY code LIMIT 3`,
-      )
-    ).rows;
-    const item = (
-      await client.query<{ item_id: string; unit_id: string; storage_area_id: string }>(
-        `SELECT sb.item_id, i.base_unit_id AS unit_id, sb.storage_area_id
-           FROM stock_balances sb
-           JOIN items i ON i.id = sb.item_id
-           JOIN storage_areas sa ON sa.id = sb.storage_area_id
-          WHERE sb.location_id = $1 AND sb.qty_on_hand > 5
-          ORDER BY sb.qty_on_hand DESC
-          LIMIT 1`,
-        [locationId[HOME]],
-      )
-    ).rows[0];
-    if (!item) throw new Error(`No stock at ${HOME} — run \`pnpm db:seed\` first.`);
-    return {
-      locationId,
-      coords,
-      productIds: products.map((p) => p.id),
-      productPrice: Object.fromEntries(products.map((p) => [p.id, p.price])),
-      frozenItemId: item.item_id,
-      frozenUnitId: item.unit_id,
-      storageAreaId: item.storage_area_id,
-      gudangId: locationId.GDG!,
-    };
-  } finally {
-    await client.end();
+/**
+ * Reads every fixture over the API, as the owner.
+ *
+ * Deliberately not from the database. The API and the database used to have to
+ * be the same host, which made the demo box undriveable (its Postgres listens on
+ * 127.0.0.1, as it should) and would make a separate staging server undriveable
+ * too. Everything here is available over HTTP, so the only thing this script
+ * needs is a URL and a password.
+ */
+async function loadFixtures(session: Session): Promise<Fixtures> {
+  const rowsOf = async <T>(path: string): Promise<T[]> => {
+    const res = await call<{ rows?: T[] } | T[]>(session, 'GET', path);
+    if (!res.ok) throw new Error(`fixture load failed: GET ${path} -> ${why(res)}`);
+    const body = res.body as { rows?: T[] } | T[];
+    return Array.isArray(body) ? body : (body.rows ?? []);
+  };
+
+  interface ApiLocation {
+    id: string;
+    code: string;
+    type: string;
+    latitude: string | null;
+    longitude: string | null;
   }
+  const locations = await rowsOf<ApiLocation>('/locations?pageSize=200');
+  const locationId: Record<string, string> = {};
+  const coords: Record<string, { lat: string; lng: string }> = {};
+  for (const l of locations) {
+    locationId[l.code] = l.id;
+    coords[l.code] = { lat: String(l.latitude ?? ''), lng: String(l.longitude ?? '') };
+  }
+  for (const code of [HOME, AWAY, 'GDG']) {
+    if (!locationId[code]) throw new Error(`fixture load failed: no location "${code}" on ${API}`);
+  }
+
+  const products = await rowsOf<{ id: string; price: string; isActive: boolean }>(
+    '/products?pageSize=50',
+  );
+  const sellable = products.filter((p) => p.isActive).slice(0, 3);
+  if (sellable.length === 0) throw new Error('fixture load failed: no active products');
+
+  // An item that actually HAS stock at the home outlet, with the storage area it
+  // sits in — a request for an item with none would fail for the wrong reason.
+  const balances = await rowsOf<{
+    itemId: string;
+    storageAreaId: string;
+    qtyOnHand: string;
+    unitCode: string;
+  }>(`/inventory/balances?locationId=${locationId[HOME]}&pageSize=200`);
+  const stocked = balances
+    .filter((b) => Number(b.qtyOnHand) > 5)
+    .sort((a, b) => Number(b.qtyOnHand) - Number(a.qtyOnHand))[0];
+  if (!stocked) throw new Error(`fixture load failed: nothing in stock at ${HOME}`);
+
+  // The replenishment DTO wants a unit ID; balances only carry the code.
+  const units = await rowsOf<{ id: string; code: string }>('/units?pageSize=200');
+  const unit = units.find((u) => u.code === stocked.unitCode);
+  if (!unit) throw new Error(`fixture load failed: no unit "${stocked.unitCode}"`);
+
+  return {
+    locationId,
+    coords,
+    productIds: sellable.map((p) => p.id),
+    productPrice: Object.fromEntries(sellable.map((p) => [p.id, p.price])),
+    frozenItemId: stocked.itemId,
+    frozenUnitId: unit.id,
+    storageAreaId: stocked.storageAreaId,
+    gudangId: locationId.GDG!,
+  };
 }
 
 /** Moves a lat/lng by roughly `metres` north — for the outside-the-fence case. */
@@ -266,7 +287,6 @@ function offsetLat(lat: string, metres: number): string {
 
 async function main(): Promise<void> {
   console.log(`\nDay simulation against ${API}\n`);
-  const fx = await loadFixtures();
 
   // ── the morning crew at BPP01 ───────────────────────────────────────────────
   const shift = 'p';
@@ -277,6 +297,11 @@ async function main(): Promise<void> {
   const otherManager = await login('manager2');
   const gudang = await login('gudang1');
   const driver = await login('driver1');
+
+  // Fixtures come from the API as the owner — after login, because that is the
+  // session they are read with.
+  const fx = await loadFixtures(await login('owner'));
+
   console.log(
     `  crew: ${spv.username} (${spv.roleKey}), ${kasir.username} (${kasir.roleKey}), ` +
       `${cook.username} (${cook.roleKey})\n`,

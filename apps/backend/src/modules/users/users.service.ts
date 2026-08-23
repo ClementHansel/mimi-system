@@ -83,6 +83,7 @@ export class UsersService {
         code: ERR_VALIDATION,
         message: `unknown role '${dto.roleKey}'`,
       });
+    this.assertRoleNotRetired(role);
 
     return withWrite(client, async () => {
       const passwordHash = await bcryptHash(dto.password, PASSWORD_BCRYPT_ROUNDS);
@@ -143,6 +144,8 @@ export class UsersService {
         code: ERR_VALIDATION,
         message: `unknown role '${dto.roleKey}'`,
       });
+
+    this.assertRoleNotRetired(role);
 
     return withWrite(client, async () => {
       await this.repo.updateRole(client, id, role.id);
@@ -242,6 +245,24 @@ export class UsersService {
       throw new ForbiddenException({
         code: ERR_FORBIDDEN,
         message: `cannot assign a role ('${targetRoleKey}') ranked at or above your own ('${callerRoleKey}')`,
+      });
+    }
+  }
+
+  /**
+   * A retired role may not be granted to anybody (migration 237 retired
+   * `leader_outlet` when the crew model made it empty).
+   *
+   * Checked HERE, on the server, and not only by hiding it from the frontend
+   * picker: the picker is a convenience, and this endpoint takes a role key from
+   * the request body. `ERR_VALIDATION` rather than `ERR_FORBIDDEN` because the
+   * caller's authority is not the problem — the role no longer exists to give.
+   */
+  private assertRoleNotRetired(role: { key: string; retiredAt: string | null }): void {
+    if (role.retiredAt) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `role '${role.key}' has been retired and can no longer be assigned`,
       });
     }
   }

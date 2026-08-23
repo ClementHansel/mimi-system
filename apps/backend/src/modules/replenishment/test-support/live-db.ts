@@ -166,12 +166,12 @@ export async function loadFixtures(): Promise<Fixtures> {
       -- since the org was reshaped into per-shift crews (supervisor + cashier +
       -- 2 cooks). The specs pass the acting role explicitly, so this only needs
       -- to be a real user at the outlet.
-      WHERE r.key IN ('leader_outlet', 'koki', 'kasir', 'supervisor')`,
+      WHERE r.key IN ('koki', 'kasir', 'supervisor')`,
   );
   const byLocation = new Map<string, Map<string, string>>();
   // Floor roles are collapsed onto one 'floor' slot in preference order, so the
   // rest of this function keeps asking for exactly two people per outlet.
-  const FLOOR_PREFERENCE = ['leader_outlet', 'koki', 'kasir'];
+  const FLOOR_PREFERENCE = ['koki', 'kasir'];
   for (const row of outletsRes.rows) {
     const bucket = byLocation.get(row.location_id) ?? new Map<string, string>();
     const slot = row.role_key === 'supervisor' ? 'supervisor' : 'floor';

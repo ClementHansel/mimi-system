@@ -213,7 +213,7 @@ export async function loadFixtures(): Promise<Fixtures> {
         WHERE r.key = ANY($1::text[])
         ORDER BY array_position($1::text[], r.key), u.username
         LIMIT 1`,
-      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
+      [roleKey === 'leader_outlet' ? ['koki', 'kasir'] : [roleKey]],
     );
     // A role with NOBODY IN IT is skipped rather than fatal. This used to throw,
     // which made every fixture here depend on the seed staffing all eleven

@@ -136,7 +136,7 @@ export async function loadReportFixtures(): Promise<ReportFixtures> {
         WHERE r.key = ANY($1::text[])
         ORDER BY array_position($1::text[], r.key), u.username
         LIMIT 1`,
-      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
+      [roleKey === 'leader_outlet' ? ['koki', 'kasir'] : [roleKey]],
     );
     if (!userRes.rows[0]) continue;
     const userId = userRes.rows[0].id;

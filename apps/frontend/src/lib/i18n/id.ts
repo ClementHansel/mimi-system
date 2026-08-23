@@ -111,7 +111,10 @@ export const id = {
     finance: 'Keuangan',
     kepala_gudang: 'Kepala Gudang',
     supervisor: 'Supervisor Cabang',
-    leader_outlet: 'Leader/Staff Outlet',
+    // Retired 2026-08-23 (migration 237). The label stays because approvals,
+    // audit rows and sync payloads already name this role, and they should
+    // render as what they were rather than as a raw snake_case key.
+    leader_outlet: 'Leader/Staff Outlet (nonaktif)',
     kasir: 'Kasir',
     hr_admin: 'Admin SDM',
     driver: 'Driver',

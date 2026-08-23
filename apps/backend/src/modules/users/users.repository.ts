@@ -125,12 +125,17 @@ export class UsersRepository {
   async findRoleByKey(
     client: PoolClient,
     key: string,
-  ): Promise<{ id: UUID; key: string } | undefined> {
-    const res = await client.query<{ id: UUID; key: string }>(
-      `SELECT id, key FROM roles WHERE key = $1`,
+  ): Promise<{ id: UUID; key: string; retiredAt: string | null } | undefined> {
+    // `retired_at` comes back so the caller can refuse to GRANT a decommissioned
+    // role (migration 237). The row itself stays readable: history references
+    // retired roles, and a lookup that hid them would make past approvals
+    // unnameable.
+    const res = await client.query<{ id: UUID; key: string; retired_at: string | null }>(
+      `SELECT id, key, retired_at FROM roles WHERE key = $1`,
       [key],
     );
-    return res.rows[0];
+    const row = res.rows[0];
+    return row ? { id: row.id, key: row.key, retiredAt: row.retired_at } : undefined;
   }
 
   async usernameTaken(client: PoolClient, username: string): Promise<boolean> {

@@ -10,6 +10,15 @@
  * the TABLE, which is the actual contract per BUILD-PLAN §6 rule 7 — flagged
  * for the architect to reconcile the summary line.
  *
+ * LEADER_OUTLET (`leader_outlet`) is RETIRED as of 2026-08-23 (migration 237).
+ * Its column is still here and still correct: the crew model left the role with
+ * no holders, but `approvals.requested_by_role`, `audit_log` and sync payloads
+ * already name it on rows that happened, and `RBAC_ROLE_ORDER`'s positions are
+ * column indexes into all 150 rows below — dropping one mid-array re-maps every
+ * role after it. Nothing may be assigned the role again
+ * (`UsersService.assertRoleNotRetired`, and it is absent from the frontend's
+ * `ROLE_SENIORITY`); the column documents what it COULD do, for reading history.
+ *
  * KOKI (`koki`, "Juru Masak") was added 2026-08-23 at the owner's request: an
  * outlet crew is a supervisor, a cashier and TWO COOKS per shift, and the cooks
  * had no role of their own. They were being created as `leader_outlet`, which

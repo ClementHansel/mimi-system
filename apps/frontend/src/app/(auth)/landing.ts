@@ -15,6 +15,8 @@ const ROLE_LANDING: Record<string, string> = {
   [RoleKey.FINANCE]: '/finance',
   [RoleKey.KEPALA_GUDANG]: '/warehouse',
   [RoleKey.SUPERVISOR]: '/outlet',
+  // Retired (migration 237) — kept so a session minted before the retirement
+  // still lands somewhere sensible instead of falling through to `/me`.
   [RoleKey.LEADER_OUTLET]: '/outlet',
   [RoleKey.KASIR]: '/pos',
   [RoleKey.HR_ADMIN]: '/hr',

@@ -24,7 +24,10 @@ describe('roleRank / assignableRoles', () => {
       RoleKey.FINANCE,
       RoleKey.KEPALA_GUDANG,
       RoleKey.SUPERVISOR,
-      RoleKey.LEADER_OUTLET,
+      // No LEADER_OUTLET: retired 2026-08-23 (migration 237), so it must not be
+      // offerable to anyone. It remains in `RoleKey` and in the RBAC matrix for
+      // reading historical rows that name it — this list is about what can be
+      // GRANTED, which is now nothing.
       RoleKey.KOKI,
       RoleKey.KASIR,
       RoleKey.HR_ADMIN,
@@ -34,7 +37,7 @@ describe('roleRank / assignableRoles', () => {
 
   it('the Owner can assign every other role', () => {
     const options = assignableRoles(RoleKey.OWNER);
-    expect(options).toHaveLength(9); // every role except Owner itself
+    expect(options).toHaveLength(8); // every assignable role except Owner (leader_outlet is retired)
     expect(options).not.toContain(RoleKey.OWNER);
   });
 

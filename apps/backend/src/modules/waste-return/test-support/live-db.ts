@@ -113,11 +113,11 @@ export async function loadFixtures(): Promise<Fixtures> {
       -- failed against a perfectly valid database. Preference order keeps the
       -- old choice when it is still available, so nothing changes on a database
       -- seeded the old way.
-      WHERE ldr_r.key IN ('leader_outlet', 'koki', 'kasir')
+      WHERE ldr_r.key IN ('koki', 'kasir')
         AND ldr.user_id <> spv.user_id
       ORDER BY CASE ldr_r.key
-                 WHEN 'leader_outlet' THEN 0
-                 WHEN 'koki' THEN 1
+                 WHEN 'koki' THEN 0
+                 WHEN 'kasir' THEN 1
                  ELSE 2
                END, ldr_u.username
       LIMIT 1`,
@@ -161,7 +161,7 @@ export async function loadFixtures(): Promise<Fixtures> {
         WHERE r.key = ANY($1::text[])
         ORDER BY array_position($1::text[], r.key), u.username
         LIMIT 1`,
-      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
+      [roleKey === 'leader_outlet' ? ['koki', 'kasir'] : [roleKey]],
     );
     if (!res.rows[0]) continue;
     usersByRole[roleKey] = res.rows[0].id;

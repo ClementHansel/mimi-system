@@ -94,7 +94,7 @@ export async function fetchOneUserId(roleKey = 'supervisor'): Promise<string> {
       WHERE r.key = ANY($1::text[])
       ORDER BY array_position($1::text[], r.key), u.username
       LIMIT 1`,
-    [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
+    [roleKey === 'leader_outlet' ? ['koki', 'kasir'] : [roleKey]],
   );
   if (!res.rows[0]) throw new Error(`Test fixture requires a seeded user with role '${roleKey}'`);
   return res.rows[0].id;

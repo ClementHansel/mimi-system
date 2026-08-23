@@ -16,7 +16,12 @@ export const ROLE_SENIORITY: readonly RoleKey[] = [
   RoleKey.FINANCE,
   RoleKey.KEPALA_GUDANG,
   RoleKey.SUPERVISOR,
-  RoleKey.LEADER_OUTLET,
+  // `RoleKey.LEADER_OUTLET` is deliberately ABSENT: retired 2026-08-23
+  // (migration 237) when the crew model — supervisor + cashier + 2 cooks — left
+  // it with no holders. It still exists in `RoleKey` and in the RBAC matrix so
+  // that historical rows naming it stay interpretable; it simply cannot be
+  // assigned to anyone again. Omitting it here is what stops the picker offering
+  // it, and `UsersService.assertRoleNotRetired` is what actually enforces it.
   // Outlet floor staff, alongside the cashier. This is the ONE place the order
   // deliberately diverges from `RBAC_ROLE_ORDER`, where `KOKI` sits
   // second-to-last: that array's positions are matrix COLUMN INDEXES and a new

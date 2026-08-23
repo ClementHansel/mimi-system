@@ -177,7 +177,7 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
     // against a valid database. It is a safe substitution because every
     // caller supplies the ACTING role separately (`callerFor(id, role, ...)`);
     // what it needs from here is a real user at this outlet.
-    const wanted = roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey];
+    const wanted = roleKey === 'leader_outlet' ? ['koki', 'kasir'] : [roleKey];
     const res = await pool.query<{ id: string }>(
       `SELECT u.id FROM users u
          JOIN roles r ON r.id = u.role_id
@@ -201,7 +201,7 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
         WHERE r.key = ANY($1::text[])
         ORDER BY array_position($1::text[], r.key), u.username
         LIMIT 1`,
-      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
+      [roleKey === 'leader_outlet' ? ['koki', 'kasir'] : [roleKey]],
     );
     if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}'`);
     return res.rows[0].id;

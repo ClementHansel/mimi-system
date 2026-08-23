@@ -112,7 +112,7 @@ export async function loadFixtures(): Promise<Fixtures> {
         WHERE r.key = ANY($1::text[])
         ORDER BY array_position($1::text[], r.key), u.username
         LIMIT 1`,
-      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
+      [roleKey === 'leader_outlet' ? ['koki', 'kasir'] : [roleKey]],
     );
     if (res.rows[0]) usersByRole[roleKey] = res.rows[0].id;
   }

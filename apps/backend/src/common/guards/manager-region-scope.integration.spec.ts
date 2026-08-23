@@ -160,6 +160,79 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
       expect(visible).toBe(salesEverywhere);
     }, 30_000);
 
+    /**
+     * The sensitive half (migration 238). 235 confined a manager on tables that
+     * carry a `location_id`; the salaries, loans and leave requests live one join
+     * away through `employees`, so a regional manager could not read another
+     * region's SALES and could still read its people's PAY.
+     *
+     * Counted per table rather than in one query, so a failure names the table
+     * that leaked instead of "some number was wrong".
+     */
+    const rowsVisibleTo = async (
+      userId: string,
+      username: string,
+      sql: string,
+    ): Promise<number> => {
+      const request: RequestWithDbContext = {
+        user: { sub: userId, username, roleKey: 'manager', locationIds: [] },
+      } as RequestWithDbContext;
+      expect(await guard.canActivate(contextFor(request))).toBe(true);
+      const client = request.dbClient!;
+      try {
+        const res = await client.query<{ n: number }>(sql);
+        return res.rows[0]!.n;
+      } finally {
+        await client.query('ROLLBACK').catch(() => {});
+        client.release();
+      }
+    };
+
+    const HR_TABLES = [
+      ['employee_loans', `SELECT count(*)::int AS n FROM employee_loans`],
+      ['leave_requests', `SELECT count(*)::int AS n FROM leave_requests`],
+      ['payroll_lines', `SELECT count(*)::int AS n FROM payroll_lines`],
+      ['employee_salary_components', `SELECT count(*)::int AS n FROM employee_salary_components`],
+    ] as const;
+
+    it("sees only their own region's HR and payroll rows", async () => {
+      let scopedTotal = 0;
+      let unscopedTotal = 0;
+
+      for (const [table, sql] of HR_TABLES) {
+        const scoped = await rowsVisibleTo(scopedManagerId, scopedUsername, sql);
+        const unscoped = await rowsVisibleTo(unscopedManagerId, unscopedUsername, sql);
+        scopedTotal += scoped;
+        unscopedTotal += unscoped;
+
+        // Per table: never MORE than the company-wide manager. Not "strictly
+        // fewer" — the seed has exactly one loan, and if it happens to belong to
+        // the chosen outlet then equal is the correct answer, not a leak.
+        expect(
+          scoped,
+          `${table}: a one-outlet manager must not see more than a company-wide one`,
+        ).toBeLessThanOrEqual(unscoped);
+      }
+
+      // Across all four, the confinement has to bite somewhere, or this file is
+      // asserting nothing at all.
+      expect(unscopedTotal, 'the seed has no HR/payroll rows to scope').toBeGreaterThan(0);
+      expect(scopedTotal, 'one outlet should account for only part of the company').toBeLessThan(
+        unscopedTotal,
+      );
+    }, 60_000);
+
+    it('still sees the people at the branch they DO run', async () => {
+      // The over-correction check. Confining a manager to nothing would satisfy
+      // every assertion above.
+      const n = await rowsVisibleTo(
+        scopedManagerId,
+        scopedUsername,
+        `SELECT count(*)::int AS n FROM employees WHERE location_id = '${outletId}'`,
+      );
+      expect(n).toBeGreaterThan(0);
+    }, 60_000);
+
     it('scoping is what changed, not the role: the two differ only by that one row', async () => {
       const scoped = await salesVisibleTo(scopedManagerId, scopedUsername);
       const unscoped = await salesVisibleTo(unscopedManagerId, unscopedUsername);

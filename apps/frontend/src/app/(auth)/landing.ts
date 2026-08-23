@@ -19,6 +19,10 @@ const ROLE_LANDING: Record<string, string> = {
   [RoleKey.KASIR]: '/pos',
   [RoleKey.HR_ADMIN]: '/hr',
   [RoleKey.DRIVER]: '/driver',
+  // A cook works the outlet screen — what to prep, what is in stock, what
+  // spoiled. Same surface as the supervisor, a much narrower set of actions on
+  // it (`waste.create` is what makes it reachable at all; see lib/nav.ts).
+  [RoleKey.KOKI]: '/outlet',
   // Owner and Super Admin land on the HUB, not a single surface: they are the
   // two roles that see every interface, so the directory is their home rather
   // than a detour (app/page.tsx redirects every other role past it).

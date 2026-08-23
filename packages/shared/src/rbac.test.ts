@@ -28,7 +28,7 @@ describe('RBAC matrix shape', () => {
     expect(new Set(PERMISSION_KEYS).size).toBe(150); // no duplicate keys
   });
 
-  it('has exactly 10 roles, in contract column order', () => {
+  it('has exactly 11 roles, in contract column order', () => {
     expect(RBAC_ROLE_ORDER).toEqual([
       RoleKey.OWNER,
       RoleKey.MANAGER,
@@ -39,11 +39,67 @@ describe('RBAC matrix shape', () => {
       RoleKey.KASIR,
       RoleKey.HR_ADMIN,
       RoleKey.DRIVER,
-      // Appended, never inserted: RBAC_ROLE_ORDER's position IS the column
-      // index into every row of the 142-row matrix, so adding SUPERADMIN
-      // anywhere but the end would silently re-map all nine existing roles.
+      // KOKI (2026-08-23) went in HERE, before SUPERADMIN, which is an
+      // insertion — and this position IS the column index into every row of the
+      // matrix, so it was only safe because all 150 rows were rewritten in the
+      // same change. Adding a role without rewriting every row silently
+      // re-maps every column after it; the `no accidental holes` test below and
+      // the per-role spot checks are what would catch that.
+      RoleKey.KOKI,
       RoleKey.SUPERADMIN,
     ]);
+  });
+
+  // ── the cook (koki) ───────────────────────────────────────────────────────
+  //
+  // A cook exists because an outlet shift is a supervisor, a cashier and TWO
+  // COOKS. Before the role existed they were created as `leader_outlet`, so
+  // these tests are mostly about what a cook must NOT have — that inheritance
+  // is the bug being fixed, and a future "just add one more key" is exactly how
+  // it would come back.
+  describe('koki (Juru Masak)', () => {
+    it('can do their own HR and the kitchen floor', () => {
+      for (const key of [
+        'hr.attendance.check',
+        'hr.employee.read.own',
+        'hr.contract.read.own',
+        'payroll.slip.read.own',
+        'chat.read.own',
+        'waste.create',
+        'inventory.balance.read',
+        'inventory.area_transfer.create',
+        'pos.daily_stock.read',
+        'product.read',
+      ] as const) {
+        expect(can(RoleKey.KOKI, key)).toBe(true);
+      }
+    });
+
+    it('cannot touch a till, cash, or any document workflow', () => {
+      for (const key of [
+        'pos.shift.open',
+        'pos.sale.create',
+        'pettycash.create',
+        'purchasing.po.receive',
+        'opname.submit',
+        'replenishment.submit',
+        'return.ship',
+        'delivery.receive',
+        'user.create',
+        'hr.employee.read',
+      ] as const) {
+        expect(can(RoleKey.KOKI, key)).toBe(false);
+      }
+    });
+
+    it('is strictly narrower than leader_outlet, which is what it replaced', () => {
+      const koki = new Set(permissionsForRole(RoleKey.KOKI));
+      const leader = new Set(permissionsForRole(RoleKey.LEADER_OUTLET));
+      // Every cook permission is one outlet staff already had — a cook is a
+      // subset, not a new axis of authority.
+      for (const key of koki) expect(leader.has(key)).toBe(true);
+      expect(koki.size).toBeLessThan(leader.size);
+    });
   });
 
   it('every key is defined for every role (no accidental holes)', () => {

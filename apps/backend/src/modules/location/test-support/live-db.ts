@@ -125,13 +125,21 @@ export async function loadFixtures(): Promise<Fixtures> {
   const usersByRole = {} as Record<RoleKey, string>;
   for (const roleKey of Object.values(RoleKey)) {
     const res = await pool.query<{ id: string }>(
-      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
-      [roleKey],
+      `SELECT u.id FROM users u
+         JOIN roles r ON r.id = u.role_id
+        WHERE r.key = ANY($1::text[])
+        ORDER BY array_position($1::text[], r.key), u.username
+        LIMIT 1`,
+      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
     );
-    if (!res.rows[0])
-      throw new Error(
-        `Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`,
-      );
+    // A role with NOBODY IN IT is skipped rather than fatal. This used to throw,
+    // which made every fixture here depend on the seed staffing all eleven
+    // roles — and that broke the moment the org became the crews the business
+    // actually runs (supervisor + cashier + 2 cooks), because no employee holds
+    // `leader_outlet` any more. Eighteen spec files failed in `beforeAll`
+    // against a database that was entirely valid. A spec that genuinely needs a
+    // role now fails at the point of USE, naming the role it wanted.
+    if (!res.rows[0]) continue;
     usersByRole[roleKey] = res.rows[0].id;
   }
 

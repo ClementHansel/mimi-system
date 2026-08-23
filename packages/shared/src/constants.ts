@@ -211,4 +211,9 @@ export const ROLE_RANK: Readonly<Record<RoleKey, number>> = {
   [RoleKey.LEADER_OUTLET]: 30,
   [RoleKey.KASIR]: 10,
   [RoleKey.DRIVER]: 10,
+  // Same rank as the other floor roles. Rank only decides who may act on an
+  // approval step "at or below their level", and a cook is on no chain at all,
+  // so this is a completed row rather than a grant — `Record<RoleKey, number>`
+  // will not compile without it, which is the point of typing it that way.
+  [RoleKey.KOKI]: 10,
 };

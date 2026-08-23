@@ -44,6 +44,14 @@ export enum RoleKey {
   /** Added by D-14 (Appendix A-2) — Surat Jalan needs a driver actor the PRD's 8 roles don't cover. */
   DRIVER = 'driver',
   /**
+   * Added 2026-08-23 (owner request): an outlet shift is a supervisor, a cashier
+   * and TWO COOKS, and the cooks had no role. They were being created as
+   * `LEADER_OUTLET`, which handed every cook `purchasing.po.receive`,
+   * `opname.submit` and `pettycash.create`. See `rbac.ts` for where the line is
+   * drawn — own record + kitchen floor, no document workflow.
+   */
+  KOKI = 'koki',
+  /**
    * Added 2026-08-18 (owner request): an all-access technical account that can
    * reach EVERY interface, distinct from `OWNER` so "the boss's login" and
    * "the account that can see everything" need not be the same credential.

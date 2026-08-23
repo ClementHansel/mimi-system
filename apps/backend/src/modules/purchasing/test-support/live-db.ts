@@ -113,12 +113,31 @@ export async function loadFixtures(): Promise<Fixtures> {
        JOIN roles spv_r ON spv_r.id = spv_u.role_id AND spv_r.key = 'supervisor'
        JOIN user_locations ldr ON ldr.location_id = spv.location_id
        JOIN users ldr_u ON ldr_u.id = ldr.user_id
-       JOIN roles ldr_r ON ldr_r.id = ldr_u.role_id AND ldr_r.key = 'leader_outlet'
+       JOIN roles ldr_r ON ldr_r.id = ldr_u.role_id
+      -- "an outlet floor worker who is not the supervisor", by preference rather
+      -- than by role NAME. The specs that use this id supply the acting role
+      -- themselves (\"callerFor(..., RoleKey.LEADER_OUTLET, ...)\"), so what the
+      -- fixture owes them is a real user at the same outlet — not a particular
+      -- role in the database.
+      --
+      -- It used to demand \"leader_outlet\", and broke the moment the org was
+      -- reshaped into per-shift crews: the owner's model is supervisor + cashier
+      -- + 2 cooks, so nobody holds \"leader_outlet\" any more and four fixtures
+      -- failed against a perfectly valid database. Preference order keeps the
+      -- old choice when it is still available, so nothing changes on a database
+      -- seeded the old way.
+      WHERE ldr_r.key IN ('leader_outlet', 'koki', 'kasir')
+        AND ldr.user_id <> spv.user_id
+      ORDER BY CASE ldr_r.key
+                 WHEN 'leader_outlet' THEN 0
+                 WHEN 'koki' THEN 1
+                 ELSE 2
+               END, ldr_u.username
       LIMIT 1`,
   );
   if (!pair.rows[0])
     throw new Error(
-      'loadFixtures: no (supervisor, leader_outlet) pair sharing one outlet in the seed',
+      'loadFixtures: no (supervisor, outlet-floor staffer) pair sharing one outlet in the seed',
     );
 
   const storageOutlet = await pool.query<{ id: string }>(
@@ -133,13 +152,29 @@ export async function loadFixtures(): Promise<Fixtures> {
   const unit = await pool.query<{ id: string }>(`SELECT base_unit_id AS id FROM items LIMIT 1`);
   const supplier = await pool.query<{ id: string }>(`SELECT id FROM suppliers LIMIT 1`);
 
+  // One representative user per role, and a role with NOBODY IN IT is skipped
+  // rather than fatal.
+  //
+  // It used to throw, which made every fixture in this file depend on the seed
+  // staffing all eleven roles. That broke the moment the org was reshaped into
+  // the crews the business actually runs (supervisor + cashier + 2 cooks): no
+  // employee holds `leader_outlet` any more, and eighteen spec files failed in
+  // `beforeAll` against a database that was entirely valid.
+  //
+  // A spec that genuinely needs a given role now fails at the point of USE, on
+  // the role it actually wanted, instead of every spec failing on the first
+  // unstaffed role in enum order.
   const usersByRole = {} as Record<RoleKey, string>;
   for (const roleKey of Object.values(RoleKey)) {
     const res = await pool.query<{ id: string }>(
-      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
-      [roleKey],
+      `SELECT u.id FROM users u
+         JOIN roles r ON r.id = u.role_id
+        WHERE r.key = ANY($1::text[])
+        ORDER BY array_position($1::text[], r.key), u.username
+        LIMIT 1`,
+      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
     );
-    if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}'`);
+    if (!res.rows[0]) continue;
     usersByRole[roleKey] = res.rows[0].id;
   }
 

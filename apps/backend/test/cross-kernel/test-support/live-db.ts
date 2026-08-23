@@ -171,22 +171,37 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
   if (!frozenVehicle.rows[0]) throw new Error(`Seed data is missing a freezer-capable vehicle`);
 
   const userAssignedTo = async (roleKey: string, locationId: string): Promise<string> => {
+    // `leader_outlet` falls back to another OUTLET FLOOR role at the same
+    // location. The owner's org has no leader — a shift is a supervisor, a
+    // cashier and two cooks — so demanding one made these fixtures fail
+    // against a valid database. It is a safe substitution because every
+    // caller supplies the ACTING role separately (`callerFor(id, role, ...)`);
+    // what it needs from here is a real user at this outlet.
+    const wanted = roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey];
     const res = await pool.query<{ id: string }>(
       `SELECT u.id FROM users u
          JOIN roles r ON r.id = u.role_id
          JOIN user_locations ul ON ul.user_id = u.id
-        WHERE r.key = $1 AND ul.location_id = $2 LIMIT 1`,
-      [roleKey, locationId],
+        WHERE r.key = ANY($1::text[]) AND ul.location_id = $2
+        ORDER BY array_position($1::text[], r.key), u.username
+        LIMIT 1`,
+      [wanted, locationId],
     );
     if (!res.rows[0])
-      throw new Error(`No user with role '${roleKey}' assigned to location ${locationId}`);
+      throw new Error(
+        `No user with role '${roleKey}' (or an outlet-floor stand-in) assigned to location ${locationId}`,
+      );
     return res.rows[0].id;
   };
 
   const centralUser = async (roleKey: string): Promise<string> => {
     const res = await pool.query<{ id: string }>(
-      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
-      [roleKey],
+      `SELECT u.id FROM users u
+         JOIN roles r ON r.id = u.role_id
+        WHERE r.key = ANY($1::text[])
+        ORDER BY array_position($1::text[], r.key), u.username
+        LIMIT 1`,
+      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
     );
     if (!res.rows[0]) throw new Error(`Seed data is missing a user with role '${roleKey}'`);
     return res.rows[0].id;

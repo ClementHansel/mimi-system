@@ -89,8 +89,12 @@ export async function fetchAnotherLocationId(excludeId: string): Promise<string>
 
 export async function fetchOneUserId(roleKey = 'supervisor'): Promise<string> {
   const res = await getOwnerPool().query<{ id: string }>(
-    `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
-    [roleKey],
+    `SELECT u.id FROM users u
+       JOIN roles r ON r.id = u.role_id
+      WHERE r.key = ANY($1::text[])
+      ORDER BY array_position($1::text[], r.key), u.username
+      LIMIT 1`,
+    [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
   );
   if (!res.rows[0]) throw new Error(`Test fixture requires a seeded user with role '${roleKey}'`);
   return res.rows[0].id;

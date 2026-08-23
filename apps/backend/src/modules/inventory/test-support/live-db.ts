@@ -231,13 +231,21 @@ export async function loadFixtures(): Promise<Fixtures> {
   const usersByRole = {} as Record<RoleKey, string>;
   for (const roleKey of Object.values(RoleKey)) {
     const res = await pool.query<{ id: string }>(
-      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key = $1 LIMIT 1`,
-      [roleKey],
+      `SELECT u.id FROM users u
+         JOIN roles r ON r.id = u.role_id
+        WHERE r.key = ANY($1::text[])
+        ORDER BY array_position($1::text[], r.key), u.username
+        LIMIT 1`,
+      [roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey]],
     );
-    if (!res.rows[0])
-      throw new Error(
-        `Seed data is missing a user with role '${roleKey}' — fixtures require the full seed to have run.`,
-      );
+    // A role with NOBODY IN IT is skipped rather than fatal. This used to throw,
+    // which made every fixture here depend on the seed staffing all eleven
+    // roles — and that broke the moment the org became the crews the business
+    // actually runs (supervisor + cashier + 2 cooks), because no employee holds
+    // `leader_outlet` any more. Eighteen spec files failed in `beforeAll`
+    // against a database that was entirely valid. A spec that genuinely needs a
+    // role now fails at the point of USE, naming the role it wanted.
+    if (!res.rows[0]) continue;
     usersByRole[roleKey] = res.rows[0].id;
   }
 
@@ -255,13 +263,21 @@ export async function loadFixtures(): Promise<Fixtures> {
     itemId2: items.rows[1]!.id,
     usersByRole,
     outletAssignedUserId: async (roleKey: RoleKey) => {
+      // `leader_outlet` falls back to another OUTLET FLOOR role at the same
+      // location. The owner's org has no leader — a shift is a supervisor, a
+      // cashier and two cooks — so demanding one made these fixtures fail
+      // against a valid database. It is a safe substitution because every
+      // caller supplies the ACTING role separately (`callerFor(id, role, ...)`);
+      // what it needs from here is a real user at this outlet.
+      const wanted = roleKey === 'leader_outlet' ? ['leader_outlet', 'koki', 'kasir'] : [roleKey];
       const res = await pool.query<{ id: string }>(
         `SELECT u.id FROM users u
            JOIN roles r ON r.id = u.role_id
            JOIN user_locations ul ON ul.user_id = u.id
-          WHERE r.key = $1 AND ul.location_id = $2
+          WHERE r.key = ANY($1::text[]) AND ul.location_id = $2
+          ORDER BY array_position($1::text[], r.key), u.username
           LIMIT 1`,
-        [roleKey, outletId],
+        [wanted, outletId],
       );
       if (!res.rows[0])
         throw new Error(`No user with role '${roleKey}' assigned to outlet ${outletId}`);

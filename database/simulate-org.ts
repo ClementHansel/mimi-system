@@ -17,21 +17,9 @@
  * Idempotent. Re-running it changes nothing, which is what makes it safe to
  * point at the demo box.
  *
- * ## Two things it deliberately does NOT do, both reported instead
+ * ## What it does not do, reported instead
  *
- * 1. **There is no cook role.** RBAC has nine roles (`packages/shared/src/
- *    rbac.ts`, 149 keys × 9) and none of them is a cook. Adding a tenth is a
- *    contract change with a wide blast radius — the matrix, `RoleKey`,
- *    `ROLE_RANK`, the 009 permission cache, and every test that asserts the
- *    role count — and BUILD-PLAN §6 rule 7 routes that through the architect,
- *    not through a simulation script. So cooks are created with the closest
- *    existing role, `leader_outlet` ("Leader/Staff Outlet"), and the job title
- *    `Juru Masak` on the employee record. The consequence is real and is
- *    printed at the end: a cook inherits grants a cook should not have
- *    (`replenishment.submit`, `purchasing.po.receive`, `pettycash.create`,
- *    `opname.submit`, `return.ship`, `delivery.receive`).
- *
- * 2. **A manager cannot actually be limited to several branches.** This script
+ * **A manager cannot actually be limited to several branches.** This script
  *    assigns each manager their region in `user_locations`, which is the honest
  *    statement of intent, but 46 RLS policies across 32 tables name `manager`
  *    as an unrestricted role, and `app_is_central()` returns true for it. So
@@ -78,9 +66,9 @@ const REGIONS: Record<string, { label: string; prefixes: string[] }> = {
 const CREW: Array<{ slot: string; roleKey: string; position: string; withPin: boolean }> = [
   { slot: 'spv', roleKey: 'supervisor', position: 'Supervisor Cabang', withPin: true },
   { slot: 'kasir', roleKey: 'kasir', position: 'Kasir', withPin: true },
-  // Two cooks. See note 1 in the file header for why the role is not `koki`.
-  { slot: 'koki1', roleKey: 'leader_outlet', position: 'Juru Masak', withPin: false },
-  { slot: 'koki2', roleKey: 'leader_outlet', position: 'Juru Masak', withPin: false },
+  // Two cooks, on the `koki` role added for them (migration 234).
+  { slot: 'koki1', roleKey: 'koki', position: 'Juru Masak', withPin: false },
+  { slot: 'koki2', roleKey: 'koki', position: 'Juru Masak', withPin: false },
 ];
 
 const GUDANG_STAFF = 2;
@@ -634,17 +622,11 @@ async function main(): Promise<void> {
     if (dryRun) console.log('DRY RUN — rolled back, nothing was written.\n');
 
     // ── the two gaps this model exposes, restated where they will be read ────
-    console.log('Two things this model cannot express today\n');
+    console.log('What this model still cannot express\n');
     console.log(
-      '  1. No cook role. Cooks are `leader_outlet` with the job title "Juru Masak", so each of the\n' +
-        `     ${outletCodes.length * SHIFTS.length * 2} cooks also holds replenishment.submit, purchasing.po.receive, pettycash.create,\n` +
-        '     opname.submit, return.ship and delivery.receive. Adding a `koki` role is a contract\n' +
-        '     change (rbac.ts + RoleKey + ROLE_RANK + the 009 cache + role-count tests).',
-    );
-    console.log(
-      '  2. A manager is not limited to their region. The user_locations rows above are written, but\n' +
-        '     46 RLS policies across 32 tables name `manager` as unrestricted and app_is_central()\n' +
-        '     returns true for it — so manager1 can still read Pontianak. See simulate-day.ts.\n',
+      '  A manager is not limited to their region. The user_locations rows above are written, but\n' +
+        '  RLS policies name `manager` as an unrestricted role and app_is_central() returns true for\n' +
+        '  it — so manager1 can still read Pontianak. See simulate-day.ts.\n',
     );
   } catch (err) {
     await client.query('ROLLBACK');

@@ -414,6 +414,27 @@ async function main(): Promise<void> {
       'ALLOWED — a cook opened a cash drawer',
     );
 
+  // The reason the `koki` role exists. As `leader_outlet` — which is what cooks
+  // were before 2026-08-23 — every one of these would have SUCCEEDED.
+  for (const [what, method, path, body] of [
+    ['raise a stock request', 'POST', '/replenishment', { locationId: home, lines: [] }],
+    ['record petty cash', 'POST', '/purchasing/petty-cash', { locationId: home }],
+    ['start a stock count', 'POST', '/stock-opname', { locationId: home }],
+  ] as const) {
+    const res = await call(cook, method, path, body);
+    // 403 is the interesting answer. A 400 would mean the body was rejected
+    // before the permission was ever consulted, which proves nothing.
+    if (res.status === 403) record(cook.username, `${what} (must be refused)`, 'BLOCKED', why(res));
+    else if (res.ok) record(cook.username, `${what} (must be refused)`, 'FINDING', 'ALLOWED');
+    else
+      record(
+        cook.username,
+        `${what} (must be refused)`,
+        'BLOCKED',
+        `${why(res)} — refused, though not by the permission check`,
+      );
+  }
+
   const kasirAway = await call<{ rows?: unknown[] }>(kasir, 'GET', `/pos/sales?locationId=${away}`);
   if (!kasirAway.ok) {
     record(kasir.username, `read ${AWAY}'s sales (must be refused)`, 'BLOCKED', why(kasirAway));

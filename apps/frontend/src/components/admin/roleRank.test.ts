@@ -25,6 +25,7 @@ describe('roleRank / assignableRoles', () => {
       RoleKey.KEPALA_GUDANG,
       RoleKey.SUPERVISOR,
       RoleKey.LEADER_OUTLET,
+      RoleKey.KOKI,
       RoleKey.KASIR,
       RoleKey.HR_ADMIN,
       RoleKey.DRIVER,
@@ -33,7 +34,7 @@ describe('roleRank / assignableRoles', () => {
 
   it('the Owner can assign every other role', () => {
     const options = assignableRoles(RoleKey.OWNER);
-    expect(options).toHaveLength(8);
+    expect(options).toHaveLength(9); // every role except Owner itself
     expect(options).not.toContain(RoleKey.OWNER);
   });
 

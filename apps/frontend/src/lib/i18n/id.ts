@@ -115,6 +115,7 @@ export const id = {
     kasir: 'Kasir',
     hr_admin: 'Admin SDM',
     driver: 'Driver',
+    koki: 'Juru Masak',
     superadmin: 'Super Admin',
   },
 

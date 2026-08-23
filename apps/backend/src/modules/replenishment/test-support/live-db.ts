@@ -162,16 +162,32 @@ export async function loadFixtures(): Promise<Fixtures> {
        JOIN users u ON u.id = ul.user_id AND u.is_active
        JOIN roles r ON r.id = u.role_id
        JOIN locations l ON l.id = ul.location_id AND l.type = 'outlet'
-      WHERE r.key IN ('leader_outlet', 'supervisor')`,
+      -- "koki" and "kasir" stand in for "leader_outlet", which no employee holds
+      -- since the org was reshaped into per-shift crews (supervisor + cashier +
+      -- 2 cooks). The specs pass the acting role explicitly, so this only needs
+      -- to be a real user at the outlet.
+      WHERE r.key IN ('leader_outlet', 'koki', 'kasir', 'supervisor')`,
   );
   const byLocation = new Map<string, Map<string, string>>();
+  // Floor roles are collapsed onto one 'floor' slot in preference order, so the
+  // rest of this function keeps asking for exactly two people per outlet.
+  const FLOOR_PREFERENCE = ['leader_outlet', 'koki', 'kasir'];
   for (const row of outletsRes.rows) {
     const bucket = byLocation.get(row.location_id) ?? new Map<string, string>();
-    bucket.set(row.role_key, row.user_id);
+    const slot = row.role_key === 'supervisor' ? 'supervisor' : 'floor';
+    if (slot === 'floor' && bucket.has('floor')) {
+      const heldRank = FLOOR_PREFERENCE.indexOf(bucket.get('floor_role')!);
+      if (FLOOR_PREFERENCE.indexOf(row.role_key) >= heldRank) {
+        byLocation.set(row.location_id, bucket);
+        continue;
+      }
+    }
+    bucket.set(slot, row.user_id);
+    if (slot === 'floor') bucket.set('floor_role', row.role_key);
     byLocation.set(row.location_id, bucket);
   }
   const qualifying = [...byLocation.entries()].filter(
-    ([, roles]) => roles.has(RoleKey.LEADER_OUTLET) && roles.has(RoleKey.SUPERVISOR),
+    ([, roles]) => roles.has('floor') && roles.has(RoleKey.SUPERVISOR),
   );
   if (qualifying.length < 2) {
     throw new Error(
@@ -195,12 +211,12 @@ export async function loadFixtures(): Promise<Fixtures> {
     warehouseId: warehouse.rows[0]!.id,
     outletA: {
       locationId: locA,
-      leaderUserId: rolesA.get(RoleKey.LEADER_OUTLET)!,
+      leaderUserId: rolesA.get('floor')!,
       supervisorUserId: rolesA.get(RoleKey.SUPERVISOR)!,
     },
     outletB: {
       locationId: locB,
-      leaderUserId: rolesB.get(RoleKey.LEADER_OUTLET)!,
+      leaderUserId: rolesB.get('floor')!,
       supervisorUserId: rolesB.get(RoleKey.SUPERVISOR)!,
     },
     kepalaGudangUserId: await userByRole(RoleKey.KEPALA_GUDANG),

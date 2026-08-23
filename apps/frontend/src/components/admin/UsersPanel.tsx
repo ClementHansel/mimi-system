@@ -16,6 +16,7 @@ import { Drawer } from '@/components/ui/Drawer';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { useApiList } from './useApiList';
+import { RoleKey } from '@/lib/shared-types';
 import { ROLE_SENIORITY, assignableRoles, roleLabel } from './roleRank';
 import type { Location, UserRow } from './types';
 
@@ -310,6 +311,9 @@ function CreateUserModal({
             {t('admin.users.locations')}
           </span>
           <span className="text-sm text-text-muted">{t('admin.users.selectLocationsHint')}</span>
+          {role === RoleKey.MANAGER && (
+            <span className="text-sm text-text-muted">{t('admin.users.managerScopeHint')}</span>
+          )}
           <div className="max-h-40 overflow-y-auto rounded-md border border-border-strong p-2">
             {locations.map((loc) => (
               <Checkbox
@@ -512,6 +516,9 @@ function UserDrawer({
             <h3 className="text-sm font-semibold text-text-primary">
               {t('admin.users.assignLocations')}
             </h3>
+            {user.roleKey === RoleKey.MANAGER && (
+              <span className="text-sm text-text-muted">{t('admin.users.managerScopeHint')}</span>
+            )}
             <div className="max-h-40 overflow-y-auto rounded-md border border-border-strong p-2">
               {locations.map((loc) => (
                 <Checkbox

@@ -1439,6 +1439,13 @@ export const id = {
       passwordResetSuccess: 'Kata sandi berhasil direset.',
       deactivateSuccess: 'Pengguna berhasil dinonaktifkan.',
       selectLocationsHint: 'Pilih satu atau lebih lokasi.',
+      // The manager rule is a real footgun without this line: before
+      // migration 235 assigning a branch to a manager did nothing at all,
+      // and now it CONFINES them. An owner adding one branch to a
+      // company-wide manager would otherwise silently take away the other
+      // nineteen.
+      managerScopeHint:
+        'Khusus Manajer: kosongkan untuk akses semua cabang, atau pilih cabang tertentu untuk membatasi aksesnya hanya ke cabang itu.',
     },
     masterData: {
       tabs: {

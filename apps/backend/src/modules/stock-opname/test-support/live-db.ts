@@ -176,13 +176,13 @@ export async function loadFixtures(): Promise<Fixtures> {
        JOIN roles ldr_r ON ldr_r.id = ldr_u.role_id
       -- "an outlet floor worker who is not the supervisor", by preference rather
       -- than by role NAME. The specs that use this id supply the acting role
-      -- themselves (\"callerFor(..., RoleKey.LEADER_OUTLET, ...)\"), so what the
+      -- themselves ("callerFor(..., RoleKey.LEADER_OUTLET, ...)"), so what the
       -- fixture owes them is a real user at the same outlet — not a particular
       -- role in the database.
       --
-      -- It used to demand \"leader_outlet\", and broke the moment the org was
+      -- It used to demand "leader_outlet", and broke the moment the org was
       -- reshaped into per-shift crews: the owner's model is supervisor + cashier
-      -- + 2 cooks, so nobody holds \"leader_outlet\" any more and four fixtures
+      -- + 2 cooks, so nobody holds "leader_outlet" any more and four fixtures
       -- failed against a perfectly valid database. Preference order keeps the
       -- old choice when it is still available, so nothing changes on a database
       -- seeded the old way.

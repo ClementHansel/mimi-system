@@ -5,6 +5,7 @@ import {
   AccountsController,
   DailyPostingController,
   ExceptionsController,
+  GlCoverageController,
   JournalController,
   PaymentsController,
   PeriodsController,
@@ -20,6 +21,7 @@ import { ReportsService } from './reports.service';
 import { DailyPostingService } from './daily-posting.service';
 import { DailyPostingScheduler } from './daily-posting.scheduler';
 import { ExceptionsService } from './exceptions.service';
+import { GlCoverageService } from './gl-coverage.service';
 
 /**
  * M17 `accounting` — owned by Wave 4, agent W4-03 (senior-be).
@@ -51,6 +53,7 @@ import { ExceptionsService } from './exceptions.service';
     ReportsController,
     PaymentsController,
     ExceptionsController,
+    GlCoverageController,
   ],
   providers: [
     ChartOfAccountsService,
@@ -62,6 +65,7 @@ import { ExceptionsService } from './exceptions.service';
     ExceptionsService,
     DailyPostingService,
     DailyPostingScheduler,
+    GlCoverageService,
   ],
   exports: [
     PaymentVerificationsService,

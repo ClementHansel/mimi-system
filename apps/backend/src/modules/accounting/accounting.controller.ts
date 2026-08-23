@@ -10,6 +10,7 @@ import { PaymentVerificationsService, type PaymentActor } from './payment-verifi
 import { ReportsService } from './reports.service';
 import { DailyPostingService } from './daily-posting.service';
 import { ExceptionsService } from './exceptions.service';
+import { GlCoverageService } from './gl-coverage.service';
 import {
   BalanceSheetQueryDto,
   ClosePeriodDto,
@@ -158,6 +159,29 @@ export class DailyPostingController {
       results.push(await this.daily.postBusinessDay(client, locationId, date));
     }
     return { businessDate: date, locations: results.length, results };
+  }
+}
+
+/**
+ * A-7 — how much history never reached the ledger.
+ *
+ * READ-ONLY, and the counterpart to `daily-posting` above: that one backfills
+ * the SALES side per day; nothing backfills the DOCUMENT side, and before
+ * writing something that posts historical money somebody has to be able to see
+ * what it would post. This answers that and changes nothing.
+ *
+ * Gated on `accounting.journal.post` rather than a read key on purpose — the
+ * number it returns is only meaningful to whoever could act on it, and it
+ * exposes the shape of the ledger's own gaps.
+ */
+@Controller('accounting/gl-coverage')
+export class GlCoverageController {
+  constructor(private readonly coverage: GlCoverageService) {}
+
+  @Get()
+  @RequirePermission('accounting.journal.post')
+  report(@Req() req: RequestWithDbContext) {
+    return this.coverage.report(req.dbClient!);
   }
 }
 

@@ -12,6 +12,7 @@
     "import": "tsx import.ts",
     "simulate:org": "tsx simulate-org.ts",
     "simulate:day": "tsx simulate-day.ts",
+    "drill:restore": "tsx backup-restore-drill.ts",
     "test": "vitest run"
   },
   "dependencies": {

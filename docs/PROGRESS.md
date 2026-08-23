@@ -858,6 +858,73 @@ than argued with.
 quiesced — plus someone watching. It is an environment decision, not a code task. `ACCEPTANCE.md` still
 reads `NONE` for NFR-01 and should keep reading `NONE` until a real run exists.
 
+### 🟢 Gap closure 2026-08-23 — the open list, worked through
+
+Everything on the "what else is left" list that was ours to close is closed. What remains is waiting on
+staging, and is listed at the end.
+
+**The dashboards have never refreshed.** `MatviewRefreshService` issues `REFRESH MATERIALIZED VIEW
+CONCURRENTLY` as `app_user`, which requires OWNERSHIP of the view — the four rollups are owned by the DDL
+role — so every tick since the service was written failed with `must be owner of materialized view
+mv_sales_daily`, caught per view and logged. Revenue, top products, staff KPI and delivery recap sat frozen
+at whatever the last migration happened to build. Migration 219 had already diagnosed exactly this and
+written `refresh_dashboard_matview()` (SECURITY DEFINER, allow-listed, granted to `app_user`); nothing ever
+called it. Now `refreshOne` does.
+
+The wrong turn is kept in migration 236 because it is genuinely counter-intuitive: `ALTER MATERIALIZED
+VIEW ... OWNER TO app_user` looks like the fix and makes it worse. A refresh runs the defining query under
+the RLS of the view's OWNER, not of the role executing it — so an `app_user`-owned view refreshed with no
+`app.*` context writes an EMPTY rollup and every dashboard reports a confident, precise zero. It also
+breaks refreshes from every other path, superuser included, which is how
+`dashboard-rbac.integration.spec.ts` caught it (expected 54901167.00, got 0).
+
+**`leader_outlet` is retired** (237) — decommissioned, not deleted, and that is the recommendation rather
+than a shortcut. `approvals.requested_by_role`, `audit_log` and sync payloads already name it on rows that
+happened; `RBAC_ROLE_ORDER`'s positions ARE column indexes into all 150 matrix rows, so dropping one
+re-maps every role after it. So: nobody can be assigned it again (enforced on the SERVER, since the
+endpoints take a role key from the body), it is gone from every picker, and it still renders as a name
+wherever history mentions it. The migration also refuses to retire a role somebody still holds.
+
+**The org is in the seed.** `pnpm db:seed` now produces the business as it runs — 60 supervisors, 60
+cashiers, 120 cooks, 2 gudang staff, 2 drivers, 4060 roster rows — from `database/org-model.ts`, which
+`simulate-org.ts` also applies to an already-seeded database. One definition, because two copies of
+"supervisor + cashier + 2 cooks" would drift the first time a crew changed and would surface as a suite
+that passes locally and fails on a fresh machine. Proven the way that matters: a scratch database, migrated
+and seeded from nothing, then the whole backend suite against it — 928/928.
+
+It also added `manager_pusat`, a head-office manager with no region. That is not padding: since 235 a
+manager is confined to their branches, so once EVERY manager has a region nobody can approve a document at
+an arbitrary outlet.
+
+**The manager's region now reaches HR and payroll** (238). 235 stopped at the 14 policies whose table
+carries a `location_id` and recorded what it left: five where the location is one join away through
+`employees`. Until now a regional manager could not read another region's SALES and could still read its
+people's LOANS, LEAVE, SALARY COMPONENTS and PAYSLIP LINES — the more sensitive half.
+
+**The day simulation runs against any environment.** It read its fixtures straight from Postgres, so the
+API and the database had to be the same host — which made the demo box undriveable and would have made
+staging undriveable too. Now it reads everything over HTTP:
+`API=https://150.109.15.108:8443/api npx tsx database/simulate-day.ts` → **16 worked, 7 correctly refused,
+0 findings**, on the real server.
+
+**A restore has now actually been done.** `database/backup-restore-drill.ts` dumps, restores into a scratch
+database, compares every table row-for-row plus a money spot-check, and drops it. First real run: 111
+tables, 105 non-empty, sales total matched exactly. An untested backup was not a backup, and "we have
+backups" honestly meant "we have files nobody has ever read back".
+
+**The intermittent test failures: not reproduced, and not swept up.** Three sightings, three different
+specs, each passing 3/3 or 6/6 in isolation, and four consecutive clean full-suite runs afterwards —
+including one with a dev server attached to the same database. Ruled out: unused-stock-key exhaustion (8648
+of 9476 combinations still free). The remaining likely explanation is contention on a shared dev database
+from other writers (a dev server's schedulers, the simulation scripts), which CI does not have and which
+has been green throughout. Recorded rather than "fixed" speculatively; if it recurs the concrete hardening
+is to scope those three assertions to data the test itself created.
+
+**Still waiting on staging, by decision:** a trusted TLS certificate (needs `:80`/`:443`, i.e. the
+`aire-nginx` call) and WhatsApp go-live (needs a Meta developer account and test number — a business
+identity and an OTP, not something an agent can create). Both are simulated end to end today: HTTPS on
+`:8443` with a self-signed cert, and the WA sandbox with delivery proven against it.
+
 ### 🟢 Org authority 2026-08-23 — the two findings from the simulation are closed
 
 The day simulation left exactly two things, both flagged as decisions rather than defects. Both are now

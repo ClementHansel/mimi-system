@@ -52,15 +52,15 @@ engineer. Ordered by what stops a go-live, not by wave number.
 
 ### A. Blocked on the owner / client — no code will unblock these
 
-| #   | Item                                                                                                                                                                                                                                                                      | What is needed                                                                                                                                          |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A-1 | **B-14 — HTTPS.** Testable now: self-signed TLS on `:8443` (secure context, so geolocation/camera/PWA work). A TRUSTED cert still blocked                                                                                                                                 | A decision on `aire-nginx`, which holds `:80`/`:443` while restart-looping. Let's Encrypt needs one of those ports; DNS-01 is not available on sslip.io |
-| A-3 | **RISK-P4 — WhatsApp gateway credentials.** `WA_ENABLED=false`                                                                                                                                                                                                            | Real n8n + gateway credentials. Blocks W5-08's live test and the new chat's delivery proof                                                              |
-| A-4 | **Offsite backups.** `OFFSITE_REMOTE_CMD` unset — dumps sit on the database's own disk                                                                                                                                                                                    | An offsite target (rclone/S3) chosen by the owner. NFR-06                                                                                               |
-| A-5 | **W7-04 hardware spec**                                                                                                                                                                                                                                                   | Budget, vendor, per-outlet device count                                                                                                                 |
-| A-6 | **W7-05 data importer**                                                                                                                                                                                                                                                   | The owner's real master-data files to design against                                                                                                    |
-| A-7 | **GL history backfill** — now MEASURABLE via `GET /api/accounting/gl-coverage` (read-only). On the demo box the document-side gap is **2 documents**, both pre-dating the B-16 wiring. Re-run it after go-live before deciding whether a backfill engine is worth writing | owner decision, now informed                                                                                                                            |
-| A-8 | **RISK-P5 — branch node at scale**                                                                                                                                                                                                                                        | A PM change order — ~20 mini-PCs installed across 4 cities                                                                                              |
+| #      | Item                                                                                                                                                                                                                                                                      | What is needed                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| ✅ A-1 | **B-14 CLOSED 2026-08-23** — trusted Let's Encrypt cert on `https://150-109-15-108.sslip.io`, no domain needed. Service workers, the offline shell, geolocation and PWA install all work for remote devices                                                               | closed                                                                                     |
+| A-3    | **RISK-P4 — WhatsApp gateway credentials.** `WA_ENABLED=false`                                                                                                                                                                                                            | Real n8n + gateway credentials. Blocks W5-08's live test and the new chat's delivery proof |
+| A-4    | **Offsite backups.** `OFFSITE_REMOTE_CMD` unset — dumps sit on the database's own disk                                                                                                                                                                                    | An offsite target (rclone/S3) chosen by the owner. NFR-06                                  |
+| A-5    | **W7-04 hardware spec**                                                                                                                                                                                                                                                   | Budget, vendor, per-outlet device count                                                    |
+| A-6    | **W7-05 data importer**                                                                                                                                                                                                                                                   | The owner's real master-data files to design against                                       |
+| A-7    | **GL history backfill** — now MEASURABLE via `GET /api/accounting/gl-coverage` (read-only). On the demo box the document-side gap is **2 documents**, both pre-dating the B-16 wiring. Re-run it after go-live before deciding whether a backfill engine is worth writing | owner decision, now informed                                                               |
+| A-8    | **RISK-P5 — branch node at scale**                                                                                                                                                                                                                                        | A PM change order — ~20 mini-PCs installed across 4 cities                                 |
 
 ### B. Engineering work still owed
 
@@ -132,17 +132,17 @@ was verified on the live box, not inferred from a passing unit test.
 
 ### Not done — carried into the next session
 
-| Item                                                   | Why it is open                                                                                                                                                               |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **B-14 — HTTPS** (see ACTIVE BLOCKERS)                 | Self-signed TLS is live on `:8443`, so truck tracking, attendance GPS/selfie and PWA install are testable. A trusted cert needs `:80`/`:443`, i.e. the `aire-nginx` decision |
-| **Backups sit on the same disk as the database**       | `OFFSITE_REMOTE_CMD` unset. Protects against a bad `DELETE`, not against losing the host. Needs an offsite target (rclone/S3) chosen by the owner                            |
-| **B-15 — PIN verification is an unthrottled oracle**   | Any authenticated caller can guess any user's PIN. Mitigation is a product decision — see the blocker                                                                        |
-| **Live truck tracking cannot function**                | UNBLOCKED for testing as of 2026-08-23: reachable over `https://150.109.15.108:8443` (self-signed), which is a secure context, so geolocation is permitted                   |
-| **Live-DB suites drain GDG stock**                     | Several `COMMIT` real movements instead of rolling back, so each full run draws the warehouse down. **Mitigated** (GDG stocked 10× deeper), root cause untouched             |
-| **`attachment-store.test.ts` is flaky**                | Failed 2 of ~8 full runs, passes every time in isolation, has never failed in CI. No fix attempted — guessing at someone else's package is worse than flagging it            |
-| **e2e is not wired into any pipeline**                 | Runs by hand via `pnpm e2e`. A post-deploy smoke job is the obvious next step but would need browser install in CI and a decision on failing a deploy on it                  |
-| **`/driver` renders empty for owner/superadmin**       | `my-jobs` is a personal queue keyed on a `drivers` row neither account has. Working as designed; noted so it is not re-reported as a bug                                     |
-| **Pre-hydration clicks are silently ignored app-wide** | Only the login form guards it. Elsewhere the first click on a server-rendered control can do nothing, with no feedback                                                       |
+| Item                                                   | Why it is open                                                                                                                                                    |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B-14 — HTTPS** — ✅ CLOSED 2026-08-23                | Trusted Let's Encrypt cert on `https://150-109-15-108.sslip.io`. Service workers and the offline shell verified on the public origin                              |
+| **Backups sit on the same disk as the database**       | `OFFSITE_REMOTE_CMD` unset. Protects against a bad `DELETE`, not against losing the host. Needs an offsite target (rclone/S3) chosen by the owner                 |
+| **B-15 — PIN verification is an unthrottled oracle**   | Any authenticated caller can guess any user's PIN. Mitigation is a product decision — see the blocker                                                             |
+| **Live truck tracking cannot function**                | UNBLOCKED for testing as of 2026-08-23: reachable over `https://150.109.15.108:8443` (self-signed), which is a secure context, so geolocation is permitted        |
+| **Live-DB suites drain GDG stock**                     | Several `COMMIT` real movements instead of rolling back, so each full run draws the warehouse down. **Mitigated** (GDG stocked 10× deeper), root cause untouched  |
+| **`attachment-store.test.ts` is flaky**                | Failed 2 of ~8 full runs, passes every time in isolation, has never failed in CI. No fix attempted — guessing at someone else's package is worse than flagging it |
+| **e2e is not wired into any pipeline**                 | Runs by hand via `pnpm e2e`. A post-deploy smoke job is the obvious next step but would need browser install in CI and a decision on failing a deploy on it       |
+| **`/driver` renders empty for owner/superadmin**       | `my-jobs` is a personal queue keyed on a `drivers` row neither account has. Working as designed; noted so it is not re-reported as a bug                          |
+| **Pre-hydration clicks are silently ignored app-wide** | Only the login form guards it. Elsewhere the first click on a server-rendered control can do nothing, with no feedback                                            |
 
 ---
 
@@ -1175,6 +1175,64 @@ the whole accounting suite passed, because **nothing executed the query**. The r
 six probes named statuses that do not exist — `returns` has no `'shipped'` (it is `'in_transit'`) and
 `sj_drops` never reaches `'received'` (it `'completed'`s) — caught by reading the live CHECK constraints
 rather than trusting memory. Either would have reported zero gaps forever while looking correct.
+
+### ✅ B-14 RESOLVED 2026-08-23 — trusted TLS, no domain, and the offline shell now works for real devices
+
+**Opened 2026-08-18. Closed with a real Let's Encrypt certificate on `https://150-109-15-108.sslip.io`.**
+
+**The reframing that actually solved it.** The blocker assumed "a domain and a trusted certificate". Two
+corrections, in order:
+
+1. A secure context is a property of the SCHEME, not the port — so self-signed TLS on `:8443` already
+   unblocked geolocation, camera and PWA install (recorded above).
+2. But NOT service workers: Chromium refuses to fetch a worker script over an untrusted certificate, and
+   Playwright's `ignoreHTTPSErrors` does not extend to that fetch. Proven, not assumed — the registration
+   attempt returns `SecurityError: An SSL certificate error occurred when fetching the script`.
+
+So a TRUSTED certificate was genuinely required for the offline shell. And it did **not** require a domain:
+Let's Encrypt will not certify a bare IP, but `150-109-15-108.sslip.io` is a real hostname resolving to
+that IP, and **HTTP-01 proves control of it by answering on port 80** — no registrar, no DNS API. (DNS-01
+would need control of sslip.io's TXT records, which we do not have; that asymmetry is exactly why port 80
+mattered and a domain would not have helped more.)
+
+**The port, and the neighbour.** `:80`/`:443` were held by `aire-nginx`, another compose project on this
+shared box, crash-looping since 30 July on `host not found in upstream "n8n"`. Its n8n container is gone,
+so **aire had no working public entry point either way** — but a restarting container keeps its Docker port
+reservation between attempts, which is why `ss` showed nothing listening while Docker still refused the
+bind. Stopped with the owner's explicit approval:
+
+```
+docker stop aire-nginx      # what was done — durable under `unless-stopped`
+docker start aire-nginx     # how to give the ports back
+```
+
+**Verified end to end:**
+
+| Check                                   | Result                                                       |
+| --------------------------------------- | ------------------------------------------------------------ |
+| Certificate                             | Let's Encrypt, `CN=150-109-15-108.sslip.io`, valid to 21 Nov |
+| `https://150-109-15-108.sslip.io/login` | 200                                                          |
+| `http://…` on :80                       | 301 → https (ACME challenge still answered ahead of it)      |
+| Service worker, **public origin**       | **registers and activates**                                  |
+| Offline shell, network cut + reload     | **renders** — not `ERR_INTERNET_DISCONNECTED`                |
+| Mutating request in a cache             | none — the exactly-once invariant holds                      |
+| Existing `http://150.109.15.108:8080`   | 200, untouched — TLS is purely additive                      |
+
+All five specs in `e2e/tests/service-worker.spec.ts` now pass against the PUBLIC origin, including the two
+that only run when the worker genuinely activates. `VPS_PUBLIC_URL` has been repointed at the HTTPS origin,
+so the post-deploy smoke exercises this on every deploy rather than skipping.
+
+Config lives in `infrastructure/tls/docker-compose.yml` (+ `dynamic/mimi.yml`), a separate compose project
+(`-p mimitls`) so a deploy cannot take TLS down and a TLS change cannot restart the app. A file provider,
+not docker labels — labels would mean recreating `mimi-frontend`.
+
+**Two things left over, both worth a decision rather than a fix:**
+
+- **Two TLS front-ends now run.** `mimi-tls` (self-signed, `:8443`) and `mimi-tls-le` (trusted, `:443`).
+  The second supersedes the first for every purpose; the first is redundant and can be retired. Left
+  running because it is not mine to remove.
+- **`aire` is now fully dark.** It had no public entry point before this, but if it is ever restored the
+  two stacks need to share one front proxy, or mimi moves off `:80`/`:443`.
 
 ### 🔴 B-14 — The demo box is HTTP-only, so geolocation and service workers are dead
 

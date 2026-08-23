@@ -19,7 +19,8 @@ describe('ScopeService', () => {
   // already opened).
   let client: ReturnType<typeof makeClient>;
 
-  const central = ['owner', 'manager', 'finance', 'hr_admin'];
+  // `manager` is deliberately NOT here any more — see its own block below.
+  const central = ['owner', 'finance', 'hr_admin'];
   for (const roleKey of central) {
     it(`resolves ${roleKey} to null (unrestricted) without querying the database`, async () => {
       client = makeClient({});
@@ -29,6 +30,45 @@ describe('ScopeService', () => {
       expect(client.query).not.toHaveBeenCalled();
     });
   }
+
+  /**
+   * A manager runs SEVERAL BRANCHES, not the company (owner, 2026-08-23;
+   * migration 235). It is the one conditional role: company-wide until branches
+   * are assigned, confined to them afterwards.
+   *
+   * This used to sit in the list above and return `null` without reading
+   * anything, which is exactly why writing regions into `user_locations` had no
+   * effect — the scope never reached the session, so the RLS predicate had
+   * nothing to filter on. The two tests here are the two halves of the rule, and
+   * the second one is what every pre-existing environment relies on.
+   */
+  describe('manager', () => {
+    it('is confined to its branches once any are assigned', async () => {
+      client = makeClient({
+        'FROM user_locations': [{ location_id: 'loc-bpp01' }, { location_id: 'loc-smd01' }],
+      });
+      const service = new ScopeService();
+      const result = await service.resolveLocationIds(client as never, {
+        sub: 'mgr-1',
+        roleKey: 'manager',
+      });
+      expect(result).toEqual(['loc-bpp01', 'loc-smd01']);
+    });
+
+    it('stays company-wide with no assignment — `null`, never `[]`', async () => {
+      client = makeClient({});
+      const service = new ScopeService();
+      const result = await service.resolveLocationIds(client as never, {
+        sub: 'mgr-2',
+        roleKey: 'manager',
+      });
+      // `[]` would mean "assigned to nothing", i.e. sees nothing, and would lock
+      // out every manager `seed.ts` has ever created. The distinction is the
+      // whole reason this is `null`.
+      expect(result).toBeNull();
+      expect(client.query).toHaveBeenCalled();
+    });
+  });
 
   for (const roleKey of ['supervisor', 'leader_outlet', 'kasir']) {
     it(`resolves ${roleKey} to exactly their user_locations assignment`, async () => {

@@ -481,6 +481,28 @@ async function main(): Promise<void> {
     );
   }
 
+  // The other half of scoping, and the one that would catch it being applied too
+  // hard: a manager must still see their OWN region. "Nobody can see anything"
+  // also produces zero findings above, so this is what stops a silent
+  // over-correction reading as success.
+  const homeForManager1 = await call<{ rows?: unknown[] }>(
+    manager,
+    'GET',
+    `/pos/sales?locationId=${home}`,
+  );
+  const n1 = Array.isArray(homeForManager1.body?.rows) ? homeForManager1.body.rows.length : 0;
+  if (homeForManager1.ok && n1 > 0)
+    record(manager.username, `read ${HOME} — inside their region`, 'OK', `${n1} rows`);
+  else
+    record(
+      manager.username,
+      `read ${HOME} — inside their region`,
+      'FINDING',
+      homeForManager1.ok
+        ? 'zero rows — the scope is too tight, a manager cannot see their own branches'
+        : why(homeForManager1),
+    );
+
   console.log('\n4. The outlet asks Gudang for stock, and the chain runs\n');
 
   const req = await call<{ id: string }>(spv, 'POST', '/replenishment', {

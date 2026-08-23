@@ -858,6 +858,61 @@ than argued with.
 quiesced — plus someone watching. It is an environment decision, not a code task. `ACCEPTANCE.md` still
 reads `NONE` for NFR-01 and should keep reading `NONE` until a real run exists.
 
+### 🟢 Org authority 2026-08-23 — the two findings from the simulation are closed
+
+The day simulation left exactly two things, both flagged as decisions rather than defects. Both are now
+done, and the simulation it came from reports **16 worked, 7 correctly refused, 0 findings**.
+
+**A cook is a cook (`koki`, migration 234).** An outlet shift is a supervisor, a cashier and TWO COOKS,
+and the cooks had no role — they were created as `leader_outlet`, so all 120 of them held
+`purchasing.po.receive`, `pettycash.create`, `opname.submit`, `replenishment.submit` and `return.ship`. A
+kitchen hand could receive a supplier delivery and sign off a stock count. `koki` draws the line at "your
+own record, plus the kitchen floor, and no document workflow" — 21 keys. Verified against a running
+server: four separate 403s on the permission check itself (`pos.shift.open`, `replenishment.create`,
+`pettycash.create`, `opname.create`) while the same cook still clocks in inside the geofence, records
+spoilage, and reads their own record and roster.
+
+The feared part turned out to be free: **no RLS change was needed.** Location-scoped tables gate on
+`app_has_location()` and personal ones on `app_is_self()`, so neither cares that a tenth role exists.
+Only `drivers_select` and `suppliers_select` name `leader_outlet` literally, and a cook needs neither.
+
+**A manager runs several branches (migration 235).** The regions were already written into
+`user_locations` and did nothing: `app_is_central()` returned true for `manager`, so assigning branches
+looked like scoping and was decoration. The rule now is: **a manager with no branches assigned is
+company-wide; a manager with branches is confined to them.** That shape does the most work for the least
+risk — it is backward compatible (`seed.ts` creates managers with none, so every existing environment and
+the whole suite behave as before), it makes the restriction opt-in through the gesture the UI already
+offers, and because `app_has_location()` already consults `app_is_central()` internally, narrowing that
+ONE function scoped every `app_has_location(...)` policy at a stroke — including `sales`, where the leak
+was first seen.
+
+Two layers had to agree, and only one of them was obvious. `ScopeService` short-circuited every central
+role to `null` before reading anything, so `app.location_ids` was never populated for a manager and the
+RLS predicate had nothing to filter on — the migration alone changed nothing. Both now implement the same
+sentence, and both are tested: the live-DB spec builds its own two managers differing by a single
+`user_locations` row and asserts the scoped one sees exactly one outlet's sales while the unscoped one
+still sees the company's.
+
+Fourteen of the 46 policies naming `manager` were rewritten — the ones on tables that HAVE a
+`location_id`. The other 32 sit on tables with no location at all (suppliers, users, chart of accounts,
+fiscal periods, payroll, drivers, locations itself); a supplier list is not per-branch, and inventing a
+join to scope one would be a guess dressed as a security boundary. Two consequences are stated in the
+migration rather than left to be discovered: PO/PR child tables inherit scoping through their parent, and
+`employee_loans` / `leave_requests` / payroll are still company-wide for a regional manager because
+scoping them needs an EXISTS join through `employees` — a decision of its own.
+
+**The simulation now checks both directions**, because "nobody can see anything" also produces zero
+findings: manager2 reads zero rows outside their region AND manager1 reads 50 inside theirs.
+
+And a fourteen-fixture cleanup fell out of it. Once cooks became `koki`, nobody held `leader_outlet`, and
+eighteen spec files failed in `beforeAll` against a completely valid database because the fixtures
+required the seed to staff every role and looked roles up by name. They now ask for the JOB — "an outlet
+floor worker who is not the supervisor" — through a preference list, so the old choice still wins on a
+canonically-seeded database and CI is unaffected. That is the third time in two days that hardcoded seed
+identities broke a green suite on healthy data.
+
+Backend 926/926, frontend 515/515, shared 260/260.
+
 ### 🟢 Org simulation 2026-08-23 — the real staffing model, and the three bugs it exposed
 
 The owner described the company as it runs: managers over REGIONS rather than the whole chain, every

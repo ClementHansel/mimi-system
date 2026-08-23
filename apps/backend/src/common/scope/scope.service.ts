@@ -14,14 +14,30 @@ export type LocationScope = string[] | null;
  * MUST stay byte-identical to `RoleKey`'s string values and to the RLS
  * `app_is_central()` helper (CONTRACTS §1.14 block 009) if either ever changes.
  */
-const CENTRAL_ROLES = new Set(['owner', 'manager', 'finance', 'hr_admin']);
+const CENTRAL_ROLES = new Set(['owner', 'finance', 'hr_admin']);
+
+/**
+ * `manager` is NOT in `CENTRAL_ROLES` — it is central only while no branches are
+ * assigned to it (migration 235, "a manager runs several branches").
+ *
+ * This service short-circuited every central role to `null` before reading
+ * anything, which is why writing regions into `user_locations` had no effect:
+ * `app.location_ids` was never populated for a manager, so the RLS predicate had
+ * an empty scope to work with and `app_is_central()` waved them through. The
+ * migration and this function have to agree exactly, or scoping silently stops
+ * at whichever layer disagrees.
+ */
+const CENTRAL_UNLESS_ASSIGNED = 'manager';
 
 /**
  * Resolves the set of `location_id`s a user may see, from their role and
  * assignments (BUILD-PLAN §5 W1-D):
- *  - Owner / Manager / Finance / HR Admin → all locations (`null`; matches
- *    the RLS helper `app_is_central()` exactly — CONTRACTS §1.14 lists these
- *    four roles, not just the three the BUILD-PLAN prose names).
+ *  - Owner / Finance / HR Admin → all locations (`null`; matches the RLS helper
+ *    `app_is_central()` exactly).
+ *  - Manager → all locations while they have NO `user_locations` rows, otherwise
+ *    exactly those rows. A manager runs several branches, not the company
+ *    (owner, 2026-08-23; migration 235). Assigning branches is how you confine
+ *    one, and until this method read them, doing so changed nothing.
  *  - Kepala Gudang → their warehouse(s) (`user_locations`) UNION every
  *    outlet a Surat Jalan from that warehouse has ever dropped at
  *    ("shipping destinations").
@@ -55,6 +71,15 @@ export class ScopeService {
     user: { sub: string; roleKey: string },
   ): Promise<LocationScope> {
     if (CENTRAL_ROLES.has(user.roleKey)) return null;
+
+    if (user.roleKey === CENTRAL_UNLESS_ASSIGNED) {
+      // Empty assignment means company-wide, which is what `seed.ts` produces
+      // and what every environment had before this rule existed. `null` rather
+      // than `[]` is load-bearing: `[]` would mean "assigned to nothing", i.e.
+      // sees nothing, and would lock every existing manager out.
+      const assigned = await this.assignedLocationIds(client, user.sub);
+      return assigned.length === 0 ? null : assigned;
+    }
 
     switch (user.roleKey) {
       case 'kepala_gudang':

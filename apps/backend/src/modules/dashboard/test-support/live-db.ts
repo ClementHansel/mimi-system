@@ -185,7 +185,18 @@ export async function rawRevenueForRange(
   return (Number(pos.rows[0]!.total) + Number(online.rows[0]!.total)).toFixed(2);
 }
 
-/** Runs the 4 dashboard matviews' `REFRESH MATERIALIZED VIEW CONCURRENTLY` over the OWNER (superuser) pool — sidesteps the "does `mimi_app` have REFRESH privilege" open question (flagged in the ticket report) so this test suite's assertions do not depend on that being resolved yet. */
+/**
+ * Refreshes the four dashboard matviews over the OWNER pool, so these tests
+ * assert against a rollup that matches the tables.
+ *
+ * Refreshing as the owner is deliberate and is NOT the production path — that is
+ * `MatviewRefreshService`, which goes through `refresh_dashboard_matview()`
+ * (migration 219) and is covered by `matview-refresh.integration.spec.ts`. What
+ * matters here is that both paths only work while the views remain owned by the
+ * DDL role: a refresh applies the RLS of the view's OWNER, so transferring them
+ * to `app_user` makes BOTH of these produce empty rollups — this helper included,
+ * superuser or not. Migration 236 asserts that ownership.
+ */
 export async function refreshMatviewsAsOwner(): Promise<void> {
   const pool = getOwnerPool();
   for (const view of [

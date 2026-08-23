@@ -51,18 +51,28 @@ const MATVIEWS = [
  * cross-request leakage risk applies the way it would for a
  * request-scoped connection).
  *
- * PRIVILEGE FINDING (flag for senior-db, see this ticket's final report): a
- * concurrent refresh needs the SAME privilege as a normal `SELECT` plus the
- * ability to take the relevant locks — Postgres does not require table
- * OWNERSHIP for `REFRESH MATERIALIZED VIEW CONCURRENTLY`, only `SELECT` on
- * the underlying matview (which every unique-indexed matview here already
- * grants to any role that can read it) PLUS the matview's own row locks. If
- * `mimi_app`/`app_user` turns out NOT to have been granted plain `SELECT` on
- * these four matviews (they are new objects from migration 100, and this
- * agent does not own `database/` to check/fix grants), `runOneRefresh` below
- * will throw a Postgres permission error, caught and logged per-view by
- * `refreshAll()` — surfaced honestly in the ticket report rather than
- * silently degrading to a stale rollup forever.
+ * PRIVILEGE — RESOLVED 2026-08-23. The note that used to be here was WRONG, and
+ * expensively so: it claimed "Postgres does not require table OWNERSHIP for
+ * REFRESH MATERIALIZED VIEW CONCURRENTLY, only SELECT". It does require
+ * ownership. The four views are owned by `mimi` and the app runs as `app_user`,
+ * so every tick of this service since it was written failed with
+ *
+ *     must be owner of materialized view mv_sales_daily
+ *
+ * caught per view and logged. The logging was honest; nobody was reading it, so
+ * four dashboards sat frozen at whatever the last migration built.
+ *
+ * The mechanism to do this correctly had existed since migration 219 —
+ * `refresh_dashboard_matview()`, SECURITY DEFINER, allow-listed to these four
+ * views, EXECUTE granted to `app_user` — written for exactly this failure and
+ * never wired up. `refreshOne` now calls it, which is a one-line change.
+ *
+ * Migration 236 asserts the database half (ownership stays with the DDL role,
+ * the grant is in place) and fails if a refresh through that function leaves a
+ * rollup empty; `matview-refresh.integration.spec.ts` asserts a real pass
+ * returns `ok` for every view. Both exist because the failure mode here is
+ * invisible from the outside: the endpoint answers, the numbers look plausible,
+ * and nothing is red.
  */
 @Injectable()
 export class MatviewRefreshService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -111,8 +121,23 @@ export class MatviewRefreshService implements OnApplicationBootstrap, OnApplicat
     const client = await this.pool.connect();
     try {
       await client.query('SET ROLE app_user');
-      // Bare identifier — `view` only ever comes from the fixed `MATVIEWS` literal above, never user input.
-      await client.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY ${view}`);
+      // `refresh_dashboard_matview()` (migration 219), NOT a bare REFRESH.
+      //
+      // A bare `REFRESH MATERIALIZED VIEW` requires OWNERSHIP of the view, and
+      // the four rollups are owned by the DDL role — so every tick of this
+      // service failed with "must be owner of materialized view
+      // mv_sales_daily", per-view caught and logged, for as long as it has
+      // existed. The function is SECURITY DEFINER, owned by that DDL role, and
+      // allow-lists these four names, so the runtime role gains exactly one
+      // capability rather than ownership (which also carries DROP and ALTER).
+      //
+      // It also fixes visibility, which the obvious "just transfer ownership"
+      // fix silently breaks: a refresh runs the defining query under the RLS of
+      // the view's OWNER, so an `app_user`-owned view refreshed without an
+      // `app.*` context writes an EMPTY rollup and every dashboard then reports
+      // a confident zero. Definer-owned means the refresh sees everything, with
+      // no session context to set and nothing to leak back to the pool.
+      await client.query('SELECT refresh_dashboard_matview($1)', [view]);
     } finally {
       await client.query('RESET ROLE').catch(() => {});
       client.release();

@@ -151,11 +151,20 @@ export function OutletRequestsPanel() {
             setPage(1);
           }}
           placeholder={t('purchasing.outletRequests.filterStatusAll')}
+          // These MUST match `replenishment_requests_status_check`. Two of them
+          // did not: `partially_fulfilled` and `fulfilled` are not values the
+          // column accepts, so those filters could only ever return an empty
+          // table — and they rendered as raw i18n keys, because no translation
+          // existed for a status that does not exist. The real states after
+          // approval are processing -> shipped -> received -> completed.
           options={[
             { value: 'submitted', label: t('status.replenishment.submitted') },
+            { value: 'awaiting_approval', label: t('status.replenishment.awaiting_approval') },
             { value: 'approved', label: t('status.replenishment.approved') },
-            { value: 'partially_fulfilled', label: t('status.replenishment.partially_fulfilled') },
-            { value: 'fulfilled', label: t('status.replenishment.fulfilled') },
+            { value: 'processing', label: t('status.replenishment.processing') },
+            { value: 'shipped', label: t('status.replenishment.shipped') },
+            { value: 'received', label: t('status.replenishment.received') },
+            { value: 'completed', label: t('status.replenishment.completed') },
             { value: 'rejected', label: t('status.replenishment.rejected') },
           ]}
           wrapperClassName="w-48"

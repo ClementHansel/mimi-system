@@ -173,6 +173,29 @@ const DELIVERY_ITEM: NavItem = {
   permission: 'delivery.read',
 };
 
+/**
+ * Pembelian — PR/PO to suppliers.
+ *
+ * Declared once because it belongs in TWO interfaces. It was previously
+ * office-only, on the reasoning that "the gudang side of purchasing is
+ * RECEIVING the goods". That reasoning does not survive contact with the
+ * permissions: `kepala_gudang` holds `purchasing.read`, `purchasing.pr.create`
+ * AND `purchasing.po.create`, so the warehouse was always meant to raise its
+ * own requests — it simply had no link to the screen that does it.
+ *
+ * Owner, 2026-08-24: "gudang should be able to request PO for gudang stock."
+ * Nothing had to be built; the capability existed and was unreachable, which is
+ * the same shape as the driver's Surat Jalan list earlier today. Permission
+ * grants and navigation drifting apart is worth watching for elsewhere.
+ */
+const PURCHASING_ITEM: NavItem = {
+  id: 'purchasing',
+  labelKey: 'nav.purchasing',
+  href: '/purchasing',
+  icon: ClipboardList,
+  permission: 'purchasing.read',
+};
+
 /** The dashboard's sidebar — every head-office area, grouped as before. */
 const DASHBOARD_SECTIONS: readonly NavSection[] = [
   {
@@ -224,16 +247,7 @@ const DASHBOARD_SECTIONS: readonly NavSection[] = [
       // is gudang's job, which is why the identical entry also sits in the
       // warehouse interface below (`DELIVERY_ITEM`, one definition).
       DELIVERY_ITEM,
-      // Pembelian is office work — PR/PO to suppliers. The gudang side of
-      // purchasing is RECEIVING the goods, which is a tab inside
-      // `/warehouse` (`WarehouseShell`), not this entry.
-      {
-        id: 'purchasing',
-        labelKey: 'nav.purchasing',
-        href: '/purchasing',
-        icon: ClipboardList,
-        permission: 'purchasing.read',
-      },
+      PURCHASING_ITEM,
     ],
   },
   {
@@ -411,6 +425,7 @@ export const INTERFACES: readonly AppInterface[] = [
             permission: panel.permission,
           })),
           DELIVERY_ITEM,
+          PURCHASING_ITEM,
         ],
       },
       CHAT_SECTION,

@@ -13,9 +13,21 @@ import { api } from '@/lib/api';
 import type { SuratJalan, StorageArea } from './types';
 
 /** "F13 pre-departure cache" per CONTRACTS §4.10 — full SJ + drop + seal + temp-log detail for the authenticated driver's day. */
-export function getMyJobs(date?: string) {
-  const qs = date ? `?${new URLSearchParams({ date }).toString()}` : '';
-  return api.get<SuratJalan[]>(`/delivery/my-jobs${qs}`);
+export function getMyJobs(date?: string, driverId?: string) {
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  // Honoured by the server only for owner/superadmin. Sending it as any other
+  // role is not an error — the server simply returns that caller's own run.
+  if (driverId) params.set('driverId', driverId);
+  const qs = params.toString();
+  return api.get<SuratJalan[]>(`/delivery/my-jobs${qs ? `?${qs}` : ''}`);
+}
+
+/** The fleet, for the owner's driver picker. Gated on `delivery.read`. */
+export function getDrivers() {
+  return api.get<{ id: string; name: string; isActive: boolean }[]>(
+    '/delivery/drivers?active=true',
+  );
 }
 
 /** Needed by the serah-terima form to pick which area at the RECEIVING location the goods land in — the same endpoint `outlet`'s screens call, wrapped locally rather than reaching into `components/outlet/**`. */

@@ -128,12 +128,42 @@ export class SuratJalanService {
   }
 
   /** `GET /api/delivery/my-jobs` — the calling driver's assigned SJs, full detail (F13 pre-departure cache). */
-  async myJobs(client: PoolClient, driverUserId: UUID, date?: string): Promise<SuratJalan[]> {
-    const driverRes = await client.query<{ id: string }>(
-      `SELECT id FROM drivers WHERE user_id = $1 AND is_active = true`,
-      [driverUserId],
-    );
-    const driverId = driverRes.rows[0]?.id;
+  /**
+   * The signed-in driver's own run — or, for an owner/superadmin, any driver's.
+   *
+   * `viewDriverId` exists because the fleet's supervisors could not see this
+   * screen at all: it resolves the caller through the `drivers` table, and an
+   * owner has no row there, so the page was permanently empty for exactly the
+   * people who oversee deliveries.
+   *
+   * The role check is HERE, in the service, and not only on the controller. A
+   * driver passing someone else's `driverId` must get their OWN run back, not
+   * a colleague's — routes carry outlet addresses, receiver names and phone
+   * numbers, and "the UI never sends that parameter" is not access control.
+   */
+  async myJobs(
+    client: PoolClient,
+    driverUserId: UUID,
+    date?: string,
+    viewDriverId?: UUID,
+    roleKey?: string,
+  ): Promise<SuratJalan[]> {
+    const canViewAnyDriver = roleKey === 'owner' || roleKey === 'superadmin';
+
+    let driverId: string | undefined;
+    if (viewDriverId && canViewAnyDriver) {
+      const exists = await client.query<{ id: string }>(
+        `SELECT id FROM drivers WHERE id = $1 AND is_active = true`,
+        [viewDriverId],
+      );
+      driverId = exists.rows[0]?.id;
+    } else {
+      const driverRes = await client.query<{ id: string }>(
+        `SELECT id FROM drivers WHERE user_id = $1 AND is_active = true`,
+        [driverUserId],
+      );
+      driverId = driverRes.rows[0]?.id;
+    }
     if (!driverId) return [];
     const params: unknown[] = [driverId];
     let dateFilter: string;

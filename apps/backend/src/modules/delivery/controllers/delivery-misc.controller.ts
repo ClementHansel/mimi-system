@@ -57,8 +57,16 @@ export class DeliveryMiscController {
 
   @Get('my-jobs')
   @RequirePermission('delivery.drop.execute')
-  myJobs(@Req() req: Request, @CurrentUser() user: JwtAccessPayload, @Query('date') date?: string) {
-    return this.sj.myJobs(requireDbClient(req), user.sub, date);
+  myJobs(
+    @Req() req: Request,
+    @CurrentUser() user: JwtAccessPayload,
+    @Query('date') date?: string,
+    @Query('driverId') driverId?: string,
+  ) {
+    // `driverId` is honoured only for owner/superadmin, and the service is what
+    // enforces that — see its doc comment. Passed through unchecked here on
+    // purpose: one place decides, so the two cannot drift apart.
+    return this.sj.myJobs(requireDbClient(req), user.sub, date, driverId, user.roleKey);
   }
 
   @Get('recap/daily')

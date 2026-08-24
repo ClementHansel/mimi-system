@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { RefreshCcw, WifiOff } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import Link from 'next/link';
-import { Button, EmptyState, SyncStatusPill, toast } from '@/components/ui';
+import { Button, EmptyState, Select, SyncStatusPill, toast } from '@/components/ui';
 import { useSessionStore } from '@/stores/session-store';
 import { toDateInput } from '@/lib/dates';
-import { getMyJobs } from './lib/driver-api';
+import { getMyJobs, getDrivers } from './lib/driver-api';
 import { SjJobCard } from './SjJobCard';
 import { loadJobs, saveJobs } from './lib/job-cache';
 import { DaySummary } from './DaySummary';
@@ -58,17 +58,52 @@ export function DriverJobsPanel() {
   // day must still see "no Surat Jalan today", not be told this screen is not
   // for them.
   const isDriver = useSessionStore((st) => st.user?.roleKey === 'driver');
+  // Owner and superadmin only. Deliberately NOT kepala gudang or manager: the
+  // server enforces the same two roles, and offering a picker that silently
+  // returns your own (empty) run to everyone else would be worse than not
+  // offering it.
+  const canPickDriver = useSessionStore(
+    (st) => st.user?.roleKey === 'owner' || st.user?.roleKey === 'superadmin',
+  );
+  const [fleet, setFleet] = useState<{ id: string; name: string }[]>([]);
+  const [viewDriverId, setViewDriverId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<SuratJalan[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   /** Non-null when what is on screen came from the device, not the server. */
   const [servedFromCache, setServedFromCache] = useState<string | null>(null);
 
+  // Load the fleet once, and default to its first driver so the screen opens on
+  // a real route rather than on a "choose someone" prompt — the owner's question
+  // is "what is happening out there", and making them pick before answering it
+  // is a step for nothing.
+  useEffect(() => {
+    if (!canPickDriver) return;
+    let cancelled = false;
+    void getDrivers()
+      .then((rows) => {
+        if (cancelled) return;
+        setFleet(rows);
+        setViewDriverId((current) => current ?? rows[0]?.id ?? null);
+      })
+      .catch(() => {
+        // A missing picker is survivable; the empty state below still explains
+        // why the page has nothing on it.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canPickDriver]);
+
   const reload = useCallback(() => {
     const businessDate = toDateInput(new Date());
+    // Nothing to fetch until the fleet has loaded: firing without a driverId
+    // would return the owner's own (empty) run and flash the empty state before
+    // the real route arrives.
+    if (canPickDriver && !viewDriverId) return;
     setLoading(true);
     setLoadError(false);
-    getMyJobs(businessDate)
+    getMyJobs(businessDate, canPickDriver ? (viewDriverId ?? undefined) : undefined)
       .then((fresh) => {
         setJobs(fresh);
         setServedFromCache(null);
@@ -89,7 +124,9 @@ export function DriverJobsPanel() {
         toast({ title: t('table.error'), variant: 'danger' });
       })
       .finally(() => setLoading(false));
-  }, [t]);
+    // `viewDriverId` belongs here: changing the picker must refetch, and
+    // `useEffect(reload, [reload])` below is what turns that into a reload.
+  }, [t, canPickDriver, viewDriverId]);
 
   useEffect(reload, [reload]);
 
@@ -143,7 +180,21 @@ export function DriverJobsPanel() {
           
           Say who the screen is for and point at the one that answers their
           actual question. */}
-      {!loading && !loadError && openJobs.length === 0 && !isDriver && (
+      {canPickDriver && fleet.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Select
+            label={t('driver.picker.label')}
+            value={viewDriverId ?? ''}
+            onValueChange={(value) => setViewDriverId(value || null)}
+            options={fleet.map((d) => ({ value: d.id, label: d.name }))}
+          />
+        </div>
+      )}
+
+      {/* The "this screen is not for you" state now only applies when there is
+          no picker to offer — i.e. a kepala gudang or manager, who oversees
+          deliveries but is not allowed to page through individual drivers. */}
+      {!loading && !loadError && openJobs.length === 0 && !isDriver && !canPickDriver && (
         <EmptyState
           title={t('driver.notADriver.title')}
           description={t('driver.notADriver.description')}
@@ -155,7 +206,7 @@ export function DriverJobsPanel() {
           }
         />
       )}
-      {!loading && !loadError && openJobs.length === 0 && isDriver && (
+      {!loading && !loadError && openJobs.length === 0 && (isDriver || canPickDriver) && (
         <EmptyState title={t('driver.empty')} size="lg" />
       )}
 

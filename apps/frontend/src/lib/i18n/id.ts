@@ -2607,6 +2607,9 @@ export const id = {
   driver: {
     today: 'Surat Jalan Hari Ini',
     empty: 'Tidak ada Surat Jalan untuk hari ini',
+    picker: {
+      label: 'Lihat rute driver',
+    },
     notADriver: {
       title: 'Layar ini menampilkan rute milik seorang driver',
       description:

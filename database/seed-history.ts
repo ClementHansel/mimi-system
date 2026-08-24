@@ -79,6 +79,7 @@
  *   npx tsx database/seed-history.ts --days=90
  *   npx tsx database/seed-history.ts --days=180 --orders=160
  *   npx tsx database/seed-history.ts --days=30 --outlets=BPP01,BPP02
+ *   npx tsx database/seed-history.ts --days=90 --today
  *   npx tsx database/seed-history.ts --days=90 --dry-run
  *
  *   --days=N      how far back to generate (default 90). Excludes today, which
@@ -86,6 +87,11 @@
  *   --orders=N    average orders per outlet per DAY at a mid-size branch
  *                 (default 120). The per-outlet factor swings this ±40%.
  *   --outlets=... comma-separated codes; default is every active outlet.
+ *   --today       ALSO seed today: one live delivery route per city, status
+ *                 in_transit, with the first drops received, one en route and
+ *                 the rest pending. Without this the driver screen is correctly
+ *                 but uselessly empty — every historical route is `completed`,
+ *                 and a completed route has no actions on it.
  *   --dry-run     report what it would write, then ROLLBACK. Commits nothing.
  *
  * Environment: DATABASE_MIGRATION_URL — the DDL-owning role. Like `seed.ts`,
@@ -472,6 +478,12 @@ async function main(): Promise<void> {
   const days = argNumber('days', 90);
   const ordersPerDay = argNumber('orders', 120);
   const dryRun = process.argv.includes('--dry-run');
+  // Today is excluded by default because it belongs to whoever is using the
+  // system right now. --today adds ONE live delivery route per city, in
+  // progress, which is what the driver interface needs in order to be usable at
+  // all: its arrive / receive / fail actions only exist on a drop that has not
+  // finished yet.
+  const seedToday = process.argv.includes('--today');
   const outletArg = process.argv.find((a) => a.startsWith('--outlets='));
   const only = outletArg
     ? outletArg
@@ -901,9 +913,16 @@ async function main(): Promise<void> {
       /** ISO week start -> item id -> qty leaving the warehouse that week. */
       const outboundByWeek = new Map<string, Map<string, number>>();
 
-      for (let d = days; d >= 1; d--) {
+      // `d === 0` is TODAY, and it is included only with --today. Today's route
+      // is the one a driver can actually act on, so it is generated LIVE
+      // (in_transit, drops part-done) rather than completed like history.
+      for (let d = days; d >= (seedToday ? 0 : 1); d--) {
         const date = witaDate(d);
-        if (![1, 3, 5].includes(dayOfWeek(date))) continue;
+        const isToday = d === 0;
+        // Today always gets a route when asked for, whatever weekday it is —
+        // the point is to have something on the driver's screen, and waiting
+        // for the next Wednesday is not a demo.
+        if (!isToday && ![1, 3, 5].includes(dayOfWeek(date))) continue;
         // The Monday this delivery belongs to. Warehouse purchasing below buys
         // a week at a time, which is how a warehouse actually orders — you do
         // not raise a purchase order per van.
@@ -922,10 +941,10 @@ async function main(): Promise<void> {
             ref.shipmentTypes[routeSeq % ref.shipmentTypes.length],
             ref.drivers[routeSeq % ref.drivers.length],
             ref.vehicles[routeSeq % ref.vehicles.length],
-            'completed',
+            isToday ? 'in_transit' : 'completed',
             date,
             dispatchedAt,
-            witaInstant(date, 6 + branches.length, 30),
+            isToday ? null : witaInstant(date, 6 + branches.length, 30),
             dispatcher,
           ]);
 
@@ -937,16 +956,33 @@ async function main(): Promise<void> {
             const receiver =
               branch.crew.find((c) => c.position === 'spv' && c.slot === 'p')?.userId ??
               branch.kasir['p'];
+            // Today's route is a route IN PROGRESS. A driver opening the app
+            // needs work to do, so the first drops are done, the next one is
+            // being driven to, and the rest are still waiting — which is also
+            // the only state in which the arrive / receive / fail actions are
+            // reachable at all. A fully completed route renders as a read-only
+            // list and makes the screen look unbuilt, which is exactly how this
+            // gap was reported.
+            const enRouteAt = Math.max(1, Math.ceil(branches.length / 2));
+            const dropStatus = !isToday
+              ? 'completed'
+              : seq < enRouteAt
+                ? 'completed'
+                : seq === enRouteAt
+                  ? 'en_route'
+                  : 'pending';
+            const done = dropStatus === 'completed';
             dropRows.push([
               dropId,
               sjId,
               seq,
               branch.id,
-              'completed',
-              dispatchedAt,
-              arrivedAt,
-              receiver,
-              arrivedAt,
+              dropStatus,
+              // A pending drop has not departed yet; an en-route one has.
+              dropStatus === 'pending' ? null : dispatchedAt,
+              done ? arrivedAt : null,
+              done ? receiver : null,
+              done ? arrivedAt : null,
               stableUuid(`${key}-drop-${branch.code}-client`),
             ]);
 
@@ -979,9 +1015,17 @@ async function main(): Promise<void> {
                 itemId,
                 meta.unitId,
                 qty,
-                qty,
-                toArea,
+                // qty_received / received_storage_area stay NULL until someone
+                // actually receives the drop — they are the receiving clerk's
+                // answer, not the dispatcher's plan.
+                done ? qty : null,
+                done ? toArea : null,
               ]);
+              // Stock only moves for a drop that was actually received. An
+              // en-route or pending drop has goods on the van, not on the
+              // outlet's shelf, and seeding it as received would be a lie the
+              // opname would then have to explain.
+              if (!done) continue;
               deliveryMoves.push([
                 ref.gudang.id,
                 fromArea,

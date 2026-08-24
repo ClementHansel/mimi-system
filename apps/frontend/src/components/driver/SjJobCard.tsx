@@ -149,8 +149,20 @@ export function SjJobCard({
 
             `lg:items-start` stops the map column stretching to match a long
             stop list — a 260px map does not want to be 900px tall. */}
-        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
-          <DriverRouteMap drops={drops} nextDropId={progress.nextDropId} />
+        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
+          {/* STICKY on desktop. The stop list is far taller than the map, so a
+              statically-placed map scrolled away the moment the driver looked
+              past the second drop — leaving a long column of empty space where
+              the map had been, and no map at the exact moment they were reading
+              about a stop. Sticky keeps "where am I going" on screen while
+              "what do I do there" scrolls beside it, and fills the column.
+
+              `top-4` clears the sticky page header; the height is capped to the
+              viewport in DriverRouteMap so a tall map cannot outgrow its own
+              sticky window. */}
+          <div className="lg:sticky lg:top-4">
+            <DriverRouteMap drops={drops} nextDropId={progress.nextDropId} />
+          </div>
 
           {/* Finished stops collapse. On a seven-stop run the screen is
               otherwise mostly history, and the one card that matters — the next

@@ -442,7 +442,12 @@ async function loadReference(client: pg.Client, only: string[] | null) {
     supplierPrice.set(`${si.supplier_id}|${si.item_id}`, Number(si.current_price ?? 0));
   }
 
-  const driverRes = await client.query(`SELECT id FROM drivers ORDER BY id`);
+  // ACTIVE drivers only. Without the filter this assigned routes round-robin
+  // across every row in `drivers`, deactivated ones included — dispatching a
+  // Surat Jalan to someone who has left. It also put those routes out of reach
+  // of the owner's driver picker, which correctly lists only active drivers, so
+  // the run existed but nobody could open it.
+  const driverRes = await client.query(`SELECT id FROM drivers WHERE is_active ORDER BY id`);
   const vehicleRes = await client.query(`SELECT id FROM vehicles ORDER BY plate_number`);
   const shipRes = await client.query(`SELECT id FROM shipment_types ORDER BY name`);
 

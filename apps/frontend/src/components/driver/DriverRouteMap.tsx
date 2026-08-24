@@ -86,6 +86,7 @@ export function DriverRouteMap({
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const layersRef = useRef<{ remove: () => void }[]>([]);
 
   // Set once the Leaflet map instance exists.
@@ -118,11 +119,26 @@ export function DriverRouteMap({
         scrollWheelZoom: false,
       }).setView(FALLBACK_CENTER, 11);
       L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 18 }).addTo(mapRef.current);
+
+      // Leaflet measures its container ONCE, at construction. Anything that
+      // resizes it afterwards — the lg: breakpoint swapping the height, the
+      // sidebar collapsing, a phone rotating — leaves it convinced it is still
+      // the old size, and it renders grey bands where it never asked for tiles.
+      // `invalidateSize` is the documented cure; a ResizeObserver is what
+      // notices in the first place.
+      if (containerRef.current && typeof ResizeObserver !== 'undefined') {
+        resizeObserverRef.current = new ResizeObserver(() => {
+          mapRef.current?.invalidateSize();
+        });
+        resizeObserverRef.current.observe(containerRef.current);
+      }
       setMapReady(true);
     })();
 
     return () => {
       cancelled = true;
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
       layersRef.current = [];
@@ -205,7 +221,11 @@ export function DriverRouteMap({
     <div className="flex flex-col gap-1">
       <div
         ref={containerRef}
-        className="h-[260px] w-full rounded-lg border border-border"
+        // Short on a phone, where it shares a small screen with the stop it
+        // describes. Tall on a desktop, where the previous fixed 260px left a
+        // stripe of map above a column of dead space while the stop list ran
+        // hundreds of pixels further down the page.
+        className="h-[260px] w-full rounded-lg border border-border lg:h-[calc(100vh-14rem)] lg:min-h-[420px]"
         role="application"
         aria-label={t('driver.map.label')}
       />

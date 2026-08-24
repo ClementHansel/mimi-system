@@ -179,6 +179,27 @@ for stale in $(docker ps -a --format '{{.ID}} {{.Names}}' | grep -E '_mimi-(back
   docker rm -f "$stale" >/dev/null 2>&1 || true
 done
 
+# Compose's replace dance is unreliable on this box: it renames the running
+# container to `<hash>_<name>` before starting the replacement, and when that
+# half-completes the rename is left holding the name. The next deploy then dies
+# with "Conflict. The container name ... is already in use", leaves the real
+# container in `Created`, and the site goes down — five times today.
+#
+# Sweeping beforehand is not enough, because the conflicting name is created
+# DURING the up. So: try the up, and if it fails, clear every app container by
+# name and recreate from scratch. Recreating is safe — all state is in named
+# volumes and the database is not in this list.
+compose_up() {
+  if ! compose_up; then
+  log "compose up failed — clearing app containers (including half-renamed ones) and retrying"
+  for svc in "${DEFAULT_SERVICES[@]}"; do
+    # Both the real name and any `<hash>_<name>` rename left behind.
+    docker ps -aq --filter "name=mimi-$svc" | xargs -r docker rm -f >/dev/null 2>&1 || true
+  done
+  compose_up
+fi
+}
+
 log "building and starting: ${SERVICES[*]}"
 # NO `--no-deps` here, despite it looking like the right guard.
 #

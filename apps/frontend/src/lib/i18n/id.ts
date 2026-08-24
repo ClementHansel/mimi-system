@@ -460,6 +460,49 @@ export const id = {
     },
   },
 
+  // Bulk CSV import of master data. `/admin/import`.
+  importData: {
+    title: 'Import Data Massal',
+    description:
+      'Unggah data master lewat CSV — format diambil langsung dari skema database, jadi tidak ada kolom yang tidak terduga.',
+    entityLabel: 'Jenis Data',
+    entity: {
+      itemCategories: 'Kategori Item',
+      items: 'Item / Bahan Baku',
+      products: 'Produk Menu',
+    },
+    step1: '1. Unduh Template',
+    downloadTemplate: 'Unduh Template CSV',
+    templateHint:
+      'Baris kedua berisi petunjuk kolom (diawali #) — boleh dihapus atau dibiarkan, baris itu tidak akan ikut diimpor.',
+    templateFailed: 'Gagal mengunduh template',
+    step2: '2. Unggah & Periksa',
+    uploadHint: 'Format CSV, maksimal 5 MB',
+    runPreview: 'Periksa File',
+    previewFailed: 'Gagal memeriksa file',
+    fileErrorsTitle: 'Format file tidak sesuai',
+    step3: '3. Tinjau & Terapkan',
+    previewSummary: '{{total}} baris — {{create}} baru, {{update}} perbarui, {{errors}} bermasalah',
+    hasErrorsHint: 'Perbaiki baris yang bermasalah lalu unggah ulang sebelum bisa diterapkan.',
+    readyToCommit: 'Semua baris valid — siap diterapkan.',
+    commit: 'Terapkan Import',
+    commitSuccess: 'Import berhasil diterapkan',
+    commitSuccessDetail: '{{inserted}} data baru, {{updated}} data diperbarui',
+    commitFailed: 'Import gagal diterapkan — tidak ada data yang tersimpan',
+    preview: {
+      columnLine: 'Baris',
+      columnKey: 'Kunci',
+      columnStatus: 'Status',
+      columnError: 'Keterangan',
+      empty: 'Tidak ada baris data',
+    },
+    status: {
+      wouldCreate: 'Baru',
+      wouldUpdate: 'Perbarui',
+      error: 'Error',
+    },
+  },
+
   table: {
     empty: 'Belum ada data',
     loading: 'Memuat data…',

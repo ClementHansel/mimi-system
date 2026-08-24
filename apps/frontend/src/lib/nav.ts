@@ -1,5 +1,6 @@
 import { WAREHOUSE_PANELS } from './warehouse-panels';
 import {
+  Upload,
   ShoppingCart,
   LayoutDashboard,
   Store,
@@ -205,6 +206,23 @@ const DELIVERY_ASSIGN_ITEM: NavItem = {
   permission: 'delivery.sj.create',
 };
 
+/**
+ * Bulk CSV import of master data. Office-only: it writes items, categories and
+ * menu products chain-wide, so it belongs with the people who own master data,
+ * not in a branch interface.
+ *
+ * Gated on `item.manage` — the same key the item CRUD screens use. The endpoint
+ * picks the required permission per entity and checks it inline, so this is the
+ * navigation's best single approximation rather than the authority itself.
+ */
+const IMPORT_ITEM: NavItem = {
+  id: 'admin-import',
+  labelKey: 'importData.title',
+  href: '/admin/import',
+  icon: Upload,
+  permission: 'item.manage',
+};
+
 const PURCHASING_ITEM: NavItem = {
   id: 'purchasing',
   labelKey: 'nav.purchasing',
@@ -312,6 +330,7 @@ const DASHBOARD_SECTIONS: readonly NavSection[] = [
         icon: ShieldCheck,
         permission: ['user.read', 'audit.read', 'settings.manage'],
       },
+      IMPORT_ITEM,
       {
         id: 'topology',
         labelKey: 'nav.topology',

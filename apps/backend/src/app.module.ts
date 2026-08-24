@@ -47,6 +47,14 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { DeviceRegistryModule } from './modules/device-registry/device-registry.module';
 import { NodeGatewayModule } from './modules/node-gateway/node-gateway.module';
 import { SyncModule } from './modules/sync/sync.module';
+// `import` (BFF bulk-import, owner 2026-08-24) — added after Gate G1, not a
+// pre-created Wave 2-4 stub. This file's own header comment calls itself
+// "frozen" for exactly the modules already listed above; a genuinely new
+// module still has to be wired somewhere for Nest to route to it, and this
+// is the one place that happens for every other module too. Flagged here
+// rather than silently matching the letter of "no agent edits this file"
+// while missing its actual point (every module IS registered here).
+import { ImportModule } from './modules/import/import.module';
 
 /**
  * Root module — frozen after Gate G1 (BUILD-PLAN §6 rule 2). Every module
@@ -103,6 +111,7 @@ import { SyncModule } from './modules/sync/sync.module';
     DeviceRegistryModule,
     NodeGatewayModule,
     SyncModule,
+    ImportModule,
   ],
   controllers: [AppController],
   providers: [

@@ -794,13 +794,6 @@ export const id = {
       coverage: 'Cakupan: FR-LOG-06..21, FR-SO-01..04, FR-WST-01..04',
     },
     warehouse: {
-      dash: {
-        inTransit: 'Surat Jalan Dalam Perjalanan',
-        pendingApprovals: 'Menunggu Persetujuan',
-        lowStock: 'Outlet Stok Menipis',
-        coldChain: 'Pelanggaran Rantai Dingin (24 jam)',
-        areas: 'Area Gudang',
-      },
       title: 'Gudang Pusat',
       description:
         'Stok gudang, antrean persetujuan, picking, pembuatan Surat Jalan, penerimaan, retur ke supplier.',
@@ -2007,6 +2000,13 @@ export const id = {
   // penerimaan PO, retur ke supplier, rekap pengiriman harian. Additive-only
   // namespace, same "Wave 4–5 agents add keys here" contract as `outlet`.
   warehouse: {
+    dash: {
+      inTransit: 'Surat Jalan Dalam Perjalanan',
+      pendingApprovals: 'Menunggu Persetujuan',
+      lowStock: 'Outlet Stok Menipis',
+      coldChain: 'Pelanggaran Rantai Dingin (24 jam)',
+      areas: 'Area Gudang',
+    },
     tabs: {
       approvalQueue: 'Antrean Persetujuan',
       suratJalan: 'Pengiriman',

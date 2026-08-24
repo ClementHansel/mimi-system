@@ -2869,6 +2869,20 @@ export const id = {
   // produk terlaris, KPI staf, monitoring operasional, drill-down per outlet
   // (FR-DASH-01..04). Additive-only namespace.
   dashboard: {
+    inventory: {
+      allLocations: 'Semua Lokasi',
+      location: 'Lokasi',
+      search: 'Cari',
+      searchPlaceholder: 'Nama barang atau SKU',
+      empty: 'Tidak ada stok yang cocok',
+      truncated:
+        'Menampilkan {{shown}} dari {{total}} baris — persempit dengan filter lokasi atau pencarian.',
+      item: 'Barang',
+      area: 'Area Penyimpanan',
+      onHand: 'Stok',
+      minQty: 'Min',
+      belowMin: 'Di bawah stok minimum',
+    },
     scope: {
       companyTitle: 'Seluruh Perusahaan (Semua Outlet)',
       companyHint: 'Angka ini mencakup semua outlet — bukan satu outlet saja.',
@@ -2885,6 +2899,7 @@ export const id = {
       outlets: 'Outlet',
       topProducts: 'Produk Terlaris',
       staffKpi: 'KPI Staf',
+      inventory: 'Inventaris',
       opsStatus: 'Status Operasional',
     },
     overview: {

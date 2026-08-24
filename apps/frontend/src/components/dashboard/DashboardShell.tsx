@@ -16,6 +16,7 @@ import { ScopeBanner } from './ScopeBanner';
 import { OverviewCards } from './OverviewCards';
 import { TrendPanel } from './TrendPanel';
 import { OpsStatusPanel } from './OpsStatusPanel';
+import { InventoryPanel } from './InventoryPanel';
 import { OutletsPanel } from './OutletsPanel';
 import { TopProductsPanel } from './TopProductsPanel';
 import { StaffKpiPanel } from './StaffKpiPanel';
@@ -138,6 +139,11 @@ function CompanyDashboard({
           <TabsTrigger value="outlets">{t('dashboard.tabs.outlets')}</TabsTrigger>
           <TabsTrigger value="topProducts">{t('dashboard.tabs.topProducts')}</TabsTrigger>
           <TabsTrigger value="staffKpi">{t('dashboard.tabs.staffKpi')}</TabsTrigger>
+          {/* Gudang has a stock screen and every outlet has one; the office had
+              none, so the roles whose job is COMPARING branches could only ever
+              see a single location at a time. owner, superadmin and supervisor
+              all hold inventory.* permissions with nowhere here to spend them. */}
+          <TabsTrigger value="inventory">{t('dashboard.tabs.inventory')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -156,6 +162,10 @@ function CompanyDashboard({
 
         <TabsContent value="outlets">
           <OutletsPanel />
+        </TabsContent>
+
+        <TabsContent value="inventory">
+          <InventoryPanel />
         </TabsContent>
 
         <TabsContent value="topProducts">

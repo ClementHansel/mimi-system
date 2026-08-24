@@ -128,7 +128,7 @@ if [ "$ROLLBACK" = 1 ]; then
     log "restoring $img:previous -> :latest"
     docker tag "$img:previous" "$img:latest"
   done
-  docker compose "${COMPOSE[@]}" up -d --no-build --no-deps frontend backend
+  docker compose "${COMPOSE[@]}" up -d --no-build frontend backend
   log "rolled back. The database is NOT rolled back — migrations are forward-only."
   exit 0
 fi
@@ -180,13 +180,32 @@ for stale in $(docker ps -a --format '{{.ID}} {{.Names}}' | grep -E '_mimi-(back
 done
 
 log "building and starting: ${SERVICES[*]}"
-# `--no-deps` is load-bearing. Without it compose also RECREATES postgres, redis
-# and minio on every deploy, because their running config was written under a
-# different overlay and no longer matches. Restarting the database to ship a
-# frontend change is both needless downtime and the churn that produced the
-# orphans above. The data survives (named volumes), but nothing about it is
-# wanted: infra is brought up deliberately, not as a side effect of a deploy.
-docker compose "${COMPOSE[@]}" up -d --build --no-deps "${SERVICES[@]}"
+# NO `--no-deps` here, despite it looking like the right guard.
+#
+# It was added to stop deploys recreating postgres/redis/minio, and it did — by
+# causing something worse. Compose still RECONCILES a dependency whose config has
+# drifted, leaving it in `Created`, and `--no-deps` then declines to start it. So
+# every `deploy.sh frontend` silently stopped the backend, and the site 502'd
+# with a container that looked present in `docker ps -a`.
+#
+# The recreates were never really about the flag. They happened because the
+# running containers had been created under `prod.yml` and no longer matched
+# `vps.yml`, so compose wanted to replace them every time. Once the whole stack
+# was brought up ONCE under this overlay the drift went away, and a
+# frontend-only deploy now leaves the backend untouched. Pinning the overlay at
+# the top of this script is what keeps it that way.
+docker compose "${COMPOSE[@]}" up -d --build "${SERVICES[@]}"
+
+# A container can be left in `Created` by an interrupted run. `docker ps` does
+# not show it and the failure looks like a network or DNS problem three layers
+# up, so check the state directly rather than inferring it from an HTTP probe.
+for svc in "${DEFAULT_SERVICES[@]}"; do
+  state=$(docker inspect "mimi-$svc" --format '{{.State.Status}}' 2>/dev/null || echo missing)
+  if [ "$state" != "running" ]; then
+    log "mimi-$svc is '$state' — starting it"
+    docker start "mimi-$svc" >/dev/null 2>&1 || true
+  fi
+done
 
 # ---------------------------------------------------------------------------
 # Verify — a deploy that is not checked is a deploy you are guessing about

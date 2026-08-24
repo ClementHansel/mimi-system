@@ -136,7 +136,12 @@ export function OutletsPanel() {
             className="rounded-md border border-border-strong bg-surface-raised px-2 py-1.5 text-sm text-text-primary focus-visible:border-brand-500"
           />
         </label>
-        <ExportButton rows={rows} columns={EXPORT_COLUMNS} filenameBase="dashboard-outlet" />
+        <ExportButton
+          rows={rows}
+          columns={EXPORT_COLUMNS}
+          filenameBase="dashboard-outlet"
+          pdfTitle="Kinerja Outlet"
+        />
       </div>
 
       <DataTable

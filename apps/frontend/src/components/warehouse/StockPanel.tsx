@@ -121,7 +121,12 @@ export function StockPanel() {
           onChange={(e) => setQ(e.target.value)}
           wrapperClassName="max-w-sm"
         />
-        <ExportButton rows={filteredBalances} columns={EXPORT_COLUMNS} filenameBase="stok-gudang" />
+        <ExportButton
+          rows={filteredBalances}
+          columns={EXPORT_COLUMNS}
+          filenameBase="stok-gudang"
+          pdfTitle="Stok Gudang"
+        />
       </div>
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}

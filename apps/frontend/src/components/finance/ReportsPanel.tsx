@@ -136,6 +136,7 @@ function TrialBalanceTab() {
             rows={report.rows}
             columns={trialBalanceExportColumns(t)}
             filenameBase={`trial-balance-${periodCode}`}
+            pdfTitle={`Neraca Saldo — ${periodCode}`}
           />
         )}
       </div>

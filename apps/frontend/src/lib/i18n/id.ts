@@ -423,6 +423,12 @@ export const id = {
     exportFiltered: 'Ekspor (terfilter)',
     exportAll: 'Ekspor Semua',
     exportError: 'Gagal mengekspor data',
+    exportPdf: 'Ekspor PDF',
+    exportPdfFiltered: 'Ekspor PDF (terfilter)',
+    exportAllPdf: 'Ekspor Semua (PDF)',
+    pdfGeneratedAt: 'Dibuat: {{date}}',
+    pdfPageOf: 'Halaman {{page}} dari {{total}}',
+    pdfEmpty: 'Tidak ada data',
   },
 
   // Dispatcher screen: assign a Surat Jalan's driver and truck, and reorder its
@@ -2678,6 +2684,8 @@ export const id = {
     company: 'Ayam Geprek & Fried Chicken — Kalimantan',
     sj: {
       title: 'Surat Jalan',
+      generatedAt: 'Dibuat: {{date}}',
+      pageOf: 'Halaman {{page}} dari {{total}}',
       driver: 'Driver',
       vehicle: 'Kendaraan',
       plannedDate: 'Tgl. Rencana Kirim',

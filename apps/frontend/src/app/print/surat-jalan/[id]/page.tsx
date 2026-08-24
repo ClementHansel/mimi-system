@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
 import { EmptyState } from '@/components/ui';
@@ -48,6 +48,10 @@ export default function PrintSuratJalanPage({ params }: { params: Promise<{ id: 
   const { t } = useI18n();
   const [sj, setSj] = useState<SuratJalan | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Captured once, not re-read per copy: every sheet in this print job should
+  // carry the SAME "generated at" instant, not the moment each one happened
+  // to render.
+  const generatedAt = useMemo(() => new Date(), []);
 
   useEffect(() => {
     getSuratJalan(id)
@@ -59,6 +63,11 @@ export default function PrintSuratJalanPage({ params }: { params: Promise<{ id: 
 
   const drops = sj ? [...sj.drops].sort((a, b) => a.dropSeq - b.dropSeq) : [];
   const isFrozen = sj?.shipmentType === 'frozen';
+  // Every `.print-copy` is deliberately exactly one printed page (see the
+  // file header) — so, unlike a generic report, the page count here is known
+  // exactly from the data instead of needing CSS running counters (which
+  // browsers do not support consistently for `@page` margin boxes).
+  const totalPages = drops.length * COPY_HOLDERS.length;
 
   return (
     <PrintFrame
@@ -80,18 +89,21 @@ export default function PrintSuratJalanPage({ params }: { params: Promise<{ id: 
             {t('print.sj.copyNotice', {
               drops: drops.length,
               copies: COPY_HOLDERS.length,
-              pages: drops.length * COPY_HOLDERS.length,
+              pages: totalPages,
             })}
           </p>
 
-          {drops.map((drop) =>
-            COPY_HOLDERS.map((holder) => (
+          {drops.flatMap((drop, dropIdx) =>
+            COPY_HOLDERS.map((holder, holderIdx) => (
               <CopySheet
                 key={`${drop.id}-${holder}`}
                 sj={sj}
                 drop={drop}
                 holder={holder}
                 isFrozen={isFrozen}
+                pageNumber={dropIdx * COPY_HOLDERS.length + holderIdx + 1}
+                totalPages={totalPages}
+                generatedAt={generatedAt}
               />
             )),
           )}
@@ -110,11 +122,18 @@ function CopySheet({
   drop,
   holder,
   isFrozen,
+  pageNumber,
+  totalPages,
+  generatedAt,
 }: {
   sj: SuratJalan;
   drop: Drop;
   holder: CopyHolder;
   isFrozen: boolean;
+  /** 1-based position of this sheet in the whole print job (drops × holders). */
+  pageNumber: number;
+  totalPages: number;
+  generatedAt: Date;
 }) {
   const { t } = useI18n();
   const received = drop.status === 'completed' || drop.status === 'completed_discrepancy';
@@ -222,6 +241,13 @@ function CopySheet({
       </section>
 
       <p className="print-keep pt-1 text-[10px]">{t('print.sj.footer')}</p>
+      {/* Every sheet is a standalone, separately-signed legal copy (see file
+          header) — so, unlike the on-screen `copyNotice`, this line has to be
+          printed on EVERY page, not just shown once before printing. */}
+      <p className="print-keep flex justify-between text-[10px] text-stone-600">
+        <span>{t('print.sj.generatedAt', { date: fmtDateTime(generatedAt) })}</span>
+        <span>{t('print.sj.pageOf', { page: pageNumber, total: totalPages })}</span>
+      </p>
     </section>
   );
 }

@@ -232,6 +232,46 @@ export class SuratJalanService {
           message: `Driver ${dto.driverId} not found or inactive`,
         });
 
+      // ONE TRUCK TYPE PER DRIVER PER DAY.
+      //
+      // Owner, 2026-08-24: "a driver can only do either frozen + chilled or dry
+      // delivery, because the truck type is different — impossible to be both at
+      // the same time for one driver."
+      //
+      // The vehicle check above already stops a frozen load going on a truck
+      // with no freezer. It cannot stop the thing that actually happens: the
+      // same driver being given a frozen run at 06:00 and a dry run at 09:00.
+      // Each Surat Jalan is individually valid and the pair is impossible,
+      // because there is one person and two trucks.
+      //
+      // Checked against the PLANNED DATE rather than a time window: routes are
+      // planned a day at a time, and a driver who has taken the freezer truck
+      // out has it for the day.
+      //
+      // Cancelled routes are excluded — a plan that was called off does not
+      // reserve the driver.
+      const clashRes = await client.query<{ sj_number: string; shipment_key: string }>(
+        `SELECT sj.sj_number, st.key AS shipment_key
+           FROM surat_jalan sj
+           JOIN shipment_types st ON st.id = sj.shipment_type_id
+          WHERE sj.driver_id = $1
+            AND sj.planned_date = $2::date
+            AND sj.status <> 'cancelled'
+            AND st.key <> $3
+          LIMIT 1`,
+        [dto.driverId, dto.plannedDate, dto.shipmentType],
+      );
+      const clash = clashRes.rows[0];
+      if (clash) {
+        throw new BadRequestException({
+          code: ERR_VALIDATION,
+          message:
+            `Driver ${dto.driverId} already has ${clash.sj_number} (${clash.shipment_key}) on ` +
+            `${dto.plannedDate}. One driver takes ONE truck type per day — a '${dto.shipmentType}' ` +
+            `run needs a different vehicle, so assign a different driver or move the other route.`,
+        });
+      }
+
       const shipmentTypeRes = await client.query<{ id: string }>(
         `SELECT id FROM shipment_types WHERE key = $1`,
         [dto.shipmentType],

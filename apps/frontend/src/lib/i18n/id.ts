@@ -2636,6 +2636,7 @@ export const id = {
     },
     map: {
       label: 'Peta rute pengiriman',
+      focusStop: 'Tampilkan {{location}} di peta',
       missingCoords:
         '{{missing}} dari {{total}} tujuan belum punya titik koordinat dan tidak tampil di peta.',
     },

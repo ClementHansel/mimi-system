@@ -79,14 +79,19 @@ function pinHtml(seq: number, done: boolean, next: boolean): string {
 export function DriverRouteMap({
   drops,
   nextDropId,
+  focusedDropId,
 }: {
   drops: Drop[];
   nextDropId: string | null;
+  /** Stop the driver just tapped in the list — the map pans to it and opens its popup. */
+  focusedDropId?: string | null;
 }) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  /** dropId -> its marker, so tapping a stop in the list can open that pin. */
+  const markersRef = useRef<Map<string, import('leaflet').Marker>>(new Map());
   const layersRef = useRef<{ remove: () => void }[]>([]);
 
   // Set once the Leaflet map instance exists.
@@ -155,6 +160,7 @@ export function DriverRouteMap({
 
       for (const layer of layersRef.current) layer.remove();
       layersRef.current = [];
+      markersRef.current.clear();
 
       const located = drops.filter(hasCoords);
       if (located.length === 0) return;
@@ -196,6 +202,7 @@ export function DriverRouteMap({
             ].join(''),
           );
         layersRef.current.push(marker);
+        markersRef.current.set(d.id, marker);
       }
 
       if (located.length > 1) {
@@ -214,6 +221,25 @@ export function DriverRouteMap({
     // `mapReady` is the load-bearing dependency: it is what re-runs this effect
     // after the async init above finally produces a map.
   }, [drops, nextDropId, mapReady]);
+
+  /**
+   * Pan to the stop the driver tapped in the list and open its popup.
+   *
+   * Separate from the marker effect on purpose: re-running THAT would tear down
+   * and rebuild every pin, which fights the map's own animation and loses the
+   * popup it just opened. This one only moves the view.
+   *
+   * `setView` rather than `flyTo` — a driver glancing at a phone in a moving
+   * vehicle wants the answer now, not a two-second camera glide.
+   */
+  useEffect(() => {
+    if (!mapReady || !focusedDropId) return;
+    const map = mapRef.current;
+    const marker = markersRef.current.get(focusedDropId);
+    if (!map || !marker) return;
+    map.setView(marker.getLatLng(), Math.max(map.getZoom(), 15), { animate: true });
+    marker.openPopup();
+  }, [focusedDropId, mapReady]);
 
   const locatedCount = drops.filter(hasCoords).length;
 

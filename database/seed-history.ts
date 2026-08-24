@@ -935,6 +935,9 @@ async function main(): Promise<void> {
         let routeSeq = 0;
         for (const [city, branches] of cities) {
           routeSeq += 1;
+          // Which truck this city's route goes out on. Derived from the route
+          // sequence so a given city keeps the same type run to run.
+          const shipmentIdx = routeSeq % ref.shipmentTypes.length;
           const key = `sj-${city}-${date}`;
           const routeRng = rngFor(key);
           const sjId = stableUuid(key);
@@ -943,9 +946,20 @@ async function main(): Promise<void> {
             sjId,
             `SJ-${date.replace(/-/g, '')}-${city}-${String(routeSeq).padStart(2, '0')}`,
             ref.gudang.id,
-            ref.shipmentTypes[routeSeq % ref.shipmentTypes.length],
-            ref.drivers[routeSeq % ref.drivers.length],
-            ref.vehicles[routeSeq % ref.vehicles.length],
+            ref.shipmentTypes[shipmentIdx],
+            // ONE TRUCK TYPE PER DRIVER PER DAY — the rule `SuratJalanService`
+            // now enforces on create. A driver takes the freezer truck or the
+            // dry truck, never both, so the driver is chosen FROM the shipment
+            // type rather than independently of it.
+            //
+            // The previous `routeSeq % drivers.length` satisfied this only by
+            // arithmetic accident: with exactly two shipment types and two
+            // drivers both indices moved in lockstep. Three active drivers
+            // would have started handing one person a frozen run and a dry run
+            // on the same morning — data the application would now reject but
+            // the seeder would happily have written.
+            ref.drivers[shipmentIdx % ref.drivers.length],
+            ref.vehicles[shipmentIdx % ref.vehicles.length],
             isToday ? 'in_transit' : 'completed',
             date,
             dispatchedAt,

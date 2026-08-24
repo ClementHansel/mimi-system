@@ -44,6 +44,10 @@ export interface DropCardProps {
   onChanged: (dropId: string, patch: Partial<Drop>) => void;
   /** The stop the driver is heading to now — given visual weight so it is findable at a glance. */
   isNext?: boolean;
+  /** Tell the parent this stop was tapped, so the map can focus its pin. */
+  onFocus?: () => void;
+  /** True when this stop is the one the map is currently centred on. */
+  isFocused?: boolean;
   /** Finished stops start folded away. Still expandable: the driver may need to re-read what was signed for. */
   defaultCollapsed?: boolean;
 }
@@ -53,6 +57,8 @@ export function DropCard({
   drop,
   onChanged,
   isNext = false,
+  onFocus,
+  isFocused = false,
   defaultCollapsed = false,
 }: DropCardProps) {
   const { t } = useI18n();
@@ -86,11 +92,25 @@ export function DropCard({
       className={cn(
         action === 'none' && 'opacity-90',
         isNext && 'border-brand-500 ring-1 ring-brand-500',
+        isFocused && !isNext && 'border-brand-300 ring-1 ring-brand-300',
       )}
     >
       <CardContent className="flex flex-col gap-3">
+        {/* The whole heading is the hit target. Owner asked for the stop list to
+            drive the map — a driver reading "Drop 4 — Balikpapan Timur" wants to
+            see WHERE that is, and hunting for the matching numbered pin by eye
+            is the thing the list is supposed to save them.
+
+            A real <button> rather than an onClick div: this has to be reachable
+            by keyboard for the dispatcher and owner, who use this screen on a
+            desktop. `text-left` undoes the centring a button brings with it. */}
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="flex items-start gap-2">
+          <button
+            type="button"
+            onClick={onFocus}
+            className="flex items-start gap-2 text-left"
+            aria-label={t('driver.map.focusStop', { location: drop.locationName })}
+          >
             <MapPin className="mt-0.5 size-5 flex-none text-text-muted" aria-hidden />
             <div>
               {isNext && (
@@ -109,18 +129,21 @@ export function DropCard({
                 <p className="mt-0.5 font-mono text-xs text-text-muted">{coords}</p>
               )}
             </div>
-          </div>
+          </button>
           <div className="flex flex-col items-end gap-1.5">
             <StatusBadge domain="drop" status={drop.status} />
-            {defaultCollapsed && (
-              <button
-                type="button"
-                onClick={() => setCollapsed((c) => !c)}
-                className="text-xs font-medium text-text-secondary underline underline-offset-2"
-              >
-                {collapsed ? t('common.showDetail') : t('common.hideDetail')}
-              </button>
-            )}
+            {/* Always offered, not only on the stops that start collapsed.
+                Owner: "able to click all to see more detail, not just the
+                current active one." A driver checking what they dropped at the
+                first outlet an hour ago should not have to remember that only
+                completed stops can be reopened. */}
+            <button
+              type="button"
+              onClick={() => setCollapsed((c) => !c)}
+              className="text-xs font-medium text-text-secondary underline underline-offset-2"
+            >
+              {collapsed ? t('common.showDetail') : t('common.hideDetail')}
+            </button>
           </div>
         </div>
 

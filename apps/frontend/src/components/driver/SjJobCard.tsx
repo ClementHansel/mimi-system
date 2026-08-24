@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 
 import { Snowflake, Package, Truck, ShieldCheck, MapPinOff, Radio } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
@@ -33,6 +34,8 @@ export function SjJobCard({
   const { t } = useI18n();
   const isFrozen = sj.shipmentType === 'frozen';
   const drops = orderedDrops(sj.drops);
+  /** The stop the driver last tapped in the list; the map pans to its pin. */
+  const [focusedDropId, setFocusedDropId] = useState<string | null>(null);
   const progress = routeProgress(sj.drops);
 
   // Position reporting is scoped to THIS trip and only while it is in transit —
@@ -161,7 +164,11 @@ export function SjJobCard({
               viewport in DriverRouteMap so a tall map cannot outgrow its own
               sticky window. */}
           <div className="lg:sticky lg:top-4">
-            <DriverRouteMap drops={drops} nextDropId={progress.nextDropId} />
+            <DriverRouteMap
+              drops={drops}
+              nextDropId={progress.nextDropId}
+              focusedDropId={focusedDropId}
+            />
           </div>
 
           {/* Finished stops collapse. On a seven-stop run the screen is
@@ -176,6 +183,8 @@ export function SjJobCard({
                 onChanged={onChanged}
                 isNext={drop.id === progress.nextDropId}
                 defaultCollapsed={isFinished(drop)}
+                isFocused={drop.id === focusedDropId}
+                onFocus={() => setFocusedDropId(drop.id)}
               />
             ))}
           </div>

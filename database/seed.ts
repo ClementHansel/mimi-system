@@ -41,6 +41,41 @@ function stableUuid(seed: string): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
 }
 
+/**
+ * How much of one ingredient a single portion uses, derived from what the
+ * product SELLS for rather than rolled at random.
+ *
+ * A quick-service fried-chicken operation runs a food cost around a third of
+ * the menu price. So: take that share of the price, split it across the
+ * recipe's ingredients, and convert each share into a weight using that
+ * ingredient's own cost. The result is a recipe that is physically plausible
+ * AND produces a believable margin, and it stays believable if item costs are
+ * ever re-priced — which a fixed random weight would not.
+ *
+ * Deterministic: the jitter is seeded from the product+ingredient name, so a
+ * re-seed does not silently move every margin in the system.
+ */
+function recipeLineQty(
+  price: number,
+  ingredientCount: number,
+  avgCost: number,
+  yieldQty: number,
+  jitterSeed: string,
+): string {
+  // Fall back to a small nominal weight rather than dividing by zero — an item
+  // with no cost recorded should not become an infinite quantity.
+  if (!Number.isFinite(avgCost) || avgCost <= 0) return (0.02 * yieldQty).toFixed(3);
+  const FOOD_COST_RATIO = 0.33;
+  // ±15%, so not every product lands on exactly the same margin.
+  const hash = createHash('md5').update(jitterSeed).digest()[0] ?? 0;
+  const jitter = 0.85 + (hash / 255) * 0.3;
+  const targetCost = (price * FOOD_COST_RATIO * jitter) / Math.max(1, ingredientCount);
+  const perUnitKg = targetCost / avgCost;
+  // Three decimals is the column's scale; clamp so a very cheap ingredient in a
+  // very expensive dish cannot round away to nothing.
+  return (Math.max(0.001, perUnitKg) * yieldQty).toFixed(3);
+}
+
 const DEMO_PASSWORD = 'password123';
 const DEMO_PIN = '123456';
 
@@ -742,6 +777,8 @@ async function main(): Promise<void> {
       avgCost: number;
     }
     const itemDefs: ItemDef[] = [];
+    /** name -> avg_cost, so recipe quantities can be sized from what things cost. */
+    const itemCost: Record<string, number> = {};
     let skuSeq = 1;
     function addItem(
       name: string,
@@ -750,6 +787,7 @@ async function main(): Promise<void> {
       storageType: string,
       avgCost: number,
     ) {
+      itemCost[name] = avgCost;
       itemDefs.push({
         sku: `SKU${String(skuSeq++).padStart(4, '0')}`,
         name,
@@ -1084,13 +1122,27 @@ async function main(): Promise<void> {
       'Box Nasi Kecil',
     ]);
 
+    // Menu categories are rows now, not free text on `products` (migration 239).
+    // Upsert-by-name so the seed stays idempotent and so it keeps working on a
+    // database where migration 239's backfill already created these.
+    const productCategoryId: Record<string, string> = {};
+    const seenCategories = [...new Set(productDefs.map((p) => p.category))];
+    for (const [i, name] of seenCategories.entries()) {
+      const res = await client.query(
+        `INSERT INTO product_categories (name, sort_order) VALUES ($1,$2)
+         ON CONFLICT (name) DO UPDATE SET is_active = true RETURNING id`,
+        [name, i * 10],
+      );
+      productCategoryId[name] = res.rows[0].id;
+    }
+
     const productId: Record<string, string> = {};
     for (const p of productDefs) {
       const res = await client.query(
-        `INSERT INTO products (code, name, category, price, sort_order)
+        `INSERT INTO products (code, name, category_id, price, sort_order)
          VALUES ($1,$2,$3,$4,$5)
          ON CONFLICT (code) DO NOTHING RETURNING id`,
-        [p.code, p.name, p.category, p.price, 0],
+        [p.code, p.name, productCategoryId[p.category], p.price, 0],
       );
       productId[p.name] =
         res.rows[0]?.id ??
@@ -1112,22 +1164,88 @@ async function main(): Promise<void> {
         await client.query(
           `INSERT INTO recipe_lines (recipe_id, item_id, qty, unit_id)
            VALUES ($1,$2,$3,$4) ON CONFLICT (recipe_id, item_id) DO NOTHING`,
-          // `recipe_lines.qty` is per BATCH, not per sellable unit, so it scales
-          // with `yieldQty`. Doing it this way keeps per-unit consumption —
-          // qty / yieldQty — identical to what it was before D-28, so the
-          // division path becomes real WITHOUT moving any existing test's
-          // numbers. A batch recipe whose line qty had stayed per-unit would
-          // have quietly divided every ingredient by 10 or 20 instead.
+          // `recipe_lines.qty` is per BATCH, not per sellable unit, so it
+          // scales with `yieldQty` — per-unit consumption is qty / yieldQty.
+          //
+          // QUANTITIES ARE DERIVED FROM A FOOD-COST TARGET, not drawn at
+          // random. The previous version rolled 0.5–3.0 kg of EVERY ingredient
+          // for a single portion, which is roughly a hundred times too much: a
+          // Kerupuk ended up with 2.3 kg of flour in it. Nothing failed, because
+          // no constraint says a recipe has to be physically possible — but
+          // COGS came out at ten times revenue, and the owner's dashboard
+          // reported a four-billion-rupiah loss on a profitable chain. Seed data
+          // that is merely present is not the same as seed data that is usable.
+          //
+          // Working backwards from price is what keeps this honest as item costs
+          // change: each product's ingredients are sized so they add up to
+          // FOOD_COST_RATIO of its selling price, split evenly across them and
+          // divided by that ingredient's own avg_cost. A fried-chicken QSR runs
+          // 30–38% food cost, so margins land where a real one's would.
           [
             recipeId,
             iid,
-            ((Math.round(rnd(5, 30) * 10) / 100) * p.yieldQty).toFixed(3),
+            recipeLineQty(
+              p.price,
+              p.ingredients.length,
+              itemCost[ing] ?? 0,
+              p.yieldQty,
+              p.name + ing,
+            ),
             unitId['kg'],
           ],
         );
       }
     }
-    console.log(`  - products: ${productDefs.length} with recipes`);
+    // =========================================================================
+    // PACKAGES (migration 240) — two of the seeded "Paket" products converted
+    // from a raw-item recipe into a real bundle of MEMBER PRODUCTS.
+    //
+    // Not all of them: a package is optional, and leaving the rest on their own
+    // recipes keeps both shapes represented in the fixture. These two were
+    // chosen because 'Nasi Putih' is a BATCH recipe (yieldQty 10), so selling
+    // one of these packages exercises package explosion AND recipe-yield
+    // division in the same posting — the combination nothing else covers.
+    const packageDefs: { name: string; members: { name: string; qty: string }[] }[] = [
+      {
+        name: 'Paket Nasi + Ayam Geprek',
+        members: [
+          { name: 'Nasi Putih', qty: '1.000' },
+          { name: 'Ayam Geprek Original', qty: '1.000' },
+        ],
+      },
+      {
+        name: 'Paket Nasi + Wing',
+        members: [
+          { name: 'Nasi Putih', qty: '1.000' },
+          { name: 'Wing Crispy', qty: '2.000' },
+        ],
+      },
+    ];
+
+    for (const pkg of packageDefs) {
+      const pkgId = productId[pkg.name];
+      if (!pkgId) continue;
+
+      // ORDER MATTERS, and the triggers enforce it: `products_kind_transition_guard`
+      // refuses `kind = 'package'` while an ACTIVE recipe exists (a package
+      // explodes through its members, so a recipe would double-count every
+      // ingredient). Drop the recipe first, then flip the kind, then add members.
+      await client.query(`DELETE FROM recipes WHERE product_id = $1`, [pkgId]);
+      await client.query(`UPDATE products SET kind = 'package' WHERE id = $1`, [pkgId]);
+      for (const [i, member] of pkg.members.entries()) {
+        const memberId = productId[member.name];
+        if (!memberId) continue;
+        await client.query(
+          `INSERT INTO product_package_lines (package_product_id, member_product_id, qty, sort_order)
+           VALUES ($1,$2,$3,$4) ON CONFLICT (package_product_id, member_product_id) DO NOTHING`,
+          [pkgId, memberId, member.qty, i * 10],
+        );
+      }
+    }
+
+    console.log(
+      `  - products: ${productDefs.length} with recipes, ${packageDefs.length} as packages`,
+    );
 
     // =========================================================================
     // SUPPLIERS + SUPPLIER_ITEMS + PRICE HISTORY

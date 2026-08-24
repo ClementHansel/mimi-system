@@ -28,7 +28,7 @@
 #
 # ## Usage
 #
-#   ./scripts/deploy.sh                 # migrate, build + deploy everything
+#   ./scripts/deploy.sh                 # migrate, build + deploy backend+frontend
 #   ./scripts/deploy.sh frontend        # one service
 #   ./scripts/deploy.sh --no-migrate    # skip migrations (they are idempotent;
 #                                       #   skip only if you just ran them)
@@ -61,6 +61,19 @@ set +a
 # interpolates the WHOLE file before it decides what to start, so the variable
 # still has to resolve or nothing runs at all.
 export ACME_EMAIL="${ACME_EMAIL:-hansel@gaiada.com}"
+
+# The services this box actually runs, and the DEFAULT when none are named.
+#
+# Not "everything in the compose files", which is what the first version did and
+# why its first real run took the site down. `docker-compose.prod.yml` declares
+# a Traefik, but TLS on this box is a SEPARATE compose project (`mimitls`, see
+# infrastructure/tls/) holding :80 and :443 — so bringing up the bundled one
+# aborts on "port is already allocated", and compose stops mid-sequence with
+# backend and frontend recreated but never started. It also declares n8n, which
+# is not part of a normal app deploy.
+#
+# Naming the services explicitly means a deploy can only ever touch the app.
+DEFAULT_SERVICES=(backend frontend)
 
 SERVICES=()
 DO_MIGRATE=1
@@ -132,8 +145,11 @@ fi
 # ---------------------------------------------------------------------------
 # Build and start
 # ---------------------------------------------------------------------------
-log "building and starting${SERVICES[*]:+ (${SERVICES[*]})}"
-docker compose "${COMPOSE[@]}" up -d --build ${SERVICES[@]+"${SERVICES[@]}"}
+if [ ${#SERVICES[@]} -eq 0 ]; then
+  SERVICES=("${DEFAULT_SERVICES[@]}")
+fi
+log "building and starting: ${SERVICES[*]}"
+docker compose "${COMPOSE[@]}" up -d --build "${SERVICES[@]}"
 
 # ---------------------------------------------------------------------------
 # Verify — a deploy that is not checked is a deploy you are guessing about

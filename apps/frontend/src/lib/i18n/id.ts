@@ -417,6 +417,14 @@ export const id = {
     fileTooLarge: 'Ukuran berkas melebihi {{maxMb}} MB',
   },
 
+  // CSV export, shared by every list that offers it (`components/common/ExportButton`).
+  exportData: {
+    export: 'Ekspor CSV',
+    exportFiltered: 'Ekspor (terfilter)',
+    exportAll: 'Ekspor Semua',
+    exportError: 'Gagal mengekspor data',
+  },
+
   table: {
     empty: 'Belum ada data',
     loading: 'Memuat data…',

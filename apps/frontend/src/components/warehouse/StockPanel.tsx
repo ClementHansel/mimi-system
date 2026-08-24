@@ -14,12 +14,25 @@ import {
   Modal,
   Button,
 } from '@/components/ui';
+import { ExportButton } from '@/components/common/ExportButton';
+import type { CsvColumn } from '@/lib/export/csv';
 import { formatQty } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/dates';
 import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import { getBalances, getMovements } from './lib/warehouse-api';
 import type { Balance, Movement } from './lib/types';
+
+// Exported as a flat (non-grouped) row list — the on-screen table groups by
+// storage area, but a CSV is read in a spreadsheet where that grouping would
+// just be a repeated column, not a section header.
+const EXPORT_COLUMNS: CsvColumn<Balance>[] = [
+  { key: 'sku', header: 'SKU' },
+  { key: 'itemName', header: 'Nama Barang' },
+  { key: 'storageAreaName', header: 'Area Penyimpanan' },
+  { key: 'qtyOnHand', header: 'Qty', format: (b) => formatQty(b.qtyOnHand, b.unitCode) },
+  { key: 'belowMin', header: 'Di Bawah Minimum', format: (b) => (b.belowMin ? 'Ya' : 'Tidak') },
+];
 
 /**
  * Warehouse stock — balances per storage area (freezer/chiller/dry store),
@@ -57,19 +70,24 @@ export function StockPanel() {
     };
   }, [locationId, t, reloadToken]);
 
-  const byArea = useMemo(() => {
-    const filtered = q.trim()
+  // Flat (non-grouped) list — shared by the on-screen table's grouping below
+  // and by the CSV export, which wants one row per item, not a section per
+  // storage area.
+  const filteredBalances = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    return term
       ? balances.filter(
-          (b) =>
-            b.itemName.toLowerCase().includes(q.trim().toLowerCase()) ||
-            b.sku.toLowerCase().includes(q.trim().toLowerCase()),
+          (b) => b.itemName.toLowerCase().includes(term) || b.sku.toLowerCase().includes(term),
         )
       : balances;
+  }, [balances, q]);
+
+  const byArea = useMemo(() => {
     const groups = new Map<string, Balance[]>();
-    for (const b of filtered)
+    for (const b of filteredBalances)
       groups.set(b.storageAreaName, [...(groups.get(b.storageAreaName) ?? []), b]);
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [balances, q]);
+  }, [filteredBalances]);
 
   function openHistory(b: Balance) {
     if (!locationId) return;
@@ -92,12 +110,15 @@ export function StockPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Input
-        placeholder={t('common.filter')}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        wrapperClassName="max-w-sm"
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Input
+          placeholder={t('common.filter')}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          wrapperClassName="max-w-sm"
+        />
+        <ExportButton rows={filteredBalances} columns={EXPORT_COLUMNS} filenameBase="stok-gudang" />
+      </div>
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
       {!loading && error && (

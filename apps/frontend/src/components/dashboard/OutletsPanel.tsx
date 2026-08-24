@@ -8,10 +8,23 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { Drawer } from '@/components/ui/Drawer';
 import { Badge } from '@/components/ui/Badge';
 import { ApiError } from '@/lib/api';
+import { ExportButton } from '@/components/common/ExportButton';
+import type { CsvColumn } from '@/lib/export/csv';
 import { dashboardApi } from './lib/dashboard-api';
 import { OutletDrilldownContent } from './OutletDrilldownContent';
 import type { ISODate } from '@/lib/shared-types';
 import type { OutletTile } from './lib/types';
+
+const EXPORT_COLUMNS: CsvColumn<OutletTile>[] = [
+  { key: 'name', header: 'Outlet' },
+  { key: 'city', header: 'Kota' },
+  { key: 'revenue', header: 'Omzet', format: (r) => formatMoney(r.revenue) },
+  { key: 'txCount', header: 'Jumlah Transaksi' },
+  { key: 'onlineNet', header: 'Omzet Online', format: (r) => formatMoney(r.onlineNet) },
+  { key: 'openShifts', header: 'Shift Terbuka' },
+  { key: 'lowStockCount', header: 'Stok Rendah' },
+  { key: 'offlineDevices', header: 'Perangkat Offline' },
+];
 
 /**
  * FR-DASH-02/04 — "all 15-20 outlets, one view" (CONTRACTS §4.18), with a
@@ -113,15 +126,18 @@ export function OutletsPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <label className="flex w-fit items-center gap-2 text-sm text-text-secondary">
-        {t('common.date')}
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="rounded-md border border-border-strong bg-surface-raised px-2 py-1.5 text-sm text-text-primary focus-visible:border-brand-500"
-        />
-      </label>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className="flex w-fit items-center gap-2 text-sm text-text-secondary">
+          {t('common.date')}
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="rounded-md border border-border-strong bg-surface-raised px-2 py-1.5 text-sm text-text-primary focus-visible:border-brand-500"
+          />
+        </label>
+        <ExportButton rows={rows} columns={EXPORT_COLUMNS} filenameBase="dashboard-outlet" />
+      </div>
 
       <DataTable
         columns={columns}

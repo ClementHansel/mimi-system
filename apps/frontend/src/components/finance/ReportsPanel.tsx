@@ -10,6 +10,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Select } from '@/components/ui/Select';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ExportButton } from '@/components/common/ExportButton';
+import type { CsvColumn } from '@/lib/export/csv';
 import { sumMoney } from './lib/money';
 import type {
   FiscalPeriodRow,
@@ -18,6 +20,20 @@ import type {
   BalanceSheetReport,
   StockValueRow,
 } from './types';
+
+type TrialBalanceRow = TrialBalanceReport['rows'][number];
+
+function trialBalanceExportColumns(
+  t: (key: string, params?: Record<string, string | number>) => string,
+): CsvColumn<TrialBalanceRow>[] {
+  return [
+    { key: 'accountCode', header: 'Kode Akun' },
+    { key: 'accountName', header: 'Nama Akun' },
+    { key: 'type', header: 'Tipe Akun', format: (r) => t(`finance.accountType.${r.type}`) },
+    { key: 'debit', header: 'Debit', format: (r) => formatMoney(r.debit, { cents: 'always' }) },
+    { key: 'credit', header: 'Kredit', format: (r) => formatMoney(r.credit, { cents: 'always' }) },
+  ];
+}
 
 /**
  * F07 finance — reports (CONTRACTS §4.17: trial balance, P&L, balance sheet,
@@ -105,15 +121,24 @@ function TrialBalanceTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Select
-        label={t('finance.reports.period')}
-        value={periodCode}
-        onValueChange={setPeriodCode}
-        placeholder={t('finance.reports.selectPeriod')}
-        options={periods.map((p) => ({ value: p.period_code, label: p.period_code }))}
-        wrapperClassName="w-48"
-        disabled={periods.length === 0}
-      />
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <Select
+          label={t('finance.reports.period')}
+          value={periodCode}
+          onValueChange={setPeriodCode}
+          placeholder={t('finance.reports.selectPeriod')}
+          options={periods.map((p) => ({ value: p.period_code, label: p.period_code }))}
+          wrapperClassName="w-48"
+          disabled={periods.length === 0}
+        />
+        {report && (
+          <ExportButton
+            rows={report.rows}
+            columns={trialBalanceExportColumns(t)}
+            filenameBase={`trial-balance-${periodCode}`}
+          />
+        )}
+      </div>
 
       {loading && <p className="text-sm text-text-muted">{t('common.loading')}</p>}
       {!loading && error && <ReportError message={error} />}

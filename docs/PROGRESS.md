@@ -56,8 +56,8 @@ engineer. Ordered by what stops a go-live, not by wave number.
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | ✅ A-1 | **B-14 CLOSED 2026-08-23** — trusted Let's Encrypt cert on `https://150-109-15-108.sslip.io`, no domain needed. Service workers, the offline shell, geolocation and PWA install all work for remote devices                                                               | closed                                                                                     |
 | A-3    | **RISK-P4 — WhatsApp gateway credentials.** `WA_ENABLED=false`                                                                                                                                                                                                            | Real n8n + gateway credentials. Blocks W5-08's live test and the new chat's delivery proof |
-| A-4    | **Offsite backups.** `OFFSITE_REMOTE_CMD` unset — dumps sit on the database's own disk                                                                                                                                                                                    | An offsite target (rclone/S3) chosen by the owner. NFR-06                                  |
-| A-5    | **W7-04 hardware spec**                                                                                                                                                                                                                                                   | Budget, vendor, per-outlet device count                                                    |
+| 🔴 A-4 | **Offsite backups**, and worse: the nightly backup had NEVER RUN — see the 2026-08-24 entry. Cron fixed; `OFFSITE_REMOTE_CMD` still unset, and nothing alerts when a backup fails                                                                                         | Owner: an offsite target (the main office, nightly). NFR-06                                |
+| ✅ A-5 | **W7-04 hardware spec — WRITTEN 2026-08-23**, `docs/HARDWARE.md`. Every requirement derived from a browser API the app calls; the Web Bluetooth printer rules out iPad entirely. Quantities are defensible, the rupiah column is explicitly a shape for a vendor quote    | owner: budget + vendor. Prove ONE printer model before buying twenty-one                   |
 | A-6    | **W7-05 data importer**                                                                                                                                                                                                                                                   | The owner's real master-data files to design against                                       |
 | A-7    | **GL history backfill** — now MEASURABLE via `GET /api/accounting/gl-coverage` (read-only). On the demo box the document-side gap is **2 documents**, both pre-dating the B-16 wiring. Re-run it after go-live before deciding whether a backfill engine is worth writing | owner decision, now informed                                                               |
 | A-8    | **RISK-P5 — branch node at scale**                                                                                                                                                                                                                                        | A PM change order — ~20 mini-PCs installed across 4 cities                                 |
@@ -75,6 +75,72 @@ engineer. Ordered by what stops a go-live, not by wave number.
 | ✅ B-11 | **NOT A GAP (verified 2026-08-23).** `AppShell` renders nothing until hydrated; `/login` is the only public route. Pinned by `AppShell.hydration.test.tsx`                                                             | closed                                     |
 | B-12    | **`attachment-store.test.ts` flake** — did NOT reproduce 2026-08-23 (6 isolated + 8 full runs clean). Still open; no fix attempted, because guessing at an unreproducible flake is how a real defect gets papered over | unknown                                    |
 | B-13    | **Technical-debt register (§5)** — D-22b, D-27 and D-30 are now CLOSED; the rest of the register remains                                                                                                               | ongoing                                    |
+
+### 🔴 The nightly backup had never run, and the evidence said otherwise (2026-08-24)
+
+Found by accident: took a snapshot before seeding the demo box and got
+`/bin/sh: 1: ./infrastructure/backup/backup.sh: Permission denied`.
+
+`backup.sh` was committed mode **100644** and the installed cron entry invokes it directly, so
+**every scheduled run since installation has failed** — `git ls-files -s` confirms the mode was never
+anything else, so this is not a bit that was lost later. Five failures sat in
+`/home/ubuntu/mimi-backup.log`.
+
+**Why it looked fine.** `dumps/` held two files, so the directory read as a working backup. Both were
+written by hand on 19 August by someone running the script with `bash`. We then ran a restore drill
+against those dumps and **passed** — which proved the restore path works and said nothing whatsoever
+about whether anything new was arriving. A green restore drill over a stale dump is a worse signal
+than no drill at all, because it retires the question.
+
+**Fixed:** mode is `100755` in git; the cron form is now `bash ./backup.sh`, so a lost executable bit
+cannot silently disable backups again. Verified by running the exact command cron runs —
+`mimi-20260824-091509.sql.gz`, 920K.
+
+**Still open, and it is the real lesson:** nothing alerts on failure. The log recorded five straight
+failures and no one read it, because reading it is something a person has to remember every morning.
+Offsite (`OFFSITE_REMOTE_CMD`) is still unset. Both are A-4.
+
+### 🟢 Full operating history — the chain now has a quarter of trading behind it (2026-08-24)
+
+**Owner: "need full seeding to simulate real operation."** `database/seed-history.ts`, `pnpm --filter
+@mimi/database seed:history -- --days=90`.
+
+The existing seeds are not wrong; they answer "does every table have a row and every screen something
+to render", and they answer it well. What was missing was **volume and time depth**: 631 sales for 20
+outlets, 129 attendance rows for 291 employees — about one busy day at one branch, spread across a
+chain. Most of what the system is FOR reads across time: trend charts, reorder points off consumption
+history, opname variance against a run of usage, the daily rollup views, and NFR-01, which cannot be
+measured against a table that fits in one page of shared buffers.
+
+**Measured on the server (throwaway database, 90 days):**
+
+|                           |                                                    |
+| ------------------------- | -------------------------------------------------- |
+| Sales / lines / payments  | 219,549 / 473,381 / 219,549                        |
+| Stock movements           | 139,560, across 1,364 balance cells                |
+| Deliveries                | 152 Surat Jalan, 760 drops, 31,920 lines           |
+| Purchasing                | 182 POs + receipts at the warehouse                |
+| Wall clock / size         | **2m 1s**, 325 MB                                  |
+| Re-run over the same week | **0 rows** — idempotent, proven not assumed        |
+| RLS                       | owner sees all 219k; an unscoped supervisor sees 0 |
+
+**The bug worth recording, because no row-count showed it.** The first cut sized deliveries from a
+random 8–60 units and gave the warehouse no supplier inflow at all. Every table filled, every count
+looked healthy — and **48% of stock cells sat clamped at zero after one simulated week**. A chain
+reading "out of stock" on half its item list is not a simulation of an operation, it is a simulation
+of a collapse. Replenishment is now sized from what each branch actually consumed, and the warehouse
+buys weekly through a real purchase order and receipt. That second half is not bookkeeping: stock that
+appears with no document behind it is precisely the shape of the fraud the receiving controls exist to
+catch, so it should not be seedable. Stock-outs are now **under 1%** of cells.
+
+**Two deliberate omissions.** No journal entries — the posting rules live in the accounting engine and
+`POST /api/accounting/daily-posting` is the supported way to produce them; a second implementation in a
+seeder could only agree with the first by accident. And nothing in `audit_log`, `sessions`,
+`sync_events` or `notifications`, which record what people and devices DID; fabricating them puts
+fiction in the evidence trail.
+
+**Not yet applied to the demo box** — the dry run is clean against production data (207s, same
+volumes) and a pre-seed backup is taken, but the write itself is the owner's call.
 
 ### C. Known-incomplete, deliberately
 

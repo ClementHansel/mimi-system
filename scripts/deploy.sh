@@ -41,9 +41,31 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-# The two files, together, always. This pairing is the whole point of the
-# script — `docker-compose.yml` on its own is the dev variant.
-COMPOSE=(-p mimi -f docker-compose.yml -f docker-compose.prod.yml)
+# The base file plus THIS BOX'S overlay, together, always.
+#
+# `docker-compose.yml` alone is the DEV variant — building with it produces an
+# image with no Next build output. But the overlay matters just as much, and the
+# first version of this script got it wrong by picking `prod.yml`:
+#
+#   prod.yml  — a dedicated host with a real DOMAIN. Runs its OWN Traefik on
+#               :80/:443 and publishes the frontend to 127.0.0.1 only, because
+#               that Traefik is meant to front it. Its own header says it
+#               "cannot be used here" until a hostname exists.
+#   vps.yml   — THIS box: shared with seven other compose projects, no domain,
+#               no Traefik, frontend published on 0.0.0.0:${FRONTEND_PUBLIC_PORT}
+#               (8080) as the single public entry point.
+#
+# Deploying with prod.yml did two kinds of damage: its Traefik collided with the
+# separate `mimitls` project already holding :80, aborting the deploy mid-way;
+# and by binding the frontend to loopback it silently REMOVED
+# http://150.109.15.108:8080, the URL people actually use. HTTPS kept working
+# through the TLS project, so every check I ran said the site was up while the
+# owner was looking at a dead page.
+#
+# Overridable, because the day a domain exists prod.yml becomes correct:
+#   COMPOSE_OVERLAY=docker-compose.prod.yml ./scripts/deploy.sh
+COMPOSE_OVERLAY="${COMPOSE_OVERLAY:-docker-compose.vps.yml}"
+COMPOSE=(-p mimi -f docker-compose.yml -f "$COMPOSE_OVERLAY")
 
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.vps}"
 if [ ! -f "$ENV_FILE" ]; then
@@ -55,11 +77,9 @@ set -a
 . "$ENV_FILE"
 set +a
 
-# `docker-compose.prod.yml` declares a Traefik whose command interpolates
-# ACME_EMAIL. TLS actually runs as a separate compose project (`mimitls`, see
-# infrastructure/tls/), so that service is never started here — but compose
-# interpolates the WHOLE file before it decides what to start, so the variable
-# still has to resolve or nothing runs at all.
+# Only `prod.yml` interpolates ACME_EMAIL (for its Traefik). vps.yml does not,
+# but compose interpolates the WHOLE overlay before deciding what to start, so
+# the variable must resolve whenever prod.yml is the chosen overlay.
 export ACME_EMAIL="${ACME_EMAIL:-hansel@gaiada.com}"
 
 # The services this box actually runs, and the DEFAULT when none are named.
@@ -108,7 +128,7 @@ if [ "$ROLLBACK" = 1 ]; then
     log "restoring $img:previous -> :latest"
     docker tag "$img:previous" "$img:latest"
   done
-  docker compose "${COMPOSE[@]}" up -d --no-build frontend backend
+  docker compose "${COMPOSE[@]}" up -d --no-build --no-deps frontend backend
   log "rolled back. The database is NOT rolled back — migrations are forward-only."
   exit 0
 fi
@@ -148,18 +168,41 @@ fi
 if [ ${#SERVICES[@]} -eq 0 ]; then
   SERVICES=("${DEFAULT_SERVICES[@]}")
 fi
+# Orphans from a previous half-finished recreate. Compose renames a container to
+# `<hash>_<name>` while replacing it, and if that replacement dies partway — an
+# SSH drop mid-build, a daemon hiccup — the renamed one is left holding the name
+# and the published port. The next deploy then fails with "No such container" or
+# "port is already allocated", and every subsequent one fails the same way until
+# somebody clears it by hand. This happened four times in one afternoon.
+for stale in $(docker ps -a --format '{{.ID}} {{.Names}}' | grep -E '_mimi-(backend|frontend)$' | awk '{print $1}'); do
+  log "removing orphaned container $stale from an interrupted deploy"
+  docker rm -f "$stale" >/dev/null 2>&1 || true
+done
+
 log "building and starting: ${SERVICES[*]}"
-docker compose "${COMPOSE[@]}" up -d --build "${SERVICES[@]}"
+# `--no-deps` is load-bearing. Without it compose also RECREATES postgres, redis
+# and minio on every deploy, because their running config was written under a
+# different overlay and no longer matches. Restarting the database to ship a
+# frontend change is both needless downtime and the churn that produced the
+# orphans above. The data survives (named volumes), but nothing about it is
+# wanted: infra is brought up deliberately, not as a side effect of a deploy.
+docker compose "${COMPOSE[@]}" up -d --build --no-deps "${SERVICES[@]}"
 
 # ---------------------------------------------------------------------------
 # Verify — a deploy that is not checked is a deploy you are guessing about
 # ---------------------------------------------------------------------------
+# BOTH entrances, because checking only one is how a deploy that had already
+# removed :8080 reported itself healthy: the HTTPS origin is served by the
+# separate `mimitls` project and keeps working even when the app's own published
+# port has gone.
 PUBLIC_URL="${VPS_PUBLIC_URL:-https://150-109-15-108.sslip.io}"
-log "waiting for $PUBLIC_URL/login"
+DIRECT_URL="${VPS_DIRECT_URL:-http://150.109.15.108:${FRONTEND_PUBLIC_PORT:-8080}}"
+log "waiting for $PUBLIC_URL/login and $DIRECT_URL/login"
 for attempt in $(seq 1 30); do
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$PUBLIC_URL/login" || echo 000)
-  if [ "$code" = "200" ]; then
-    log "OK — $PUBLIC_URL/login returned 200 after ${attempt} attempt(s)"
+  direct=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$DIRECT_URL/login" || echo 000)
+  if [ "$code" = "200" ] && [ "$direct" = "200" ]; then
+    log "OK — both entrances returned 200 after ${attempt} attempt(s)"
     log "previous images kept as :previous — ./scripts/deploy.sh --rollback"
     exit 0
   fi
@@ -167,7 +210,7 @@ for attempt in $(seq 1 30); do
 done
 
 echo "" >&2
-echo "DEPLOY UNVERIFIED: $PUBLIC_URL/login never returned 200 (last: $code)." >&2
+echo "DEPLOY UNVERIFIED: $PUBLIC_URL/login=$code  $DIRECT_URL/login=$direct (want 200/200)." >&2
 echo "The new containers ARE running. To go back:" >&2
 echo "    ./scripts/deploy.sh --rollback" >&2
 exit 1

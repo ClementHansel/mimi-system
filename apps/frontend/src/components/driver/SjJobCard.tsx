@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { Snowflake, Package, Truck, ShieldCheck, MapPinOff, Radio } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
@@ -33,10 +33,19 @@ export function SjJobCard({
 }) {
   const { t } = useI18n();
   const isFrozen = sj.shipmentType === 'frozen';
-  const drops = orderedDrops(sj.drops);
+  // MEMOISED, and it is load-bearing rather than an optimisation.
+  //
+  // `orderedDrops` returns a new array every call, so an unmemoised `drops`
+  // changed identity on every render — including the re-render caused by
+  // tapping a stop. That re-ran `DriverRouteMap`'s marker effect, which is
+  // async (it awaits `import('leaflet')`), so it tore down and rebuilt every
+  // pin JUST AFTER the focus effect had opened one's popup, and the popup
+  // vanished with the marker it belonged to. Clicking a stop appeared to do
+  // nothing at all.
+  const drops = useMemo(() => orderedDrops(sj.drops), [sj.drops]);
+  const progress = useMemo(() => routeProgress(sj.drops), [sj.drops]);
   /** The stop the driver last tapped in the list; the map pans to its pin. */
   const [focusedDropId, setFocusedDropId] = useState<string | null>(null);
-  const progress = routeProgress(sj.drops);
 
   // Position reporting is scoped to THIS trip and only while it is in transit —
   // the same window the backend enforces. A driver holding two jobs for the day

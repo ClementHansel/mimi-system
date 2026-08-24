@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import type { Money, Qty } from '@mimi/shared';
 import type { LocationScope } from '../../../common/scope/scope.service';
 import { assertLocationInScope, scopeClause } from '../scope.util';
+import { witaDateRange } from '../../../kernel/time/wita-range.sql';
 
 export interface TopProductRow {
   productId: string;
@@ -51,7 +52,7 @@ export class TopProductsService {
          JOIN sales s ON s.id = sl.sale_id
          JOIN products p ON p.id = sl.product_id
         WHERE s.status = 'completed'
-          AND (s.occurred_at AT TIME ZONE 'Asia/Makassar')::date BETWEEN $1 AND $2
+          AND ${witaDateRange('s.occurred_at', 1, 2)}
           ${scope}${where}
         GROUP BY p.id, p.name
         ORDER BY SUM(sl.line_total) DESC

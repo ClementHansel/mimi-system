@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { ERR_NOT_FOUND, type Money, type Qty } from '@mimi/shared';
 import type { LocationScope } from '../../../common/scope/scope.service';
 import { assertLocationInScope, scopeClause } from '../scope.util';
+import { witaDateEquals } from '../../../kernel/time/wita-range.sql';
 
 export interface OutletTile {
   locationId: string;
@@ -220,7 +221,7 @@ export class OutletsService {
               COALESCE(SUM(total), 0)::text AS revenue
          FROM sales
         WHERE location_id = $1 AND status = 'completed'
-          AND (occurred_at AT TIME ZONE 'Asia/Makassar')::date = $2
+          AND ${witaDateEquals('occurred_at', 2)}
         GROUP BY 1
         ORDER BY 1`,
       [locationId, date],
@@ -244,7 +245,7 @@ export class OutletsService {
          JOIN sales s ON s.id = sl.sale_id
          JOIN products p ON p.id = sl.product_id
         WHERE s.location_id = $1 AND s.status = 'completed'
-          AND (s.occurred_at AT TIME ZONE 'Asia/Makassar')::date = $2
+          AND ${witaDateEquals('s.occurred_at', 2)}
         GROUP BY p.id, p.name
         ORDER BY SUM(sl.line_total) DESC
         LIMIT 10`,

@@ -32,6 +32,7 @@ import { allocateReceiptNumber } from '../doc-numbering.util';
 import { explodeRecipeUsage, findKitchenLineAreaId } from '../recipe-usage.util';
 import { resolveUserNames } from '../notify-eligible-users.util';
 import { mapSale, type SaleLineRow, type SalePaymentRow, type SaleRow } from './pos-mappers';
+import { witaDateEquals } from '../../../kernel/time/wita-range.sql';
 
 export interface SaleLineInput {
   productId: UUID;
@@ -356,7 +357,7 @@ export class PosSaleService {
     }
     if (query.date) {
       params.push(query.date);
-      where += ` AND (s.occurred_at AT TIME ZONE 'Asia/Makassar')::date = $${params.length}::date`;
+      where += ` AND ${witaDateEquals('s.occurred_at', params.length)}`;
     }
     if (query.status) {
       params.push(query.status);

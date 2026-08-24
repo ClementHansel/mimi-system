@@ -503,6 +503,33 @@ export const id = {
     },
   },
 
+  // Internal staff chat (direct + group), `/chat/internal`. Distinct from
+  // `chat.*`, which is the outbound WhatsApp inbox.
+  chatInternal: {
+    title: 'Obrolan Internal',
+    newChat: 'Obrolan Baru',
+    empty: 'Belum ada percakapan',
+    noMessages: 'Belum ada pesan',
+    noResults: 'Tidak ada hasil',
+    selectConversation: 'Pilih percakapan untuk membaca dan membalas',
+    unnamed: 'Tanpa nama',
+    memberCount: '{{count}} anggota',
+    modeDirect: 'Pesan Langsung',
+    modeGroup: 'Grup',
+    fieldGroupName: 'Nama Grup',
+    createGroup: 'Buat Grup',
+    searchColleague: 'Cari Kolega',
+    searchColleaguePlaceholder: 'Cari nama…',
+    selected: 'Dipilih',
+    manage: 'Kelola',
+    manageGroup: 'Kelola Grup',
+    members: 'Anggota',
+    addMember: 'Tambah Anggota',
+    roleAdmin: 'Admin',
+    onlyAdminCanManage: 'Hanya admin grup yang dapat mengubah nama dan anggota.',
+    leaveGroup: 'Keluar dari Grup',
+  },
+
   table: {
     empty: 'Belum ada data',
     loading: 'Memuat data…',

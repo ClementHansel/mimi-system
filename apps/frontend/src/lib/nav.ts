@@ -148,6 +148,16 @@ const CHAT_SECTION: NavSection = {
   id: 'pesan',
   labelKey: 'nav.section.pesan',
   items: [
+    // Staff-to-staff chat. Listed FIRST because it is the one everybody uses:
+    // the WhatsApp inbox below is for talking to suppliers and customers, and
+    // only some roles ever open it.
+    {
+      id: 'chat-internal',
+      labelKey: 'chatInternal.title',
+      href: '/chat/internal',
+      icon: MessageCircle,
+      permission: 'chat.read.own',
+    },
     {
       id: 'chat',
       labelKey: 'nav.chat',

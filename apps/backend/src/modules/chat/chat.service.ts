@@ -63,7 +63,8 @@ interface ConversationRow {
   unread_count: number;
 }
 
-interface MessageRow {
+/** Exported: `internal-chat.service.ts` (staff-to-staff chat, same physical table — see migration 243) reuses this shape and query verbatim rather than re-deriving it, so the two can never quietly diverge on what a message row looks like. */
+export interface MessageRow {
   id: string;
   conversation_id: string;
   direction: string;
@@ -81,7 +82,7 @@ const CONVERSATION_SELECT = `
     FROM chat_conversations c
 `;
 
-const MESSAGE_SELECT = `
+export const MESSAGE_SELECT = `
   SELECT m.id, m.conversation_id, m.direction, m.body, m.sender_user_id, u.name AS sender_name,
          m.delivery_status, m.read_at, m.occurred_at
     FROM chat_messages m
@@ -106,7 +107,7 @@ function mapConversation(r: ConversationRow): ChatConversation {
   };
 }
 
-function mapMessage(r: MessageRow): ChatMessage {
+export function mapMessage(r: MessageRow): ChatMessage {
   return {
     id: r.id as UUID,
     conversationId: r.conversation_id as UUID,

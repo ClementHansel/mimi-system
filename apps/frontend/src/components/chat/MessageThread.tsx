@@ -8,26 +8,39 @@ import { cn } from '@/lib/utils';
 import type { ChatMessage } from './lib/chat-api';
 
 /**
- * The message list plus composer, shared by the admin inbox and the staff
- * "chat with head office" screen — the two differ in which thread they load
- * and who may read it, not in how a conversation looks.
+ * The message list plus composer, shared by the admin inbox, the staff
+ * "chat with head office" screen, AND internal person-to-person/group chat
+ * — they differ in which thread they load and who may read it, not in how a
+ * conversation looks.
  *
  * DELIVERY STATE IS SHOWN, NOT ASSUMED. With `WA_ENABLED=false` every outbound
  * message stays `pending` forever, so a UI that drew a sent tick on submit
  * would tell every user their message had gone when nothing left the building.
  * Pending renders as a clock with a plain explanation; failed renders as a
  * warning. Only a status the SERVER reported as sent shows as sent.
+ *
+ * BUBBLE SIDE — `currentUserId`: the two callers above never pass it, and
+ * keep their EXACT original behaviour (alignment by `direction`: outbound =
+ * "us", right-aligned). `direction` cannot answer "is this MY message" for
+ * internal chat: every internal message is stored `direction: 'outbound'`
+ * (there is no "us vs the contact" duality — see migration 243's header),
+ * and a GROUP has more than two sides anyway. When `currentUserId` is
+ * supplied, alignment switches to `senderUserId === currentUserId` instead,
+ * and the sender's name is shown on any bubble that is not the viewer's own
+ * (not only on "outbound" ones) — the label a group chat actually needs.
  */
 export function MessageThread({
   messages,
   onSend,
   disabled = false,
   emptyTitle,
+  currentUserId,
 }: {
   messages: ChatMessage[];
   onSend: (body: string) => Promise<void>;
   disabled?: boolean;
   emptyTitle: string;
+  currentUserId?: string;
 }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState('');
@@ -60,44 +73,60 @@ export function MessageThread({
           <EmptyState title={emptyTitle} />
         ) : (
           <ul className="flex flex-col gap-2">
-            {messages.map((m) => (
-              <li
-                key={m.id}
-                className={cn('flex', m.direction === 'outbound' ? 'justify-end' : 'justify-start')}
-              >
-                <div
-                  className={cn(
-                    'max-w-[80%] rounded-lg px-3 py-2',
-                    m.direction === 'outbound'
-                      ? 'bg-brand-500 text-white'
-                      : 'bg-surface-sunken text-text-primary',
-                  )}
-                >
-                  <p className="whitespace-pre-wrap break-words text-sm">{m.body}</p>
-                  <p
+            {messages.map((m) => {
+              // See the header comment: `currentUserId` supplied => sender
+              // comparison; omitted => the two WhatsApp callers' original
+              // `direction`-based behaviour, unchanged.
+              const isMine =
+                currentUserId !== undefined
+                  ? m.senderUserId === currentUserId
+                  : m.direction === 'outbound';
+              // Header-position label is INTERNAL-CHAT-ONLY (currentUserId
+              // supplied) and only on a bubble that is not the viewer's own
+              // — the "who said this" a group needs. The two legacy callers
+              // (currentUserId omitted) never show this; their sender name
+              // stays exactly where it always was, inline in the footer.
+              const showSenderNameAboveBubble =
+                currentUserId !== undefined && !isMine && m.senderName;
+              return (
+                <li key={m.id} className={cn('flex', isMine ? 'justify-end' : 'justify-start')}>
+                  <div
                     className={cn(
-                      'mt-1 flex items-center gap-1 text-[11px]',
-                      m.direction === 'outbound' ? 'text-white/75' : 'text-text-muted',
+                      'max-w-[80%] rounded-lg px-3 py-2',
+                      isMine ? 'bg-brand-500 text-white' : 'bg-surface-sunken text-text-primary',
                     )}
                   >
-                    <span>{fmtTime(m.occurredAt)}</span>
-                    {m.senderName && m.direction === 'outbound' && <span>· {m.senderName}</span>}
-                    {m.direction === 'outbound' && m.deliveryStatus === 'pending' && (
-                      <span className="inline-flex items-center gap-0.5">
-                        · <Clock className="size-3" aria-hidden />
-                        {t('chat.status.pending')}
-                      </span>
+                    {showSenderNameAboveBubble && (
+                      <p className="mb-0.5 text-xs font-semibold text-text-muted">{m.senderName}</p>
                     )}
-                    {m.direction === 'outbound' && m.deliveryStatus === 'failed' && (
-                      <span className="inline-flex items-center gap-0.5">
-                        · <AlertTriangle className="size-3" aria-hidden />
-                        {t('chat.status.failed')}
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </li>
-            ))}
+                    <p className="whitespace-pre-wrap break-words text-sm">{m.body}</p>
+                    <p
+                      className={cn(
+                        'mt-1 flex items-center gap-1 text-[11px]',
+                        isMine ? 'text-white/75' : 'text-text-muted',
+                      )}
+                    >
+                      <span>{fmtTime(m.occurredAt)}</span>
+                      {isMine && m.senderName && currentUserId === undefined && (
+                        <span>· {m.senderName}</span>
+                      )}
+                      {isMine && m.deliveryStatus === 'pending' && (
+                        <span className="inline-flex items-center gap-0.5">
+                          · <Clock className="size-3" aria-hidden />
+                          {t('chat.status.pending')}
+                        </span>
+                      )}
+                      {isMine && m.deliveryStatus === 'failed' && (
+                        <span className="inline-flex items-center gap-0.5">
+                          · <AlertTriangle className="size-3" aria-hidden />
+                          {t('chat.status.failed')}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
         <div ref={bottomRef} />

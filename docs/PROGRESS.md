@@ -1,7 +1,23 @@
 # Mimi Chicken OS — Progress Tracker
 
 **Last updated:** 2026-08-23 — **B-11 CLOSED** (all four outlet flows now project server-side), on top of B-15, B-17, B-13, B-08, D-22b, D-27, D-30. Everything verified ON THE SERVER (Linux) before merge and deployed. Backend **899/899**, frontend **515/515**, shared **257**.
-**Maintenance rule:** this file is updated by the coordinator **every time a task or wave completes**, and whenever a blocker opens, changes state, or closes.
+
+> ## ⛔ FROZEN 2026-08-24 — Linear is now authoritative
+>
+> This file is a **historical record**. Do not update it. Every item below was migrated to
+> Linear team **Mimi Chicken (`MA`)** — 128 issues: 66 wave tasks, 20 blockers, 30
+> technical-debt items, 6 risks, 6 owner-blocked. Track and update work there.
+>
+> - Conventions, branch naming and the QA flow: [`docs/LINEAR.md`](./LINEAR.md)
+> - Re-run the extraction: `node scripts/linear-import-extract.mjs <out.csv>`
+>
+> Each Linear issue names the section and line it came from, so anything here can be traced
+> forward. **State recorded below is state as of the freeze** — in particular, the 76 items
+> marked done were marked so from this document, not from a verification run. Linear's
+> `code-fixed ≠ closable` rule applies to all of them.
+>
+> _Superseded maintenance rule: "this file is updated by the coordinator every time a task or
+> wave completes, and whenever a blocker opens, changes state, or closes."_
 
 Legend: `[x]` done & verified by coordinator · `[~]` in flight · `[ ]` not started · `[!]` blocked
 
@@ -141,6 +157,57 @@ fiction in the evidence trail.
 
 **Not yet applied to the demo box** — the dry run is clean against production data (207s, same
 volumes) and a pre-seed backup is taken, but the write itself is the owner's call.
+
+### 🟢 2026-08-24/25 — a long build session, and one bug class that kept reappearing
+
+Forty-one commits. The features are listed below, but the finding worth reading first is the
+**pattern**, because it will keep costing time until someone sweeps for it deliberately.
+
+**FIVE capabilities were found already built, already permitted, and simply unreachable.** Not one of
+them needed new business logic:
+
+| What                                     | Why it looked missing                                                                                                                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Driver's Surat Jalan list                | `my-jobs` resolves through the `drivers` table, so it is permanently empty for an owner — who was the person testing it                                                                              |
+| Gudang's eight areas                     | A tab strip inside one URL: nothing linkable, bookmarkable, or reachable by the back button                                                                                                          |
+| Gudang raising a PO                      | `kepala_gudang` holds `purchasing.read` + `pr.create` + `po.create`; Pembelian sat in the office sidebar only, behind a comment asserting it was "office work"                                       |
+| Reordering a route                       | `PUT /surat-jalan/:id/route` existed, permutation-validated and two-phase renumbered. No screen called it                                                                                            |
+| **Every warehouse panel, for the owner** | `Me.locations` is `[]` for central roles (RLS scopes them instead). The hook read the warehouse out of that array and nowhere else, so "no location rows" and "no access" resolved to the same thing |
+
+Every one is an authorisation fact and a UI assumption disagreeing, with the UI's version winning
+silently. A cross-check of role grants against what the navigation actually gates on also surfaced
+`inventory.*` held by owner/superadmin/supervisor with no office screen to spend it on — now the
+dashboard's Inventaris tab. **That sweep should be repeated whenever permissions change.**
+
+**Shipped and verified on production:**
+
+- Driver: live routes seeded (`seed-history --today`), map pins that open Google Maps/Waze, sticky
+  map beside the stop list, tap-a-stop-to-focus-its-pin, **Lewati Dulu** (skip) and photo proof on a
+  failed drop.
+- Dispatcher: `/delivery/assign` — driver, truck and drag-and-drop drop order.
+- Gudang: eight tabs became routed sidebar entries; `/warehouse` became a real dashboard; Pembelian
+  reachable; owner can now open every panel.
+- Dashboard: chain-wide **Inventaris** tab, filterable to any outlet, gudang or office.
+- **CSV export** with a formula-injection guard (outlet names are user-editable, so `=cmd|…` in a name
+  becomes a live formula in Excel — OWASP CSV injection, not hypothetical here).
+- **Bulk import** (`/admin/import`) with a schema-derived template and a preview that writes nothing.
+- **Internal staff chat** — direct + group, membership-scoped RLS, group admin rules.
+- Locations: lat/lng range checks, (0,0) rejected, `code` immutable, `office` type added. A wrong
+  coordinate does not look like bad master data — it looks like a whole branch unable to clock in.
+
+**Rules that were enforced on one write path only.** "One truck type per driver per day" was added to
+`create()` and not `update()`, so it was bypassable by creating with a throwaway driver and PATCHing
+the real one in. Worth checking the other invariants for the same shape.
+
+**Deploys.** `scripts/deploy.sh` now pins the correct compose overlay (`vps.yml`, not `prod.yml`),
+retains `:previous` images for rollback, verifies BOTH public entrances, and self-heals compose's
+`<hash>_<name>` rename conflict. It took five revisions and caused three outages before it stopped
+causing them — twice because a plausible-sounding flag was added without checking it against how this
+box is actually wired.
+
+**Still open:** PDF export, the NFR-01 perf gate (dashboard/overview is **1.19s single-user**,
+dominated by a COGS query that full-scans 473k `sale_lines`), and the `products` entity of the
+importer, which is blocked on another workstream's uncommitted `categoryId` migration.
 
 ### C. Known-incomplete, deliberately
 

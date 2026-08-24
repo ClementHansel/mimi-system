@@ -26,30 +26,30 @@ services:
     container_name: mimi-traefik
     restart: unless-stopped
     command:
-      - "--api.insecure=false"
-      - "--api.dashboard=false"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=mimi-network"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?ACME_EMAIL is required}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      - "--log.level=WARN"
-      - "--accesslog=false"
+      - '--api.insecure=false'
+      - '--api.dashboard=false'
+      - '--providers.docker=true'
+      - '--providers.docker.exposedbydefault=false'
+      - '--providers.docker.network=mimi-network'
+      - '--entrypoints.web.address=:80'
+      - '--entrypoints.websecure.address=:443'
+      - '--entrypoints.web.http.redirections.entrypoint.to=websecure'
+      - '--entrypoints.web.http.redirections.entrypoint.scheme=https'
+      - '--entrypoints.web.http.redirections.entrypoint.permanent=true'
+      - '--certificatesresolvers.letsencrypt.acme.tlschallenge=true'
+      - '--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?ACME_EMAIL is required}'
+      - '--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json'
+      - '--log.level=WARN'
+      - '--accesslog=false'
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "traefik_certs:/letsencrypt"
-      - "./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro"
+      - '/var/run/docker.sock:/var/run/docker.sock:ro'
+      - 'traefik_certs:/letsencrypt'
+      - './infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro'
     healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      test: ['CMD', 'traefik', 'healthcheck', '--ping']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -65,29 +65,59 @@ services:
       WA_ENABLED: ${WA_ENABLED:-false}
       # Never leave this open in prod (main.ts allows any origin when unset).
       CORS_ORIGIN: https://${DOMAIN}
+      # The origin a BROWSER OR PHONE uses for presigned upload/download URLs.
+      #
+      # Without it the backend signs URLs for `http://minio:9000` — the internal
+      # name — and every photo upload fails while `presign` still answers 200.
+      # That is not hypothetical: it is exactly what happened on the demo box,
+      # where attendance selfies (mandatory) and waste photos (mandatory) were
+      # impossible for weeks behind a healthy-looking API.
+      #
+      # It must be an ORIGIN, not a path under the app's own host: SigV4 signs
+      # the canonical path, so a proxy that strips a `/storage` prefix
+      # invalidates every URL it forwards. Hence its own subdomain.
+      S3_PUBLIC_ENDPOINT: https://storage.${DOMAIN}
     volumes: []
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.mimi-backend.rule=Host(`api.${DOMAIN}`)"
-      - "traefik.http.routers.mimi-backend.entrypoints=websecure"
-      - "traefik.http.routers.mimi-backend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.mimi-backend.loadbalancer.server.port=4000"
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.mimi-backend.rule=Host(`api.${DOMAIN}`)'
+      - 'traefik.http.routers.mimi-backend.entrypoints=websecure'
+      - 'traefik.http.routers.mimi-backend.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.mimi-backend.loadbalancer.server.port=4000'
+
+  # Object storage, on its own hostname. Presigned URLs point here.
+  #
+  # Traefik forwards the original Host header, which is what keeps the SigV4
+  # signature valid — the same property that had to be forced by hand with
+  # `$http_host` on the demo box's nginx. Do not add a StripPrefix middleware
+  # here for the same reason: the signature covers the path.
+  #
+  # Only the S3 API (9000) is published. The MinIO console (9001) deliberately
+  # stays on 127.0.0.1 — it is an admin UI with full bucket access and has no
+  # business on a public hostname.
+  minio:
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.mimi-storage.rule=Host(`storage.${DOMAIN}`)'
+      - 'traefik.http.routers.mimi-storage.entrypoints=websecure'
+      - 'traefik.http.routers.mimi-storage.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.mimi-storage.loadbalancer.server.port=9000'
 
   frontend:
     build:
       target: production
     environment:
       NODE_ENV: production
-      HOSTNAME: "0.0.0.0"
-      PORT: "3000"
+      HOSTNAME: '0.0.0.0'
+      PORT: '3000'
       NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
     volumes: []
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.mimi-frontend.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.mimi-frontend.entrypoints=websecure"
-      - "traefik.http.routers.mimi-frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.mimi-frontend.loadbalancer.server.port=3000"
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.mimi-frontend.rule=Host(`${DOMAIN}`)'
+      - 'traefik.http.routers.mimi-frontend.entrypoints=websecure'
+      - 'traefik.http.routers.mimi-frontend.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.mimi-frontend.loadbalancer.server.port=3000'
 
   n8n:
     environment:
@@ -96,11 +126,11 @@ services:
       WEBHOOK_URL: https://n8n.${DOMAIN}/
       N8N_EDITOR_BASE_URL: https://n8n.${DOMAIN}/
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.mimi-n8n.rule=Host(`n8n.${DOMAIN}`)"
-      - "traefik.http.routers.mimi-n8n.entrypoints=websecure"
-      - "traefik.http.routers.mimi-n8n.tls.certresolver=letsencrypt"
-      - "traefik.http.services.mimi-n8n.loadbalancer.server.port=5678"
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.mimi-n8n.rule=Host(`n8n.${DOMAIN}`)'
+      - 'traefik.http.routers.mimi-n8n.entrypoints=websecure'
+      - 'traefik.http.routers.mimi-n8n.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.mimi-n8n.loadbalancer.server.port=5678'
 
 volumes:
   traefik_certs:

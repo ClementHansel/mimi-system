@@ -49,12 +49,13 @@ export function MyChatPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4">
+    // Fills the viewport instead of a fixed 560px card floating in a tall page.
+    <div className="flex h-[calc(100vh-4rem)] flex-col gap-3 p-4">
       <h1 className="font-display text-2xl font-semibold text-text-primary">{t('chat.myTitle')}</h1>
       <p className="rounded-lg bg-warning-50 p-2.5 text-xs text-warning-800">
         {t('chat.deliveryDisabledNotice')}
       </p>
-      <Card className="flex h-[560px] flex-col p-0">
+      <Card className="flex min-h-0 flex-1 flex-col p-0">
         {loading ? (
           <EmptyState title={t('table.loading')} />
         ) : failed ? (

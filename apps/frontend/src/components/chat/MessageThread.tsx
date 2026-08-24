@@ -119,13 +119,22 @@ export function MessageThread({
           disabled={disabled || sending}
           placeholder={t('chat.composerPlaceholder')}
           aria-label={t('chat.composerPlaceholder')}
-          className="flex-1"
+          // `wrapperClassName`, not `className`. `Textarea` renders a wrapper
+          // <div> around the <textarea> (for the label and error slots), and the
+          // wrapper is what sits in this flex row — so `flex-1` on the inner
+          // element grew nothing and left the composer at its intrinsic width:
+          // a ~330px box with its own scrollbar and a placeholder clipped
+          // mid-sentence, next to a mostly empty message pane.
+          wrapperClassName="flex-1"
+          className="resize-none"
         />
         <Button
           onClick={() => void submit()}
           loading={sending}
           disabled={disabled || draft.trim() === ''}
           leftIcon={<Send className="size-4" />}
+          // Never squeezed by a long draft; the label must stay readable.
+          className="flex-none"
         >
           {t('chat.send')}
         </Button>

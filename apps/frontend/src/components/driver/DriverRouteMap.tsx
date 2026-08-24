@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
 import { useI18n } from '@/lib/i18n';
 import type { Drop } from './lib/types';
@@ -73,6 +73,19 @@ export function DriverRouteMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const layersRef = useRef<{ remove: () => void }[]>([]);
 
+  // Set once the Leaflet map instance exists.
+  //
+  // THE BUG THIS FIXES: both effects run on mount, in order. The init effect
+  // below is async — it awaits `import('leaflet')` — so it returns to React
+  // having created NOTHING, and the marker effect then runs immediately, reads
+  // `mapRef.current === null` and bails. `mapRef` is a ref, so filling it in
+  // later triggers no re-render; nothing ever re-ran the marker effect. The
+  // result was a map that loaded its tiles perfectly and never drew a single
+  // pin, with no console error, on data that was correct the whole way through.
+  //
+  // A ref cannot express "this is ready" to React. State can.
+  const [mapReady, setMapReady] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -90,6 +103,7 @@ export function DriverRouteMap({
         scrollWheelZoom: false,
       }).setView(FALLBACK_CENTER, 11);
       L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 18 }).addTo(mapRef.current);
+      setMapReady(true);
     })();
 
     return () => {
@@ -97,6 +111,7 @@ export function DriverRouteMap({
       mapRef.current?.remove();
       mapRef.current = null;
       layersRef.current = [];
+      setMapReady(false);
     };
   }, []);
 
@@ -141,7 +156,9 @@ export function DriverRouteMap({
         { padding: [36, 36], maxZoom: 14 },
       );
     })();
-  }, [drops, nextDropId]);
+    // `mapReady` is the load-bearing dependency: it is what re-runs this effect
+    // after the async init above finally produces a map.
+  }, [drops, nextDropId, mapReady]);
 
   const locatedCount = drops.filter(hasCoords).length;
 

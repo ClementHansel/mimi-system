@@ -39,8 +39,19 @@ cp .env.prod.example .env            # fill EVERY CHANGE_ME
 # set DOMAIN and ACME_EMAIL; generate real secrets:
 #   openssl rand -base64 36     (per password/secret — do not reuse one)
 
-docker compose -p mimi -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+./scripts/deploy.sh
 ```
+
+**Use the script, not the compose command.** Both compose files, always: the
+base `docker-compose.yml` on its own is the DEVELOPMENT variant. Building with
+it alone produces an image with no Next.js build output, and because the build
+overwrites the `:latest` tag that production runs, doing so takes the site down
+with no image to roll back to. That is not hypothetical — it happened on
+2026-08-24. `scripts/deploy.sh` retains the current images as `:previous`
+BEFORE building, migrates before the new code starts, and verifies the public
+URL afterwards; `./scripts/deploy.sh --rollback` restores in seconds.
+
+````
 
 Certificates take up to a minute per hostname on first boot. `docker logs
 mimi-traefik | grep -i acme` tells you where it is.
@@ -53,7 +64,7 @@ docker run --rm --network mimi_mimi-network \
   -e DATABASE_MIGRATION_URL="$DATABASE_MIGRATION_URL" \
   -e DATABASE_URL="$DATABASE_URL" \
   node:22-alpine sh -c 'corepack enable && corepack prepare pnpm@9.15.4 --activate && pnpm migrate'
-```
+````
 
 Missing this step once meant an RLS fix sat unapplied while the code that assumed
 it shipped — the stack came up "healthy" and quietly behaved as though the fix

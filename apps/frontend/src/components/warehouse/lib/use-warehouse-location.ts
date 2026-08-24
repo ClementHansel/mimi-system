@@ -61,10 +61,17 @@ export function useWarehouseLocation(): {
     let cancelled = false;
     setLoading(true);
     api
-      .get<SessionLocation[] | { data: SessionLocation[] }>('/locations?active=true')
+      // `{ rows }` — verified against the running API, not assumed. My first
+      // attempt guessed `{ data }`, got an empty list every time, and shipped a
+      // fix that changed nothing: the panels still told the owner they had no
+      // warehouse. `Array.isArray` and `data` are kept as fallbacks so this does
+      // not break if the envelope is ever normalised.
+      .get<SessionLocation[] | { rows?: SessionLocation[]; data?: SessionLocation[] }>(
+        '/locations?active=true',
+      )
       .then((res) => {
         if (cancelled) return;
-        const rows = Array.isArray(res) ? res : (res.data ?? []);
+        const rows = Array.isArray(res) ? res : (res.rows ?? res.data ?? []);
         setFetched(rows.find((l) => l.type === 'warehouse') ?? null);
       })
       .catch(() => {

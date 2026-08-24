@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { SyncEntity, type Paginated, type UUID } from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
@@ -25,7 +25,7 @@ export interface Location {
   id: UUID;
   code: string;
   name: string;
-  type: 'warehouse' | 'outlet';
+  type: 'warehouse' | 'outlet' | 'office';
   city: string;
   address: string | null;
   phone: string | null;
@@ -71,7 +71,7 @@ export class LocationService {
       id: row.id,
       code: row.code,
       name: row.name,
-      type: row.type as 'warehouse' | 'outlet',
+      type: row.type as 'warehouse' | 'outlet' | 'office',
       city: row.city,
       address: row.address,
       phone: row.phone,
@@ -188,13 +188,28 @@ export class LocationService {
     actorUserId: string,
   ): Promise<Location> {
     return withWrite(client, async () => {
+      // `code` is IMMUTABLE once created (CONTRACTS.md §4.3): it appears in
+      // Surat Jalan and receipt document numbers, so changing it after the
+      // fact would orphan every already-printed document's reference. The
+      // field stays on `UpdateLocationDto` (whitelisted) so an edit form that
+      // echoes the location's own unchanged code back in its PATCH body — the
+      // normal case — is not rejected outright; only an ACTUAL change is.
+      if (dto.code !== undefined) {
+        const current = await this.getById(client, id);
+        if (dto.code !== current.code) {
+          throw new BadRequestException({
+            code: 'ERR_LOCATION_CODE_IMMUTABLE',
+            message: 'Location code cannot be changed after creation',
+          });
+        }
+      }
+
       const sets: string[] = [];
       const params: unknown[] = [];
       const set = (col: string, val: unknown) => {
         params.push(val);
         sets.push(`${col} = $${params.length}`);
       };
-      if (dto.code !== undefined) set('code', dto.code);
       if (dto.name !== undefined) set('name', dto.name);
       if (dto.type !== undefined) set('type', dto.type);
       if (dto.city !== undefined) set('city', dto.city);

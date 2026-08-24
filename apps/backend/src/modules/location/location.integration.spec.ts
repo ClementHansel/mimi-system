@@ -15,6 +15,8 @@
  *   3. cleans up whatever it created via `cleanupLocations()` (OWNER pool).
  */
 import { afterAll, describe, expect, it } from 'vitest';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { can, LocationType, RoleKey, StorageAreaType } from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
@@ -22,6 +24,7 @@ import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.ser
 import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
 import { LocationService } from './location.service';
 import { StorageAreaService } from './storage-area.service';
+import { CreateLocationDto } from './dto/location.dto';
 import {
   cleanupLocations,
   closePool,
@@ -226,6 +229,129 @@ describe('LocationService (live database)', () => {
         storageAreaService.deactivate(client, location.id, area.id, ACTOR),
       );
       expect(result.deactivated).toBe(true);
+    });
+  });
+
+  describe('coordinate validation (CreateLocationDto) — geofence data quality', () => {
+    /**
+     * These validate the DTO the way `ValidationPipe` actually runs it
+     * (`whitelist: true`, per `main.ts`) — not the service, which never
+     * re-validates its own input. `LocationService.create()` trusts whatever
+     * a `CreateLocationDto` instance carries, so a bad coordinate is caught
+     * here, at the HTTP boundary, before it ever reaches SQL.
+     */
+    const base = {
+      code: 'VALDTO1',
+      name: 'DTO Validation Test',
+      type: LocationType.OUTLET,
+      city: 'Balikpapan',
+    };
+
+    it('accepts valid, non-zero coordinates', async () => {
+      const dto = plainToInstance(CreateLocationDto, {
+        ...base,
+        latitude: '-1.265000',
+        longitude: '116.831000',
+      });
+      expect(await validate(dto, { whitelist: true })).toHaveLength(0);
+    });
+
+    it('rejects the (0, 0) null-island pair', async () => {
+      const dto = plainToInstance(CreateLocationDto, {
+        ...base,
+        latitude: '0',
+        longitude: '0',
+      });
+      const errors = await validate(dto, { whitelist: true });
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.some((e) => e.constraints && 'notNullIsland' in e.constraints)).toBe(true);
+    });
+
+    it('rejects an out-of-range latitude', async () => {
+      const dto = plainToInstance(CreateLocationDto, {
+        ...base,
+        latitude: '91.000000',
+        longitude: '116.831000',
+      });
+      const errors = await validate(dto, { whitelist: true });
+      expect(errors.some((e) => e.property === 'latitude')).toBe(true);
+    });
+
+    it('rejects an out-of-range longitude', async () => {
+      const dto = plainToInstance(CreateLocationDto, {
+        ...base,
+        latitude: '-1.265000',
+        longitude: '181.000000',
+      });
+      const errors = await validate(dto, { whitelist: true });
+      expect(errors.some((e) => e.property === 'longitude')).toBe(true);
+    });
+
+    it('rejects a lowercase code', async () => {
+      const dto = plainToInstance(CreateLocationDto, { ...base, code: 'lowercase' });
+      const errors = await validate(dto, { whitelist: true });
+      expect(errors.some((e) => e.property === 'code')).toBe(true);
+    });
+  });
+
+  describe('create() with valid coordinates (live database)', () => {
+    it('persists latitude/longitude exactly as given', async () => {
+      const created = await withRollback((client) =>
+        locationService.create(
+          client,
+          {
+            code: nextCode('LOC'),
+            name: 'Kantor Uji',
+            type: LocationType.OUTLET,
+            city: 'Balikpapan',
+            latitude: '-1.265000',
+            longitude: '116.831000',
+          },
+          ACTOR,
+        ),
+      );
+      createdLocationIds.push(created.id);
+      expect(created.latitude).toBe('-1.265000');
+      expect(created.longitude).toBe('116.831000');
+    });
+  });
+
+  describe('code immutability on update', () => {
+    it('rejects a PATCH that changes code, and leaves the stored code untouched', async () => {
+      const created = await withRollback((client) =>
+        locationService.create(
+          client,
+          { code: nextCode('LOC'), name: 'Kode Tetap', type: LocationType.OUTLET, city: 'Tarakan' },
+          ACTOR,
+        ),
+      );
+      createdLocationIds.push(created.id);
+
+      await expect(
+        withRollback((client) =>
+          locationService.update(client, created.id, { code: 'SOMETHING-ELSE' }, ACTOR),
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ERR_LOCATION_CODE_IMMUTABLE' } });
+
+      const fetched = await withRollback((client) => locationService.getById(client, created.id));
+      expect(fetched.code).toBe(created.code);
+    });
+
+    it('accepts a PATCH that echoes the SAME code back (the admin edit-form case)', async () => {
+      const created = await withRollback((client) =>
+        locationService.create(
+          client,
+          { code: nextCode('LOC'), name: 'Sebelum', type: LocationType.OUTLET, city: 'Tarakan' },
+          ACTOR,
+        ),
+      );
+      createdLocationIds.push(created.id);
+
+      const updated = await withRollback((client) =>
+        locationService.update(client, created.id, { code: created.code, name: 'Sesudah' }, ACTOR),
+      );
+      expect(updated.code).toBe(created.code);
+      expect(updated.name).toBe('Sesudah');
     });
   });
 

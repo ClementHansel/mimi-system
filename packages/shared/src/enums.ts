@@ -20,6 +20,10 @@
 export enum LocationType {
   WAREHOUSE = 'warehouse',
   OUTLET = 'outlet',
+  // Added migration 242 (2026-08-24): back-office sites — not a gudang, not a
+  // retail outlet, but still a `locations` row because attendance geofencing
+  // (FR-HR-01) keys off this table for every employee regardless of site kind.
+  OFFICE = 'office',
 }
 
 /** D-15: typed storage areas inside a location. Stock is keyed by (location, area, item). */
@@ -736,6 +740,7 @@ export enum SyncEntity {
   UNITS = 'units',
   UNIT_CONVERSIONS = 'unit_conversions',
   ITEMS = 'items',
+  PRODUCT_CATEGORIES = 'product_categories',
   PRODUCTS = 'products',
   RECIPES = 'recipes',
   // block 020–029

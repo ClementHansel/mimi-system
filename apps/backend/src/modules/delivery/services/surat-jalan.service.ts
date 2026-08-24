@@ -25,6 +25,7 @@ import {
   type SuratJalan,
   type UUID,
 } from '@mimi/shared';
+import { formatDateOnly } from '../../../common/date-only.util';
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.service';
 import type { PostMovementInput } from '../../../kernel/stock-ledger/stock-ledger.types';
@@ -232,45 +233,7 @@ export class SuratJalanService {
           message: `Driver ${dto.driverId} not found or inactive`,
         });
 
-      // ONE TRUCK TYPE PER DRIVER PER DAY.
-      //
-      // Owner, 2026-08-24: "a driver can only do either frozen + chilled or dry
-      // delivery, because the truck type is different — impossible to be both at
-      // the same time for one driver."
-      //
-      // The vehicle check above already stops a frozen load going on a truck
-      // with no freezer. It cannot stop the thing that actually happens: the
-      // same driver being given a frozen run at 06:00 and a dry run at 09:00.
-      // Each Surat Jalan is individually valid and the pair is impossible,
-      // because there is one person and two trucks.
-      //
-      // Checked against the PLANNED DATE rather than a time window: routes are
-      // planned a day at a time, and a driver who has taken the freezer truck
-      // out has it for the day.
-      //
-      // Cancelled routes are excluded — a plan that was called off does not
-      // reserve the driver.
-      const clashRes = await client.query<{ sj_number: string; shipment_key: string }>(
-        `SELECT sj.sj_number, st.key AS shipment_key
-           FROM surat_jalan sj
-           JOIN shipment_types st ON st.id = sj.shipment_type_id
-          WHERE sj.driver_id = $1
-            AND sj.planned_date = $2::date
-            AND sj.status <> 'cancelled'
-            AND st.key <> $3
-          LIMIT 1`,
-        [dto.driverId, dto.plannedDate, dto.shipmentType],
-      );
-      const clash = clashRes.rows[0];
-      if (clash) {
-        throw new BadRequestException({
-          code: ERR_VALIDATION,
-          message:
-            `Driver ${dto.driverId} already has ${clash.sj_number} (${clash.shipment_key}) on ` +
-            `${dto.plannedDate}. One driver takes ONE truck type per day — a '${dto.shipmentType}' ` +
-            `run needs a different vehicle, so assign a different driver or move the other route.`,
-        });
-      }
+      await this.assertNoTruckTypeClash(client, dto.driverId, dto.plannedDate, dto.shipmentType);
 
       const shipmentTypeRes = await client.query<{ id: string }>(
         `SELECT id FROM shipment_types WHERE key = $1`,
@@ -418,6 +381,24 @@ export class SuratJalanService {
             code: 'ERR_NOT_FOUND',
             message: `Driver ${dto.driverId} not found or inactive`,
           });
+      }
+
+      // Reassigning the driver (or moving the planned date) is exactly how
+      // someone would otherwise dodge the one-truck-type-per-driver-per-day
+      // rule `create()` enforces at issue time — e.g. give an SJ a throwaway
+      // driver at creation, then PATCH the real driver in afterwards. Re-run
+      // the same check here whenever either input that the rule depends on
+      // is actually changing, using the OTHER input's post-update value
+      // (falling back to the header's current value when only one of the two
+      // is in this PATCH), and excluding this SJ itself from its own clash.
+      if (dto.driverId !== undefined || dto.plannedDate !== undefined) {
+        await this.assertNoTruckTypeClash(
+          client,
+          dto.driverId ?? header.driver_id,
+          dto.plannedDate ?? formatDateOnly(header.planned_date),
+          header.shipment_type,
+          id,
+        );
       }
 
       const sets: string[] = [];
@@ -839,6 +820,55 @@ export class SuratJalanService {
           });
         }
       }
+    }
+  }
+
+  /**
+   * ONE TRUCK TYPE PER DRIVER PER DAY.
+   *
+   * Owner, 2026-08-24: "a driver can only do either frozen + chilled or dry
+   * delivery, because the truck type is different — impossible to be both at
+   * the same time for one driver."
+   *
+   * Shared by `create()` and `update()` (the dispatcher reassignment path).
+   * `update()` is exactly how someone would otherwise dodge this rule: give
+   * an SJ a throwaway driver at creation, then PATCH the real driver in
+   * afterwards. `excludeSjId` lets `update()` re-check the SAME SJ's own
+   * driver/date pair without the row clashing against itself.
+   *
+   * Checked against the PLANNED DATE rather than a time window: routes are
+   * planned a day at a time, and a driver who has taken the freezer truck
+   * out has it for the day. Cancelled routes are excluded — a plan that was
+   * called off does not reserve the driver.
+   */
+  private async assertNoTruckTypeClash(
+    client: PoolClient,
+    driverId: UUID,
+    plannedDate: string,
+    shipmentType: 'frozen' | 'dry',
+    excludeSjId?: UUID,
+  ): Promise<void> {
+    const clashRes = await client.query<{ sj_number: string; shipment_key: string }>(
+      `SELECT sj.sj_number, st.key AS shipment_key
+         FROM surat_jalan sj
+         JOIN shipment_types st ON st.id = sj.shipment_type_id
+        WHERE sj.driver_id = $1
+          AND sj.planned_date = $2::date
+          AND sj.status <> 'cancelled'
+          AND st.key <> $3
+          AND ($4::uuid IS NULL OR sj.id <> $4::uuid)
+        LIMIT 1`,
+      [driverId, plannedDate, shipmentType, excludeSjId ?? null],
+    );
+    const clash = clashRes.rows[0];
+    if (clash) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message:
+          `Driver ${driverId} already has ${clash.sj_number} (${clash.shipment_key}) on ` +
+          `${plannedDate}. One driver takes ONE truck type per day — a '${shipmentType}' ` +
+          `run needs a different vehicle, so assign a different driver or move the other route.`,
+      });
     }
   }
 

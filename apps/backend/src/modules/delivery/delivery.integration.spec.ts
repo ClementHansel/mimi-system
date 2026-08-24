@@ -21,7 +21,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
-import { MovementType, RoleKey, SyncOriginType } from '@mimi/shared';
+import { ERR_VALIDATION, MovementType, RoleKey, SyncOriginType } from '@mimi/shared';
 import { formatUuidV7, type SyncPushBatch } from '@mimi/sync-protocol';
 
 import { EventBus } from '../../kernel/events/event-bus.service';
@@ -47,6 +47,7 @@ import { SuratJalanService } from './services/surat-jalan.service';
 import { DropService } from './services/drop.service';
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { DeliverySyncProjector } from './services/delivery-sync-projector.service';
+import { RouteService } from './services/route.service';
 
 import {
   closePool,
@@ -112,6 +113,7 @@ describe('M10 delivery — live DB integration', () => {
   );
   const dropService = new DropService(syncEmit, stockLedger, eventBus, coldChain, replenishment);
   const goodsReceiptService = new GoodsReceiptService(stockLedger, syncEmit);
+  const routeService = new RouteService();
 
   beforeAll(async () => {
     fixtures = await loadFixtures();
@@ -1214,6 +1216,301 @@ describe('M10 delivery — live DB integration', () => {
         [sjId],
       );
       expect(tempLogRow2.rows[0]!.logged_at.getTime()).toBe(defensibleAt); // unchanged by the replay
+    });
+  });
+
+  // ── Dispatch screen ticket: reorder drops + reassign driver/vehicle ──────
+
+  describe('RouteService.planRoute — drop reordering', () => {
+    // A far-future, fixed planned date — NOT `new Date()` (today). This suite runs against a shared dev
+    // DB (other tickets' agents run their own integration passes against the same instance concurrently),
+    // and "today" is exactly the date the FR-LOG-02/full-flow tests above already exercise for this same
+    // `fixtures.driverId` — a genuinely unrelated leftover 'frozen' SJ for today was found sitting in the
+    // DB while writing this suite (a prior run that did not clean up), which the one-truck-type-per-day
+    // rule correctly refused to let a 'dry' fixture SJ collide with. Picking a date nobody else plans
+    // around sidesteps that class of flake entirely rather than trying to out-guess what else is dated
+    // "today".
+    const ROUTE_TEST_DATE = '2031-02-02';
+
+    /** Builds a fresh 3-drop dry SJ for one test, torn down after it. Three
+     * drops (not two) so a reorder is a genuine permutation, not just a swap. */
+    async function makeThreeDropSj(): Promise<{ sjId: string; dropIds: string[] }> {
+      const sj = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'dry' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.dryVehicleId,
+            plannedDate: ROUTE_TEST_DATE,
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.dryItemId, qty: '1.000', unitId: fixtures.dryItemUnitId },
+                ],
+              },
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.dryItemId, qty: '1.000', unitId: fixtures.dryItemUnitId },
+                ],
+              },
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.dryItemId, qty: '1.000', unitId: fixtures.dryItemUnitId },
+                ],
+              },
+            ],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      // `drops` comes back in `dropSeq` order (1, 2, 3) straight from `create()`.
+      return { sjId: sj.id, dropIds: sj.drops.map((d) => d.id) };
+    }
+
+    it('reverses a 3-drop route: drop_seq ends up 1/2/3 against the reversed dropIds, with no UNIQUE(sj_id, drop_seq) collision mid-transaction', async () => {
+      const { sjId, dropIds } = await makeThreeDropSj();
+      try {
+        const reversed = [...dropIds].reverse();
+        const result = await withCommit((client) =>
+          routeService.planRoute(
+            client,
+            sjId,
+            { stops: reversed.map((dropId) => ({ dropId })) },
+            fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+          ),
+        );
+        expect(result).toEqual({ sjId, stops: 3 });
+
+        const rows = await getOwnerPool().query<{ id: string; drop_seq: number }>(
+          `SELECT id, drop_seq FROM sj_drops WHERE sj_id = $1 ORDER BY drop_seq ASC`,
+          [sjId],
+        );
+        expect(rows.rows.map((r) => r.id)).toEqual(reversed);
+        expect(rows.rows.map((r) => r.drop_seq)).toEqual([1, 2, 3]);
+      } finally {
+        await deleteSuratJalan(sjId);
+      }
+    });
+
+    it('rejects a partial permutation (one dropId missing) — the route must NOT be silently applied', async () => {
+      const { sjId, dropIds } = await makeThreeDropSj();
+      try {
+        await withRollback(async (client) => {
+          await expect(
+            routeService.planRoute(
+              client,
+              sjId,
+              { stops: dropIds.slice(0, 2).map((dropId) => ({ dropId })) }, // drops the 3rd on the floor
+              fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+            ),
+          ).rejects.toMatchObject({ response: { code: ERR_VALIDATION } });
+        });
+
+        // Untouched — the reject must roll back cleanly, not leave the parked/offset sequence behind.
+        const rows = await getOwnerPool().query<{ drop_seq: number }>(
+          `SELECT drop_seq FROM sj_drops WHERE sj_id = $1 ORDER BY drop_seq ASC`,
+          [sjId],
+        );
+        expect(rows.rows.map((r) => r.drop_seq)).toEqual([1, 2, 3]);
+      } finally {
+        await deleteSuratJalan(sjId);
+      }
+    });
+
+    it('rejects reordering a locked (in_transit) Surat Jalan — route order is locked once loading/in_transit', async () => {
+      const { sjId, dropIds } = await makeThreeDropSj();
+      try {
+        // Flipping the status directly rather than running the full load/dispatch flow (stock ledger,
+        // storage areas, seals) — the guard under test reads `surat_jalan.status` only, and this is the
+        // owner (superuser, BYPASSRLS) connection already used for fixture setup/teardown throughout this
+        // file, never the app-role path.
+        await getOwnerPool().query(`UPDATE surat_jalan SET status = 'in_transit' WHERE id = $1`, [
+          sjId,
+        ]);
+
+        await withRollback(async (client) => {
+          await expect(
+            routeService.planRoute(
+              client,
+              sjId,
+              { stops: [...dropIds].reverse().map((dropId) => ({ dropId })) },
+              fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+            ),
+          ).rejects.toMatchObject({ response: { code: 'ERR_CONFLICT' } });
+        });
+      } finally {
+        await deleteSuratJalan(sjId);
+      }
+    });
+  });
+
+  describe('SuratJalanService.update — reassigning driver/vehicle re-checks the one-truck-type-per-driver-per-day rule', () => {
+    it('rejects reassigning a driver onto this SJ when that driver already holds a different-truck-type route on the same planned date', async () => {
+      // Far-future fixed date — see `ROUTE_TEST_DATE`'s comment above on why "today" is avoided here.
+      const plannedDate = '2031-03-03';
+      // A second active driver from the seed — the clash needs TWO real drivers: one who already holds
+      // a route for the day (the "occupied" driver), and one who is this SJ's driver before the attempted
+      // reassignment.
+      const secondDriver = await getOwnerPool().query<{ id: string }>(
+        `SELECT id FROM drivers WHERE is_active = true AND user_id IS NOT NULL AND id <> $1 LIMIT 1`,
+        [fixtures.driverId],
+      );
+      if (!secondDriver.rows[0]) {
+        // Seed data problem, not a test failure of this rule — flagged loudly rather than silently skipped.
+        throw new Error('Seed needs at least 2 active drivers with a linked user_id for this test');
+      }
+      const otherDriverId = secondDriver.rows[0].id;
+
+      // occupied: fixtures.driverId already has a DRY route today.
+      const dryRun = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'dry' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.dryVehicleId,
+            plannedDate,
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.dryItemId, qty: '1.000', unitId: fixtures.dryItemUnitId },
+                ],
+              },
+            ],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+
+      // target: a FROZEN route today, currently held by the OTHER driver.
+      const frozenRun = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'frozen' as never,
+            driverId: otherDriverId,
+            vehicleId: fixtures.frozenVehicleId,
+            plannedDate,
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  {
+                    itemId: fixtures.frozenItemId,
+                    qty: '1.000',
+                    unitId: fixtures.frozenItemUnitId,
+                  },
+                ],
+              },
+            ],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+
+      try {
+        // Reassigning the frozen run's driver to the one already on a dry run today must be rejected —
+        // this is exactly the bypass `SuratJalanService.update()` had before this ticket's fix: `create()`
+        // enforced the rule, but PATCHing the driver in afterwards did not.
+        await withRollback(async (client) => {
+          await expect(
+            sjService.update(
+              client,
+              frozenRun.id,
+              { driverId: fixtures.driverId },
+              fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+            ),
+          ).rejects.toMatchObject({ response: { code: ERR_VALIDATION } });
+        });
+
+        // Untouched by the rejected attempt.
+        const after = await getOwnerPool().query<{ driver_id: string }>(
+          `SELECT driver_id FROM surat_jalan WHERE id = $1`,
+          [frozenRun.id],
+        );
+        expect(after.rows[0]!.driver_id).toBe(otherDriverId);
+      } finally {
+        await deleteSuratJalan(dryRun.id);
+        await deleteSuratJalan(frozenRun.id);
+      }
+    });
+
+    it('still allows reassigning a driver whose OTHER route that day is the SAME truck type', async () => {
+      // A different fixed future date from the "rejects" test above, so the two tests' fixture SJs never
+      // interact even if they happened to run concurrently.
+      const plannedDate = '2031-04-04';
+      const secondDriver = await getOwnerPool().query<{ id: string }>(
+        `SELECT id FROM drivers WHERE is_active = true AND user_id IS NOT NULL AND id <> $1 LIMIT 1`,
+        [fixtures.driverId],
+      );
+      if (!secondDriver.rows[0]) {
+        throw new Error('Seed needs at least 2 active drivers with a linked user_id for this test');
+      }
+      const otherDriverId = secondDriver.rows[0].id;
+
+      // fixtures.driverId already has a DRY route today...
+      const firstDryRun = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'dry' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.dryVehicleId,
+            plannedDate,
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.dryItemId, qty: '1.000', unitId: fixtures.dryItemUnitId },
+                ],
+              },
+            ],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      // ...and this is a SECOND dry run, currently on the other driver.
+      const secondDryRun = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'dry' as never,
+            driverId: otherDriverId,
+            vehicleId: fixtures.dryVehicleId,
+            plannedDate,
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [
+                  { itemId: fixtures.dryItemId, qty: '1.000', unitId: fixtures.dryItemUnitId },
+                ],
+              },
+            ],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+
+      try {
+        // Same truck type both times ('dry') — not a clash, one driver legitimately runs two dry routes.
+        const updated = await withCommit((client) =>
+          sjService.update(
+            client,
+            secondDryRun.id,
+            { driverId: fixtures.driverId },
+            fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+          ),
+        );
+        expect(updated.driver.id).toBe(fixtures.driverId);
+      } finally {
+        await deleteSuratJalan(firstDryRun.id);
+        await deleteSuratJalan(secondDryRun.id);
+      }
     });
   });
 });

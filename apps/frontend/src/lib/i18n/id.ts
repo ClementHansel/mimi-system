@@ -425,6 +425,41 @@ export const id = {
     exportError: 'Gagal mengekspor data',
   },
 
+  // Dispatcher screen: assign a Surat Jalan's driver and truck, and reorder its
+  // drops. `/delivery/assign`.
+  deliveryAssign: {
+    title: 'Penugasan Pengiriman',
+    subtitle: 'Pilih Surat Jalan, tetapkan sopir dan truk, lalu atur urutan drop',
+    picker: {
+      label: 'Surat Jalan',
+      placeholder: 'Pilih Surat Jalan...',
+      empty: 'Tidak ada Surat Jalan draft/siap saat ini',
+      noneSelected: 'Pilih Surat Jalan untuk mulai',
+    },
+    form: {
+      title: 'Sopir & Truk',
+      subtitle: 'Ubah sopir atau kendaraan sebelum Surat Jalan dimuat',
+      locked: 'Surat Jalan sudah dimuat atau dalam perjalanan — sopir dan truk tidak dapat diubah',
+      driver: 'Sopir',
+      vehicle: 'Kendaraan',
+      vehicleFreezer: '{{plate}} (freezer)',
+      save: 'Simpan Sopir & Truk',
+      saved: 'Sopir/truk berhasil diperbarui',
+      saveError: 'Gagal memperbarui sopir/truk',
+    },
+    order: {
+      title: 'Urutan Drop',
+      subtitle: 'Seret untuk mengubah urutan, atau gunakan tombol naik/turun',
+      empty: 'Surat Jalan ini belum memiliki drop',
+      locked: 'Urutan rute terkunci — Surat Jalan sudah dimuat atau dalam perjalanan',
+      moveUp: 'Pindahkan ke atas',
+      moveDown: 'Pindahkan ke bawah',
+      save: 'Simpan Urutan',
+      saved: 'Urutan drop berhasil disimpan',
+      saveError: 'Gagal menyimpan urutan drop',
+    },
+  },
+
   table: {
     empty: 'Belum ada data',
     loading: 'Memuat data…',

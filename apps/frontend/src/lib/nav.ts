@@ -188,6 +188,23 @@ const DELIVERY_ITEM: NavItem = {
  * the same shape as the driver's Surat Jalan list earlier today. Permission
  * grants and navigation drifting apart is worth watching for elsewhere.
  */
+/**
+ * Dispatcher assignment: pick a Surat Jalan, set its driver and truck, order the
+ * drops. Sits beside `DELIVERY_ITEM` — that one LISTS deliveries, this one
+ * changes who drives them and in what order.
+ *
+ * Gated on `delivery.sj.create` rather than `delivery.read`: reordering a route
+ * and reassigning a truck are edits, and the roles that merely watch deliveries
+ * should not be offered them.
+ */
+const DELIVERY_ASSIGN_ITEM: NavItem = {
+  id: 'delivery-assign',
+  labelKey: 'deliveryAssign.title',
+  href: '/delivery/assign',
+  icon: Route,
+  permission: 'delivery.sj.create',
+};
+
 const PURCHASING_ITEM: NavItem = {
   id: 'purchasing',
   labelKey: 'nav.purchasing',
@@ -247,6 +264,7 @@ const DASHBOARD_SECTIONS: readonly NavSection[] = [
       // is gudang's job, which is why the identical entry also sits in the
       // warehouse interface below (`DELIVERY_ITEM`, one definition).
       DELIVERY_ITEM,
+      DELIVERY_ASSIGN_ITEM,
       PURCHASING_ITEM,
     ],
   },
@@ -425,6 +443,7 @@ export const INTERFACES: readonly AppInterface[] = [
             permission: panel.permission,
           })),
           DELIVERY_ITEM,
+          DELIVERY_ASSIGN_ITEM,
           PURCHASING_ITEM,
         ],
       },

@@ -1,7 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, Info, MapPin, Navigation, Phone, Thermometer, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  Info,
+  MapPin,
+  Navigation,
+  Phone,
+  SkipForward,
+  Thermometer,
+  XCircle,
+} from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardContent, Button, StatusBadge } from '@/components/ui';
 import { fmtTime } from '@/lib/dates';
@@ -20,6 +29,7 @@ import { DropDepartModal } from './DropDepartModal';
 import { DropArriveModal } from './DropArriveModal';
 import { DropReceiveModal } from './DropReceiveModal';
 import { DropFailModal } from './DropFailModal';
+import { DropSkipModal } from './DropSkipModal';
 import type { Drop, SuratJalan } from './lib/types';
 
 /**
@@ -46,7 +56,9 @@ export function DropCard({
   defaultCollapsed = false,
 }: DropCardProps) {
   const { t } = useI18n();
-  const [modal, setModal] = useState<'depart' | 'arrive' | 'receive' | 'fail' | null>(null);
+  const [modal, setModal] = useState<'depart' | 'arrive' | 'receive' | 'skip' | 'fail' | null>(
+    null,
+  );
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const action = nextActionForDrop(drop);
   const logs = tempLogsForDrop(sj, drop.id);
@@ -250,6 +262,22 @@ export function DropCard({
                     {t('driver.actions.receive')}
                   </Button>
                 )}
+                {/* Skip sits BEFORE fail, and looks less severe than it, because
+                    it is the one a driver reaches for most and the one they
+                    should reach for first. When the only non-delivery button
+                    was "Gagal Kirim", every temporary obstacle got recorded as
+                    a permanent failure — and failing a drop sends its stock
+                    back to the warehouse on paper while it is still on the
+                    van. */}
+                <Button
+                  size="touch-lg"
+                  variant="outline"
+                  className="sm:w-auto"
+                  leftIcon={<SkipForward className="size-4" />}
+                  onClick={() => setModal('skip')}
+                >
+                  {t('driver.actions.skip')}
+                </Button>
                 <Button
                   size="touch-lg"
                   variant="outline"
@@ -291,6 +319,9 @@ export function DropCard({
           onClose={() => setModal(null)}
           onDone={handleDone}
         />
+      )}
+      {modal === 'skip' && (
+        <DropSkipModal open drop={drop} onClose={() => setModal(null)} onDone={handleDone} />
       )}
       {modal === 'fail' && (
         <DropFailModal open drop={drop} onClose={() => setModal(null)} onDone={handleDone} />

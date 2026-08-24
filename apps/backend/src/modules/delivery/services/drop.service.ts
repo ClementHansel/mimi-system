@@ -43,7 +43,13 @@ import {
   selectSuratJalanHeader,
   type DropWithSjRow,
 } from '../queries';
-import { ArriveDropDto, DepartDropDto, FailDropDto, ReceiveDropDto } from '../dto/drop.dto';
+import {
+  ArriveDropDto,
+  DepartDropDto,
+  FailDropDto,
+  ReceiveDropDto,
+  SkipDropDto,
+} from '../dto/drop.dto';
 import { ColdChainService } from './cold-chain.service';
 import {
   REPLENISHMENT_FULFILLMENT_PORT,
@@ -606,13 +612,80 @@ export class DropService {
           message: `Drop ${dropId} is already terminal (${row.status})`,
         });
       }
+      if (dto.photoAttachmentId) {
+        await this.assertAttachments(client, [dto.photoAttachmentId], dropId, 'delivery_failure');
+      }
       await client.query(
-        `UPDATE sj_drops SET status = 'failed', failure_reason = $2 WHERE id = $1`,
-        [dropId, dto.reason],
+        `UPDATE sj_drops
+            SET status = 'failed', failure_reason = $2, failure_attachment_id = $3
+          WHERE id = $1`,
+        [dropId, dto.reason, dto.photoAttachmentId ?? null],
       );
 
       await this.emitSjUpdated(client, row.sj_id, actorUserId);
       await this.checkAndCompleteSuratJalan(client, row.sj_id, actorUserId);
+      return this.getById(client, dropId);
+    });
+  }
+
+  /**
+   * Defer a drop to the end of today's route.
+   *
+   * A skip is NOT an outcome and deliberately writes no terminal status — see
+   * migration 241. `fail` already means "not happening", and failing a drop
+   * reverses its dispatch `transfer_out` so the stock returns to the warehouse.
+   * A driver going past a busy outlet to come back in an hour still has those
+   * goods on the van, so borrowing `failed` for a skip would return stock that
+   * never moved and leave the next opname with a discrepancy nobody can explain.
+   *
+   * What actually changes is the ROUTE ORDER: the drop goes to the back of the
+   * queue and returns to `pending`, because it is once again a place the driver
+   * has not set out for. `departed_at` is cleared for the same reason — leaving
+   * it set would claim the van is en route to somewhere it has driven past.
+   *
+   * Terminal drops cannot be skipped: there is nothing left to defer, and
+   * silently accepting it would let a completed delivery be reordered out of
+   * the history.
+   */
+  async skip(client: PoolClient, dropId: UUID, dto: SkipDropDto, actorUserId: UUID): Promise<Drop> {
+    return withWrite(client, async () => {
+      const row = await this.requireDropForUpdate(client, dropId);
+      if (TERMINAL_DROP_STATUSES.has(row.status)) {
+        throw new ConflictException({
+          code: 'ERR_CONFLICT',
+          message: `Drop ${dropId} is already terminal (${row.status}) and cannot be skipped`,
+        });
+      }
+
+      // Last place in the route. Computed inside the same transaction as the
+      // UPDATE — two drivers skipping on one SJ is unlikely, but reading the
+      // max in a separate statement is how two drops end up sharing a
+      // drop_seq, which `sj_drops_sj_id_drop_seq_key` would then reject.
+      const seqRes = await client.query<{ next_seq: number }>(
+        `SELECT COALESCE(MAX(drop_seq), 0) + 1 AS next_seq FROM sj_drops WHERE sj_id = $1`,
+        [row.sj_id],
+      );
+      // `COALESCE(MAX(...))` over a table always yields exactly one row, so the
+      // fallback is unreachable — but it is 1 rather than 0 so that if the
+      // impossible ever happens the drop lands at a valid sequence instead of
+      // colliding with whatever sits at zero.
+      const nextSeq = seqRes.rows[0]?.next_seq ?? 1;
+
+      await client.query(
+        `UPDATE sj_drops
+            SET drop_seq = $2,
+                status = 'pending',
+                departed_at = NULL,
+                skip_count = skip_count + 1,
+                last_skip_reason = $3,
+                last_skipped_at = now()
+          WHERE id = $1`,
+        [dropId, nextSeq, dto.reason],
+      );
+
+      await this.emitSjUpdated(client, row.sj_id, actorUserId);
+      // No `checkAndCompleteSuratJalan` here, and that is the point: a skipped
+      // drop is still outstanding, so the Surat Jalan must stay open.
       return this.getById(client, dropId);
     });
   }

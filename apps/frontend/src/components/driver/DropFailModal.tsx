@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { Modal, Button, Textarea, toast } from '@/components/ui';
+import { Modal, Button, PhotoCapture, Textarea, toast } from '@/components/ui';
 import { failDrop } from './lib/driver-api';
+import { uploadFailurePhoto } from './lib/attachments';
 import type { Drop } from './lib/types';
 
 /**
@@ -23,14 +24,24 @@ export interface DropFailModalProps {
 export function DropFailModal({ open, onClose, drop, onDone }: DropFailModalProps) {
   const { t } = useI18n();
   const [reason, setReason] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // The photo is urged, not required — see `FailDropDto.photoAttachmentId`. A
+  // driver at a shuttered outlet with a dead battery must still be able to
+  // record the failure, because the alternative they reach for otherwise is
+  // marking it delivered.
   const canSubmit = reason.trim() !== '';
 
   async function handleSubmit() {
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      await failDrop(drop.id, reason.trim());
+      // Upload first: if the photo cannot be stored, nothing has been recorded
+      // yet and the driver can retry the whole action. Failing the drop first
+      // and then losing the photo would leave a failure with evidence the
+      // driver believes they attached.
+      const photoAttachmentId = photoFile ? await uploadFailurePhoto(photoFile) : undefined;
+      await failDrop(drop.id, reason.trim(), photoAttachmentId);
       toast({ title: t('driver.fail.success'), variant: 'success' });
       onDone({ status: 'failed', discrepancyNotes: reason.trim() });
     } catch {
@@ -54,6 +65,13 @@ export function DropFailModal({ open, onClose, drop, onDone }: DropFailModalProp
           onChange={(e) => setReason(e.target.value)}
           placeholder={t('common.reasonPlaceholder')}
           required
+          disabled={submitting}
+        />
+        <PhotoCapture
+          label={t('driver.fail.photoLabel')}
+          value={photoFile ? URL.createObjectURL(photoFile) : null}
+          onCapture={setPhotoFile}
+          onRemove={() => setPhotoFile(null)}
           disabled={submitting}
         />
         <Button

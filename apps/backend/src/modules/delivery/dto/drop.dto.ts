@@ -102,6 +102,35 @@ export class FailDropDto {
   @IsString()
   @MaxLength(500)
   reason!: string;
+
+  /**
+   * Wajib foto for the failure — the shuttered gate, the wrong address.
+   *
+   * Optional, and that is a compromise rather than an oversight. `receive`
+   * mandates photos because a driver who reaches an open outlet can always take
+   * one. A failure is often exactly the case where they cannot: no signal, a
+   * dead battery at the end of a run. Refusing to record the failure at all is
+   * worse than recording it without a picture, because the alternative a driver
+   * reaches for is not "try harder", it is "mark it delivered".
+   *
+   * The UI asks for it every time and the report flags failures that arrive
+   * without one.
+   */
+  @IsOptional()
+  @IsUUID()
+  photoAttachmentId?: string;
+}
+
+/** `POST /api/delivery/drops/:dropId/skip` — defer this drop within today's run. */
+export class SkipDropDto {
+  /**
+   * Required, unlike most notes fields. The whole operational value of a skip
+   * is the pattern it reveals — an outlet skipped every Friday is telling you
+   * something — and a pattern of empty reasons reveals nothing.
+   */
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
 }
 
 /** `POST /api/delivery/temperature-logs` body (D-14, OBJ-03). */

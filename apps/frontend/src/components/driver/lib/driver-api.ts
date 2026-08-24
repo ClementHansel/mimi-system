@@ -32,6 +32,25 @@ export function getStorageAreas(locationId: string) {
  * button surfaces a clear error (via the existing `table.error` toast) when
  * offline instead of silently pretending to queue.
  */
-export function failDrop(dropId: string, reason: string) {
-  return api.post<{ id: string; status: string }>(`/delivery/drops/${dropId}/fail`, { reason });
+export function failDrop(dropId: string, reason: string, photoAttachmentId?: string) {
+  return api.post<{ id: string; status: string }>(`/delivery/drops/${dropId}/fail`, {
+    reason,
+    ...(photoAttachmentId ? { photoAttachmentId } : {}),
+  });
+}
+
+/**
+ * "Lewati dulu" — defer this drop to the end of the route.
+ *
+ * Online-only for the same reason as `failDrop`: no schema-registry mapping
+ * exists for it, and inventing one is a sync-protocol decision rather than a
+ * screen decision. The cost of that is lower here than for `fail`, because a
+ * skip is a convenience — a driver with no signal simply drives on and the
+ * route order is cosmetic until they reconnect.
+ *
+ * A skip moves NO stock and closes nothing. The drop returns to `pending` at
+ * the back of the queue and is still deliverable today.
+ */
+export function skipDrop(dropId: string, reason: string) {
+  return api.post<{ id: string; status: string }>(`/delivery/drops/${dropId}/skip`, { reason });
 }

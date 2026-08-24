@@ -5,7 +5,13 @@ import { Audited, CurrentUser, RequirePermission } from '../../../common/decorat
 import type { JwtAccessPayload } from '../../../common/jwt/jwt-payload.interface';
 import { requireDbClient } from '../request-db-client';
 import { DropService } from '../services/drop.service';
-import { ArriveDropDto, DepartDropDto, FailDropDto, ReceiveDropDto } from '../dto/drop.dto';
+import {
+  ArriveDropDto,
+  DepartDropDto,
+  FailDropDto,
+  ReceiveDropDto,
+  SkipDropDto,
+} from '../dto/drop.dto';
 
 /** M10 `delivery` — per-drop driver/outlet actions (CONTRACTS.md §4.10). */
 @Controller('delivery/drops')
@@ -58,5 +64,23 @@ export class DropController {
     @CurrentUser() user: JwtAccessPayload,
   ) {
     return this.drops.fail(requireDbClient(req), dropId, dto, user.sub);
+  }
+
+  /**
+   * Defer this drop to the end of the route. Same permission as the other drop
+   * actions — it is the driver's own call about their own run, and needing to
+   * phone the warehouse to reorder a route is how drivers end up marking a drop
+   * failed instead.
+   */
+  @Post(':dropId/skip')
+  @RequirePermission('delivery.drop.execute')
+  @Audited({ entityType: 'sj_drop', action: 'delivery.drop.execute' })
+  skip(
+    @Req() req: Request,
+    @Param('dropId') dropId: string,
+    @Body() dto: SkipDropDto,
+    @CurrentUser() user: JwtAccessPayload,
+  ) {
+    return this.drops.skip(requireDbClient(req), dropId, dto, user.sub);
   }
 }

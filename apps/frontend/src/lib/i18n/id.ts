@@ -1111,6 +1111,13 @@ export const id = {
       selfieAlt: 'Foto selfie otorisasi',
     },
     reports: {
+      dash: {
+        inTransit: 'Surat Jalan Dalam Perjalanan',
+        pendingApprovals: 'Menunggu Persetujuan',
+        lowStock: 'Outlet Stok Menipis',
+        coldChain: 'Pelanggaran Rantai Dingin (24 jam)',
+        areas: 'Area Gudang',
+      },
       tabs: {
         trialBalance: 'Neraca Saldo',
         profitLoss: 'Laba Rugi',

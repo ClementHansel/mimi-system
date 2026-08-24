@@ -1,3 +1,4 @@
+import { WAREHOUSE_PANELS } from './warehouse-panels';
 import {
   ShoppingCart,
   LayoutDashboard,
@@ -378,6 +379,9 @@ export const INTERFACES: readonly AppInterface[] = [
     href: '/warehouse',
     icon: Warehouse,
     permission: 'delivery.read',
+    // Every `/warehouse/*` page belongs to this interface, not just the root —
+    // otherwise opening Stok Gudang would bounce the user into another
+    // interface's shell.
     routes: ['/warehouse'],
     // Gudang is the items and their movement: what is on hand, what came in,
     // and what goes out on a Surat Jalan — which is created, PRINTED and
@@ -394,6 +398,18 @@ export const INTERFACES: readonly AppInterface[] = [
             icon: Warehouse,
             permission: 'delivery.read',
           },
+          // Gudang's eight areas, previously a horizontal tab strip across the
+          // top of `/warehouse` while this sidebar held two entries. Built from
+          // `WAREHOUSE_PANELS` — the same list `/warehouse/[panel]` resolves its
+          // content from — so an area cannot be added to the routes and go
+          // missing from the navigation, or the reverse.
+          ...WAREHOUSE_PANELS.map((panel) => ({
+            id: `warehouse-${panel.slug}`,
+            labelKey: panel.labelKey,
+            href: `/warehouse/${panel.slug}`,
+            icon: panel.icon,
+            permission: panel.permission,
+          })),
           DELIVERY_ITEM,
         ],
       },

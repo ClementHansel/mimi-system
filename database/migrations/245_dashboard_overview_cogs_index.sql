@@ -1,0 +1,69 @@
+-- Migration: 245_dashboard_overview_cogs_index
+-- Block: 240-249 (dashboard/product follow-ups)
+-- Description: FR-DASH-01 `GET /api/dashboard/overview` was measured at ~1.2-1.9s
+--              on the 220k-sale / 473k-sale_line seeded quarter (NFR-01 wants
+--              <3s at 150 concurrent users) — `OverviewService.estimateCogs()`
+--              (modules/dashboard/services/overview.service.ts) is the cost.
+--              `periodAgg()` (reads `mv_sales_daily`, no RLS on matviews) was
+--              measured at <1ms x2 and is NOT the problem — see the report,
+--              there is no third query in this file.
+--
+-- ROOT CAUSE (found by EXPLAIN ANALYZE run AS THE APP ACTUALLY QUERIES —
+-- `SET LOCAL ROLE app_user` + the real `app.*` GUCs, NOT as superuser):
+-- `estimateCogs`'s WHERE clause filters
+--     (s.occurred_at AT TIME ZONE 'Asia/Makassar')::date BETWEEN $1 AND $2
+-- `idx_sales_wita_date` (migration 223) matches this expression exactly and
+-- IS used — but only when RLS is bypassed. Under real RLS, Postgres's row
+-- security implementation refuses to push a qual below the policy barrier
+-- unless every function in it is marked LEAKPROOF (documented Postgres
+-- behavior: a non-leakproof qual must run strictly after the security qual,
+-- so it can never be used to choose a scan's access path). `timezone()` —
+-- what `AT TIME ZONE` compiles to — is not leakproof, so under RLS this
+-- expression is ALWAYS demoted to a post-hoc Filter and `sales` is ALWAYS
+-- fully scanned (219,549 rows) no matter what expression index exists on it.
+-- This is invisible to a superuser EXPLAIN (no RLS barrier, no restriction)
+-- — exactly the gap NFR-01's ticket flagged: "an index that helps as
+-- superuser may not help under the policy's added predicates."
+--
+-- THE FIX (paired with a query rewrite in overview.service.ts, NOT here —
+-- an index alone cannot undo the leakproof restriction above): replace the
+-- WITA-expression filter with a plain range on the raw `occurred_at` column,
+-- computed from the same two bind params via constant-folded SQL (no
+-- per-row function call, so the qual is a bare `timestamptz >= / <`
+-- comparison — leakproof by default for a built-in type, therefore ALWAYS
+-- eligible to drive an index scan even under RLS). This index is the
+-- companion: a plain-column, completed-only partial index matches exactly
+-- what that rewritten filter (plus the query's permanent `status =
+-- 'completed'`) needs, and is smaller/cheaper than indexing all statuses.
+--
+-- MEASURED on mimi-histpg (throwaway copy of the same seeded quarter — see
+-- report for the full EXPLAIN text), role app_user / app.role=owner
+-- (central, no location narrowing — the worst case; a location-scoped role
+-- is cheaper again), jit ON (matches production's default jit_above_cost):
+--   BEFORE (original filter, no new index):    Seq Scan on sales, ~1.29s
+--                                               total for estimateCogs alone
+--   AFTER  (rewritten filter + this index):    Index Scan using
+--                                               idx_sales_completed_occurred_at,
+--                                               ~0.63-0.65s total for
+--                                               estimateCogs (owner/company-
+--                                               wide); ~0.10s for a single-
+--                                               location scoped role
+-- The sales-side scan itself drops from ~131ms (Filter, 173,731 rows
+-- discarded) to ~37ms (Index Cond, no discard) — see the report for the
+-- remaining ~470ms, which is `sale_lines`'s OWN RLS policy (`sale_lines_
+-- parent`, migration 055) re-verifying `EXISTS(...sales...)` per row via a
+-- correlated subplan; that cost is intrinsic to the "PARENT group" RLS
+-- pattern (it exists independent of any index) and is reported, not fixed,
+-- here — see the report's "found but did not fix" section.
+--
+-- Plain CREATE INDEX, not CONCURRENTLY, matching migration 223's precedent:
+-- `migrate.ts` sends this file as one multi-statement simple query, which
+-- Postgres runs in an implicit transaction, and CONCURRENTLY cannot run
+-- inside one.
+-- Created at: 2026-08-25
+
+CREATE INDEX idx_sales_completed_occurred_at ON sales(occurred_at) WHERE status = 'completed';
+
+-- Fresh stats immediately, rather than waiting on autovacuum, since this
+-- ticket's whole finding is planner behavior on this exact table.
+ANALYZE sales;

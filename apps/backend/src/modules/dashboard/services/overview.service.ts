@@ -118,6 +118,35 @@ export class OverviewService {
     const params: unknown[] = [from, to];
     const scope = scopeClause(locationScope, 's.location_id', params);
 
+    // NFR-01 perf fix (see migration 245's header for the full writeup):
+    // Postgres's row-security implementation refuses to push a qual below
+    // the RLS barrier unless every function in it is LEAKPROOF —
+    // `timezone()` (what `AT TIME ZONE` compiles to) is not, so filtering
+    // via `(s.occurred_at AT TIME ZONE 'Asia/Makassar')::date BETWEEN $1
+    // AND $2` ALWAYS forced a full scan of `sales` under real RLS
+    // (app_user), even with `idx_sales_wita_date` sitting right there —
+    // invisible to a superuser EXPLAIN, which is exactly why the ticket's
+    // own diagnosis undercounted this query. Rewritten below as a plain
+    // range on the raw `occurred_at` column: the WITA-midnight bounds are
+    // computed from the bind params only (no reference to the `occurred_at`
+    // column), so Postgres constant-folds them at plan time into two bare
+    // `timestamptz >=`/`<` comparisons — leakproof by default, therefore
+    // usable to drive an index scan even under RLS. `idx_sales_
+    // completed_occurred_at` (migration 245) is the matching index. Asia/
+    // Makassar has no DST (fixed UTC+8 year-round), so this is an exact,
+    // not approximate, rewrite of the original inclusive date range.
+    //
+    // Also: this query's estimated cost sits well above `jit_above_cost`
+    // (100000, the default, on both mimi-histpg and production), so every
+    // execution paid ~500ms of JIT compilation — measured on the same
+    // seeded quarter — for an aggregate that runs once per dashboard load,
+    // not in a hot loop tight enough to earn that compile cost back.
+    // `SET LOCAL jit = off` is transaction-scoped (reverts at the request's
+    // guaranteed ROLLBACK, same as the RLS GUCs `RlsContextGuard` sets) and
+    // affects only this query's connection for this request, not the
+    // server config.
+    await client.query('SET LOCAL jit = off');
+
     // Only recipe lines whose unit already matches the ingredient's base unit are
     // costed here (see class header) — a per-conversion-path join is out of scope
     // for a report-level aggregate query; `recipe-usage.util.ts` does the full,
@@ -130,7 +159,8 @@ export class OverviewService {
          JOIN recipe_lines rl ON rl.recipe_id = r.id
          JOIN items i ON i.id = rl.item_id AND rl.unit_id = i.base_unit_id
         WHERE s.status = 'completed'
-          AND (s.occurred_at AT TIME ZONE 'Asia/Makassar')::date BETWEEN $1 AND $2
+          AND s.occurred_at >= ($1::date)::timestamp AT TIME ZONE 'Asia/Makassar'
+          AND s.occurred_at <  (($2::date + 1))::timestamp AT TIME ZONE 'Asia/Makassar'
           ${scope}`,
       params,
     );

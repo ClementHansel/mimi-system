@@ -419,6 +419,18 @@ export const INTERFACES: readonly AppInterface[] = [
             icon: Truck,
             permission: 'delivery.drop.execute',
           },
+          // The Surat Jalan list, in the delivery interface as well as the
+          // dashboard. `/driver` answers "what am I delivering right now", and
+          // it answers it ONLY for the signed-in driver — `my-jobs` resolves
+          // through the `drivers` table, so for an owner or a kepala gudang it
+          // is correctly and permanently empty. Without this item that interface
+          // is a dead end for exactly the people who supervise it, which is how
+          // it was reported: an owner opened Pengiriman and found nothing.
+          //
+          // `delivery.read` does the separation on its own. A driver does not
+          // hold it and still sees one item; everyone overseeing the fleet holds
+          // it and gets the list next to the map.
+          DELIVERY_ITEM,
         ],
       },
       CHAT_SECTION,

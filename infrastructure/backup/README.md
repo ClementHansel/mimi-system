@@ -10,12 +10,30 @@
 ## Setup (done once, on the VPS, by W7-01)
 
 ```bash
-chmod +x infrastructure/backup/backup.sh
 crontab -e
-# add:
-0 2 * * * POSTGRES_PASSWORD='...' OFFSITE_REMOTE_CMD='rclone copy "$DUMP_FILE" remote:mimi-backups/' \
-  /opt/mimi-chicken/infrastructure/backup/backup.sh >> /var/log/mimi-backup.log 2>&1
+# add — note `bash <script>`, not `<script>`:
+0 2 * * * cd /home/ubuntu/mimi && set -a && . ./.env.vps && set +a \
+  && bash ./infrastructure/backup/backup.sh >> /home/ubuntu/mimi-backup.log 2>&1
 ```
+
+**Invoke it as `bash ./backup.sh`, not `./backup.sh`.** This is not style. The
+script was committed mode `100644` and the cron entry ran it directly, so from
+the day it was installed every single nightly run died with
+
+```
+/bin/sh: 1: ./infrastructure/backup/backup.sh: Permission denied
+```
+
+The two dumps sitting in `dumps/` were made by hand, which is exactly why nobody
+noticed: the directory looked like a working backup. The mode is now `100755` in
+git, so the direct form works too — but `bash` in front means a lost executable
+bit can never silently disable backups again, and an executable bit is easy to
+lose (a `zip` round-trip, a checkout on Windows, a `cp` from a container).
+
+**Nothing alerts on failure.** The log recorded five consecutive failures and
+was not read, because reading it is a thing a person has to remember to do. A
+dump that is not verified to exist is not a backup; see NFR-06 and the note
+below on `drill:restore`.
 
 Set `OFFSITE_REMOTE_CMD` to whatever offsite tool is chosen (rclone to
 S3/B2/Drive, `aws s3 cp`, `scp` to a second host, etc.) — the script no-ops

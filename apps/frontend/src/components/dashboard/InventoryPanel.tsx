@@ -63,10 +63,12 @@ export function InventoryPanel() {
   useEffect(() => {
     let cancelled = false;
     api
-      .get<{ data?: LocationOption[] } | LocationOption[]>('/locations?active=true')
+      .get<{ rows?: LocationOption[]; data?: LocationOption[] } | LocationOption[]>(
+        '/locations?active=true',
+      )
       .then((res) => {
         if (cancelled) return;
-        setLocations(Array.isArray(res) ? res : (res.data ?? []));
+        setLocations(Array.isArray(res) ? res : (res.rows ?? res.data ?? []));
       })
       .catch(() => undefined);
     return () => {
@@ -81,9 +83,13 @@ export function InventoryPanel() {
     if (locationId) qs.set('locationId', locationId);
     if (q.trim()) qs.set('q', q.trim());
     api
-      .get<{ data: BalanceRow[]; total: number }>(`/inventory/balances?${qs.toString()}`)
+      // `{ rows, total, page, pageSize }` — read off the running API. I wrote
+      // `data` here from memory and shipped a panel that rendered "no matching
+      // stock" over 1,372 real balance rows; that is the second time in one
+      // session I have guessed this envelope wrong.
+      .get<{ rows: BalanceRow[]; total: number }>(`/inventory/balances?${qs.toString()}`)
       .then((res) => {
-        setRows(res.data ?? []);
+        setRows(res.rows ?? []);
         setTotal(res.total ?? 0);
       })
       .catch(() => setFailed(true))

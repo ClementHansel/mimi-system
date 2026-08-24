@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
 import { useI18n } from '@/lib/i18n';
 import type { Drop } from './lib/types';
+import { googleMapsUrl, wazeUrl } from './lib/navigation';
 
 /**
  * The driver's route on one map: every stop, numbered in the order gudang
@@ -41,6 +42,20 @@ const TILE_ATTRIBUTION =
 
 /** Balikpapan — the gudang pusat. Only the view before any stop is geocoded, so the map never opens on the null island. */
 const FALLBACK_CENTER: [number, number] = [-1.2379, 116.8529];
+
+/**
+ * Leaflet popups take an HTML STRING, which puts them outside React's escaping.
+ * Outlet names and addresses are master data an admin can edit, so they are
+ * untrusted for this purpose regardless of who typed them.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function hasCoords(d: Drop): d is Drop & { latitude: number; longitude: number } {
   return typeof d.latitude === 'number' && typeof d.longitude === 'number';
@@ -139,7 +154,31 @@ export function DriverRouteMap({
           }),
         })
           .addTo(map)
-          .bindPopup(`<strong>${d.dropSeq}. ${d.locationName}</strong><br/>${d.address ?? ''}`);
+          // Tapping a pin has to DO something. Owner, 2026-08-24: "map with pins
+          // that can be opened to use google map" — a driver looking at the map
+          // is deciding where to go next, and making them scroll to find the
+          // matching stop card to get a navigation link is the long way round.
+          //
+          // Built as an HTML string because Leaflet popups are outside React's
+          // tree, so `escapeHtml` is doing real work: `locationName` and
+          // `address` come from the database, and interpolating them raw is an
+          // injection through master data.
+          //
+          // `target="_blank"` for the same reason `NavigateLink` uses it —
+          // navigating away in-place would unmount the PWA and lose anything
+          // queued in the offline outbox.
+          .bindPopup(
+            [
+              `<strong>${escapeHtml(`${d.dropSeq}. ${d.locationName}`)}</strong>`,
+              d.address ? `<div>${escapeHtml(d.address)}</div>` : '',
+              `<div style="margin-top:6px;display:flex;gap:10px">`,
+              `<a href="${googleMapsUrl(d)}" target="_blank" rel="noopener noreferrer">Google Maps</a>`,
+              wazeUrl(d)
+                ? `<a href="${wazeUrl(d)}" target="_blank" rel="noopener noreferrer">Waze</a>`
+                : '',
+              `</div>`,
+            ].join(''),
+          );
         layersRef.current.push(marker);
       }
 

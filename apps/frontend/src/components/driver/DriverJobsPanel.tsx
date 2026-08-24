@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCcw, WifiOff } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import Link from 'next/link';
 import { Button, EmptyState, SyncStatusPill, toast } from '@/components/ui';
+import { useSessionStore } from '@/stores/session-store';
 import { toDateInput } from '@/lib/dates';
 import { getMyJobs } from './lib/driver-api';
 import { SjJobCard } from './SjJobCard';
@@ -52,6 +54,10 @@ const TERMINAL_DROP_STATUSES = new Set(['completed', 'completed_discrepancy', 'f
  */
 export function DriverJobsPanel() {
   const { t } = useI18n();
+  // Role, not "did the list come back empty" — a driver with a genuinely quiet
+  // day must still see "no Surat Jalan today", not be told this screen is not
+  // for them.
+  const isDriver = useSessionStore((st) => st.user?.roleKey === 'driver');
   const [jobs, setJobs] = useState<SuratJalan[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -126,7 +132,30 @@ export function DriverJobsPanel() {
       {!loading && loadError && jobs.length === 0 && (
         <EmptyState title={t('table.error')} size="lg" />
       )}
-      {!loading && !loadError && openJobs.length === 0 && (
+      {/* Two different empty states, because they mean opposite things.
+          
+          `/delivery/my-jobs` resolves the caller through the `drivers` table and
+          returns only THAT driver's run. For anyone without a driver record —
+          owner, kepala gudang, manager — it is empty every single day, and the
+          generic "no Surat Jalan today" then reads as "the warehouse dispatched
+          nothing", which is usually false and sent the owner looking for a bug
+          in the data twice.
+          
+          Say who the screen is for and point at the one that answers their
+          actual question. */}
+      {!loading && !loadError && openJobs.length === 0 && !isDriver && (
+        <EmptyState
+          title={t('driver.notADriver.title')}
+          description={t('driver.notADriver.description')}
+          size="lg"
+          action={
+            <Link href="/delivery">
+              <Button variant="secondary">{t('driver.notADriver.action')}</Button>
+            </Link>
+          }
+        />
+      )}
+      {!loading && !loadError && openJobs.length === 0 && isDriver && (
         <EmptyState title={t('driver.empty')} size="lg" />
       )}
 

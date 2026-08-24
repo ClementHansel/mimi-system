@@ -2607,6 +2607,12 @@ export const id = {
   driver: {
     today: 'Surat Jalan Hari Ini',
     empty: 'Tidak ada Surat Jalan untuk hari ini',
+    notADriver: {
+      title: 'Layar ini menampilkan rute milik seorang driver',
+      description:
+        'Akun Anda tidak terdaftar sebagai driver, jadi halaman ini akan selalu kosong. Untuk melihat semua Surat Jalan — termasuk yang sedang berjalan hari ini — buka Pengiriman (Dispatcher).',
+      action: 'Lihat Semua Surat Jalan',
+    },
     dropSeq: 'Drop {{seq}}',
     shipmentType: {
       frozen: 'Beku/Dingin',

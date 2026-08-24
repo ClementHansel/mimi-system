@@ -135,21 +135,39 @@ export function SjJobCard({
           </div>
         )}
 
-        <DriverRouteMap drops={drops} nextDropId={progress.nextDropId} />
+        {/* Map and stop list side by side once there is room for both, stacked
+            below that.
+            
+            The driver's own device is a phone, where stacked is the only sane
+            layout and the map must come first — it answers "where am I going"
+            before the list answers "what do I do there". But gudang and the
+            owner open this same screen on a desktop, where a full-width map
+            with the stops pushed under it wastes the right half of the window
+            and hides the route order the warehouse just set. Owner asked for
+            the list beside the map; `lg:` is where that becomes true without
+            costing the phone anything.
 
-        {/* Finished stops collapse. On a seven-stop run the screen is otherwise
-            mostly history, and the one card that matters — the next stop — is
-            pushed below the fold on a phone. */}
-        {drops.map((drop) => (
-          <DropCard
-            key={drop.id}
-            sj={sj}
-            drop={drop}
-            onChanged={onChanged}
-            isNext={drop.id === progress.nextDropId}
-            defaultCollapsed={isFinished(drop)}
-          />
-        ))}
+            `lg:items-start` stops the map column stretching to match a long
+            stop list — a 260px map does not want to be 900px tall. */}
+        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
+          <DriverRouteMap drops={drops} nextDropId={progress.nextDropId} />
+
+          {/* Finished stops collapse. On a seven-stop run the screen is
+              otherwise mostly history, and the one card that matters — the next
+              stop — is pushed below the fold on a phone. */}
+          <div className="flex flex-col gap-3">
+            {drops.map((drop) => (
+              <DropCard
+                key={drop.id}
+                sj={sj}
+                drop={drop}
+                onChanged={onChanged}
+                isNext={drop.id === progress.nextDropId}
+                defaultCollapsed={isFinished(drop)}
+              />
+            ))}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

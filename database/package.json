@@ -10,6 +10,7 @@
     "seed": "tsx seed.ts",
     "reset": "tsx reset.ts",
     "import": "tsx import.ts",
+    "seed:history": "tsx seed-history.ts",
     "simulate:org": "tsx simulate-org.ts",
     "simulate:day": "tsx simulate-day.ts",
     "drill:restore": "tsx backup-restore-drill.ts",

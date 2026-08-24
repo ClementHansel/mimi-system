@@ -184,11 +184,25 @@ export class StorageAreaService {
     return withWrite(client, async () => {
       await this.getRawById(client, locationId, areaId); // 404 if missing
 
-      const balance = await client.query<{ total: string }>(
-        `SELECT COALESCE(SUM(qty_on_hand), 0) AS total FROM stock_balances WHERE storage_area_id = $1`,
+      // ANY non-zero row, not the NET SUM across items.
+      //
+      // Summing let balances cancel: an area holding +10 of one item and -10 of
+      // another summed to exactly 0 and was cleared for deactivation, stranding
+      // both rows. Negative stock should not exist, but "should not exist" is a
+      // bad thing to rest a data-loss guard on — and the sum also made the
+      // integration test for this rule depend on what every other spec had left
+      // in the area, which is how it turned up as an intermittent failure.
+      //
+      // `EXISTS` also stops earlier than `SUM` on a large area: the first
+      // non-zero row is enough to refuse.
+      const stocked = await client.query<{ item_id: string; qty_on_hand: string }>(
+        `SELECT item_id, qty_on_hand
+           FROM stock_balances
+          WHERE storage_area_id = $1 AND qty_on_hand <> 0
+          LIMIT 1`,
         [areaId],
       );
-      if (parseFloat(balance.rows[0]!.total) !== 0) {
+      if (stocked.rows[0]) {
         throw new BadRequestException({
           code: ERR_AREA_HAS_STOCK,
           message: 'Storage area has a non-zero stock balance and cannot be deactivated',

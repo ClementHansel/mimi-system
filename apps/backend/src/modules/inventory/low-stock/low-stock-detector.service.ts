@@ -13,6 +13,19 @@ export interface LowStockDetectorOptions {
   debounceMs: number;
   /** Minimum time between two notifications for the SAME `(location, item)` key, even if it never recovers above `min_qty` in between — a defensive floor on top of the edge-triggered rule below (guards against flapping exactly at the threshold across two adjacent movements landing on either side of one debounce window). */
   cooldownMs: number;
+  /**
+   * The clock the cooldown is measured against. Defaults to `Date.now`, which is
+   * what production uses.
+   *
+   * It exists so the cooldown can be TESTED rather than raced. The integration
+   * test previously set a 200 ms cooldown, fired three checks, and asserted one
+   * notification — an assertion that silently depends on three round trips to
+   * Postgres finishing inside 200 ms, which under a loaded full-suite run they
+   * sometimes do not. That produced an intermittent failure that looked like a
+   * cooldown bug and was a stopwatch problem. With a clock the caller controls,
+   * "the burst is inside the window" and "the window has elapsed" are both exact.
+   */
+  now?: () => number;
 }
 
 /** 3s: long enough to coalesce a rapid POS/receiving burst against one item, short enough that a genuine crossing still alerts promptly. */
@@ -81,6 +94,11 @@ export class LowStockDetectorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LowStockDetectorService.name);
   private readonly debouncer: KeyedDebouncer;
   private readonly lastNotifiedAt = new Map<string, number>();
+
+  /** `Date.now` unless a test supplied its own clock — see `LowStockDetectorOptions.now`. */
+  private now(): number {
+    return this.options.now ? this.options.now() : Date.now();
+  }
   private unsubscribe?: () => void;
 
   constructor(
@@ -193,7 +211,7 @@ export class LowStockDetectorService implements OnModuleInit, OnModuleDestroy {
     }
 
     const last = this.lastNotifiedAt.get(key);
-    if (last !== undefined && Date.now() - last < this.options.cooldownMs) {
+    if (last !== undefined && this.now() - last < this.options.cooldownMs) {
       return;
     }
 
@@ -202,7 +220,7 @@ export class LowStockDetectorService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `low_stock crossing at location ${locationId} item ${itemId} has no LDR/SPV/KGD recipient to notify`,
       );
-      this.lastNotifiedAt.set(key, Date.now());
+      this.lastNotifiedAt.set(key, this.now());
       return;
     }
 
@@ -218,7 +236,7 @@ export class LowStockDetectorService implements OnModuleInit, OnModuleDestroy {
         unit: unitCode,
       },
     });
-    this.lastNotifiedAt.set(key, Date.now());
+    this.lastNotifiedAt.set(key, this.now());
   }
 
   /** LDR/SPV of the location; KGD too when the location is the central warehouse (CONTRACTS.md §4.7's note). */

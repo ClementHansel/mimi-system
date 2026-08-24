@@ -49,12 +49,34 @@ class SpyNotificationService {
 
 const OPTIONS: LowStockDetectorOptions = { debounceMs: 1, cooldownMs: 200 };
 
-function detectorWith(spy: SpyNotificationService): LowStockDetectorService {
+/**
+ * A clock the test moves by hand.
+ *
+ * The cooldown assertions used to be a race: a 200 ms window, three round trips
+ * to Postgres inside it, and a 250 ms sleep to get past it. Under a loaded
+ * full-suite run the burst sometimes took longer than the window and the test
+ * failed as though the cooldown were broken. Time is the thing under test here,
+ * so the test owns it.
+ */
+function fakeClock(startAt = 1_700_000_000_000) {
+  let t = startAt;
+  return {
+    now: () => t,
+    advance(ms: number) {
+      t += ms;
+    },
+  };
+}
+
+function detectorWith(
+  spy: SpyNotificationService,
+  options: LowStockDetectorOptions = OPTIONS,
+): LowStockDetectorService {
   return new LowStockDetectorService(
     getAppPool(),
     new EventBus(),
     spy as unknown as import('../../../kernel/notification/notification.service').NotificationService,
-    OPTIONS,
+    options,
   );
 }
 
@@ -148,7 +170,11 @@ describe('LowStockDetectorService.checkAndNotify — live DB', () => {
     await createMinStockRule(key.locationId, key.itemId, '10.000');
     try {
       const spy = new SpyNotificationService();
-      const detector = detectorWith(spy);
+      const clock = fakeClock();
+      // Same options, plus a clock this test controls — so "inside the window"
+      // and "after the window" are exact rather than dependent on how busy the
+      // machine is.
+      const detector = detectorWith(spy, { ...OPTIONS, now: clock.now });
 
       // Balance opens at 5, below the 10 min_qty — a real "already low" state.
       await postFactMovement(
@@ -159,10 +185,11 @@ describe('LowStockDetectorService.checkAndNotify — live DB', () => {
         '5.000',
       );
 
-      // Simulate a busy shift: several checks fire in quick succession for
-      // the SAME still-below balance (this is exactly what a burst of
-      // `stock.moved` events, each debounced individually but landing close
-      // together, looks like once they reach `checkAndNotify`).
+      // Simulate a busy shift: several checks fire in quick succession for the
+      // SAME still-below balance (what a burst of `stock.moved` events, each
+      // debounced individually but landing close together, looks like by the
+      // time it reaches `checkAndNotify`). The clock does not move, so all three
+      // are unambiguously inside one cooldown window.
       await detector.checkAndNotify(key.locationId, key.itemId);
       await detector.checkAndNotify(key.locationId, key.itemId);
       await detector.checkAndNotify(key.locationId, key.itemId);
@@ -173,9 +200,17 @@ describe('LowStockDetectorService.checkAndNotify — live DB', () => {
       expect(spy.calls[0]!.params.minQty).toBe('10.000');
       expect(spy.calls[0]!.locationId).toBe(key.locationId);
 
-      // Still below, but the cooldown (200ms) has now elapsed — a genuinely
-      // new alert cycle, not the same burst.
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      // Still below, but the cooldown has now elapsed — a genuinely new alert
+      // cycle, not the same burst. One millisecond past the window is the
+      // interesting boundary; a generous sleep would have proved less.
+      clock.advance(OPTIONS.cooldownMs + 1);
+      await detector.checkAndNotify(key.locationId, key.itemId);
+      expect(spy.calls).toHaveLength(2);
+
+      // And one tick BEFORE the next window closes is still suppressed, which is
+      // what makes the assertion above about the cooldown rather than about
+      // "calling it twice notifies twice".
+      clock.advance(OPTIONS.cooldownMs - 1);
       await detector.checkAndNotify(key.locationId, key.itemId);
       expect(spy.calls).toHaveLength(2);
     } finally {

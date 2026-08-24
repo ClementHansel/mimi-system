@@ -167,22 +167,30 @@ describe('LocationService (live database)', () => {
       const fixtures: Fixtures = await loadFixtures();
 
       await withRollback(async (client) => {
-        // stock_balances is a real table (owned by M07/inventory); reads/writes
-        // ONE row this test inserts and cleans up itself — never durable.
+        // A storage area CREATED BY THIS TEST, not a seeded one.
+        //
+        // It used to reuse `fixtures.storageAreaOutlet`, which made the
+        // assertion depend on every balance any other spec had left in that
+        // area — and the old net-sum check could be cancelled to zero by a
+        // stray negative row, so this failed intermittently on data that had
+        // nothing to do with it. An area nobody else knows about cannot be
+        // interfered with.
+        const area = await client.query<{ id: string }>(
+          `INSERT INTO storage_areas (location_id, code, name, type, is_active)
+           VALUES ($1, $2, 'Area uji deaktivasi', 'dry_store', true)
+           RETURNING id`,
+          [fixtures.outletId, `TST-${Date.now().toString().slice(-8)}`],
+        );
+        const areaId = area.rows[0]!.id;
+
         await client.query(
           `INSERT INTO stock_balances (location_id, storage_area_id, item_id, qty_on_hand)
-           VALUES ($1,$2,$3,10.000)
-           ON CONFLICT (location_id, storage_area_id, item_id) DO UPDATE SET qty_on_hand = 10.000`,
-          [fixtures.outletId, fixtures.storageAreaOutlet, fixtures.itemId],
+           VALUES ($1,$2,$3,10.000)`,
+          [fixtures.outletId, areaId, fixtures.itemId],
         );
 
         await expect(
-          storageAreaService.deactivate(
-            client,
-            fixtures.outletId,
-            fixtures.storageAreaOutlet,
-            ACTOR,
-          ),
+          storageAreaService.deactivate(client, fixtures.outletId, areaId, ACTOR),
         ).rejects.toMatchObject({ response: { code: 'ERR_AREA_HAS_STOCK' } });
       });
       // ^ this whole block's own INSERT is rolled back — deactivate() rejects

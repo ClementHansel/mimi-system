@@ -100,7 +100,13 @@ export function setup() {
     const meRes = http.get(`${BASE_URL}/api/auth/me`, { headers });
     const locationId = JSON.parse(meRes.body).locations[0].id;
     const currentRes = http.get(`${BASE_URL}/api/pos/shifts/current`, { headers });
-    let shift = currentRes.status === 200 ? JSON.parse(currentRes.body) : null;
+    // 200 WITH AN EMPTY BODY means "no shift is open" — the endpoint answers the
+    // question rather than 404-ing, and `JSON.parse('')` throws EOF. The old
+    // seed always left one shift open so this branch never ran; a realistic
+    // history closes every shift at the end of its day, and the harness died in
+    // setup before a single VU started.
+    const hasCurrent = currentRes.status === 200 && (currentRes.body ?? '').trim().length > 0;
+    let shift = hasCurrent ? JSON.parse(currentRes.body) : null;
     if (!shift) {
       const openRes = http.post(
         `${BASE_URL}/api/pos/shifts/open`,

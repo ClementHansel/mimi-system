@@ -44,7 +44,10 @@ function bootstrapOutlet(code) {
   if (!product) throw new Error(`no active product in catalog for ${code} — seed not loaded?`);
 
   const currentRes = http.get(`${BASE_URL}/api/pos/shifts/current`, { headers });
-  let shift = currentRes.status === 200 ? JSON.parse(currentRes.body) : null;
+  // 200 with an EMPTY body means "no shift is open" — see the same guard in
+  // nfr01-150-concurrent.js. `JSON.parse('')` throws EOF and kills setup.
+  const hasCurrent = currentRes.status === 200 && (currentRes.body ?? '').trim().length > 0;
+  let shift = hasCurrent ? JSON.parse(currentRes.body) : null;
 
   if (!shift) {
     // locationId is required by OpenShiftDto but this script never learned it directly —

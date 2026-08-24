@@ -63,8 +63,8 @@ and only one that is already running (this ticket did not start one — see
 "What was NOT run" below).
 
 All scripts assume `database/seed.ts`'s demo data (`password123` for every
-seeded user, the 20-outlet/4-city fleet, `owner`/`kepalagudang1`/`driver1`/
-`kasir1_<code>` usernames). If the seed shape changes, these are the first
+seeded user, the 20-outlet/4-city fleet, `owner`/`gudang1`/`driver1`/
+`kasir_<code>_<shift>` usernames). If the seed shape changes, these are the first
 places to update.
 
 ## What was NOT run, and why

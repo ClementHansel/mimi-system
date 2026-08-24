@@ -36,7 +36,7 @@ export const options = {
 
 /** One session per outlet: login, ensure an open shift, grab a real product to sell. */
 function bootstrapOutlet(code) {
-  const { accessToken } = login(BASE_URL, `kasir1_${code.toLowerCase()}`);
+  const { accessToken } = login(BASE_URL, `kasir_${code.toLowerCase()}_p`);
   const headers = authHeaders(accessToken);
 
   const catalogRes = http.get(`${BASE_URL}/api/pos/catalog`, { headers });
@@ -54,7 +54,7 @@ function bootstrapOutlet(code) {
     const meRes = http.get(`${BASE_URL}/api/auth/me`, { headers });
     const me = JSON.parse(meRes.body);
     const locationId = me.locations && me.locations[0] && me.locations[0].id;
-    if (!locationId) throw new Error(`kasir1_${code.toLowerCase()} has no assigned location`);
+    if (!locationId) throw new Error(`kasir_${code.toLowerCase()}_p has no assigned location`);
 
     const openRes = http.post(
       `${BASE_URL}/api/pos/shifts/open`,

@@ -39,7 +39,7 @@ export function setup() {
   // kepala_gudang holds delivery.read and, per `ScopeService.kepalaGudangScope`,
   // sees the warehouse plus every outlet it has ever shipped to — realistically
   // the busiest legitimate caller of this list, busier than a single-outlet role.
-  const { accessToken } = login(BASE_URL, 'kepalagudang1');
+  const { accessToken } = login(BASE_URL, 'gudang1');
   return { headers: authHeaders(accessToken) };
 }
 

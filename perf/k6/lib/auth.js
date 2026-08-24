@@ -1,7 +1,7 @@
 // Shared login helper for every k6 scenario in this suite.
 //
 // Demo credentials come straight from `database/seed.ts` (`DEMO_PASSWORD =
-// 'password123'`, `kasir1_<code>` / `driver<n>` / `owner` usernames) — see
+// 'password123'`, `kasir_<code>_<shift>` / `driver<n>` / `owner` usernames) — see
 // that file if the seed shape ever changes. Nothing here is a secret; it is
 // the same fixed demo password the seed prints to its own console log.
 import http from 'k6/http';

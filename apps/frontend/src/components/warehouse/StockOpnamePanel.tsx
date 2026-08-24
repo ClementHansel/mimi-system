@@ -52,7 +52,7 @@ import type { Qty } from '@/lib/shared-types';
  */
 export function StockOpnamePanel() {
   const { t } = useI18n();
-  const { locationId } = useWarehouseLocation();
+  const { locationId, loading: warehouseLoading } = useWarehouseLocation();
   const [rows, setRows] = useState<Opname[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -174,6 +174,10 @@ export function StockOpnamePanel() {
   // See `StockPanel`'s identical guard — no `warehouse`-type location on
   // this account (e.g. Owner) means there's nothing to fetch, not a failed
   // request (FIX-LOADS #1).
+  // `loading` first: a central role has no warehouse in its session and one
+  // is fetched, so checking only `locationId` renders "no warehouse" for a
+  // frame — the exact wrong message, shown to the people who own the place.
+  if (warehouseLoading) return <EmptyState title={t('table.loading')} size="lg" />;
   if (!locationId) return <EmptyState title={t('warehouse.noLocation')} size="lg" />;
 
   return (

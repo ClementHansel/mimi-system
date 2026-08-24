@@ -42,7 +42,7 @@ const EXPORT_COLUMNS: CsvColumn<Balance>[] = [
  */
 export function StockPanel() {
   const { t } = useI18n();
-  const { locationId } = useWarehouseLocation();
+  const { locationId, loading: warehouseLoading } = useWarehouseLocation();
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -106,6 +106,10 @@ export function StockPanel() {
   // like Owner) — genuinely nothing to fetch or retry, so say that plainly
   // instead of the generic `table.error` (which reads as "the request
   // failed" when no request was ever attempted; FIX-LOADS #1).
+  // `loading` first: a central role has no warehouse in its session and one
+  // is fetched, so checking only `locationId` renders "no warehouse" for a
+  // frame — the exact wrong message, shown to the people who own the place.
+  if (warehouseLoading) return <EmptyState title={t('table.loading')} size="lg" />;
   if (!locationId) return <EmptyState title={t('warehouse.noLocation')} size="lg" />;
 
   return (

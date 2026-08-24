@@ -47,7 +47,7 @@ interface WasteLineDraft {
  */
 export function WastePanel() {
   const { t } = useI18n();
-  const { locationId } = useWarehouseLocation();
+  const { locationId, loading: warehouseLoading } = useWarehouseLocation();
   const [areas, setAreas] = useState<StorageArea[]>([]);
   const [items, setItems] = useState<Item[]>([]);
 
@@ -157,6 +157,10 @@ export function WastePanel() {
   // `warehouse`-type location (e.g. Owner) saw literally nothing on this
   // tab (FIX-LOADS #2), no different from an infinite spinner. Say plainly
   // there's no location instead.
+  // `loading` first: a central role has no warehouse in its session and one
+  // is fetched, so checking only `locationId` renders "no warehouse" for a
+  // frame — the exact wrong message, shown to the people who own the place.
+  if (warehouseLoading) return <EmptyState title={t('table.loading')} size="lg" />;
   if (!locationId) return <EmptyState title={t('warehouse.noLocation')} size="lg" />;
 
   return (

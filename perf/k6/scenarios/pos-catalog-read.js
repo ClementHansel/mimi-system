@@ -39,7 +39,7 @@ export function setup() {
   // catalog endpoint's own latency invisible under auth overhead.
   const tokensByCode = {};
   for (const code of ['BPP01', 'SMD01', 'BJM01', 'PTK01']) {
-    const { accessToken } = login(BASE_URL, `kasir1_${code.toLowerCase()}`);
+    const { accessToken } = login(BASE_URL, `kasir_${code.toLowerCase()}_p`);
     tokensByCode[code] = accessToken;
   }
   return { tokensByCode };

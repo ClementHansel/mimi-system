@@ -84,10 +84,10 @@ export const options = {
 export function setup() {
   const kasirTokens = {};
   for (const code of OUTLET_CODES.slice(0, 4)) {
-    kasirTokens[code] = login(BASE_URL, `kasir1_${code.toLowerCase()}`).accessToken;
+    kasirTokens[code] = login(BASE_URL, `kasir_${code.toLowerCase()}_p`).accessToken;
   }
   const ownerToken = login(BASE_URL, 'owner').accessToken;
-  const dispatcherToken = login(BASE_URL, 'kepalagudang1').accessToken;
+  const dispatcherToken = login(BASE_URL, 'gudang1').accessToken;
   const driverToken = login(BASE_URL, 'driver1').accessToken;
 
   // Bootstrap one open shift + a real product per pre-authenticated outlet,

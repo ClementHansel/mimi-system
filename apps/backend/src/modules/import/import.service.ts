@@ -4,9 +4,7 @@ import { ItemStorageType } from '@mimi/shared';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import { ItemService } from '../item/item.service';
 import { ItemCategoryService } from '../item/item-category.service';
-import { ProductService } from '../product/product.service';
 import type { CreateItemDto, UpdateItemDto, CreateItemCategoryDto } from '../item/dto/item.dto';
-import type { CreateProductDto, UpdateProductDto } from '../product/dto/product.dto';
 import {
   buildTemplate,
   entityDef,
@@ -85,7 +83,6 @@ export class ImportService {
   constructor(
     private readonly items: ItemService,
     private readonly itemCategories: ItemCategoryService,
-    private readonly products: ProductService,
   ) {}
 
   permissionFor(entityName: ImportEntityName): string {
@@ -189,11 +186,16 @@ export class ImportService {
     client: PoolClient,
     entityName: ImportEntityName,
     csvText: string,
+    // Unused since `products` came out — items and item categories need no
+    // acting-user context to PLAN a row, only to write one. Kept in the
+    // signature because both callers pass it and the entity that needed it will
+    // return; `void` below documents that rather than silencing a lint.
     write?: { user: JwtAccessPayload; locationScope: string[] | null },
   ): Promise<
     | { headerOk: true; rowPlans: RowPlan[] }
     | { headerOk: false; fileErrors: { column?: string; message: string }[] }
   > {
+    void write;
     const def = entityDef(entityName);
     const csv = stripGuidanceRows(parseCsv(csvText));
     const result = validate(def, csv);
@@ -213,7 +215,7 @@ export class ImportService {
 
     const rowPlans: RowPlan[] = [];
     for (const row of result.rows) {
-      const built = await this.buildRowPlan(client, def, row, write);
+      const built = await this.buildRowPlan(client, def, row);
       rowPlans.push(built);
     }
     // Merge in the lines that never reached `buildRowPlan` because they failed
@@ -230,15 +232,16 @@ export class ImportService {
     client: PoolClient,
     def: ImportEntityDef,
     row: ValidatedRow,
-    write?: { user: JwtAccessPayload; locationScope: string[] | null },
   ): Promise<RowPlan> {
     switch (def.name) {
       case 'item_categories':
         return this.planItemCategory(client, row);
       case 'items':
         return this.planItem(client, row);
-      case 'products':
-        return this.planProduct(client, row, write);
+      // No `products` case — see the note on `ImportEntityName`. Its planner was
+      // deleted rather than parked: it was written against a `categoryId` FK and
+      // a `product_categories` table that do not exist yet, so it would need
+      // rewriting anyway when that model lands. Git history has it.
       /* istanbul ignore next -- exhaustiveness guard, `def.name` is the closed `ImportEntityName` union */
       default:
         throw new Error(`unhandled import entity "${(def as ImportEntityDef).name}"`);
@@ -349,70 +352,6 @@ export class ImportService {
           barcode: row.values.barcode ?? undefined,
         };
         await this.items.create(client, dto, actorUserId);
-        return 'created';
-      },
-    };
-  }
-
-  private async planProduct(
-    client: PoolClient,
-    row: ValidatedRow,
-    write?: { user: JwtAccessPayload; locationScope: string[] | null },
-  ): Promise<RowPlan> {
-    const code = row.values.code!;
-    const categoryName = row.values.category!;
-    const categoryId = await this.findExisting(client, 'product_categories', 'name', categoryName);
-    if (!categoryId) {
-      return {
-        line: row.line,
-        naturalKey: code,
-        error: {
-          column: 'category',
-          message: `Kategori menu "${categoryName}" tidak ditemukan — buat dulu di Master Data > Kategori Menu`,
-        },
-      };
-    }
-
-    const existingId = await this.findExisting(client, 'products', 'code', code);
-    const sortOrder = row.values.sort_order != null ? Number(row.values.sort_order) : undefined;
-    // `ProductService.create`/`update` need a `user`/`locationScope` pair only
-    // to resolve `photoUrl` (never set from an import row) — `preview` never
-    // calls them at all, so it never needs to supply one.
-    const actingUser = write?.user;
-    const locationScope = write?.locationScope ?? null;
-
-    return {
-      line: row.line,
-      naturalKey: code,
-      existingId,
-      apply: async (actorUserId) => {
-        if (!actingUser) throw new Error('planProduct.apply called without a caller identity');
-        if (existingId) {
-          const dto: UpdateProductDto = {
-            code,
-            name: row.values.name!,
-            categoryId,
-            price: row.values.price!,
-            sortOrder,
-          };
-          await this.products.update(
-            client,
-            existingId,
-            dto,
-            actorUserId,
-            actingUser,
-            locationScope,
-          );
-          return 'updated';
-        }
-        const dto: CreateProductDto = {
-          code,
-          name: row.values.name!,
-          categoryId,
-          price: row.values.price!,
-          sortOrder,
-        };
-        await this.products.create(client, dto, actorUserId, actingUser, locationScope);
         return 'created';
       },
     };

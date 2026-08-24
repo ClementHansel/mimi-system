@@ -6,7 +6,7 @@
  * same as every other feature's wire types under `components/*`).
  */
 
-export type ImportEntityName = 'item_categories' | 'items' | 'products';
+export type ImportEntityName = 'item_categories' | 'items';
 
 export type ImportRowStatus = 'would-create' | 'would-update' | 'error';
 

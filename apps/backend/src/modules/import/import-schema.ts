@@ -155,7 +155,21 @@ export interface ColumnDef {
   fk?: { table: string; column: string; label: string };
 }
 
-export type ImportEntityName = 'item_categories' | 'items' | 'products';
+/**
+ * `products` is deliberately ABSENT for now.
+ *
+ * The import for it was written against a menu-category model that is not
+ * landed: `products.category` is still a plain string column in `main`, the
+ * `categoryId` FK rename is uncommitted in another workstream, and the
+ * `product_categories` table it resolves against does not exist on production
+ * (migration 239 is untracked). Shipping it would mean an entity that 500s on
+ * its first use.
+ *
+ * The column definitions and `planProduct` are kept below, unreferenced, so
+ * restoring it is a one-line change once that migration lands — the compiler
+ * will point at the `categoryId`/`category` mismatch the moment it does.
+ */
+export type ImportEntityName = 'item_categories' | 'items';
 
 export interface ImportEntityDef {
   name: ImportEntityName;
@@ -238,40 +252,6 @@ export const IMPORT_ENTITIES: readonly ImportEntityDef[] = [
         hint: 'opsional · angka bulat, umur simpan dalam hari · contoh: "7"',
       },
       { name: 'barcode', kind: 'text', hint: 'opsional · teks · contoh: "8991234567890"' },
-    ],
-  },
-  {
-    name: 'products',
-    table: 'products',
-    naturalKey: 'code',
-    permission: 'product.manage',
-    columns: [
-      {
-        name: 'code',
-        kind: 'text',
-        required: true,
-        hint: 'wajib · teks, kode unik · contoh: "PRD01"',
-      },
-      { name: 'name', kind: 'text', required: true, hint: 'wajib · teks · contoh: "Ayam Geprek"' },
-      {
-        name: 'category',
-        kind: 'text',
-        required: true,
-        hint: 'wajib · nama kategori menu yang SUDAH ADA (buat dulu di Master Data > Kategori Menu) · contoh: "Ayam"',
-        fk: { table: 'product_categories', column: 'name', label: 'kategori menu' },
-      },
-      {
-        name: 'price',
-        kind: 'decimal',
-        scale: 2,
-        required: true,
-        hint: 'wajib · angka desimal (harga dalam Rupiah), titik atau koma keduanya boleh · contoh: "18500"',
-      },
-      {
-        name: 'sort_order',
-        kind: 'int',
-        hint: 'opsional · angka bulat, urutan tampil di kasir · contoh: "10"',
-      },
     ],
   },
 ];

@@ -29,7 +29,9 @@ import type {
 const ENTITY_OPTIONS: { value: ImportEntityName; labelKey: string }[] = [
   { value: 'item_categories', labelKey: 'importData.entity.itemCategories' },
   { value: 'items', labelKey: 'importData.entity.items' },
-  { value: 'products', labelKey: 'importData.entity.products' },
+  // No `products` option: the backend does not serve that entity yet (its menu
+  // category model is unlanded). Offering it here would download a template for
+  // an endpoint that 400s.
 ];
 
 /**

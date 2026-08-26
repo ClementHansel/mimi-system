@@ -21,7 +21,12 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PoolClient } from 'pg';
 import { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
-import { compressAndStripExif, isProcessableImage } from './image-processing.util';
+import {
+  compressAndStripExif,
+  isProcessableImage,
+  makeThumbnail,
+  sha256Hex,
+} from './image-processing.util';
 import { withWrite } from './db-tx';
 
 const PRESIGN_UPLOAD_TTL_SECONDS = 15 * 60; // 15 minutes to complete an upload
@@ -32,6 +37,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** CONTRACTS.md §1.14: roles whose scope spans every location — never blocked by an attachment's `location_id`. */
 const CENTRAL_ROLES = new Set(['owner', 'manager', 'finance', 'hr_admin']);
+
+/** Drains an S3 object body into one Buffer. */
+async function collectStream(body: AsyncIterable<Buffer>): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of body) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
 
 export interface PresignRequest {
   fileName: string;
@@ -407,9 +419,7 @@ export class StorageService implements OnModuleInit {
       const original = await this.client.send(
         new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }),
       );
-      const chunks: Buffer[] = [];
-      for await (const chunk of original.Body as AsyncIterable<Buffer>) chunks.push(chunk);
-      const originalBuffer = Buffer.concat(chunks);
+      const originalBuffer = await collectStream(original.Body as AsyncIterable<Buffer>);
 
       const processed = await compressAndStripExif(originalBuffer);
 
@@ -524,6 +534,84 @@ export class StorageService implements OnModuleInit {
       code: 'ERR_LOCATION_OUT_OF_SCOPE',
       message: 'Attachment belongs to a location outside your scope',
     });
+  }
+
+  /**
+   * Bytes of a small WebP thumbnail of an image attachment, generated on first
+   * request and cached in the bucket alongside the original.
+   *
+   * WHY BYTES AND NOT A PRESIGNED URL: `getUrl()` mints a URL that expires in
+   * 10 minutes, which is fine for a form the user is looking at right now and
+   * useless for the POS menu — `PosCatalogService` precaches the catalog onto
+   * every tablet and serves it offline for as long as the device stays offline,
+   * so an expiring URL would break exactly when the outlet needs it. That
+   * service's header called this out as a known follow-up. Serving the bytes
+   * through the API instead gives a STABLE, auth-checked address the till can
+   * fetch once and keep in IndexedDB.
+   *
+   * WRITE-THROUGH CACHE: the resize runs at most once per attachment per size
+   * (sharp on a request path is not free), and the derivative is keyed off the
+   * original's `object_key` so it also covers photos uploaded before
+   * thumbnails existed. A cached derivative is never invalidated because
+   * `attachments` rows are immutable once confirmed — a replaced product photo
+   * is a NEW attachment id, and therefore a new key.
+   *
+   * `sha256` of the DERIVATIVE is returned for the caller to use as an ETag, so
+   * a still-warm device revalidates with a 304 instead of re-downloading.
+   */
+  async getThumbnailBytes(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    locationScope: string[] | null,
+    id: string,
+    maxPx: number,
+  ): Promise<{ buffer: Buffer; mimeType: string; etag: string }> {
+    const row = await this.findAttachment(client, id);
+    this.assertEntityScope(user, locationScope, row);
+
+    if (!isProcessableImage(row.mime_type)) {
+      throw new BadRequestException({
+        code: 'ERR_VALIDATION',
+        message: 'Attachment is not an image',
+      });
+    }
+
+    const thumbKey = `thumbs/${maxPx}/${row.object_key}`;
+
+    try {
+      const cached = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: thumbKey }),
+      );
+      const buffer = await collectStream(cached.Body as AsyncIterable<Buffer>);
+      return { buffer, mimeType: 'image/webp', etag: sha256Hex(buffer) };
+    } catch {
+      // Not generated yet (or the derivative was evicted) — fall through and build it.
+    }
+
+    const original = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: row.object_key }),
+    );
+    const originalBuffer = await collectStream(original.Body as AsyncIterable<Buffer>);
+    const thumb = await makeThumbnail(originalBuffer, maxPx);
+
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: thumbKey,
+          Body: thumb.buffer,
+          ContentType: thumb.mimeType,
+        }),
+      );
+    } catch (err) {
+      // A failed cache WRITE must not fail the READ — the caller still gets
+      // its bytes, the next request just pays for the resize again.
+      this.logger.warn(
+        `Could not cache thumbnail ${thumbKey}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+
+    return { buffer: thumb.buffer, mimeType: thumb.mimeType, etag: thumb.sha256 };
   }
 
   private toDto(row: AttachmentRow, url: string): AttachmentDto {

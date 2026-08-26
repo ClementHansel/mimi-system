@@ -18,6 +18,7 @@ import { EventBus } from '../../kernel/events/event-bus.service';
 import { StorageService } from '../../kernel/storage/storage.service';
 import { ProductService } from './product.service';
 import { RecipeService } from './recipe.service';
+import { PackageService } from './package.service';
 import {
   getOwnerPool,
   loadFixtures,
@@ -40,7 +41,8 @@ const dummyPool = {
   },
 } as unknown as Pool;
 const storage = new StorageService(new ConfigService(), dummyPool);
-const productService = new ProductService(sync, eventBus, storage);
+const packageService = new PackageService(sync);
+const productService = new ProductService(sync, eventBus, storage, packageService);
 const recipeService = new RecipeService(sync);
 
 const ACTOR = '00000000-0000-0000-0000-0000000000aa';
@@ -50,6 +52,27 @@ const SYSTEM_USER: JwtAccessPayload = {
   roleKey: 'owner',
   locationIds: [],
 };
+
+/**
+ * Menu categories are `product_categories` rows since migration 247, so a
+ * product fixture needs an id, not the literal 'Ayam'. Resolved by name against
+ * the seeded rows (migration 247 backfills them and `seed.ts` upserts them), and
+ * memoised — every test in this suite creates a product, and none of them care
+ * about the category beyond it being valid.
+ */
+const categoryIdCache = new Map<string, string>();
+async function categoryId(name: string): Promise<string> {
+  const cached = categoryIdCache.get(name);
+  if (cached) return cached;
+  const res = await getOwnerPool().query<{ id: string }>(
+    `SELECT id FROM product_categories WHERE name = $1`,
+    [name],
+  );
+  const id = res.rows[0]?.id;
+  if (!id) throw new Error(`product_categories row "${name}" is missing — run pnpm db:migrate`);
+  categoryIdCache.set(name, id);
+  return id;
+}
 
 async function cleanupProducts(productIds: string[]): Promise<void> {
   if (productIds.length === 0) return;
@@ -64,6 +87,14 @@ async function cleanupProducts(productIds: string[]): Promise<void> {
     [productIds],
   );
   await pool.query(`DELETE FROM recipes WHERE product_id = ANY($1::uuid[])`, [productIds]);
+  // Both directions: a fixture may have been a package, or a member of one.
+  // `member_product_id` is ON DELETE RESTRICT, so a leftover line would make the
+  // product delete below fail and leak fixtures into every later run.
+  await pool.query(
+    `DELETE FROM product_package_lines
+      WHERE package_product_id = ANY($1::uuid[]) OR member_product_id = ANY($1::uuid[])`,
+    [productIds],
+  );
   await pool.query(`DELETE FROM products WHERE id = ANY($1::uuid[])`, [productIds]);
 }
 
@@ -81,10 +112,15 @@ describe('ProductService / RecipeService (live database)', () => {
   });
 
   it('creates a product with hasRecipe=false and no photo', async () => {
-    const created = await withRollback((client) =>
+    const created = await withRollback(async (client) =>
       productService.create(
         client,
-        { code: nextCode('PRD'), name: 'Ayam Geprek', category: 'Ayam', price: '25000.00' },
+        {
+          code: nextCode('PRD'),
+          name: 'Ayam Geprek',
+          categoryId: await categoryId('Ayam'),
+          price: '25000.00',
+        },
         ACTOR,
         SYSTEM_USER,
         null,
@@ -97,10 +133,15 @@ describe('ProductService / RecipeService (live database)', () => {
   });
 
   it('updates a product and emits product.price_changed on the EventBus only when price actually changes', async () => {
-    const created = await withRollback((client) =>
+    const created = await withRollback(async (client) =>
       productService.create(
         client,
-        { code: nextCode('PRD'), name: 'Before', category: 'Umum', price: '10000.00' },
+        {
+          code: nextCode('PRD'),
+          name: 'Before',
+          categoryId: await categoryId('Umum'),
+          price: '10000.00',
+        },
         ACTOR,
         SYSTEM_USER,
         null,
@@ -114,13 +155,13 @@ describe('ProductService / RecipeService (live database)', () => {
     });
     try {
       // A non-price update must NOT emit product.price_changed.
-      await withRollback((client) =>
+      await withRollback(async (client) =>
         productService.update(client, created.id, { name: 'Renamed' }, ACTOR, SYSTEM_USER, null),
       );
       expect(received).toBeUndefined();
 
       // A real price change must.
-      const updated = await withRollback((client) =>
+      const updated = await withRollback(async (client) =>
         productService.update(client, created.id, { price: '30000.00' }, ACTOR, SYSTEM_USER, null),
       );
       expect(updated.price).toBe('30000.00');
@@ -135,17 +176,22 @@ describe('ProductService / RecipeService (live database)', () => {
   });
 
   it('deactivates a product', async () => {
-    const created = await withRollback((client) =>
+    const created = await withRollback(async (client) =>
       productService.create(
         client,
-        { code: nextCode('PRD'), name: 'ToDeactivate', category: 'Umum', price: '5000.00' },
+        {
+          code: nextCode('PRD'),
+          name: 'ToDeactivate',
+          categoryId: await categoryId('Umum'),
+          price: '5000.00',
+        },
         ACTOR,
         SYSTEM_USER,
         null,
       ),
     );
     createdProductIds.push(created.id);
-    const result = await withRollback((client) =>
+    const result = await withRollback(async (client) =>
       productService.deactivate(client, created.id, ACTOR),
     );
     expect(result.deactivated).toBe(true);
@@ -156,10 +202,15 @@ describe('ProductService / RecipeService (live database)', () => {
     // entirely missing: `products.is_active` has existed since migration 012
     // and NOTHING could set it back to true — no PATCH field, no route — so a
     // sold-out or seasonal line, once hidden, stayed hidden for good.
-    const created = await withRollback((client) =>
+    const created = await withRollback(async (client) =>
       productService.create(
         client,
-        { code: nextCode('PRD'), name: 'Seasonal', category: 'Minuman', price: '9000.00' },
+        {
+          code: nextCode('PRD'),
+          name: 'Seasonal',
+          categoryId: await categoryId('Minuman'),
+          price: '9000.00',
+        },
         ACTOR,
         SYSTEM_USER,
         null,
@@ -167,13 +218,13 @@ describe('ProductService / RecipeService (live database)', () => {
     );
     createdProductIds.push(created.id);
 
-    await withRollback((client) => productService.deactivate(client, created.id, ACTOR));
-    const off = await withRollback((client) =>
+    await withRollback(async (client) => productService.deactivate(client, created.id, ACTOR));
+    const off = await withRollback(async (client) =>
       productService.getById(client, created.id, SYSTEM_USER, null),
     );
     expect(off.isActive).toBe(false);
 
-    const back = await withRollback((client) =>
+    const back = await withRollback(async (client) =>
       productService.update(client, created.id, { isActive: true }, ACTOR, SYSTEM_USER, null),
     );
     expect(back.isActive).toBe(true);
@@ -181,17 +232,22 @@ describe('ProductService / RecipeService (live database)', () => {
 
   it('404s on a nonexistent product', async () => {
     await expect(
-      withRollback((client) =>
+      withRollback(async (client) =>
         productService.getById(client, '00000000-0000-0000-0000-000000000000', SYSTEM_USER, null),
       ),
     ).rejects.toMatchObject({ status: 404 });
   });
 
   it('GET recipe on a product with no recipe yet returns an empty BOM (not 404)', async () => {
-    const created = await withRollback((client) =>
+    const created = await withRollback(async (client) =>
       productService.create(
         client,
-        { code: nextCode('PRD'), name: 'No Recipe Yet', category: 'Umum', price: '1000.00' },
+        {
+          code: nextCode('PRD'),
+          name: 'No Recipe Yet',
+          categoryId: await categoryId('Umum'),
+          price: '1000.00',
+        },
         ACTOR,
         SYSTEM_USER,
         null,
@@ -199,15 +255,22 @@ describe('ProductService / RecipeService (live database)', () => {
     );
     createdProductIds.push(created.id);
 
-    const recipe = await withRollback((client) => recipeService.getRecipe(client, created.id));
+    const recipe = await withRollback(async (client) =>
+      recipeService.getRecipe(client, created.id),
+    );
     expect(recipe.lines).toEqual([]);
   });
 
   it('PUT recipe replaces the BOM, sets hasRecipe=true, and the round-tripped recipe explodes correctly', async () => {
-    const created = await withRollback((client) =>
+    const created = await withRollback(async (client) =>
       productService.create(
         client,
-        { code: nextCode('PRD'), name: 'With Recipe', category: 'Ayam', price: '20000.00' },
+        {
+          code: nextCode('PRD'),
+          name: 'With Recipe',
+          categoryId: await categoryId('Ayam'),
+          price: '20000.00',
+        },
         ACTOR,
         SYSTEM_USER,
         null,
@@ -215,7 +278,7 @@ describe('ProductService / RecipeService (live database)', () => {
     );
     createdProductIds.push(created.id);
 
-    const putResult = await withRollback((client) =>
+    const putResult = await withRollback(async (client) =>
       recipeService.putRecipe(
         client,
         created.id,
@@ -229,13 +292,13 @@ describe('ProductService / RecipeService (live database)', () => {
     expect(putResult.lines).toHaveLength(1);
     expect(putResult.lines[0]!.itemId).toBe(fixtures.itemId);
 
-    const refetchedProduct = await withRollback((client) =>
+    const refetchedProduct = await withRollback(async (client) =>
       productService.getById(client, created.id, SYSTEM_USER, null),
     );
     expect(refetchedProduct.hasRecipe).toBe(true);
 
     // Full-replace semantics: a second PUT with a different single line drops the first.
-    const secondPut = await withRollback((client) =>
+    const secondPut = await withRollback(async (client) =>
       recipeService.putRecipe(
         client,
         created.id,
@@ -251,7 +314,7 @@ describe('ProductService / RecipeService (live database)', () => {
     expect(secondPut.lines.some((l) => l.itemId === fixtures.itemId)).toBe(false);
 
     // DB-backed explosion wrapper (loads the just-persisted recipe, then explodes it) — FR-POS-06.
-    const usage = await withRollback((client) =>
+    const usage = await withRollback(async (client) =>
       recipeService.explodeForSale(client, created.id, '4.000'),
     );
     expect(usage).toEqual([{ itemId: fixtures.itemId2, qty: '2.000' }]); // yieldQty=2, qtySold=4 → ratio 2 → 1.000×2 = 2.000

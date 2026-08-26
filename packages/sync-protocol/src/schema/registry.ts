@@ -191,15 +191,33 @@ const itemFields = {
   barcode: nullable(string()),
   isActive: boolean(),
 };
+const productCategoryFields = {
+  id: id(),
+  name: string(),
+  sortOrder: number(),
+  isActive: boolean(),
+};
+const packageLineField = object({ memberProductId: uuid(), qty: qty() });
 const productFields = {
   id: id(),
   code: string(),
   name: string(),
+  // The category NAME, joined from `product_categories` since migration 247 —
+  // still a string on the wire so a device's cached catalog keeps its shape, but
+  // `categoryId` is the key a write sends back.
   category: string(),
+  categoryId: uuid(),
   price: money(),
   photoAttachmentId: nullable(uuid()),
   sortOrder: number(),
+  kind: string(),
   isActive: boolean(),
+  // `product_package_lines` rides EMBEDDED on the parent product (authority
+  // matrix), the same way `recipe_lines` rides on RECIPES: a package's
+  // membership is meaningless apart from the package, and a till that applied
+  // one without the other would briefly hold a bundle it cannot explode into
+  // stock usage. Optional because a plain product has none.
+  packageLines: optional(array(packageLineField)),
 };
 const recipeLineField = object({ itemId: uuid(), qty: qty(), unitId: uuid() });
 
@@ -219,6 +237,10 @@ export const GROUP_2_SCHEMAS = {
   'items.created': object(itemFields),
   'items.updated': object(itemFields),
   'items.deactivated': idOnly(),
+
+  'product_categories.created': object(productCategoryFields),
+  'product_categories.updated': object(productCategoryFields),
+  'product_categories.deactivated': idOnly(),
 
   'products.created': object(productFields),
   'products.updated': object(productFields),

@@ -70,7 +70,7 @@ function services(pool = getAppPool(), eventBus = buildEventBus()) {
       notifications,
       eventBus,
     ),
-    onlineOrders: new PosOnlineOrderService(stockLedger),
+    onlineOrders: new PosOnlineOrderService(stockLedger, eventBus),
     cashVariances: new PosCashVarianceService(pool, approvals),
     dailyStock: new PosDailyStockService(),
   };
@@ -406,7 +406,9 @@ describe('POS — full shift, live database', () => {
         const testItemId = itemRes.rows[0]!.id;
 
         const productRes = await client.query<{ id: string }>(
-          `INSERT INTO products (code, name, category, price, is_active) VALUES ($1,$2,'Umum','10000.00',true) RETURNING id`,
+          `INSERT INTO products (code, name, category_id, price, is_active)
+           VALUES ($1,$2,(SELECT id FROM product_categories WHERE name = 'Umum'),'10000.00',true)
+           RETURNING id`,
           [`TEST-BATCH-${suffix}`, 'Test batch-recipe product'],
         );
         const testProductId = productRes.rows[0]!.id;

@@ -190,16 +190,71 @@ export interface Item {
 
 // ── M05 product (menu + recipes/BOM) ──────────────────────────────────────────
 
+/**
+ * A POS menu category (`product_categories`, migration 247). Was free text on
+ * `products.category` until it needed renaming, reordering (it drives the till's
+ * category chip row) and retiring without deleting the products under it.
+ */
+export interface ProductCategory {
+  id: UUID;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+  /** Products currently pointing at this category, active and inactive alike — what makes a delete unsafe. */
+  productCount: number;
+}
+
+/** What a product IS, for the till and the back office (migration 248). */
+export type ProductKind = 'product' | 'package';
+
+/** One member of a package, in `Product.packageLines`. */
+export interface ProductPackageLine {
+  memberProductId: UUID;
+  memberName: string;
+  memberCode: string;
+  qty: Qty;
+  sortOrder: number;
+}
+
 export interface Product {
   id: UUID;
   code: string;
   name: string;
+  /** Display name of the product's `product_categories` row — see `categoryId`. */
   category: string;
+  categoryId: UUID;
   price: Money;
+  /**
+   * A PRESIGNED, EXPIRING url (10 min, `StorageService.getUrl`) — fine for a
+   * back-office form the user is looking at right now, useless for the till.
+   * `null` when the product has no photo, and always `null` on the POS catalog
+   * payload (see `photoPath`).
+   */
   photoUrl: string | null;
+  /**
+   * A STABLE, api-relative path to a small cached thumbnail
+   * (`/products/:id/photo`), or `null` when there is no photo.
+   *
+   * WHY BOTH: the POS catalog is precached and served offline for as long as
+   * the device stays offline, so a presigned `photoUrl` would expire exactly
+   * when the outlet needs it. This path never expires, so the till can fetch
+   * each one once and keep the blob in IndexedDB. It is a PATH, not a url —
+   * the api base differs between deployments (`NEXT_PUBLIC_API_URL`), so the
+   * client joins it the same way it joins every other endpoint.
+   */
+  photoPath: string | null;
   sortOrder: number;
   isActive: boolean;
+  /**
+   * `'package'` means this sellable is composed of OTHER products
+   * (`packageLines`) rather than carrying a recipe of its own. It still sells as
+   * ONE sale line at its own `price` — see migration 248 for why a package is a
+   * `products` row and what that costs in reporting.
+   */
+  kind: ProductKind;
   hasRecipe: boolean;
+  /** Present (non-empty) only when `kind === 'package'`. Mutually exclusive with `recipeLines` — a package must not carry a recipe or its ingredients would be counted twice per sale (enforced by trigger, migration 248). */
+  packageLines?: ProductPackageLine[];
   /**
    * Present (non-empty) only when `hasRecipe` — omitted/`undefined` otherwise.
    * Lets an offline POS device fold a completed sale into a local raw-material

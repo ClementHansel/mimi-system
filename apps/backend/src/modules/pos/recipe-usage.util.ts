@@ -6,7 +6,9 @@ import { convertQty, formatQty, isZeroQty, parseQty, recipeScaleRatio } from '@m
  * Recipe explosion (FR-POS-06) — turns a set of sold/voided `{productId,
  * qty}` lines into ingredient consumption, aggregated per item, for
  * `StockLedgerService.post()` to apply as `usage_out` (sale) or `return_in`
- * (void/refund reversal). Shared by `PosSaleService` and
+ * (void/refund reversal). A PACKAGE line is rewritten into its member products
+ * first (`expandPackages`, migration 248) so a bundle consumes exactly what its
+ * members' recipes consume. Shared by `PosSaleService` and
  * `PosVoidRefundService` — the reversal walks the SAME sale's own
  * `sale_lines`, not a re-declared quantity, so a void always reverses
  * exactly what was consumed.
@@ -87,6 +89,90 @@ async function resolveUnitConversion(
 }
 
 /**
+ * Rewrites any package line into its MEMBER product lines before explosion
+ * (migration 248).
+ *
+ * A package is a `products` row with `kind = 'package'` that carries no recipe
+ * of its own — selling one consumes whatever its members' recipes consume. So
+ * `{ package, qty: 2 }` where the package contains 3 × Ayam becomes
+ * `{ ayam, qty: 6 }`, and the existing per-product recipe explosion below
+ * handles it unchanged.
+ *
+ * ONE LEVEL ONLY, and that is enforced, not assumed: migration 248's triggers
+ * refuse a package as a member of another package, so a member is always a
+ * plain product and this needs no recursion or depth guard.
+ *
+ * A package with NO members contributes nothing, exactly as a product with no
+ * recipe does — `PutPackageDto` requires at least one member, so this only
+ * happens to a row that predates its membership being set.
+ *
+ * Member qtys are folded into the SAME `{productId, qty}` shape the caller
+ * passed, so a sale that contains both a bundle and a loose Ayam aggregates
+ * that ingredient once rather than posting two movements for it.
+ */
+async function expandPackages(
+  client: PoolClient,
+  lines: readonly UsageLine[],
+): Promise<UsageLine[]> {
+  if (lines.length === 0) return [];
+
+  const packageRes = await client.query<{ id: UUID }>(
+    `SELECT id FROM products WHERE id = ANY($1::uuid[]) AND kind = 'package'`,
+    [lines.map((l) => l.productId)],
+  );
+  if (packageRes.rows.length === 0) return [...lines];
+
+  const packageIds = new Set(packageRes.rows.map((r) => r.id));
+  const memberRes = await client.query<{
+    package_product_id: UUID;
+    member_product_id: UUID;
+    qty: Qty;
+  }>(
+    `SELECT package_product_id, member_product_id, qty
+       FROM product_package_lines
+      WHERE package_product_id = ANY($1::uuid[])`,
+    [[...packageIds]],
+  );
+  const membersByPackage = new Map<UUID, { memberProductId: UUID; qty: Qty }[]>();
+  for (const row of memberRes.rows) {
+    const members = membersByPackage.get(row.package_product_id) ?? [];
+    members.push({ memberProductId: row.member_product_id, qty: row.qty });
+    membersByPackage.set(row.package_product_id, members);
+  }
+
+  // Aggregate in the scaled-integer domain (`parseQty`/`formatQty`) rather than
+  // summing decimal strings — same decimal-safety rule the rest of this file
+  // follows, and it matters here because a member qty is multiplied by a sold
+  // qty before anything else sees it.
+  const scaledByProduct = new Map<UUID, bigint>();
+  const add = (productId: UUID, qty: Qty) => {
+    scaledByProduct.set(productId, (scaledByProduct.get(productId) ?? 0n) + parseQty(qty));
+  };
+
+  for (const line of lines) {
+    if (!packageIds.has(line.productId)) {
+      add(line.productId, line.qty);
+      continue;
+    }
+    // A zero-qty line consumes nothing, and `convertQty` REJECTS a zero factor
+    // (`RangeError`) rather than returning zero — reaching it with one would
+    // throw out of the whole sale posting, not just skip a line. The recipe
+    // loop below has the same guard for the same reason.
+    if (isZeroQty(line.qty)) continue;
+    for (const member of membersByPackage.get(line.productId) ?? []) {
+      // members-per-package × packages-sold, via the same decimal-safe
+      // multiply `recipeScaleRatio`/`convertQty` use for recipe scaling.
+      add(member.memberProductId, convertQty(member.qty, line.qty));
+    }
+  }
+
+  return [...scaledByProduct.entries()].map(([productId, scaled]) => ({
+    productId,
+    qty: formatQty(scaled),
+  }));
+}
+
+/**
  * Explodes `lines` through each product's active recipe. A product with no
  * `recipes` row (e.g. a straight-resale bottled drink never given a BOM) is
  * silently skipped — that is a valid master-data choice (`recipes` is
@@ -100,7 +186,9 @@ export async function explodeRecipeUsage(
   const costByItem = new Map<UUID, Money>();
   const skipped: SkippedIngredient[] = [];
 
-  for (const line of lines) {
+  const effectiveLines = await expandPackages(client, lines);
+
+  for (const line of effectiveLines) {
     if (isZeroQty(line.qty)) continue; // a zero-qty line consumes nothing; also sidesteps convertQty's factor>0 guard below
 
     const recipeRes = await client.query<{ id: UUID; yield_qty: Qty }>(

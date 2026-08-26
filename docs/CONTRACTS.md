@@ -308,19 +308,57 @@ CREATE TABLE unit_conversions (                  -- item-specific overrides gene
   UNIQUE (item_id, from_unit_id, to_unit_id)
 );
 
--- 012: menu products + recipes (BOM) — drives FR-POS-06 usage estimate
-CREATE TABLE products (
+-- 247: POS menu categories — was free text on `products.category` until it
+-- needed renaming (a copy per product row), reordering (the till's category
+-- chip row was stuck alphabetical) and retiring without deleting its products.
+CREATE TABLE product_categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  code VARCHAR(50) UNIQUE NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  category VARCHAR(100) NOT NULL DEFAULT 'Umum', -- menu category: 'Ayam','Paket','Minuman','Tambahan'
-  price NUMERIC(18,2) NOT NULL,                  -- POS price, IDR
-  photo_attachment_id UUID REFERENCES attachments(id),
-  sort_order INTEGER NOT NULL DEFAULT 0,
+  name VARCHAR(100) UNIQUE NOT NULL,             -- 'Ayam','Paket','Minuman','Tambahan'
+  sort_order INTEGER NOT NULL DEFAULT 0,         -- drives the POS chip row order
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 012: menu products + recipes (BOM) — drives FR-POS-06 usage estimate
+-- 239 replaced `category VARCHAR(100)` with `category_id`; 240 added `kind`.
+CREATE TABLE products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code VARCHAR(50) UNIQUE NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  category_id UUID NOT NULL REFERENCES product_categories(id),
+  price NUMERIC(18,2) NOT NULL,                  -- POS price, IDR (a package's own bundle price)
+  photo_attachment_id UUID REFERENCES attachments(id),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  kind VARCHAR(20) NOT NULL DEFAULT 'product'    -- 'product' | 'package'
+    CHECK (kind IN ('product','package')),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 248: PACKAGES (bundles). A package is a `products` row with kind='package'
+-- that lists MEMBER PRODUCTS instead of carrying a recipe. It sells as ONE
+-- sale line at its own price — `sale_lines.product_id` is a NOT NULL FK to
+-- `products` (051) and void/refund, GL posting, receipts, the sync projector
+-- and the offline runtime all key off it, so a bundle needs no member price
+-- allocation and none of those five consumers change. The trade-off: revenue
+-- lands against the package, not split across its members.
+-- Stock: selling one explodes through each MEMBER's recipe (FR-POS-06).
+CREATE TABLE product_package_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  package_product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  member_product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  qty NUMERIC(14,3) NOT NULL CHECK (qty > 0),    -- members per one package
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (package_product_id, member_product_id),
+  CHECK (package_product_id <> member_product_id)
+);
+-- Three invariants enforced by TRIGGER (a CHECK cannot see another row), each
+-- guarding a way the FR-POS-06 estimate would silently corrupt:
+--   1. a package inside a package   -> unbounded explosion recursion
+--   2. lines on a non-package row   -> lines nothing ever explodes
+--   3. a package that has a recipe  -> ingredients counted TWICE per sale
 
 CREATE TABLE recipes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2932,19 +2970,40 @@ interface Item {
 | GET    | `/api/items/:id/conversions` | `item.read`   | –                                                                                                              | `{id:UUID; fromUnit:string; toUnit:string; factor:string}[]`      | –         |
 | PUT    | `/api/items/:id/conversions` | `item.manage` | `{conversions:{fromUnitId:UUID; toUnitId:UUID; factor:string}[]}`                                              | conversions list                                                  | –         |
 
-### 4.5 M05 `product` (menu + recipes/BOM)
+### 4.5 M05 `product` (menu + categories + packages + recipes/BOM)
 
 ```ts
+interface ProductCategory {
+  id: UUID;
+  name: string;
+  sortOrder: number; // drives the POS category chip row order
+  isActive: boolean;
+  productCount: number; // includes INACTIVE products - what makes retiring it unsafe
+}
+type ProductKind = 'product' | 'package';
+interface ProductPackageLine {
+  memberProductId: UUID;
+  memberName: string;
+  memberCode: string;
+  qty: Qty; // members per one package
+  sortOrder: number;
+}
 interface Product {
   id: UUID;
   code: string;
   name: string;
-  category: string;
+  category: string; // JOINED product_categories.name - no longer a column on products
+  categoryId: UUID;
   price: Money;
-  photoUrl: string | null;
+  photoUrl: string | null; // PRESIGNED, expires in 10 min. Always null on the POS catalog.
+  photoPath: string | null; // STABLE api path to a cached thumbnail, for offline precache
   sortOrder: number;
   isActive: boolean;
+  kind: ProductKind;
   hasRecipe: boolean;
+  // present only when kind === 'package'. Mutually exclusive with recipeLines: a package
+  // explodes through its MEMBERS' recipes, so a recipe on it would double-count per sale.
+  packageLines?: ProductPackageLine[];
   // present (non-empty) only when hasRecipe — the device's offline FR-POS-06 projection seam:
   // consumed qty per line = line.qty × (qtySold / recipeYieldQty), same ratio-then-multiply
   // RecipeService.explodeForSale uses server-side. Minimal projection (id+qty+unit only,
@@ -2966,16 +3025,35 @@ interface RecipeLine {
 }
 ```
 
-| Method | Path                       | Permission       | Request                                                               | Response                                             | FR        |
-| ------ | -------------------------- | ---------------- | --------------------------------------------------------------------- | ---------------------------------------------------- | --------- |
-| GET    | `/api/products`            | `product.read`   | `?q=&category=&active=&page=`                                         | `Paginated<Product>`                                 | FR-POS-01 |
-| GET    | `/api/products/:id`        | `product.read`   | –                                                                     | `Product`                                            | –         |
-| POST   | `/api/products`            | `product.manage` | `{code; name; category; price:Money; photoAttachmentId?; sortOrder?}` | `Product`                                            | –         |
-| PATCH  | `/api/products/:id`        | `product.manage` | partial (price change emits `products.price_changed` master event)    | `Product`                                            | –         |
-| DELETE | `/api/products/:id`        | `product.manage` | –                                                                     | `{id; deactivated:true}`                             | –         |
-| GET    | `/api/products/:id/recipe` | `recipe.read`    | –                                                                     | `{productId:UUID; yieldQty:Qty; lines:RecipeLine[]}` | FR-POS-06 |
-| PUT    | `/api/products/:id/recipe` | `recipe.manage`  | `{yieldQty:Qty; lines:{itemId:UUID; qty:Qty; unitId:UUID}[]}`         | recipe                                               | FR-POS-06 |
-| GET    | `/api/products/categories` | `product.read`   | –                                                                     | `string[]`                                           | –         |
+| Method | Path                             | Permission       | Request                                                                 | Response                                             | FR        |
+| ------ | -------------------------------- | ---------------- | ----------------------------------------------------------------------- | ---------------------------------------------------- | --------- |
+| GET    | `/api/products`                  | `product.read`   | `?q=&categoryId=&kind=&active=&page=`                                   | `Paginated<Product>`                                 | FR-POS-01 |
+| GET    | `/api/products/:id`              | `product.read`   | –                                                                       | `Product`                                            | –         |
+| POST   | `/api/products`                  | `product.manage` | `{code; name; categoryId; price:Money; photoAttachmentId?; sortOrder?}` | `Product`                                            | –         |
+| PATCH  | `/api/products/:id`              | `product.manage` | partial (price change emits `products.price_changed` master event)      | `Product`                                            | –         |
+| DELETE | `/api/products/:id`              | `product.manage` | –                                                                       | `{id; deactivated:true}`                             | –         |
+| GET    | `/api/products/:id/recipe`       | `recipe.read`    | –                                                                       | `{productId:UUID; yieldQty:Qty; lines:RecipeLine[]}` | FR-POS-06 |
+| PUT    | `/api/products/:id/recipe`       | `recipe.manage`  | `{yieldQty:Qty; lines:{itemId:UUID; qty:Qty; unitId:UUID}[]}`           | recipe                                               | FR-POS-06 |
+| GET    | `/api/products/:id/package`      | `product.read`   | –                                                                       | `ProductPackageLine[]`                               | FR-POS-06 |
+| PUT    | `/api/products/:id/package`      | `product.manage` | `{lines:{memberProductId:UUID; qty:Qty; sortOrder?}[]}` (min 1)         | `ProductPackageLine[]`                               | FR-POS-06 |
+| DELETE | `/api/products/:id/package`      | `product.manage` | – (back to a plain product, clears membership)                          | `{id; kind:'product'}`                               | –         |
+| GET    | `/api/products/:id/photo`        | `product.read`   | – (320px WebP thumbnail bytes; `ETag` + `Cache-Control: private`)       | `image/webp`                                         | FR-POS-01 |
+| GET    | `/api/products/categories`       | `product.read`   | `?includeInactive=`                                                     | `ProductCategory[]`                                  | –         |
+| POST   | `/api/products/categories`       | `product.manage` | `{name; sortOrder?}`                                                    | `ProductCategory`                                    | –         |
+| PUT    | `/api/products/categories/order` | `product.manage` | `{ids:UUID[]}` (whole ordered list; `sort_order` := position x 10)      | `ProductCategory[]`                                  | –         |
+| PATCH  | `/api/products/categories/:id`   | `product.manage` | `{name?; sortOrder?; isActive?}`                                        | `ProductCategory`                                    | –         |
+| DELETE | `/api/products/categories/:id`   | `product.manage` | – (soft; refused while any product still uses it)                       | `{id; deactivated:true}`                             | –         |
+
+`PUT .../package` flips a plain product to `kind='package'` in the SAME request
+that sets its members — split across two calls there would be a window where a
+package has no members, i.e. a sellable that consumes no stock at all. It also
+deactivates any recipe the product carried, since a package explodes through its
+members and a recipe would double-count (enforced by trigger, migration 248).
+
+`GET .../photo` exists because `photoUrl` is presigned and expires in 10 minutes
+while a precached POS catalog lives for as long as the device stays offline. It
+serves bytes from a write-through thumbnail cache in the bucket, so the address
+is stable and a tablet can hold the blob in its own Cache API store.
 
 ### 4.6 M06 `supplier` (FR-SUP-01..06; price data role-locked)
 

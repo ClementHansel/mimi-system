@@ -1122,9 +1122,9 @@ async function main(): Promise<void> {
       'Box Nasi Kecil',
     ]);
 
-    // Menu categories are rows now, not free text on `products` (migration 239).
+    // Menu categories are rows now, not free text on `products` (migration 247).
     // Upsert-by-name so the seed stays idempotent and so it keeps working on a
-    // database where migration 239's backfill already created these.
+    // database where migration 247's backfill already created these.
     const productCategoryId: Record<string, string> = {};
     const seenCategories = [...new Set(productDefs.map((p) => p.category))];
     for (const [i, name] of seenCategories.entries()) {
@@ -1197,7 +1197,7 @@ async function main(): Promise<void> {
       }
     }
     // =========================================================================
-    // PACKAGES (migration 240) — two of the seeded "Paket" products converted
+    // PACKAGES (migration 248) — two of the seeded "Paket" products converted
     // from a raw-item recipe into a real bundle of MEMBER PRODUCTS.
     //
     // Not all of them: a package is optional, and leaving the rest on their own

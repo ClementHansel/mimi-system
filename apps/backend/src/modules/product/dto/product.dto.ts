@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -21,15 +22,20 @@ export class ListProductsQueryDto {
   @MaxLength(255)
   q?: string;
 
+  /** Filter by menu category. A `product_categories` id since migration 247 — the free-text name it replaced was never a stable key. */
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  category?: string;
+  @IsUUID()
+  categoryId?: string;
 
   @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
   active?: boolean;
+
+  /** `'package'` to list only bundles, `'product'` only plain products; omitted lists both. */
+  @IsOptional()
+  @IsIn(['product', 'package'])
+  kind?: 'product' | 'package';
 
   @IsOptional()
   @Type(() => Number)
@@ -55,9 +61,8 @@ export class CreateProductDto {
   @MaxLength(255)
   name!: string;
 
-  @IsString()
-  @MaxLength(100)
-  category!: string;
+  @IsUUID()
+  categoryId!: string;
 
   @IsString()
   @Matches(MONEY_RE)
@@ -86,9 +91,8 @@ export class UpdateProductDto {
   name?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  category?: string;
+  @IsUUID()
+  categoryId?: string;
 
   @IsOptional()
   @IsString()

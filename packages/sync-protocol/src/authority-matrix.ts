@@ -78,7 +78,12 @@ export const AUTHORITY: Readonly<Record<string, EntityAuthority>> = {
   [SyncEntity.UNITS]: entity({ class: 'M', direction: 'pull', pullScope: 'global', ops: ['created', 'updated', 'deactivated'] }),
   [SyncEntity.UNIT_CONVERSIONS]: entity({ class: 'M', direction: 'pull', pullScope: 'global', ops: ['created', 'updated', 'deactivated'] }),
   [SyncEntity.ITEMS]: entity({ class: 'M', direction: 'pull', pullScope: 'global', ops: ['created', 'updated', 'deactivated'] }),
-  [SyncEntity.PRODUCTS]: entity({ class: 'M', direction: 'pull', pullScope: 'global', ops: ['created', 'updated', 'deactivated', 'price_changed'] }),
+  [SyncEntity.PRODUCT_CATEGORIES]: entity({ class: 'M', direction: 'pull', pullScope: 'global', ops: ['created', 'updated', 'deactivated'] }),
+  // `product_package_lines` rides along embedded on the parent product, the same
+  // way `recipe_lines` rides on RECIPES: a package's membership is meaningless
+  // apart from the package, and the till needs both in one applied event or it
+  // would briefly hold a bundle it cannot explode into stock usage.
+  [SyncEntity.PRODUCTS]: entity({ class: 'M', direction: 'pull', pullScope: 'global', ops: ['created', 'updated', 'deactivated', 'price_changed'], embedded: ['product_package_lines'] }),
   [SyncEntity.RECIPES]: entity({ class: 'M', direction: 'pull', pullScope: 'global', ops: ['updated'], embedded: ['recipe_lines'] }),
 
   // ── Group 3 — Stock (block 020-029; D-16 territory) ────────────────────────

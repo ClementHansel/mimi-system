@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 
 const MAX_DIMENSION_PX = 1920;
 const JPEG_QUALITY = 80;
+const THUMBNAIL_WEBP_QUALITY = 75;
 
 export interface ProcessedImage {
   buffer: Buffer;
@@ -71,4 +72,34 @@ export async function compressAndStripExif(input: Buffer): Promise<ProcessedImag
 
 export function sha256Hex(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex');
+}
+
+/**
+ * A small, square-fitting WebP derivative for the POS product grid.
+ *
+ * WHY A SEPARATE DERIVATIVE and not just `compressAndStripExif`'s output: the
+ * till PRECACHES every menu photo into IndexedDB so a tile still renders on a
+ * dead link (the catalog is offline-first, D-25). At 1920px/JPEG-80 a photo is
+ * ~150-250KB, so a 100-product menu is 15-25MB of device storage against
+ * RISK-S5's 200MB binary cap — for images displayed in a ~160px tile. At 320px
+ * WebP-75 the same menu is ~2MB.
+ *
+ * `fit: 'cover'` (not `'inside'`) because a menu grid of uniform square tiles
+ * looks broken with mixed aspect ratios, and cropping to the centre of a food
+ * photo is the safe crop. Metadata is stripped here for the same reason
+ * `compressAndStripExif` strips it — sharp drops it unless asked not to.
+ */
+export async function makeThumbnail(input: Buffer, maxPx: number): Promise<ProcessedImage> {
+  const buffer = await sharp(input)
+    .rotate()
+    .resize({ width: maxPx, height: maxPx, fit: 'cover', withoutEnlargement: true })
+    .webp({ quality: THUMBNAIL_WEBP_QUALITY })
+    .toBuffer();
+
+  return {
+    buffer,
+    mimeType: 'image/webp',
+    sizeBytes: buffer.length,
+    sha256: createHash('sha256').update(buffer).digest('hex'),
+  };
 }

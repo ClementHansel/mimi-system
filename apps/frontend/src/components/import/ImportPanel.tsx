@@ -13,7 +13,6 @@ import {
   CardFooter,
 } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Select } from '@/components/ui/Select';
 import { FileUpload } from '@/components/ui/FileUpload';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
@@ -25,14 +24,6 @@ import type {
   ImportPreviewRow,
   ImportCommitResult,
 } from './types';
-
-const ENTITY_OPTIONS: { value: ImportEntityName; labelKey: string }[] = [
-  { value: 'item_categories', labelKey: 'importData.entity.itemCategories' },
-  { value: 'items', labelKey: 'importData.entity.items' },
-  // No `products` option: the backend does not serve that entity yet (its menu
-  // category model is unlanded). Offering it here would download a template for
-  // an endpoint that 400s.
-];
 
 /**
  * F?? `importData` — bulk import with a schema-derived template (owner,
@@ -52,16 +43,23 @@ const ENTITY_OPTIONS: { value: ImportEntityName; labelKey: string }[] = [
  *      preview has run for the CURRENTLY selected file, so it is never
  *      possible to commit a file this component never actually validated.
  *
- * i18n: every user-facing label routes through `t('importData.<key>')`.
- * These keys do not exist in `lib/i18n/id.ts` yet (out of this component's
- * file ownership) — `t()` falls back to returning the raw key with a dev
- * console warning (see `lib/i18n/index.tsx`), so the page renders and
- * functions correctly today; the exact Indonesian copy to add is listed in
- * this feature's delivery report.
+ * WHICH ENTITY IS THE CALLER'S TO SAY, not this component's. It used to open
+ * on an entity dropdown from its own route, which asked the operator to
+ * re-state something the screen they came from already knew. It is now mounted
+ * from the Master Data tab that owns the data — Item, Kategori & Satuan, or
+ * Produk & Resep — so `entity` arrives as a prop and there is no picker to get
+ * wrong. Nothing here hardcodes what a valid row looks like either way: the
+ * template and the validation both come from the server's own schema.
  */
-export function ImportPanel() {
+export function ImportPanel({
+  entity,
+  onCommitted,
+}: {
+  entity: ImportEntityName;
+  /** Called after a successful commit so the host list can reload — imported rows are invisible otherwise. */
+  onCommitted?: () => void;
+}) {
   const { t } = useI18n();
-  const [entity, setEntity] = useState<ImportEntityName>('items');
   const [file, setFile] = useState<File[]>([]);
   const [downloading, setDownloading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -131,6 +129,7 @@ export function ImportPanel() {
       formData.append('file', chosen);
       const result = await api.upload<ImportCommitResult>(`/import/${entity}/commit`, formData);
       setCommitted(result);
+      onCommitted?.();
       toast({
         variant: 'success',
         title: t('importData.commitSuccess'),
@@ -192,21 +191,9 @@ export function ImportPanel() {
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>{t('importData.title')}</CardTitle>
           <CardDescription>{t('importData.description')}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <Select
-            label={t('importData.entityLabel')}
-            value={entity}
-            onValueChange={(v) => {
-              setEntity(v as ImportEntityName);
-              setFile([]);
-              resetResults();
-            }}
-            options={ENTITY_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
-          />
-
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium text-text-primary">{t('importData.step1')}</span>
             <Button

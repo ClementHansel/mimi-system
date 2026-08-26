@@ -1,6 +1,5 @@
 import { WAREHOUSE_PANELS } from './warehouse-panels';
 import {
-  Upload,
   ShoppingCart,
   LayoutDashboard,
   Store,
@@ -216,23 +215,6 @@ const DELIVERY_ASSIGN_ITEM: NavItem = {
   permission: 'delivery.sj.create',
 };
 
-/**
- * Bulk CSV import of master data. Office-only: it writes items, categories and
- * menu products chain-wide, so it belongs with the people who own master data,
- * not in a branch interface.
- *
- * Gated on `item.manage` — the same key the item CRUD screens use. The endpoint
- * picks the required permission per entity and checks it inline, so this is the
- * navigation's best single approximation rather than the authority itself.
- */
-const IMPORT_ITEM: NavItem = {
-  id: 'admin-import',
-  labelKey: 'importData.title',
-  href: '/admin/import',
-  icon: Upload,
-  permission: 'item.manage',
-};
-
 const PURCHASING_ITEM: NavItem = {
   id: 'purchasing',
   labelKey: 'nav.purchasing',
@@ -333,6 +315,13 @@ const DASHBOARD_SECTIONS: readonly NavSection[] = [
     id: 'sistem',
     labelKey: 'nav.section.sistem',
     items: [
+      // Bulk CSV import/export has NO nav entry of its own (owner, 2026-08-25).
+      // It used to be `/admin/import`, which made a bulk edit a destination:
+      // leave the list, re-state which entity you meant in a dropdown, come
+      // back to see whether it worked. It now lives as Export/Import buttons in
+      // the Data Master tab that owns each list (`components/admin/MasterDataIo`),
+      // where the entity is implied and a successful import reloads the table
+      // underneath it.
       {
         id: 'admin',
         labelKey: 'nav.admin',
@@ -340,7 +329,6 @@ const DASHBOARD_SECTIONS: readonly NavSection[] = [
         icon: ShieldCheck,
         permission: ['user.read', 'audit.read', 'settings.manage'],
       },
-      IMPORT_ITEM,
       {
         id: 'topology',
         labelKey: 'nav.topology',

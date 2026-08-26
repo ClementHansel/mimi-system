@@ -7,10 +7,12 @@ import {
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
+  calculateOnlineOrderJournalSplit,
   calculateOnlineOrderNet,
   ERR_CONFLICT,
   ERR_NET_MISMATCH,
   ERR_NOT_FOUND,
+  JournalEventType,
   MovementType,
   OnlineOrderStatus,
   OnlinePlatform,
@@ -21,6 +23,7 @@ import {
   type Qty,
   type UUID,
 } from '@mimi/shared';
+import { EventBus } from '../../../kernel/events/event-bus.service';
 import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.service';
 import {
   StockInsufficientError,
@@ -67,7 +70,10 @@ const SELECT = `
  */
 @Injectable()
 export class PosOnlineOrderService {
-  constructor(private readonly stockLedger: StockLedgerService) {}
+  constructor(
+    private readonly stockLedger: StockLedgerService,
+    private readonly eventBus: EventBus,
+  ) {}
 
   async create(
     client: PoolClient,
@@ -179,6 +185,43 @@ export class PosOnlineOrderService {
         input.items,
         input.id ? 'fact' : 'strict',
       );
+    }
+
+    // B-16/E7 — a completed order is the terminal state for GL purposes (`OnlineOrderStatus` has
+    // only completed/cancelled, per migration 053's CHECK; there is no later "settled" transition
+    // that revenue-recognition should instead wait for). Independent of the items/stock guard above
+    // — a manually-entered order with no recipe items still needs its revenue/fee split recorded.
+    // `isConflictLoser` is excluded for the same reason `postUsage` above excludes it: SYNC-PROTOCOL
+    // C8 ("both kept; second flagged; revenue reports use first") means the loser's amounts must
+    // never touch the ledger, or the platform's revenue would be double-booked.
+    //
+    // Split via the SAME `calculateOnlineOrderJournalSplit` the property test already proves nets to
+    // `gross` (never re-derived here) — `resolveOutletSalesLegs`'s 'online' branch debits 1030 by
+    // `byMethod.online` (the net leg) and credits 4000, then debits 6300/credits 1030 by `onlineFees`
+    // (discount + platform fee + other fee), leaving 1030 at exactly `netReceived` for X5
+    // (`platform_settlement`) to clear later when the platform actually pays out.
+    if (input.status === OnlineOrderStatus.COMPLETED && !input.isConflictLoser) {
+      const { netLeg, feeLeg } = calculateOnlineOrderJournalSplit({
+        grossAmount: input.grossAmount,
+        discountAmount: input.discountAmount,
+        platformFee: input.platformFee,
+        otherFee: input.otherFee,
+      });
+      await this.eventBus.publish('journal.action', {
+        eventType: JournalEventType.OUTLET_SALES,
+        documentType: 'online_order',
+        documentId: id,
+        locationId: input.locationId,
+        amount: input.grossAmount,
+        context: { byMethod: { online: netLeg }, onlineFees: feeLeg },
+        // `order_date` is a DATE (no time-of-day) that may be recorded days after the fact — the
+        // entry has to land on THAT WITA business day, not the moment this code runs. Built the same
+        // way `daily-posting.service.ts`'s `endOfBusinessDay` is: the calendar string IS the WITA
+        // date already, so it only needs the explicit +08:00 offset tacked on, never a re-shift
+        // through `toWitaOccurredAt` (which expects a real instant, not an already-WITA date string —
+        // feeding one in would double-apply the 8-hour offset and land on the wrong day).
+        occurredAt: `${input.orderDate}T23:59:59.999+08:00`,
+      });
     }
 
     return this.mustGetById(client, id);

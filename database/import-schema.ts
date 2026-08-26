@@ -193,7 +193,7 @@ export const ENTITIES: EntityDef[] = [
     name: 'products',
     table: 'products',
     naturalKey: 'code',
-    note: 'code,name,category,price,sort_order — category is the POS menu group (free text: Ayam, Minuman, …), price in rupiah',
+    note: 'code,name,category,price,sort_order — category is the POS menu group by NAME (Ayam, Minuman, …); it must already exist under Master Data, price in rupiah',
     columns: [
       { name: 'code', kind: 'text', required: true },
       { name: 'name', kind: 'text', required: true },

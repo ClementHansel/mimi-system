@@ -198,6 +198,37 @@ async function applyEntity(
       }
     }
 
+    // Menu category, same shape as an item's: the sheet carries a NAME, the
+    // column is a FK since migration 247. Unlike items it is required, because
+    // `products.category_id` is NOT NULL — so an omitted column is an error
+    // with a line number rather than a null that the insert would reject with a
+    // constraint message naming no row.
+    if (entity.name === 'products') {
+      if (!values.category) {
+        errors.push({
+          entity: entity.name,
+          line: row.line,
+          column: 'category',
+          message: 'category is required — every product belongs to a menu category',
+        });
+        continue;
+      }
+      const category = await client.query<{ id: string }>(
+        `SELECT id FROM product_categories WHERE lower(name) = lower($1)`,
+        [values.category],
+      );
+      if (!category.rows[0]) {
+        errors.push({
+          entity: entity.name,
+          line: row.line,
+          column: 'category',
+          message: `menu category "${values.category}" does not exist — create it under Master Data first`,
+        });
+        continue;
+      }
+      values.category_id = category.rows[0].id;
+    }
+
     const { sql, params } = upsertFor(entity, values);
     const res = await client.query<{ inserted: boolean }>(sql, params);
     if (res.rows[0]?.inserted) inserts++;
@@ -240,7 +271,7 @@ function upsertFor(
       'shelf_life_days',
       'barcode',
     ],
-    products: ['code', 'name', 'category', 'price', 'sort_order'],
+    products: ['code', 'name', 'category_id', 'price', 'sort_order'],
   };
 
   const columns = columnsByEntity[entity.name]!;

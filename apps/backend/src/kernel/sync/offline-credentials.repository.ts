@@ -19,15 +19,60 @@ import type {
   OfflineCredentialRow,
 } from './db-rows';
 
+/**
+ * What `app_offline_credential_for_verification` can return — every column
+ * SYNC-PROTOCOL §7.4 checks 1-8 need, and deliberately NOT `pin_verifier`
+ * (migration 206's whole security argument). Derived from
+ * `OfflineCredentialRow` with `Omit` so adding a column to the table cannot
+ * leave this shape silently behind.
+ */
+export type OfflineCredentialForVerification = Omit<OfflineCredentialRow, 'pin_verifier'>;
+
 /** Every method here takes its own `client: DbClient` — no pool of its own (§5.1: detection/re-verification always runs inside the caller's transaction, e.g. `sync-ingest.service.ts`'s apply-time hook). */
 @Injectable()
 export class OfflineCredentialsRepository {
+  /**
+   * §7.4 check 1 — the credential a sync batch is re-verifying, read through
+   * `app_offline_credential_for_verification` (migration 206).
+   *
+   * NOT a plain `SELECT` on `offline_credentials`, and this was a live defect
+   * rather than a style point: that table's RLS is `app_is_self(user_id)` with
+   * NO central arm, while re-verification is a cross-user SYSTEM read by
+   * construction — the cloud looks up the credential minted for the APPROVER
+   * (a supervisor), not for whichever session is draining the batch. Over the
+   * real `mimi_app`/`app_user` connection the raw select therefore returned
+   * ZERO ROWS for every genuine credential, and `reverify()` reported
+   * `outcome: 'failed', reason: '… forged or unknown (fraud alert)'` for every
+   * legitimate offline-authorized approval — routing honest voids,
+   * replenishments and waste approvals to the finance exception queue as
+   * suspected fraud. The failure mode was the exact INVERSE of the one §7.4
+   * exists to catch, which is why it read as "the mechanism is broken" rather
+   * than "the query is scoped wrong".
+   *
+   * Migration 206 shipped this function precisely for this call site and said
+   * so in its header ("could not work in production over the mimi_app +
+   * app_user connection without this fix") — the migration landed, the switch
+   * to using it did not. `auth.repository.ts`'s `findCredentialForUnlock`
+   * already reads through the same function; this is the second call site, not
+   * a new technique.
+   *
+   * The return type OMITS `pin_verifier` because the function deliberately
+   * cannot return it (only the base table's SELF policy reaches that column).
+   * Expressing that in the type — rather than casting it away — is what stops a
+   * future caller from reaching for a PIN hash through a system-context read
+   * and finding `undefined` at runtime instead of a compile error. §7.4 never
+   * needs it: PIN verification happens on the device, against the cached
+   * credential, before the event is ever minted.
+   */
   async findCredential(
     client: DbClient,
     credentialId: UUID,
-  ): Promise<OfflineCredentialRow | undefined> {
-    const res = await client.query<OfflineCredentialRow>(
-      `SELECT * FROM offline_credentials WHERE credential_id = $1`,
+  ): Promise<OfflineCredentialForVerification | undefined> {
+    const res = await client.query<OfflineCredentialForVerification>(
+      `SELECT credential_id, user_id, device_id, role_key, location_ids, scopes,
+              binding_secret_enc, selfie_required_above, volume_cap, use_count,
+              minted_at, expires_at, revoked_at
+         FROM app_offline_credential_for_verification($1)`,
       [credentialId],
     );
     return res.rows[0];

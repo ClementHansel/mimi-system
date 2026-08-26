@@ -27,6 +27,7 @@ import { PosOnlineOrderService } from './services/pos-online-order.service';
 import { PosSyncProjector } from './services/pos-sync-projector.service';
 import {
   buildApprovalService,
+  buildApprovalCodeService,
   buildEventBus,
   buildNotificationService,
   buildPaymentVerificationsService,
@@ -68,15 +69,23 @@ function services(pool: Pool) {
   const syncEmit = buildSyncEmitService(pool);
   const shifts = new PosShiftService(pool, approvals, notifications);
   const sales = new PosSaleService(pool, stockLedger, buildPaymentVerificationsService(pool));
+  // All SEVEN constructor params, in order. This call used to pass six —
+  // `approvalCodes` was missing — which silently shifted every later argument by
+  // one: `stockLedger` landed in `approvalCodes`, `notifications` received the
+  // `EventBus` (hence "this.notifications.notify is not a function" in the log,
+  // swallowed by the caller's try/catch) and `eventBus` was `undefined`. The
+  // test still passed while exercising misaligned collaborators. `tsc` could not
+  // catch it because `apps/backend/tsconfig.json` excludes `**/*.test.ts`.
   const voidRefunds = new PosVoidRefundService(
     pool,
     approvals,
+    buildApprovalCodeService(pool),
     stockLedger,
     syncEmit,
     notifications,
     eventBus,
   );
-  const onlineOrders = new PosOnlineOrderService(stockLedger);
+  const onlineOrders = new PosOnlineOrderService(stockLedger, eventBus);
   const projector = new PosSyncProjector(shifts, sales, voidRefunds, onlineOrders);
   return { shifts, sales, voidRefunds, onlineOrders, projector, stockLedger };
 }

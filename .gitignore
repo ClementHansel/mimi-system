@@ -66,6 +66,23 @@ infrastructure/backup/dumps/
 .vercel/
 .cache/
 
+# ─── Agent tooling & local machine config ─────────────────────────
+# Worktrees created per background agent — a working directory, not source.
+.claude/worktrees/
+# MCP server wiring is per-machine (which servers this laptop can reach), so it
+# is local config rather than something every clone should inherit.
+.mcp.json
+
+# ─── e2e debug artifacts ──────────────────────────────────────────
+# Screenshots dropped at the e2e root while investigating a screen by hand.
+# Committed Playwright output already lives under `playwright-report/` and
+# `test-results/` (ignored above); these are the ad-hoc ones.
+e2e/*.png
+# A scratch probe, not a test: no assertions, just `console.log` of button
+# labels behind a hardcoded wait. Kept out so it cannot be mistaken for
+# coverage — a real spec belongs in `e2e/tests/` and asserts something.
+e2e/tests/map-check.spec.ts
+
 # ─── Local scratch / scripts (never commit) ───────────────────────
 tmp_*
 *.tmp

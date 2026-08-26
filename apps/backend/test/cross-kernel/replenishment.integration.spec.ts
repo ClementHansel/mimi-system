@@ -101,7 +101,6 @@ import {
   getOwnerPool,
   loadFixtures,
   withCommit,
-  withRollback,
   type RlsCtx,
   type ScenarioFixtures,
 } from './test-support/live-db';
@@ -479,7 +478,6 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
     expect(requestAfterReady.rows[0]!.status).toBe('processing');
 
     // ═══ 6. Load with a deliberate cold-chain BREACH -> the real NotificationService fires ═══
-    notifications; // referenced for clarity below
     const loaded = await withCommit(kgdCtx, (client) =>
       sjService.load(
         client,

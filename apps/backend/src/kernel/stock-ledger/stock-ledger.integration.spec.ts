@@ -18,16 +18,48 @@ import {
   closeTestPool,
   closeTestTx,
   countInvariantMismatches,
+  countInvariantMismatchesForKeys,
   countMovements,
   openTestTx,
-  pickUnusedStockKey,
-  pickUnusedTransferFixture,
+  pickUnusedStockKey as pickUnusedStockKeyRaw,
+  pickUnusedTransferFixture as pickUnusedTransferFixtureRaw,
   readBalance,
   setRlsContext,
   type StockFixtureKey,
 } from './test-support/live-db';
 
 const service = new StockLedgerService(new StockMovedEventEmitter(new EventBus()));
+
+// Every key this FILE'S OWN tests pick, across every test — tracked so the final
+// "did this suite leave a mark" assertion can scope the G1 invariant check to
+// exactly the keys this suite touched (see `countInvariantMismatchesForKeys`'s
+// doc comment) rather than the whole `stock_balances` table, which other
+// concurrently-running suites/agents also write to.
+const keysTouchedByThisFile: StockFixtureKey[] = [];
+
+async function pickUnusedStockKey(
+  client: PoolClient,
+  opts?: { excludeLocationId?: string },
+): Promise<StockFixtureKey> {
+  const key = await pickUnusedStockKeyRaw(client, opts);
+  keysTouchedByThisFile.push(key);
+  return key;
+}
+
+async function pickUnusedTransferFixture(client: PoolClient) {
+  const fixture = await pickUnusedTransferFixtureRaw(client);
+  keysTouchedByThisFile.push({
+    locationId: fixture.from.locationId,
+    storageAreaId: fixture.from.storageAreaId,
+    itemId: fixture.itemId,
+  });
+  keysTouchedByThisFile.push({
+    locationId: fixture.to.locationId,
+    storageAreaId: fixture.to.storageAreaId,
+    itemId: fixture.itemId,
+  });
+  return fixture;
+}
 
 function movementFor(
   key: StockFixtureKey,
@@ -255,9 +287,28 @@ describe('StockLedgerService — live database', () => {
      * a fresh transaction, this assertion runs against the database exactly
      * as every OTHER caller (or the next agent's test suite) would see it —
      * proof that nothing in this file left a mark, not just a claim.
+     *
+     * B-05 (PROGRESS.md): the original version of this check read
+     * `countInvariantMismatches(client)` — the WHOLE `stock_balances` table —
+     * which fails in a full/shared-DB run whenever some OTHER suite (this
+     * file's siblings, or literally another agent's process against the same
+     * shared Postgres per this repo's house rules) commits real, unbalanced
+     * rows during the run. That is a correct read of a table this suite
+     * doesn't own, not evidence this file leaked. Scoped to exactly the keys
+     * THIS file's own tests picked (`keysTouchedByThisFile`, appended to by
+     * every `pickUnusedStockKey`/`pickUnusedTransferFixture` call above), the
+     * assertion verifies precisely the claim being made — "nothing I touched
+     * is left mismatched" — without also asserting something about keys this
+     * suite never went near.
      */
     it('the seed invariant is unchanged after the entire suite above has run', async () => {
-      expect(await countInvariantMismatches(client)).toBe(0);
+      expect(await countInvariantMismatchesForKeys(client, keysTouchedByThisFile)).toBe(0);
+      // None of this file's OWN keys should carry a surviving balance row either —
+      // every test here rolled back, so a row still existing for one of its own
+      // picked keys would mean a leaked commit, not ambient noise from elsewhere.
+      for (const key of keysTouchedByThisFile) {
+        expect(await readBalance(client, key)).toBeNull();
+      }
       const counts = await client.query<{ n: string }>(
         `SELECT count(*)::int AS n FROM stock_balances`,
       );

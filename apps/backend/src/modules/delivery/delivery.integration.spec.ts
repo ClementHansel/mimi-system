@@ -24,6 +24,18 @@ import { ConfigService } from '@nestjs/config';
 import { ERR_VALIDATION, MovementType, RoleKey, SyncOriginType } from '@mimi/shared';
 import { formatUuidV7, type SyncPushBatch } from '@mimi/sync-protocol';
 
+// Measured, not assumed (docs/PROGRESS.md's "Test flakiness under load" class):
+// isolated + repeated full-run timing showed every test in this file completing
+// in well under 250ms (the three affected here: 83ms/142ms/217ms) — the
+// `Test timed out in 5000ms` failures seen in a full 109-file run are contention
+// on the ONE shared Postgres instance (this repo's own house rule: the DB is
+// shared with other agents' concurrent backend suites too), not slow logic.
+// Same precedent already used by a dozen sibling integration specs (grep
+// `vi.setConfig({ testTimeout` across `src/modules/**`) — raising the ceiling
+// here keeps the assertions themselves unchanged and meaningful; it does not
+// paper over a real hang (nothing here loops or waits on an external system).
+vi.setConfig({ testTimeout: 20_000 });
+
 import { EventBus } from '../../kernel/events/event-bus.service';
 import { StockMovedEventEmitter } from '../../kernel/stock-ledger/stock-ledger-events';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
@@ -158,6 +170,22 @@ describe('M10 delivery — live DB integration', () => {
   // ── FR-LOG-02: frozen vs dry separation ──────────────────────────────────
 
   describe('FR-LOG-02 frozen/dry separation', () => {
+    /**
+     * Fixed far-future date for the two DRY cases below, rather than
+     * `new Date()` — for the reason `ROUTE_TEST_DATE` documents further down.
+     *
+     * Both assert the ITEM-TYPE rejection (`ERR_SHIPMENT_TYPE_MIX`) and the
+     * date is incidental to it. On "today" they instead hit the
+     * ONE-TRUCK-TYPE-PER-DAY rejection: `fixtures.driverId` holds a 'frozen'
+     * route for today (the full-flow tests book one, and any earlier run of
+     * this suite leaves one behind — it commits its SJs and never cleans them
+     * up), so a 'dry' SJ for today never reached the mix check. The failure then
+     * names the wrong rule, which is what makes it confusing rather than merely
+     * red. The 'frozen' cases in this describe are unaffected and keep using
+     * today, since a frozen SJ does not collide with a frozen one.
+     */
+    const MIX_TEST_DATE = '2031-05-05';
+
     it('rejects an SJ mixing a frozen item onto a "dry" shipment (ERR_SHIPMENT_TYPE_MIX)', async () => {
       await withRollback(async (client) => {
         await expect(
@@ -167,7 +195,7 @@ describe('M10 delivery — live DB integration', () => {
               shipmentType: 'dry' as never,
               driverId: fixtures.driverId,
               vehicleId: fixtures.dryVehicleId,
-              plannedDate: new Date().toISOString().slice(0, 10),
+              plannedDate: MIX_TEST_DATE,
               drops: [
                 {
                   locationId: fixtures.outletId,
@@ -197,7 +225,7 @@ describe('M10 delivery — live DB integration', () => {
               shipmentType: 'dry' as never,
               driverId: fixtures.driverId,
               vehicleId: fixtures.dryVehicleId,
-              plannedDate: new Date().toISOString().slice(0, 10),
+              plannedDate: MIX_TEST_DATE,
               drops: [
                 {
                   locationId: fixtures.outletId,
@@ -984,6 +1012,19 @@ describe('M10 delivery — live DB integration', () => {
       projectorRegistry,
     );
 
+    /**
+     * A far-future, fixed planned date — NOT `new Date()`, for the reason
+     * `ROUTE_TEST_DATE` documents below.
+     *
+     * This describe books a 'dry' SJ for `fixtures.driverId`, and the full-flow
+     * tests above book that SAME driver 'frozen' for TODAY. One driver may hold
+     * only one truck type per day (FR-LOG-02), so on `new Date()` this
+     * `beforeAll` threw and took the whole describe with it — deterministically,
+     * from a clean database, not as a flake. A date nobody else plans around
+     * removes the collision instead of coordinating with it.
+     */
+    const PROJECTOR_TEST_DATE = '2031-04-04';
+
     beforeAll(async () => {
       await seedWarehouseStock(fixtures.dryItemId, fixtures.dryAreaWarehouse, '20.000');
       const sj = await withCommit((client) =>
@@ -993,7 +1034,7 @@ describe('M10 delivery — live DB integration', () => {
             shipmentType: 'dry' as never,
             driverId: fixtures.driverId,
             vehicleId: fixtures.dryVehicleId,
-            plannedDate: new Date().toISOString().slice(0, 10),
+            plannedDate: PROJECTOR_TEST_DATE,
             drops: [
               {
                 locationId: fixtures.outletId,

@@ -99,6 +99,20 @@ const ALLOWED_UNGUARDED: Record<string, string> = {
   // `location_id` is readable by anyone authenticated.
   'StorageController.getUrl': 'scope-enforced in StorageService.assertEntityScope',
 
+  // The bulk importer's required permission varies BY `:entity` — `item.manage`
+  // for items/categories, `product.manage` for menu products — and
+  // `@RequirePermission` keys are fixed at declaration time, so it cannot
+  // branch on a route param. Every handler calls `assertPermission(entity,
+  // user)` itself, which resolves the key from `IMPORT_ENTITIES` and throws
+  // ERR_FORBIDDEN. Same pattern as `ItemController.canReadCost`. Verified in
+  // `modules/import/import.controller.spec.ts`, which asserts a role without
+  // the entity's permission is refused on all three routes AND that the gate is
+  // per entity (`item.manage` does not unlock menu products) — that test, not
+  // this allowlist, is what keeps the check honest.
+  'ImportController.getTemplate': 'per-entity permission checked in assertPermission()',
+  'ImportController.preview': 'per-entity permission checked in assertPermission()',
+  'ImportController.commit': 'per-entity permission checked in assertPermission()',
+
   // B-15 — a user reading their OWN lockout state. Takes no parameter and
   // never can: the service reads `req.user.sub`, so there is nothing to point
   // at someone else. It exists so a blocked till can say "locked, ask your
@@ -116,7 +130,7 @@ const ALLOWED_UNGUARDED: Record<string, string> = {
 };
 
 let app: INestApplication | undefined;
-let routes: Route[] = [];
+const routes: Route[] = [];
 
 beforeAll(async () => {
   if (!hasDb) return;

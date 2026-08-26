@@ -228,3 +228,46 @@ export async function countInvariantMismatches(client: PoolClient): Promise<numb
   );
   return Number(res.rows[0]?.mismatches ?? 0);
 }
+
+/**
+ * Same G1 invariant, but scoped to ONLY the `(location, area, item)` keys named — a
+ * "delta this suite owns" check rather than a whole-table one (B-05, PROGRESS.md).
+ *
+ * `countInvariantMismatches` reads the ENTIRE `stock_balances` table, which makes it
+ * provable that THIS suite left no mark only when nothing ELSE writes to the table
+ * during the run. That is false in the shared dev/CI database: other integration
+ * suites self-commit real rows (`withCommit`/`withWrite` callers across other
+ * modules), and — per the house rule this suite runs under — three other agents may
+ * be running their own backend suites against the SAME Postgres concurrently. A
+ * whole-table check then fails on somebody else's transient or genuinely-unbalanced
+ * state, not on anything this file did. Real per-agent schema isolation (D-01) is the
+ * complete fix; scoping the query to just the keys THIS file's own tests picked
+ * (via `pickUnusedStockKey`/`pickUnusedTransferFixture`, which every call site here
+ * already tracks) is the cheap one — it verifies exactly the claim the test makes
+ * ("nothing I touched is left mismatched") without asserting anything about keys
+ * this suite never went near.
+ */
+export async function countInvariantMismatchesForKeys(
+  client: PoolClient,
+  keys: readonly StockFixtureKey[],
+): Promise<number> {
+  if (keys.length === 0) return 0;
+  const res = await client.query<{ mismatches: string }>(
+    `SELECT count(*)::int AS mismatches FROM (
+       SELECT b.location_id, b.storage_area_id, b.item_id, b.qty_on_hand,
+              COALESCE(
+                (SELECT SUM(CASE WHEN m.movement_type LIKE '%_out' THEN -m.qty ELSE m.qty END)
+                   FROM stock_movements m
+                  WHERE m.location_id = b.location_id AND m.storage_area_id = b.storage_area_id AND m.item_id = b.item_id),
+                0
+              ) AS expected
+         FROM stock_balances b
+        WHERE (b.location_id, b.storage_area_id, b.item_id) IN (
+                SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::uuid[])
+              )
+     ) x
+     WHERE qty_on_hand <> expected`,
+    [keys.map((k) => k.locationId), keys.map((k) => k.storageAreaId), keys.map((k) => k.itemId)],
+  );
+  return Number(res.rows[0]?.mismatches ?? 0);
+}

@@ -4,9 +4,17 @@
 
 > ## ⛔ FROZEN 2026-08-24 — Linear is now authoritative
 >
-> This file is a **historical record**. Do not update it. Every item below was migrated to
-> Linear team **Mimi Chicken (`MA`)** — 128 issues: 66 wave tasks, 20 blockers, 30
-> technical-debt items, 6 risks, 6 owner-blocked. Track and update work there.
+> This file is a **historical record**. Do not update it. Track and update work in Linear team
+> **Mimi Chicken (`MA`)**.
+>
+> **Migrated (56 issues, `from-progress-md` label):** 20 blockers (`B-nn`, `MA-121`+), 30
+> technical-debt items (`D-nn`), 6 risks. These had no representation in Linear at all.
+>
+> **NOT migrated (66 wave tasks, `W0-A`…`W7-05`, `F-*`, `FIX-*`):** deliberately left here. The
+> Linear team already holds **116 PRD requirement issues** (`MA-5`…`MA-120`, `FR-*`/`NFR-*`) that
+> describe the same system from the requirements side. Importing the build plan on top would have
+> created two parallel taxonomies for one system. The wave register below stays the record of how
+> it was built.
 >
 > - Conventions, branch naming and the QA flow: [`docs/LINEAR.md`](./LINEAR.md)
 > - Re-run the extraction: `node scripts/linear-import-extract.mjs <out.csv>`
@@ -190,7 +198,7 @@ dashboard's Inventaris tab. **That sweep should be repeated whenever permissions
 - Dashboard: chain-wide **Inventaris** tab, filterable to any outlet, gudang or office.
 - **CSV export** with a formula-injection guard (outlet names are user-editable, so `=cmd|…` in a name
   becomes a live formula in Excel — OWASP CSV injection, not hypothetical here).
-- **Bulk import** (`/admin/import`) with a schema-derived template and a preview that writes nothing.
+- **Bulk import/export** — Export CSV + Impor CSV buttons in each Data Master tab (no nav entry of its own; owner, 2026-08-25), with a schema-derived template and a preview that writes nothing. Export columns mirror the importer's, so export -> edit -> import round-trips.
 - **Internal staff chat** — direct + group, membership-scoped RLS, group admin rules.
 - Locations: lat/lng range checks, (0,0) rejected, `code` immutable, `office` type added. A wrong
   coordinate does not look like bad master data — it looks like a whole branch unable to clock in.
@@ -1617,7 +1625,24 @@ database, frontend **515/515**, lint 0 errors, format clean. Deployed; post-depl
 Recipient resolution is a cross-user read done through `withSystemContext`, never a raw pool or the caller's own scope. Every hook is try/catch-and-log — **a supervisor's phone being off must not fail a void**. 79 approvals tests, including a stub-failing notify proving the approval still commits.
 **Notable care:** the new constructor params are `@Optional()` so the ~10 domain suites that build `new ApprovalService(new ApprovalsRepository())` keep passing unchanged; Indonesian outcome verbs live in the i18n file, the one place Indonesian text belongs.
 
-### 🔴 B-13 — Approval notifications point at a route that does not exist
+### ✅ B-13 — RESOLVED (verified 2026-08-26) — approval deep links now land somewhere
+
+**Verified closed by reading the code, not by a status claim.** All four halves
+are in place: `app/approvals/page.tsx` (the inbox, rendering `getPending()` via
+`components/approvals/ApprovalsInboxPanel`), `app/approvals/[documentType]/[documentId]/page.tsx`
+(the deep-link target), a sidebar entry in `lib/nav.ts` (`id: 'approvals'`, gated
+on ANY-of the eleven per-document-type approve keys), and
+`app/approvals/deep-link-route.test.tsx` as the regression guard. Frontend
+approvals suites: 17/17.
+
+Also fixed while confirming this: the inbox page still carried a comment saying
+it was NOT registered in `nav.ts` and that the entry was an open follow-up. That
+entry had since landed, so the note was removed rather than left to send the next
+reader round the same loop.
+
+The original report, for the audit trail:
+
+### (historical) B-13 — Approval notifications point at a route that does not exist
 
 **Owner:** FE agent · **State:** 🔄 assigned · **Verified by coordinator**
 The deep link is `${APP_WEB_BASE_URL}/approvals/:documentType/:documentId`. Frontend routes are `(auth) admin assets dashboard driver finance hr me outlet pos purchasing topology warehouse` — **no `/approvals`**. A WhatsApp link that 404s is worse than no notification.
@@ -1628,13 +1653,36 @@ Neither `ApprovalService` nor `ReplenishmentService`/`ReplenishmentAdvancementSe
 **Impact:** an approver is never told they have something waiting. For a system whose value is timely multi-step approval (OBJ-03, APR-01..08), the workflow has no notifications at all.
 **Question for scheduling:** wire per-module now, or as one pass in W5-04?
 
-### 🟡 B-08 — No service-layer test can produce an audit row
+### ✅ B-08 — RESOLVED (verified 2026-08-26) — audit rows are now covered at HTTP level
+
+`apps/backend/test/audit-http.e2e.spec.ts` exists and carries 6 tests. The
+blocker's own remedy ("needs HTTP-level (supertest) coverage in W6") was
+delivered; only this entry was never updated.
+
+The original report, for the audit trail:
+
+### (historical) B-08 — No service-layer test can produce an audit row
 
 **Owner:** deferred to Wave 6 · **Found by:** the new cross-kernel test
 `AuditInterceptor` is HTTP-only (`context.getType() !== 'http'`) and is the sole writer of `audit_log`. Every service-layer integration test in the codebase — including the cross-kernel one — cannot generate a real audit row; `replenishment.integration.spec.ts` hand-inserts a synthetic one and says so in a comment.
 **Impact:** "audit rows on every mutation" is a gate criterion that **cannot currently be verified below HTTP level**. Needs HTTP-level (supertest) coverage in W6.
 
-### 🟡 B-05 — Cross-suite seed-invariant check fails
+### 🟢 B-05 — MITIGATED (2026-08-26) — the assertion now scopes itself
+
+`stock-ledger.integration.spec.ts` no longer asserts that the WHOLE
+`stock_balances` table is unchanged after the suite — other suites (and, in this
+repo's workflow, other agents) legitimately write to it. It now tracks every key
+its own tests touch (`keysTouchedByThisFile`) and checks the G1 fold invariant
+against just those, via `countInvariantMismatchesForKeys` in its `test-support/live-db.ts`.
+The whole-table row-count floor check is unchanged.
+
+Honest limit on this one: the flake was not reproducing at the time of the fix,
+so the assertion is _correctly scoped_ by inspection and passes on every run —
+but it was not reproduced-then-fixed the way the delivery timeouts were.
+
+The original report, for the audit trail:
+
+### (historical) B-05 — Cross-suite seed-invariant check fails
 
 **Owner:** coordinator · **State:** accepted artifact, not scheduled
 `stock-ledger`'s "seed invariant unchanged after the entire suite" fails in full runs because other suites mutate shared seed data. Correct behaviour for the assertion; wrong environment. Real fix is per-agent schemas (see D-01).

@@ -17,6 +17,7 @@ import { ShiftPanel } from '@/components/pos/ShiftPanel';
 import { usePosShell } from '@/components/pos/PosShellContext';
 import { PosLocationPicker } from '@/components/pos/PosLocationPicker';
 import { loadCatalog } from '@/components/pos/pos-runtime';
+import { releaseProductPhotoUrls } from '@/components/pos/product-photo-cache';
 import { usePosCartStore } from '@/components/pos/cart-store';
 import { usePosShiftStore } from '@/components/pos/shift-store';
 import { useSessionStore } from '@/stores/session-store';
@@ -71,6 +72,13 @@ export default function PosPage() {
       .then(setCatalog)
       .catch(() => setCatalogError(true));
   }, [location]);
+
+  // Menu photos are resolved to `blob:` urls that live as long as this surface
+  // does (the grid re-mounts tiles constantly as the cashier flicks between
+  // categories, so revoking per tile would re-decode the same images every
+  // time). They are released together when the till page goes away — the cached
+  // BYTES survive in the Cache API, so a return visit costs no re-download.
+  useEffect(() => releaseProductPhotoUrls, []);
 
   const summary = calculateCartSummary(
     cartLines.map((l) => ({

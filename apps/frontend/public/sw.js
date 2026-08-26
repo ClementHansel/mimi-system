@@ -35,7 +35,9 @@
  * would silently violate the exactly-once semantics §2.2 exists to guarantee.
  */
 
-const SW_VERSION = 'v1';
+// Bumped with the read-strategy change below so no installed device keeps
+// serving master data from a cache filled under the old stale-first rule.
+const SW_VERSION = 'v2';
 const SHELL_CACHE = `mimi-shell-${SW_VERSION}`;
 const STATIC_CACHE = `mimi-static-${SW_VERSION}`;
 const API_CACHE = `mimi-api-${SW_VERSION}`;
@@ -95,24 +97,46 @@ async function cacheFirst(request, cacheName) {
   return response;
 }
 
-/** Serve the cache immediately if present, refresh it in the background — the read path stays fast AND eventually consistent. */
-async function staleWhileRevalidate(request, cacheName) {
+/**
+ * Master-data reads: NETWORK FIRST while online, cache only as the offline
+ * fallback (and always write-through so the fallback stays warm).
+ *
+ * THIS WAS `staleWhileRevalidate` AND IT MADE EVERY BACK-OFFICE EDIT LOOK
+ * BROKEN. `CACHEABLE_API_PREFIXES` covers `/api/products` and `/api/items`,
+ * which are exactly the endpoints the Data Master screens re-read immediately
+ * after mutating: rename a menu category, reorder the POS chip row, deactivate
+ * a product, and the reload that follows was answered from cache — showing the
+ * value from BEFORE the change. The background revalidate meant the next
+ * action displayed the previous action's result, so the whole screen lagged one
+ * step behind and an owner reasonably concluded the save had not worked.
+ * (Verified in a browser: the PUT went out correctly and returned 200, the list
+ * simply never showed it.)
+ *
+ * Stale-while-revalidate is right for data nobody edits from the surface
+ * reading it. It is wrong for a back office whose entire job is editing this
+ * data. Offline behaviour is unchanged in substance — a failed fetch still
+ * falls back to the cached copy, which is what the offline requirement (class M
+ * read-only, SYNC-PROTOCOL §8) actually asks for; only the ORDER of the two
+ * attempts changed.
+ */
+async function networkFirstWithCacheFallback(request, cacheName) {
   const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
-  const network = fetch(request)
-    .then((response) => {
-      if (response.ok) cache.put(request, response.clone());
-      return response;
-    })
-    .catch(() => undefined);
-  return (
-    cached ??
-    (await network) ??
-    new Response(JSON.stringify({ offline: true }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  );
+  try {
+    const response = await fetch(request);
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  } catch {
+    // Genuinely offline (or the server is unreachable) — this is the case the
+    // cache exists for.
+    const cached = await cache.match(request);
+    return (
+      cached ??
+      new Response(JSON.stringify({ offline: true }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+  }
 }
 
 /** Network-first for navigations; falls back to the cached shell so an offline reload still renders the app instead of the browser's own error page. */
@@ -155,7 +179,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (isCacheableApiGet(request, url)) {
-    event.respondWith(staleWhileRevalidate(request, API_CACHE));
+    event.respondWith(networkFirstWithCacheFallback(request, API_CACHE));
     return;
   }
 

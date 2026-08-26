@@ -7,16 +7,32 @@
 import type { Money, Qty, UUID } from '@/lib/shared-types';
 
 /** CONTRACTS §4.13 M09 `Product` — the POS catalog precache row (FR-POS-01). */
+export interface PosPackageLine {
+  memberProductId: UUID;
+  memberName: string;
+  memberCode: string;
+  qty: Qty;
+  sortOrder: number;
+}
+
 export interface PosProduct {
   id: UUID;
   code: string;
   name: string;
   category: string;
+  categoryId: UUID;
   price: Money;
+  /** Always `null` on this payload — a presigned url would expire before an offline catalog does. Use `photoPath`. */
   photoUrl: string | null;
+  /** Stable api-relative path to a cached thumbnail; resolved to a `blob:` url by `product-photo-cache`. */
+  photoPath: string | null;
   sortOrder: number;
   isActive: boolean;
+  /** `'package'` sells as ONE line at its own price and consumes its members' recipes. */
+  kind: 'product' | 'package';
   hasRecipe: boolean;
+  /** Present only for a package — what the cashier sees is inside it. */
+  packageLines?: PosPackageLine[];
 }
 
 export interface PosCatalog {

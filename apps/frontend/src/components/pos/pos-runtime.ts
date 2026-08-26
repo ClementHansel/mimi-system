@@ -14,6 +14,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { newUuid } from '@/lib/uuid';
 import type { ActorMeta } from '@/lib/local/api/local-runtime';
 import type { PosCatalog, PosProduct } from './types';
+import { dropStaleProductPhotoCaches, prefetchProductPhotos } from './product-photo-cache';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev';
 
@@ -145,12 +146,27 @@ function catalogCacheKey(locationId: string): string {
 export async function loadCatalog(locationId: string): Promise<PosCatalog> {
   try {
     const res = await api.get<{ products: PosProduct[]; categories: string[]; version: string }>(
-      `/api/pos/catalog?locationId=${encodeURIComponent(locationId)}`,
+      // NO `/api` PREFIX. `apiFetch` prepends `API_BASE` (`NEXT_PUBLIC_API_URL`,
+      // `/api` by default), so passing `/api/pos/catalog` here requested
+      // `/api/api/pos/catalog` and got a 404 every time — the till fell back to
+      // its last cached catalog and, on a device that had never had one, showed
+      // "Katalog produk belum tersedia" with no way forward. Every other call in
+      // this codebase passes the bare path; this one did not.
+      `/pos/catalog?locationId=${encodeURIComponent(locationId)}`,
     );
     const catalog: PosCatalog = { ...res, fetchedAt: new Date().toISOString() };
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(catalogCacheKey(locationId), JSON.stringify(catalog));
     }
+    // Warm the photo cache WHILE STILL ONLINE and off the critical path — this
+    // is what makes menu photos survive an outage, since lazy per-tile loading
+    // would only ever have cached whatever the cashier happened to look at
+    // before the link dropped. Deliberately not awaited: the catalog is what the
+    // caller is waiting for, and a slow image fetch must never delay opening a
+    // shift. Photos are cosmetic; a failure here is silent by design.
+    void dropStaleProductPhotoCaches()
+      .then(() => prefetchProductPhotos(res.products.map((p) => p.photoPath)))
+      .catch(() => {});
     return catalog;
   } catch (err) {
     const cached = readCachedCatalog(locationId);

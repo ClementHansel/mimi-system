@@ -466,12 +466,18 @@ export const id = {
     },
   },
 
-  // Bulk CSV import of master data. `/admin/import`.
+  // Bulk CSV import of master data. Mounted as an Impor CSV button in each
+  // Data Master tab (`components/admin/MasterDataIo`), not a route of its own.
   importData: {
     title: 'Import Data Massal',
     description:
       'Unggah data master lewat CSV — format diambil langsung dari skema database, jadi tidak ada kolom yang tidak terduga.',
     entityLabel: 'Jenis Data',
+    // The toolbar affordance and its modal heading. The entity is no longer
+    // chosen in a dropdown — it comes from the tab the button sits in — so the
+    // heading names it instead ("Impor Item / Bahan Baku").
+    openButton: 'Impor CSV',
+    modalTitle: 'Impor {{entity}}',
     entity: {
       itemCategories: 'Kategori Item',
       items: 'Item / Bahan Baku',

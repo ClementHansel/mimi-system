@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, MapPin } from 'lucide-react';
+import { Plus, MapPin, ChevronUp, ChevronDown, Image as ImageIcon } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
@@ -19,7 +19,11 @@ import { MoneyInput } from '@/components/ui/MoneyInput';
 import { QtyInput } from '@/components/ui/QtyInput';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { PermissionGate } from '@/components/ui/PermissionGate';
+import { FileUpload } from '@/components/ui/FileUpload';
 import { useApiList } from './useApiList';
+import { uploadProductPhoto } from './lib/attachments';
+import { MasterDataIo } from './MasterDataIo';
+import { ITEM_CATEGORY_IO_COLUMNS, ITEM_IO_COLUMNS, PRODUCT_IO_COLUMNS } from './lib/io-columns';
 import type {
   Item,
   ItemCategory,
@@ -28,8 +32,11 @@ import type {
   StorageArea,
   StorageAreaType,
   Product,
+  ProductCategory,
+  ProductPackageLine,
   Recipe,
   RecipeLine,
+  Qty,
 } from './types';
 
 /**
@@ -205,11 +212,24 @@ function ItemsSection({ categories, units }: { categories: ItemCategory[]; units
             wrapperClassName="w-40"
           />
         </div>
-        <PermissionGate permission="item.manage">
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-            {t('admin.masterData.items.createButton')}
-          </Button>
-        </PermissionGate>
+        <div className="flex items-center gap-2">
+          {/* Export what is on screen (the filters above are part of the
+              question being asked) and import back into the same list. */}
+          <MasterDataIo
+            entity="items"
+            titleKey="importData.entity.items"
+            rows={data?.rows ?? []}
+            columns={ITEM_IO_COLUMNS}
+            filenameBase="item-bahan"
+            canImport={can('item.manage')}
+            onImported={reload}
+          />
+          <PermissionGate permission="item.manage">
+            <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
+              {t('admin.masterData.items.createButton')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
       <DataTable
         columns={columns}
@@ -385,6 +405,8 @@ function CategoriesUnitsSection({
   const { can } = usePermissions();
   const [newCategory, setNewCategory] = useState('');
   const [newCategoryParent, setNewCategoryParent] = useState('');
+  const [renamingCategory, setRenamingCategory] = useState<ItemCategory | null>(null);
+  const [categoryRename, setCategoryRename] = useState('');
   const [newUnitCode, setNewUnitCode] = useState('');
   const [newUnitName, setNewUnitName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -399,6 +421,27 @@ function CategoriesUnitsSection({
       setNewCategory('');
       setNewCategoryParent('');
       toast({ title: t('admin.masterData.categories.createSuccess'), variant: 'success' });
+      onReload();
+    } catch (err) {
+      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Renames an item category. `PATCH /items/categories/:id` has existed in the
+   * backend since M04 with nothing calling it — this list was create-only, so a
+   * typo in a warehouse category was permanent and every item under it carried
+   * it forever.
+   */
+  async function renameCategory() {
+    if (!renamingCategory) return;
+    setBusy(true);
+    try {
+      await api.patch(`/items/categories/${renamingCategory.id}`, { name: categoryRename });
+      setRenamingCategory(null);
+      toast({ title: t('admin.masterData.categories.renameSuccess'), variant: 'success' });
       onReload();
     } catch (err) {
       toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
@@ -425,11 +468,39 @@ function CategoriesUnitsSection({
   return (
     <div className="grid grid-cols-2 gap-6">
       <div className="flex flex-col gap-3">
-        <h3 className="font-medium text-text-primary">{t('admin.masterData.categories.title')}</h3>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-medium text-text-primary">
+            {t('admin.masterData.categories.title')}
+          </h3>
+          {/* Categories only. `units` is deliberately not an import entity —
+              `UnitService` exposes no update, so an upsert could never edit an
+              existing unit (see `IMPORT_ENTITIES`). */}
+          <MasterDataIo
+            entity="item_categories"
+            titleKey="importData.entity.itemCategories"
+            rows={categories}
+            columns={ITEM_CATEGORY_IO_COLUMNS}
+            filenameBase="kategori-item"
+            canImport={can('item.manage')}
+            onImported={onReload}
+          />
+        </div>
         <ul className="flex flex-col gap-1 rounded-md border border-border p-2 text-sm">
           {categories.map((c) => (
-            <li key={c.id} className="px-2 py-1">
-              {c.name}
+            <li key={c.id} className="flex items-center gap-2 px-2 py-1">
+              <span className="flex-1">{c.name}</span>
+              {can('item.manage') && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setRenamingCategory(c);
+                    setCategoryRename(c.name);
+                  }}
+                >
+                  {t('admin.masterData.categories.rename')}
+                </Button>
+              )}
             </li>
           ))}
         </ul>
@@ -453,6 +524,30 @@ function CategoriesUnitsSection({
               {t('admin.masterData.categories.createButton')}
             </Button>
           </div>
+        )}
+        {renamingCategory && (
+          <Modal
+            open
+            onClose={() => setRenamingCategory(null)}
+            title={t('admin.masterData.categories.renameTitle', { name: renamingCategory.name })}
+            footer={
+              <>
+                <Button variant="outline" onClick={() => setRenamingCategory(null)}>
+                  {t('common.cancel')}
+                </Button>
+                <Button onClick={renameCategory} loading={busy} disabled={!categoryRename.trim()}>
+                  {t('common.save')}
+                </Button>
+              </>
+            }
+          >
+            <Input
+              label={t('admin.masterData.categories.name')}
+              value={categoryRename}
+              onChange={(e) => setCategoryRename(e.target.value)}
+              required
+            />
+          </Modal>
         )}
       </div>
       <div className="flex flex-col gap-3">
@@ -501,34 +596,36 @@ function CategoriesUnitsSection({
  * 2026-08-21 note about separating ingredients from "the actual items and
  * category for POS".
  */
-function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
+function ProductsSection({
+  items,
+  units,
+  menuCategories,
+}: {
+  items: Item[];
+  units: Unit[];
+  menuCategories: ProductCategory[];
+}) {
   const { t } = useI18n();
   const { can } = usePermissions();
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  // `category` here is the POS menu vocabulary ('Ayam', 'Minuman', 'Tambahan') —
-  // free text on `products`, NOT an `item_categories` row. Offering the real
-  // values from `/products/categories` is what stops a fourth spelling of
-  // "Minuman" appearing on the till.
-  const [category, setCategory] = useState('');
+  // The POS menu vocabulary ('Ayam', 'Minuman', 'Tambahan') — its own
+  // `product_categories` table since migration 247, NOT `item_categories` and no
+  // longer free text on `products`. Filtering by ID rather than by name is what
+  // makes a rename harmless to this screen.
+  const [categoryId, setCategoryId] = useState('');
+  const [kind, setKind] = useState('');
   const [active, setActive] = useState('');
-  const [categories, setCategories] = useState<string[]>([]);
   const [toggling, setToggling] = useState<string | null>(null);
   const { data, loading, error, reload } = useApiList<Product>('/products', {
     q,
-    category,
+    categoryId,
+    kind,
     active,
     page,
     pageSize,
   });
-
-  useEffect(() => {
-    api
-      .get<string[]>('/products/categories')
-      .then(setCategories)
-      .catch(() => {});
-  }, []);
 
   /**
    * Takes a product off the POS menu, or puts it back. `products.is_active` has
@@ -559,11 +656,27 @@ function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
   }
   const [editing, setEditing] = useState<Product | null | 'new'>(null);
   const [recipeFor, setRecipeFor] = useState<Product | null>(null);
+  const [packageFor, setPackageFor] = useState<Product | null>(null);
 
   const columns: DataTableColumn<Product>[] = [
+    {
+      key: 'photo',
+      header: t('admin.masterData.products.columnPhoto'),
+      render: (r) => <ProductThumb product={r} />,
+    },
     { key: 'code', header: t('admin.masterData.products.columnCode'), sortable: true },
     { key: 'name', header: t('admin.masterData.products.columnName'), sortable: true },
     { key: 'category', header: t('admin.masterData.products.columnCategory') },
+    {
+      key: 'kind',
+      header: t('admin.masterData.products.columnKind'),
+      render: (r) =>
+        r.kind === 'package' ? (
+          <Badge variant="info">{t('admin.masterData.products.kindPackage')}</Badge>
+        ) : (
+          <span className="text-text-secondary">{t('admin.masterData.products.kindProduct')}</span>
+        ),
+    },
     {
       key: 'price',
       header: t('admin.masterData.products.columnPrice'),
@@ -571,9 +684,19 @@ function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
       render: (r) => formatMoney(r.price),
     },
     {
+      // A package has no recipe BY DESIGN (it explodes through its members), so
+      // showing "no" against one reads as a gap in the data rather than the
+      // correct answer — say what it actually has instead.
       key: 'hasRecipe',
       header: t('admin.masterData.products.columnHasRecipe'),
-      render: (r) => (r.hasRecipe ? t('common.yes') : t('common.no')),
+      render: (r) =>
+        r.kind === 'package'
+          ? t('admin.masterData.products.memberCount', {
+              count: r.packageLines?.length ?? 0,
+            })
+          : r.hasRecipe
+            ? t('common.yes')
+            : t('common.no'),
     },
     {
       key: 'isActive',
@@ -589,16 +712,44 @@ function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
       header: t('common.actions'),
       render: (r) => (
         <div className="flex items-center gap-2">
-          {can('recipe.manage') && (
+          {/* A recipe and a membership are mutually exclusive (a package that
+              also had a BOM would double-count its ingredients on every sale),
+              so offer the one that applies rather than both. */}
+          {r.kind === 'package'
+            ? can('product.manage') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPackageFor(r);
+                  }}
+                >
+                  {t('admin.masterData.products.editPackage')}
+                </Button>
+              )
+            : can('recipe.manage') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRecipeFor(r);
+                  }}
+                >
+                  {t('admin.masterData.products.editRecipe')}
+                </Button>
+              )}
+          {r.kind === 'product' && can('product.manage') && (
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={(e) => {
                 e.stopPropagation();
-                setRecipeFor(r);
+                setPackageFor(r);
               }}
             >
-              {t('admin.masterData.products.editRecipe')}
+              {t('admin.masterData.products.makePackage')}
             </Button>
           )}
           {can('product.manage') && (
@@ -634,14 +785,28 @@ function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
           />
           <Select
             label={t('admin.masterData.products.columnCategory')}
-            value={category}
+            value={categoryId}
             onValueChange={(v) => {
-              setCategory(v);
+              setCategoryId(v);
               setPage(1);
             }}
             placeholder={t('admin.masterData.products.categoryAll')}
-            options={categories.map((c) => ({ value: c, label: c }))}
+            options={menuCategories.map((c) => ({ value: c.id, label: c.name }))}
             wrapperClassName="w-48"
+          />
+          <Select
+            label={t('admin.masterData.products.columnKind')}
+            value={kind}
+            onValueChange={(v) => {
+              setKind(v);
+              setPage(1);
+            }}
+            placeholder={t('admin.masterData.products.kindAll')}
+            options={[
+              { value: 'product', label: t('admin.masterData.products.kindProduct') },
+              { value: 'package', label: t('admin.masterData.products.kindPackage') },
+            ]}
+            wrapperClassName="w-40"
           />
           <Select
             label={t('admin.masterData.products.columnStatus')}
@@ -658,11 +823,22 @@ function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
             wrapperClassName="w-40"
           />
         </div>
-        <PermissionGate permission="product.manage">
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-            {t('admin.masterData.products.createButton')}
-          </Button>
-        </PermissionGate>
+        <div className="flex items-center gap-2">
+          <MasterDataIo
+            entity="products"
+            titleKey="importData.entity.products"
+            rows={data?.rows ?? []}
+            columns={PRODUCT_IO_COLUMNS}
+            filenameBase="produk-menu"
+            canImport={can('product.manage')}
+            onImported={reload}
+          />
+          <PermissionGate permission="product.manage">
+            <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
+              {t('admin.masterData.products.createButton')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
       <DataTable
         columns={columns}
@@ -680,6 +856,7 @@ function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
       {editing && (
         <ProductFormModal
           product={editing === 'new' ? null : editing}
+          menuCategories={menuCategories}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -699,24 +876,72 @@ function ProductsSection({ items, units }: { items: Item[]; units: Unit[] }) {
           }}
         />
       )}
+      {packageFor && (
+        <PackageModal
+          product={packageFor}
+          onClose={() => setPackageFor(null)}
+          onSaved={() => {
+            setPackageFor(null);
+            reload();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * A product's photo in the list, or a placeholder when it has none.
+ *
+ * Uses `photoUrl` — the presigned one — deliberately: this row was fetched
+ * seconds ago and will be re-fetched on the next `reload()`, so the 10-minute
+ * expiry never bites here. `photoPath` exists for the till, which caches.
+ */
+function ProductThumb({ product }: { product: Product }) {
+  const { t } = useI18n();
+  if (!product.photoUrl) {
+    return (
+      <div
+        className="flex size-10 items-center justify-center rounded-md bg-surface-2 text-text-tertiary"
+        aria-label={t('admin.masterData.products.noPhoto')}
+      >
+        <ImageIcon className="size-4" aria-hidden />
+      </div>
+    );
+  }
+  return (
+    // A plain <img>: the src is a presigned MinIO url, which next/image would
+    // need the storage host allow-listed for, per deployment.
+    <img
+      src={product.photoUrl}
+      alt={product.name}
+      className="size-10 rounded-md object-cover"
+      loading="lazy"
+    />
   );
 }
 
 function ProductFormModal({
   product,
+  menuCategories,
   onClose,
   onSaved,
 }: {
   product: Product | null;
+  menuCategories: ProductCategory[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { t } = useI18n();
   const [code, setCode] = useState(product?.code ?? '');
   const [name, setName] = useState(product?.name ?? '');
-  const [category, setCategory] = useState(product?.category ?? '');
+  // Defaults to the first category on create rather than to empty: `categoryId`
+  // is NOT NULL server-side, so an empty select is a guaranteed 400 that the
+  // user can only discover by pressing Save.
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? menuCategories[0]?.id ?? '');
   const [price, setPrice] = useState(product?.price ?? null);
+  const [photo, setPhoto] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -724,7 +949,28 @@ function ProductFormModal({
     setSubmitting(true);
     setError(null);
     try {
-      const body = { code, name, category, price: price ?? '0.00' };
+      // The photo uploads FIRST and separately (presign -> PUT -> confirm), and
+      // only its resulting id goes into the product body. If the upload fails the
+      // product is left untouched rather than half-saved with a broken image
+      // reference — hence the distinct `uploading` state for the message.
+      let photoAttachmentId: string | undefined;
+      const file = photo[0];
+      if (file) {
+        setUploading(true);
+        try {
+          photoAttachmentId = await uploadProductPhoto(file);
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      const body = {
+        code,
+        name,
+        categoryId,
+        price: price ?? '0.00',
+        ...(photoAttachmentId ? { photoAttachmentId } : {}),
+      };
       if (product) await api.patch(`/products/${product.id}`, body);
       else await api.post('/products', body);
       toast({
@@ -755,8 +1001,8 @@ function ProductFormModal({
           <Button variant="outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={submit} loading={submitting} disabled={!code || !name}>
-            {t('common.save')}
+          <Button onClick={submit} loading={submitting} disabled={!code || !name || !categoryId}>
+            {uploading ? t('admin.masterData.products.photoUploading') : t('common.save')}
           </Button>
         </>
       }
@@ -775,15 +1021,39 @@ function ProductFormModal({
           onChange={(e) => setName(e.target.value)}
           required
         />
-        <Input
+        <Select
           label={t('admin.masterData.products.category')}
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
+          value={categoryId}
+          onValueChange={setCategoryId}
+          placeholder={t('admin.masterData.products.categoryPlaceholder')}
+          options={menuCategories.map((c) => ({ value: c.id, label: c.name }))}
+          required
         />
         <MoneyInput
           label={t('admin.masterData.products.price')}
           value={price}
           onChange={setPrice}
+        />
+        {product?.photoUrl && photo.length === 0 && (
+          <div className="flex items-center gap-3">
+            {/* Plain <img> for the same reason as ProductThumb. */}
+            <img
+              src={product.photoUrl}
+              alt={product.name}
+              className="size-16 rounded-md object-cover"
+            />
+            <p className="text-sm text-text-secondary">
+              {t('admin.masterData.products.photoReplaceHint')}
+            </p>
+          </div>
+        )}
+        <FileUpload
+          label={t('admin.masterData.products.photo')}
+          hint={t('admin.masterData.products.photoHint')}
+          accept="image/*"
+          maxSizeMb={8}
+          value={photo}
+          onChange={setPhoto}
         />
       </div>
     </Modal>
@@ -953,6 +1223,464 @@ function RecipeModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * The PACKAGE editor — a bundle's member products and how many of each.
+ *
+ * This is the recipe editor's sibling and deliberately looks like it, because
+ * the two answer the same question ("what does selling one of these consume?")
+ * at different levels: a recipe lists raw `items`, a package lists other
+ * PRODUCTS. Only one of them can apply to a given product — a package that also
+ * carried a recipe would count its ingredients twice per sale, which the
+ * database refuses outright (migration 248).
+ *
+ * Saving here CONVERTS a plain product into a package in one request; clearing
+ * every line converts it back. Both are one server call precisely so a product
+ * is never left as a bundle with no members — a sellable that would consume no
+ * stock at all.
+ */
+function PackageModal({
+  product,
+  onClose,
+  onSaved,
+}: {
+  product: Product;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const [lines, setLines] = useState<{ memberProductId: string; qty: Qty | null }[]>([]);
+  const [candidates, setCandidates] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    // Members must be PLAIN products (packages do not nest) and must not be this
+    // product itself — filtering here rather than letting the server reject the
+    // save keeps the impossible choices out of the dropdown entirely.
+    void Promise.all([
+      api.get<ProductPackageLine[]>(`/products/${product.id}/package`).catch(() => []),
+      api
+        .get<{ rows: Product[] }>('/products?kind=product&active=true&pageSize=200')
+        .then((r) => r.rows)
+        .catch(() => [] as Product[]),
+    ])
+      .then(([existing, all]) => {
+        if (!alive) return;
+        setLines(
+          existing.length > 0
+            ? existing.map((l) => ({ memberProductId: l.memberProductId, qty: l.qty }))
+            : [{ memberProductId: '', qty: '1.000' }],
+        );
+        setCandidates(all.filter((p) => p.id !== product.id));
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [product.id]);
+
+  function addLine() {
+    setLines((prev) => [...prev, { memberProductId: '', qty: '1.000' }]);
+  }
+
+  function removeLine(index: number) {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateLine(index: number, patch: Partial<{ memberProductId: string; qty: Qty | null }>) {
+    setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
+  }
+
+  const filled = lines.filter((l) => l.memberProductId && l.qty);
+  const duplicate = new Set(filled.map((l) => l.memberProductId)).size !== filled.length;
+
+  /**
+   * Sum of the members at their own menu prices — the number the package price
+   * is a discount against.
+   *
+   * `Number()` is acceptable HERE and nowhere near a saved value: this is a
+   * display-only comparison, and the money that actually gets stored is the
+   * decimal string `MoneyInput` produces on the product form (CONTRACTS §0 —
+   * money never becomes a float on a write path).
+   */
+  const membersTotal = filled.reduce((sum, l) => {
+    const member = candidates.find((c) => c.id === l.memberProductId);
+    if (!member) return sum;
+    return sum + Number(member.price) * Number(l.qty);
+  }, 0);
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (filled.length === 0) {
+        // No members left means "this is not a bundle any more", which is a
+        // DELETE — a PUT with an empty list is rejected server-side, correctly,
+        // because an empty package is a sellable that consumes nothing.
+        await api.delete(`/products/${product.id}/package`);
+      } else {
+        await api.put(`/products/${product.id}/package`, {
+          lines: filled.map((l, i) => ({
+            memberProductId: l.memberProductId,
+            qty: l.qty,
+            sortOrder: i,
+          })),
+        });
+      }
+      toast({ title: t('admin.masterData.products.packageSaved'), variant: 'success' });
+      onSaved();
+    } catch (err) {
+      setError(errMsg(err, t('auth.genericError')));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={t('admin.masterData.products.packageTitle', { name: product.name })}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={submit} loading={submitting} disabled={loading || duplicate}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {error && <p className="text-sm text-danger-600">{error}</p>}
+        {duplicate && (
+          <p className="text-sm text-danger-600">
+            {t('admin.masterData.products.packageDuplicate')}
+          </p>
+        )}
+        <p className="text-sm text-text-secondary">{t('admin.masterData.products.packageHint')}</p>
+
+        {loading ? (
+          <p className="text-sm text-text-secondary">{t('common.loading')}</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {lines.map((line, i) => (
+              <div key={i} className="flex items-end gap-2">
+                <Select
+                  label={i === 0 ? t('admin.masterData.products.member') : undefined}
+                  value={line.memberProductId}
+                  onValueChange={(v) => updateLine(i, { memberProductId: v })}
+                  placeholder={t('admin.masterData.products.memberPlaceholder')}
+                  options={candidates.map((c) => ({
+                    value: c.id,
+                    label: `${c.name} — ${formatMoney(c.price)}`,
+                  }))}
+                  wrapperClassName="flex-1"
+                />
+                <QtyInput
+                  label={i === 0 ? t('admin.masterData.products.memberQty') : undefined}
+                  value={line.qty}
+                  onChange={(v) => updateLine(i, { qty: v })}
+                  wrapperClassName="w-28"
+                />
+                <Button size="sm" variant="ghost" onClick={() => removeLine(i)}>
+                  {t('common.remove')}
+                </Button>
+              </div>
+            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={addLine}
+              className="self-start"
+              leftIcon={<Plus className="size-4" />}
+            >
+              {t('admin.masterData.products.addMember')}
+            </Button>
+          </div>
+        )}
+
+        {/* The whole point of a bundle is that it costs less than its parts.
+            Showing both numbers together makes a mispriced package obvious at
+            the moment someone sets it, rather than after a week of selling it
+            at a loss. */}
+        {filled.length > 0 && (
+          <div className="flex flex-col gap-1 rounded-md border border-border p-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-text-secondary">
+                {t('admin.masterData.products.membersTotal')}
+              </span>
+              <span>{formatMoney(membersTotal.toFixed(2))}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-text-secondary">
+                {t('admin.masterData.products.packagePrice')}
+              </span>
+              <span>{formatMoney(product.price)}</span>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span>{t('admin.masterData.products.packageSaving')}</span>
+              <span
+                className={
+                  membersTotal - Number(product.price) < 0 ? 'text-danger-600' : 'text-success-700'
+                }
+              >
+                {formatMoney((membersTotal - Number(product.price)).toFixed(2))}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── POS menu categories ──────────────────────────────────────────────────
+/**
+ * The till's CATEGORY CHIP ROW, as editable data.
+ *
+ * These are `product_categories` (migration 247), not `item_categories`: one is
+ * how a cashier finds "Minuman" on the menu, the other is how the warehouse
+ * groups "Bumbu" on a shelf. They were conflated in neither the schema nor this
+ * screen, but the menu side had no management surface at all — the category was
+ * free text on every product row, so it could not be renamed (every product had
+ * to be re-edited), reordered (the till sorted alphabetically because
+ * alphabetical was the only order a text column could give), or retired.
+ *
+ * ORDER IS THE POINT of the up/down controls: the chip row is what a cashier
+ * scans during a queue, so putting Ayam first and Tambahan last is an
+ * operational decision, not decoration.
+ */
+function MenuCategoriesSection({
+  categories,
+  onReload,
+}: {
+  categories: ProductCategory[];
+  onReload: () => void;
+}) {
+  const { t } = useI18n();
+  const { can } = usePermissions();
+  const [newName, setNewName] = useState('');
+  const [renaming, setRenaming] = useState<ProductCategory | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const manage = can('product.manage');
+
+  async function run(fn: () => Promise<unknown>, successKey: string) {
+    setBusy(true);
+    try {
+      await fn();
+      toast({ title: t(successKey), variant: 'success' });
+      onReload();
+      return true;
+    } catch (err) {
+      // The server refuses to retire a category that still has products under it
+      // and says how many — surface that message verbatim rather than a generic
+      // failure, because the count is the actionable part.
+      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function add() {
+    const ok = await run(
+      () => api.post('/products/categories', { name: newName }),
+      'admin.masterData.menuCategories.createSuccess',
+    );
+    if (ok) setNewName('');
+  }
+
+  async function rename() {
+    if (!renaming) return;
+    const ok = await run(
+      () => api.patch(`/products/categories/${renaming.id}`, { name: renameValue }),
+      'admin.masterData.menuCategories.renameSuccess',
+    );
+    if (ok) setRenaming(null);
+  }
+
+  /**
+   * Moves one row and sends the WHOLE resulting order in one request, rather
+   * than PATCHing two `sortOrder` values. Order is a property of the list: two
+   * sequential writes leave the chip row briefly wrong, and permanently wrong if
+   * the second one fails.
+   */
+  async function move(index: number, delta: number) {
+    const target = index + delta;
+    if (target < 0 || target >= categories.length) return;
+    const reordered = [...categories];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(target, 0, moved!);
+    await run(
+      () => api.put('/products/categories/order', { ids: reordered.map((c) => c.id) }),
+      'admin.masterData.menuCategories.reorderSuccess',
+    );
+  }
+
+  return (
+    <div className="flex max-w-2xl flex-col gap-3">
+      <div>
+        <h3 className="font-medium text-text-primary">
+          {t('admin.masterData.menuCategories.title')}
+        </h3>
+        <p className="text-sm text-text-secondary">
+          {t('admin.masterData.menuCategories.description')}
+        </p>
+      </div>
+
+      <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+        {categories.length === 0 && (
+          <li className="px-3 py-4 text-sm text-text-secondary">
+            {t('admin.masterData.menuCategories.empty')}
+          </li>
+        )}
+        {categories.map((c, i) => (
+          <li key={c.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+            <span className="flex-1">
+              {c.name}
+              {!c.isActive && (
+                <Badge variant="neutral" className="ml-2">
+                  {t('admin.users.statusInactive')}
+                </Badge>
+              )}
+            </span>
+            <span className="text-text-secondary">
+              {t('admin.masterData.menuCategories.productCount', { count: c.productCount })}
+            </span>
+            {manage && (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy || i === 0}
+                  onClick={() => move(i, -1)}
+                  aria-label={t('admin.masterData.menuCategories.moveUp')}
+                >
+                  <ChevronUp className="size-4" aria-hidden />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy || i === categories.length - 1}
+                  onClick={() => move(i, 1)}
+                  aria-label={t('admin.masterData.menuCategories.moveDown')}
+                >
+                  <ChevronDown className="size-4" aria-hidden />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRenaming(c);
+                    setRenameValue(c.name);
+                  }}
+                >
+                  {t('admin.masterData.menuCategories.rename')}
+                </Button>
+                {/* Retiring is only offered when nothing points at the category.
+                    The server enforces this too; hiding the button avoids
+                    offering an action that can only ever fail. */}
+                {c.isActive ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy || c.productCount > 0}
+                    title={
+                      c.productCount > 0
+                        ? t('admin.masterData.menuCategories.inUseHint')
+                        : undefined
+                    }
+                    onClick={() =>
+                      run(
+                        () => api.delete(`/products/categories/${c.id}`),
+                        'admin.masterData.menuCategories.deactivateSuccess',
+                      )
+                    }
+                  >
+                    {t('common.deactivate')}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      run(
+                        () => api.patch(`/products/categories/${c.id}`, { isActive: true }),
+                        'admin.masterData.menuCategories.activateSuccess',
+                      )
+                    }
+                  >
+                    {t('common.activate')}
+                  </Button>
+                )}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {manage && (
+        <div className="flex items-end gap-2">
+          <Input
+            label={t('admin.masterData.menuCategories.name')}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            wrapperClassName="flex-1"
+          />
+          <Button size="sm" onClick={add} loading={busy} disabled={!newName.trim()}>
+            {t('admin.masterData.menuCategories.createButton')}
+          </Button>
+        </div>
+      )}
+
+      {renaming && (
+        <Modal
+          open
+          onClose={() => setRenaming(null)}
+          title={t('admin.masterData.menuCategories.renameTitle', { name: renaming.name })}
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setRenaming(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button onClick={rename} loading={busy} disabled={!renameValue.trim()}>
+                {t('common.save')}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-2">
+            <Input
+              label={t('admin.masterData.menuCategories.name')}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              required
+            />
+            {/* Worth saying out loud: the products keep pointing at the same row,
+                so the new name shows up on every till at the next catalog
+                refresh with no per-product editing. That was the whole reason
+                for the table. */}
+            <p className="text-sm text-text-secondary">
+              {t('admin.masterData.menuCategories.renameHint', {
+                count: renaming.productCount,
+              })}
+            </p>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }
 
@@ -1399,15 +2127,33 @@ export function MasterDataPanel() {
   const [categories, setCategories] = useState<ItemCategory[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  // `includeInactive` so the menu-category editor can show a retired row and
+  // offer to reactivate it; the product form filters to active itself.
+  const [menuCategories, setMenuCategories] = useState<ProductCategory[]>([]);
+
+  /**
+   * Every lookup here is rendered with `.map`/`.filter`, so a response that is
+   * not an array does not degrade — it throws during render and takes the whole
+   * Master Data screen to a blank error page. `asArray` keeps a shape surprise
+   * (a proxy returning an error envelope, an endpoint mid-deploy) to an empty
+   * list, which the sections already handle.
+   */
+  function asArray<T>(value: unknown): T[] {
+    return Array.isArray(value) ? (value as T[]) : [];
+  }
 
   function reloadLookups() {
     api
+      .get<ProductCategory[]>('/products/categories?includeInactive=true')
+      .then((r) => setMenuCategories(asArray<ProductCategory>(r)))
+      .catch(() => {});
+    api
       .get<ItemCategory[]>('/items/categories')
-      .then(setCategories)
+      .then((r) => setCategories(asArray<ItemCategory>(r)))
       .catch(() => {});
     api
       .get<Unit[]>('/units')
-      .then(setUnits)
+      .then((r) => setUnits(asArray<Unit>(r)))
       .catch(() => {});
     // `pageSize` is capped at 200 backend-wide (CONTRACTS.md's pagination
     // rule, `ListItemsQueryDto`'s `@Max(200)`) — 500 here 400'd with
@@ -1416,7 +2162,7 @@ export function MasterDataPanel() {
     // empty (FIX-LOADS #4): this lookup never actually populated `items`.
     api
       .get<{ rows: Item[] }>('/items?pageSize=200')
-      .then((r) => setItems(r.rows))
+      .then((r) => setItems(asArray<Item>(r?.rows)))
       .catch(() => {});
   }
   useEffect(reloadLookups, []);
@@ -1429,6 +2175,9 @@ export function MasterDataPanel() {
           {t('admin.masterData.tabs.categoriesUnits')}
         </TabsTrigger>
         <TabsTrigger value="products">{t('admin.masterData.tabs.products')}</TabsTrigger>
+        <TabsTrigger value="menuCategories">
+          {t('admin.masterData.tabs.menuCategories')}
+        </TabsTrigger>
         <TabsTrigger value="locations">{t('admin.masterData.tabs.locations')}</TabsTrigger>
       </TabsList>
       <TabsContent value="items">
@@ -1438,7 +2187,14 @@ export function MasterDataPanel() {
         <CategoriesUnitsSection categories={categories} units={units} onReload={reloadLookups} />
       </TabsContent>
       <TabsContent value="products">
-        <ProductsSection items={items} units={units} />
+        <ProductsSection
+          items={items}
+          units={units}
+          menuCategories={menuCategories.filter((c) => c.isActive)}
+        />
+      </TabsContent>
+      <TabsContent value="menuCategories">
+        <MenuCategoriesSection categories={menuCategories} onReload={reloadLookups} />
       </TabsContent>
       <TabsContent value="locations">
         <LocationsSection />

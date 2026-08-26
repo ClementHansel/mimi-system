@@ -89,17 +89,46 @@ export interface Item {
   isActive: boolean;
 }
 
-// ── §4.5 product / recipe ────────────────────────────────────────────────
+// ── §4.5 product / recipe / package ──────────────────────────────────────
+/** A POS menu category — a `product_categories` row since migration 247, free text on `products.category` before it. */
+export interface ProductCategory {
+  id: UUID;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
+  /** Includes INACTIVE products: what makes retiring the category unsafe. */
+  productCount: number;
+}
+
+export type ProductKind = 'product' | 'package';
+
+/** One member of a package (`product_package_lines`, migration 248). */
+export interface ProductPackageLine {
+  memberProductId: UUID;
+  memberName: string;
+  memberCode: string;
+  qty: Qty;
+  sortOrder: number;
+}
+
 export interface Product {
   id: UUID;
   code: string;
   name: string;
+  /** Display name of the category; `categoryId` is the key to send back. */
   category: string;
+  categoryId: UUID;
   price: Money;
+  /** Presigned and EXPIRING (10 min) — fine to render now, never to cache. */
   photoUrl: string | null;
+  /** Stable api-relative path to a cached thumbnail, or null when there is no photo. */
+  photoPath: string | null;
   sortOrder: number;
   isActive: boolean;
+  kind: ProductKind;
   hasRecipe: boolean;
+  /** Present only when `kind === 'package'`. */
+  packageLines?: ProductPackageLine[];
 }
 
 export interface RecipeLine {

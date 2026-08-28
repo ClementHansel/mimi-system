@@ -1,35 +1,36 @@
 /**
- * Encodes the SYNC-PROTOCOL §7.2 offline-credential token.
+ * Encodes the SYNC-PROTOCOL §7.2 offline-credential token:
+ * `base64url(JSON.stringify(claims))`, no signature.
  *
- * CONTRACT DEVIATION (flagged for the architect/W2-D/W2-E, not fixed here —
- * none of the three files involved are in this agent's owned directories):
- * CONTRACTS.md/SYNC-PROTOCOL.md's prose describes the token as "compact
- * signed token (Ed25519, cloud private key)". But the consumer that already
- * exists and is tested — `apps/frontend/src/lib/local/credentials
- * /offline-credentials.ts` (`decodeOfflineCredentialToken`, W2-E, Wave 2,
- * frozen) — has already shipped and tested a DIFFERENT, simpler contract:
- * "`token` is `base64url(JSON.stringify(claims))` (no signature verification
- * attempted device-side...)". Per that file's own comment: "If M01 ships a
- * different encoding this decoder is the one function to change" — but
- * `apps/frontend/**` is W2-E's frozen territory, not this agent's, so this
- * file MATCHES the already-built, already-tested consumer rather than
- * implementing the Ed25519 scheme the prose describes and breaking every
- * `cacheCredential()`/`authorizeOffline()` call the frontend already tests
- * against. Flagged in this agent's final report as a prose/implementation
- * mismatch for the architect to reconcile (either amend the docs to match
- * the shipped encoding, or commission a frontend change to add signature
- * verification — a decision outside this agent's three owned directories).
+ * D-13 (2026-08-29) — this header previously carried two "CONTRACT DEVIATION"
+ * notices asking the architect to reconcile prose against code. SYNC-PROTOCOL
+ * v1.4 settled both, in this implementation's favour, and the notices were
+ * left behind describing the world as it was before that decision. They are
+ * recorded here rather than deleted, because the second one is the sort of
+ * comment that costs somebody an afternoon.
  *
- * SEPARATE, more consequential mismatch also flagged in the report: the
- * binding-HMAC field JOINER differs between the two already-frozen
- * implementations that must agree bit-for-bit — `kernel/sync/binding-crypto
- * .ts`'s `bindingMessage()` joins with `'‖'` (U+2016) while `apps/frontend`'s
- * `computeBindingHmac()` joins with a plain `'|'`. This file does not touch
- * either (both are outside this agent's ownership); it only mints `k` and
- * ships it in the token exactly as both sides expect (raw 32 bytes,
- * base64-encoded) — the joiner mismatch will make EVERY offline-approval
- * re-verification (§7.4 check 2) fail once a real device is in the loop,
- * regardless of anything this module does.
+ * 1. UNSIGNED, DELIBERATELY. The old prose called this a "compact signed
+ *    token (Ed25519, cloud private key)" and this file did not sign. v1.4's
+ *    amendment makes unsigned normative for v1 and gives the reasoning in
+ *    §7.2: the real control is the cloud's re-verification against the STORED
+ *    credential row at §7.4 checks 4/5, and a device-local signature does not
+ *    raise the §7.1 skill floor — an attacker who can edit the token can edit
+ *    the verifier that checks it. Editing `maxIdr` or `exp` in the local
+ *    claims may pass the on-device gate and still comes back `failed` /
+ *    `unprovable` from the cloud, which is what §9 T-15 (xi) exists to prove.
+ *    The token is UX; the stored row is the control.
+ *
+ * 2. THE JOINER MISMATCH IS FIXED. The old notice warned that
+ *    `kernel/sync/binding-crypto.ts` joined with `'‖'` (U+2016) while the
+ *    frontend's `computeBindingHmac()` joined with a plain `'|'`, and that
+ *    this would make EVERY offline-approval re-verification (§7.4 check 2)
+ *    fail once a real device was in the loop. That was true when it was
+ *    written and is no longer: both sides join with U+2016, v1.4 §7.3 makes
+ *    it normative, and `apps/frontend/src/lib/local/credentials
+ *    /binding-fixture.test.ts` pins it with a cross-tier known-answer fixture
+ *    plus an explicit regression guard naming U+007C as the bug that shipped.
+ *    Left standing, the notice reads as a live, system-wide failure and sends
+ *    the next reader hunting something that is already covered.
  */
 import type { Money, UUID } from '@mimi/shared';
 

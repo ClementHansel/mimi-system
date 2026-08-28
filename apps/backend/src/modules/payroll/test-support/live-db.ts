@@ -165,9 +165,29 @@ export async function cleanupCommittedRows(opts: {
       'DELETE FROM employee_loan_payments WHERE loan_id IN (SELECT id FROM employee_loans WHERE employee_id = ANY($1::uuid[]))',
       [employeeIds],
     );
+    // The golden case hangs its cash-variance proposal off a real `pos_shifts`
+    // row (FK). That row was never cleaned up, so every run of this suite left
+    // one more shift OPEN forever — one location on the dev box had
+    // accumulated 22 of them, swamping the six the seed intends and making
+    // "how many shifts are open" unanswerable. Deleted after the proposals
+    // that reference it, matching the FK order the rest of this function
+    // follows.
     await pool.query('DELETE FROM cash_variance_proposals WHERE employee_id = ANY($1::uuid[])', [
       employeeIds,
     ]);
+    // Two fixtures mint shifts with deterministic numbers keyed on the
+    // employee id: `SHIFT-TEST-<first 8>` (golden case) and `SHIFT-CV-<first
+    // 8>` (the cash-variance case). Matching on those exact names removes
+    // precisely the rows this suite created and never touches the seed's own
+    // `<CODE>-POS1-<date>` shifts.
+    await pool.query(
+      `DELETE FROM pos_shifts WHERE shift_number = ANY(
+         SELECT prefix || LEFT(id::text, 8)
+           FROM UNNEST($1::uuid[]) AS id
+           CROSS JOIN (VALUES ('SHIFT-TEST-'), ('SHIFT-CV-')) AS p(prefix)
+       )`,
+      [employeeIds],
+    );
     await pool.query('DELETE FROM payroll_lines WHERE employee_id = ANY($1::uuid[])', [
       employeeIds,
     ]);

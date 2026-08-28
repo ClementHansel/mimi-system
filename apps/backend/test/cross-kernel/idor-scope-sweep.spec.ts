@@ -689,22 +689,52 @@ describe.skipIf(!hasDb)('B7 — offline-credential replay path (D-17 / SYNC-PROT
   );
 
   it("userHoldsLocation() (§7.4 check 6) correctly distinguishes the holder's real location from an unrelated one", async () => {
-    const assignment = await ownerPool.query<{ user_id: string; location_id: string }>(
-      `SELECT user_id, location_id FROM user_locations LIMIT 1`,
+    // The pair is chosen so the user provably does NOT hold the second
+    // location, rather than assuming "a different location" means "not
+    // theirs". It does not: plenty of users here are assigned to every
+    // outlet, so an arbitrary `LIMIT 1` row paired with an arbitrary other
+    // location was passing on the ACCIDENT of physical row order, and started
+    // failing the first time a reseed changed that order. A security test
+    // that holds by coincidence is the failure mode this file's own header
+    // was written about.
+    //
+    // NOT EXISTS + deterministic ordering: pick a user with at least one
+    // location they are not assigned to, and name that location explicitly.
+    const assignment = await ownerPool.query<{
+      user_id: string;
+      location_id: string;
+      other_location_id: string;
+    }>(
+      `SELECT ul.user_id, ul.location_id, o.id AS other_location_id
+         FROM user_locations ul
+         JOIN LATERAL (
+           SELECT l.id FROM locations l
+            WHERE NOT EXISTS (
+              SELECT 1 FROM user_locations ul2
+               WHERE ul2.user_id = ul.user_id AND ul2.location_id = l.id
+            )
+            ORDER BY l.id
+            LIMIT 1
+         ) o ON TRUE
+        ORDER BY ul.user_id, ul.location_id
+        LIMIT 1`,
     );
-    expect(assignment.rows[0]).toBeDefined();
-    const { user_id: userId, location_id: heldLocation } = assignment.rows[0]!;
-    const otherLocation = await ownerPool.query<{ id: string }>(
-      `SELECT id FROM locations WHERE id != $1 LIMIT 1`,
-      [heldLocation],
-    );
+    expect(
+      assignment.rows[0],
+      'no user in the seed is scoped to fewer than every location — this check needs one',
+    ).toBeDefined();
+    const {
+      user_id: userId,
+      location_id: heldLocation,
+      other_location_id: unheldLocation,
+    } = assignment.rows[0]!;
 
     const client = await appPool.connect();
     try {
       await client.query('BEGIN');
       await assertSystemContext(client);
       const holdsOwn = await repo.userHoldsLocation(client, userId, heldLocation);
-      const holdsOther = await repo.userHoldsLocation(client, userId, otherLocation.rows[0]!.id);
+      const holdsOther = await repo.userHoldsLocation(client, userId, unheldLocation);
       expect(holdsOwn).toBe(true);
       expect(holdsOther).toBe(false);
     } finally {

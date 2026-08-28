@@ -1522,6 +1522,43 @@ async function main(): Promise<void> {
     // =========================================================================
     const demoOutlets = allLocationCodes.filter((c) => c !== 'GDG').slice(0, 6);
     const productNames = Object.keys(productId);
+
+    // D-20 — close any shift the PREVIOUS seed run left open.
+    //
+    // The loop below deliberately leaves TODAY's shift open per outlet: an
+    // outlet mid-shift is the realistic demo state, and several screens have
+    // nothing to show without one. What it never did was close YESTERDAY's,
+    // because that row is keyed on its own date and so is simply skipped by
+    // `ON CONFLICT (client_id) DO NOTHING` on the next day's run.
+    //
+    // The result accumulates. On a box seeded across several calendar days,
+    // every one of those days leaves a shift that has now been "open" for
+    // days — a state the real system cannot produce, since a cashier closes a
+    // shift at the end of it. Anything reading open shifts (the shift-close
+    // screen, cash-variance proposals, the POS dashboard's "current shift")
+    // then sees a pile of them and has no way to tell which is live.
+    //
+    // Closed to the shift's OWN 20:00, not to now, so the row reads as a
+    // normal completed shift rather than one that ran for three days.
+    // `expected_cash`/`closing_cash_counted` are set from what the shift
+    // actually recorded, keeping variance at zero — a stale shift should
+    // close cleanly, not invent a discrepancy for the finance queue.
+    const staleShifts = await client.query(
+      `UPDATE pos_shifts
+          SET status = 'closed',
+              closed_by = opened_by,
+              closed_at = date_trunc('day', opened_at) + interval '20 hours',
+              closing_cash_counted = expected_cash,
+              cash_variance = 0
+        WHERE status = 'open'
+          AND opened_at < date_trunc('day', NOW())
+        RETURNING id`,
+    );
+    if (staleShifts.rowCount) {
+      console.log(
+        `  - closed ${staleShifts.rowCount} stale open shift(s) left by an earlier seed run (D-20)`,
+      );
+    }
     for (const code of demoOutlets) {
       const kasirUsername = `kasir1_${code.toLowerCase()}`;
       const kasirId = userIdByUsername[kasirUsername];

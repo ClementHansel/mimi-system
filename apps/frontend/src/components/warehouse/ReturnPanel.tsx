@@ -84,19 +84,17 @@ interface ReturnLineExportRow {
 
 function toLineRows(docs: ReturnDoc[], counterpartyOf: (doc: ReturnDoc) => string) {
   return docs.flatMap((doc) =>
-    doc.lines.map(
-      (line): ReturnLineExportRow => ({
-        returnNumber: doc.returnNumber,
-        status: doc.status,
-        counterparty: counterpartyOf(doc),
-        shippedAt: doc.shippedAt ? fmtDate(doc.shippedAt) : '',
-        itemName: line.itemName,
-        qty: line.qty,
-        qtyReceived: line.qtyReceived ?? '',
-        condition: line.condition,
-        reason: line.reason,
-      }),
-    ),
+    doc.lines.map((line): ReturnLineExportRow => ({
+      returnNumber: doc.returnNumber,
+      status: doc.status,
+      counterparty: counterpartyOf(doc),
+      shippedAt: doc.shippedAt ? fmtDate(doc.shippedAt) : '',
+      itemName: line.itemName,
+      qty: line.qty,
+      qtyReceived: line.qtyReceived ?? '',
+      condition: line.condition,
+      reason: line.reason,
+    })),
   );
 }
 

@@ -92,22 +92,22 @@ describe('VoucherController — RBAC wiring against the real matrix', () => {
     }
   });
 
-  describe.each(ROUTES)('%s (@RequirePermission(%s)) — all roles, both directions', (
-    methodName,
-    permissionKey,
-  ) => {
-    const handler = methodsOf()[methodName]!;
+  describe.each(ROUTES)(
+    '%s (@RequirePermission(%s)) — all roles, both directions',
+    (methodName, permissionKey) => {
+      const handler = methodsOf()[methodName]!;
 
-    it.each(ALL_ROLES)('role %s matches the matrix exactly', (roleKey) => {
-      const expectedAllowed = RBAC_MATRIX[permissionKey][roleKey];
-      const ctx = contextFor(handler, roleKey);
-      if (expectedAllowed) {
-        expect(guard.canActivate(ctx)).toBe(true);
-      } else {
-        expect(() => guard.canActivate(ctx)).toThrow();
-      }
-    });
-  });
+      it.each(ALL_ROLES)('role %s matches the matrix exactly', (roleKey) => {
+        const expectedAllowed = RBAC_MATRIX[permissionKey][roleKey];
+        const ctx = contextFor(handler, roleKey);
+        if (expectedAllowed) {
+          expect(guard.canActivate(ctx)).toBe(true);
+        } else {
+          expect(() => guard.canActivate(ctx)).toThrow();
+        }
+      });
+    },
+  );
 });
 
 describe('the two boundaries that cost money if they move', () => {

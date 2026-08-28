@@ -339,7 +339,12 @@ function ManualInvoicePrint() {
             </Button>
           </div>
         ))}
-        <Button variant="outline" size="sm" leftIcon={<Plus className="size-4" />} onClick={addLine}>
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon={<Plus className="size-4" />}
+          onClick={addLine}
+        >
           {t('doc.print.manualAddLine')}
         </Button>
       </div>

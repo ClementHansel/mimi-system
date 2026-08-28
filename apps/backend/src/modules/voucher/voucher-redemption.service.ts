@@ -90,7 +90,6 @@ import { BadRequestException } from '@nestjs/common';
 import type { DatabaseError } from 'pg';
 import type { PoolClient } from 'pg';
 import {
-
   ERR_VOUCHER_NOT_FOUND,
   ERR_VOUCHER_OFFLINE_BLOCKED,
   VoucherStatus,
@@ -107,7 +106,11 @@ import {
 import type { LedgerMode } from '@mimi/sync-protocol';
 import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
 import { formatDateOnly } from '../../common/date-only.util';
-import { UNIQUE_VIOLATION, VoucherRepository, type VoucherWithBatchRow } from './voucher.repository';
+import {
+  UNIQUE_VIOLATION,
+  VoucherRepository,
+  type VoucherWithBatchRow,
+} from './voucher.repository';
 import { errorCodeForRejection } from './voucher-rejection.util';
 import { getVoucherOfflinePolicy } from './voucher-settings.util';
 

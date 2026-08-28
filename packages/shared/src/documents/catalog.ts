@@ -114,10 +114,7 @@ export const SURAT_JALAN_FIELD_TOKENS = [
 export type SuratJalanFieldToken = (typeof SURAT_JALAN_FIELD_TOKENS)[number];
 
 export type DocFieldToken =
-  | InvoiceFieldToken
-  | ReceiptFieldToken
-  | VoucherFieldToken
-  | SuratJalanFieldToken;
+  InvoiceFieldToken | ReceiptFieldToken | VoucherFieldToken | SuratJalanFieldToken;
 
 // ── Table columns, per kind ───────────────────────────────────────────────────
 
@@ -155,10 +152,7 @@ export const SURAT_JALAN_COLUMN_KEYS = [
 ] as const;
 export type SuratJalanColumnKey = (typeof SURAT_JALAN_COLUMN_KEYS)[number];
 
-export type DocColumnKey =
-  | InvoiceColumnKey
-  | ReceiptColumnKey
-  | SuratJalanColumnKey;
+export type DocColumnKey = InvoiceColumnKey | ReceiptColumnKey | SuratJalanColumnKey;
 
 // ── Per-kind capability descriptor ────────────────────────────────────────────
 

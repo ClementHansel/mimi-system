@@ -123,12 +123,7 @@ describe('SalesReportPanel', () => {
     render(<SalesReportPanel from="2026-08-01" to="2026-08-27" />);
 
     await screen.findByText('2026-08-20');
-    expect(reportApi.getSales).toHaveBeenCalledWith(
-      'day',
-      '2026-08-01',
-      '2026-08-27',
-      undefined,
-    );
+    expect(reportApi.getSales).toHaveBeenCalledWith('day', '2026-08-01', '2026-08-27', undefined);
   });
 
   it('renders the error state distinctly from the empty state', async () => {

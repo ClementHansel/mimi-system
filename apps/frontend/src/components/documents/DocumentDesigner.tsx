@@ -417,11 +417,7 @@ function PropertiesPanel({
     return <p className="text-sm text-text-muted">{t('doc.designer.noSelection')}</p>;
   }
 
-  const numberField = (
-    key: 'x' | 'y' | 'w' | 'h',
-    label: string,
-    max: number,
-  ) => (
+  const numberField = (key: 'x' | 'y' | 'w' | 'h', label: string, max: number) => (
     <Input
       size="sm"
       type="number"
@@ -583,11 +579,7 @@ function PropertiesPanel({
       )}
 
       {element.type === 'table' && (
-        <ColumnsEditor
-          element={element}
-          kind={kind}
-          onChange={(columns) => onPatch({ columns })}
-        />
+        <ColumnsEditor element={element} kind={kind} onChange={(columns) => onPatch({ columns })} />
       )}
     </div>
   );
@@ -661,28 +653,25 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
 
   // ── Mutation helpers ───────────────────────────────────────────────────────
 
-  const patchElement = useCallback(
-    (id: string, patch: Partial<DocElement>) => {
-      setTemplate((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          elements: current.elements.map((el) => {
-            if (el.id !== id) return el;
-            const next = { ...el, ...patch };
-            // Resizing a TABLE has to re-fit its columns, or the invariant
-            // above (`normalizeColumnWidths`) breaks the moment somebody drags
-            // the table's right edge rather than editing a column number.
-            if (next.type === 'table' && next.columns && patch.w !== undefined) {
-              next.columns = normalizeColumnWidths(next.columns, next.w);
-            }
-            return next;
-          }),
-        };
-      });
-    },
-    [],
-  );
+  const patchElement = useCallback((id: string, patch: Partial<DocElement>) => {
+    setTemplate((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        elements: current.elements.map((el) => {
+          if (el.id !== id) return el;
+          const next = { ...el, ...patch };
+          // Resizing a TABLE has to re-fit its columns, or the invariant
+          // above (`normalizeColumnWidths`) breaks the moment somebody drags
+          // the table's right edge rather than editing a column number.
+          if (next.type === 'table' && next.columns && patch.w !== undefined) {
+            next.columns = normalizeColumnWidths(next.columns, next.w);
+          }
+          return next;
+        }),
+      };
+    });
+  }, []);
 
   const addElement = useCallback(
     (type: DocElementType, field?: string) => {
@@ -782,7 +771,11 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
     originH: number;
   } | null>(null);
 
-  function beginDrag(event: ReactPointerEvent<HTMLElement>, el: DocElement, mode: 'move' | 'resize') {
+  function beginDrag(
+    event: ReactPointerEvent<HTMLElement>,
+    el: DocElement,
+    mode: 'move' | 'resize',
+  ) {
     event.preventDefault();
     event.stopPropagation();
     setSelectedId(el.id);
@@ -964,7 +957,12 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
             // moving somebody's layout for them would be a worse surprise than
             // an element that now sticks off the page, and
             // `validateDocTemplate` names every one of those on save.
-            setTemplate({ ...template, paper: paper as DocPaper, width: size.width, height: size.height });
+            setTemplate({
+              ...template,
+              paper: paper as DocPaper,
+              width: size.width,
+              height: size.height,
+            });
           }}
           wrapperClassName="w-32"
         />
@@ -1023,7 +1021,9 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
         </div>
 
         <div className="ml-auto flex items-end gap-2">
-          {dirty && <span className="pb-2 text-xs text-warning-700">{t('doc.designer.unsaved')}</span>}
+          {dirty && (
+            <span className="pb-2 text-xs text-warning-700">{t('doc.designer.unsaved')}</span>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -1102,7 +1102,9 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
                     type="button"
                     onClick={() => setSelectedId(el.id)}
                     className={`w-full truncate rounded px-2 py-1 text-left ${
-                      el.id === selectedId ? 'bg-brand-50 text-brand-700' : 'hover:bg-surface-sunken'
+                      el.id === selectedId
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'hover:bg-surface-sunken'
                     }`}
                   >
                     {elementLabel(el, t)}

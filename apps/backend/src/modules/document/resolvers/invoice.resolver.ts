@@ -279,9 +279,7 @@ export function resolveInvoiceManual(input: ManualInvoiceInput): DocPayload {
   );
   const subtotal = lineTotals.length > 0 ? sumMoney(lineTotals) : '0.00';
   const discountTotal =
-    input.lines.length > 0
-      ? sumMoney(input.lines.map((line) => line.discount ?? '0.00'))
-      : '0.00';
+    input.lines.length > 0 ? sumMoney(input.lines.map((line) => line.discount ?? '0.00')) : '0.00';
   const total = subtotal;
   const balance = clampMoneyToZero(subMoney(total, input.paidAmount));
 

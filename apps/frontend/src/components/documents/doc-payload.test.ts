@@ -7,9 +7,8 @@ vi.mock('@/lib/api', async () => {
   return { ...actual, api: { ...actual.api, get: (...args: unknown[]) => get(...args) } };
 });
 
-const { docDataFromPayload, docDataFromCopySet, clearAttachmentUrlCache } = await import(
-  './doc-payload'
-);
+const { docDataFromPayload, docDataFromCopySet, clearAttachmentUrlCache } =
+  await import('./doc-payload');
 
 /**
  * The merge direction is the whole contract of `DocPayload`, and getting it

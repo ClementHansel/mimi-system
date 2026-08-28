@@ -1,4 +1,12 @@
-import type { ISODate, ISODateTime, Money, UUID, VoucherBatchStatus, VoucherStatus, VoucherType } from '@/lib/shared-types';
+import type {
+  ISODate,
+  ISODateTime,
+  Money,
+  UUID,
+  VoucherBatchStatus,
+  VoucherStatus,
+  VoucherType,
+} from '@/lib/shared-types';
 
 /**
  * Wire shapes for the Vouchers UI — a print run ("batch") and the individual

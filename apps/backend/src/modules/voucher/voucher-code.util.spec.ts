@@ -34,7 +34,9 @@ describe('mintVoucherCode', () => {
     // mean the minter is no longer using `formatVoucherCode`.
     const alphabet = new Set(VOUCHER_CODE_ALPHABET.split(''));
     for (let i = 0; i < 200; i++) {
-      const body = mintVoucherCode().slice(VOUCHER_CODE_PREFIX.length + 1).replace('-', '');
+      const body = mintVoucherCode()
+        .slice(VOUCHER_CODE_PREFIX.length + 1)
+        .replace('-', '');
       expect(body).toHaveLength(8);
       for (const char of body) expect(alphabet.has(char)).toBe(true);
     }

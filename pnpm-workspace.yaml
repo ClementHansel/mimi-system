@@ -1,10 +1,10 @@
 packages:
-  - "apps/*"
-  - "packages/*"
-  - "database"
-  - "e2e"
+  - 'apps/*'
+  - 'packages/*'
+  - 'database'
+  - 'e2e'
 
 # Security overrides (pnpm reads overrides here, not from package.json's "pnpm" field).
 # - postcss < 8.5.10: XSS via unescaped </style> (GHSA-qx2v-qp2m-jg93). Forces Next's bundled copy up.
 overrides:
-  "postcss@<8.5.10": ">=8.5.10"
+  'postcss@<8.5.10': '>=8.5.10'

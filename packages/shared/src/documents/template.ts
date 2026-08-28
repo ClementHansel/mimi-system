@@ -79,15 +79,7 @@ export type DocAlign = 'left' | 'center' | 'right';
  * is the point.
  */
 export type DocElementType =
-  | 'text'
-  | 'field'
-  | 'logo'
-  | 'table'
-  | 'totals'
-  | 'code'
-  | 'divider'
-  | 'box'
-  | 'signature';
+  'text' | 'field' | 'logo' | 'table' | 'totals' | 'code' | 'divider' | 'box' | 'signature';
 
 export const DOC_ELEMENT_TYPES: readonly DocElementType[] = [
   'text',

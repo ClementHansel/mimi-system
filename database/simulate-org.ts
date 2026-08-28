@@ -24,8 +24,7 @@ const { Client } = pg;
 
 async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run');
-  const connectionString =
-    migrationConnectionString('db:simulate:org');
+  const connectionString = migrationConnectionString('db:simulate:org');
   const client = new Client({ connectionString });
   await client.connect();
 

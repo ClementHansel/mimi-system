@@ -18,7 +18,13 @@ const range = (s) => lines.slice(s.start, s.end).map((t, i) => [s.start + i + 1,
 const rows = [];
 const clean = (s) => s.replace(/\s+/g, ' ').trim();
 // strip bold/strike/leading dashes but KEEP inline code and link text
-const plain = (s) => clean(s.replace(/\*\*/g, '').replace(/~~/g, '').replace(/^[-\u2013\u2014\s]+/, ''));
+const plain = (s) =>
+  clean(
+    s
+      .replace(/\*\*/g, '')
+      .replace(/~~/g, '')
+      .replace(/^[-\u2013\u2014\s]+/, ''),
+  );
 const shorten = (s, n) => (s.length <= n ? s : s.slice(0, n - 1).replace(/\s+\S*$/, '') + '\u2026');
 
 const STATE = { x: 'Done', '~': 'In Progress', ' ': 'Todo', '!': 'Todo' };
@@ -31,7 +37,9 @@ for (let i = 0; i < regLines.length; i++) {
   const [ln, text] = regLines[i];
   const wm = text.match(/^### (Wave [^\u2014]+)/);
   if (wm) {
-    wave = clean(wm[1]).replace(/[\u2705\u{1F504}\u2B1C]/gu, '').trim();
+    wave = clean(wm[1])
+      .replace(/[\u2705\u{1F504}\u2B1C]/gu, '')
+      .trim();
     continue;
   }
   const m = text.match(/^- \[([x~ !])\] (.*)$/);
@@ -40,7 +48,11 @@ for (let i = 0; i < regLines.length; i++) {
   const body = m[2];
   const cont = [];
   let j = i + 1;
-  while (j < regLines.length && !/^- \[/.test(regLines[j][1]) && /^(\s{2,}\S|\s*$)/.test(regLines[j][1])) {
+  while (
+    j < regLines.length &&
+    !/^- \[/.test(regLines[j][1]) &&
+    /^(\s{2,}\S|\s*$)/.test(regLines[j][1])
+  ) {
     if (regLines[j][1].trim()) cont.push(regLines[j][1].trim());
     j++;
     if (cont.length > 40) break;
@@ -88,7 +100,10 @@ const debt = sec((t) => /^5\./.test(t));
 for (const [ln, text] of range(debt)) {
   const m = text.match(/^\|\s*(\u2705\s*)?(D-\d+[a-z]?)\s*\|(.+)$/u);
   if (!m) continue;
-  const cells = m[3].split('|').map((c) => c.trim()).filter(Boolean);
+  const cells = m[3]
+    .split('|')
+    .map((c) => c.trim())
+    .filter(Boolean);
   const item = plain(cells[0] || '');
   // Only a tick in the ID CELL marks the item resolved. A tick inside the prose
   // means some sub-part is done (D-02: "4 of 5 copies still to retire (auth \u2705 done)").
@@ -110,7 +125,10 @@ const risk = sec((t) => /^7\./.test(t));
 for (const [ln, text] of range(risk)) {
   const m = text.match(/^\|\s*\*{0,2}(RISK-[A-Z0-9]+|BUDGET)\*{0,2}\s*\|(.+)$/);
   if (!m) continue;
-  const cells = m[2].split('|').map((c) => c.trim()).filter(Boolean);
+  const cells = m[2]
+    .split('|')
+    .map((c) => c.trim())
+    .filter(Boolean);
   rows.push({
     id: m[1],
     kind: 'risk',
@@ -149,12 +167,17 @@ for (const s of secs) {
       // being cut mid-sentence. Only a runaway section should ever hit this.
       if (body.length > 200) break;
     }
-    const heading = plain(raw.replace(/^[\u2705\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F7E2}\u{1F504}\u{1F680}\s]+/u, ''));
+    const heading = plain(
+      raw.replace(/^[\u2705\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F7E2}\u{1F504}\u{1F680}\s]+/u, ''),
+    );
     rows.push({
       id,
       kind: 'blocker',
       wave: null,
-      title: id + ' \u2014 ' + shorten(heading.replace(new RegExp('^' + id + '\\s*[\u2014-]*\\s*'), ''), 100),
+      title:
+        id +
+        ' \u2014 ' +
+        shorten(heading.replace(new RegExp('^' + id + '\\s*[\u2014-]*\\s*'), ''), 100),
       status: done ? 'Done' : inprog ? 'In Progress' : 'Todo',
       desc: body.join('\n\n'),
       line: ln,
@@ -166,10 +189,15 @@ for (const s of secs) {
 // ---- 5. owner-blocked A-items from the section 1a table ------------------
 const s1a = sec((t) => /^1a\./.test(t));
 for (const [ln, text] of range(s1a)) {
-  const m = text.match(/^\|\s*(?:[\u2705\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F7E2}]\s*)?(A-\d+)\s*\|(.+)$/u);
+  const m = text.match(
+    /^\|\s*(?:[\u2705\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F7E2}]\s*)?(A-\d+)\s*\|(.+)$/u,
+  );
   if (!m || seen.has(m[1])) continue;
   seen.add(m[1]);
-  const cells = m[2].split('|').map((c) => c.trim()).filter(Boolean);
+  const cells = m[2]
+    .split('|')
+    .map((c) => c.trim())
+    .filter(Boolean);
   rows.push({
     id: m[1],
     kind: 'owner-blocked',
@@ -195,7 +223,14 @@ for (const r of rows) {
   // keep whichever carries more detail; fold the loser in as a cross-reference
   const keep = r.desc.length > prev.desc.length ? r : prev;
   const drop = keep === r ? prev : r;
-  keep.desc += '\n\nAlso recorded at ' + drop.section + ', line ' + drop.line + ' (status there: ' + drop.status + ').';
+  keep.desc +=
+    '\n\nAlso recorded at ' +
+    drop.section +
+    ', line ' +
+    drop.line +
+    ' (status there: ' +
+    drop.status +
+    ').';
   if (keep !== prev) {
     merged[merged.indexOf(prev)] = keep;
     byId.set(r.id, keep);
@@ -224,7 +259,17 @@ if (jsonFlag !== -1) {
         status: r.status,
         priority: Number(PRIO[r.kind]),
         labels: [r.kind, 'from-progress-md'],
-        description: r.desc + '\n\n---\nImported from `' + SRC + '` ' + r.section + ', line ' + r.line + '. Legacy id **' + r.id + '**.',
+        description:
+          r.desc +
+          '\n\n---\nImported from `' +
+          SRC +
+          '` ' +
+          r.section +
+          ', line ' +
+          r.line +
+          '. Legacy id **' +
+          r.id +
+          '**.',
       })),
       null,
       2,
@@ -236,20 +281,54 @@ if (jsonFlag !== -1) {
 
 const out = [['Title', 'Description', 'Status', 'Priority', 'Labels'].join(',')];
 for (const r of rows) {
-  const labels = [r.kind, r.wave ? r.wave.toLowerCase().replace(/\s+/g, '-') : null, 'from-progress-md']
+  const labels = [
+    r.kind,
+    r.wave ? r.wave.toLowerCase().replace(/\s+/g, '-') : null,
+    'from-progress-md',
+  ]
     .filter(Boolean)
     .join(';');
   const desc =
     r.desc +
-    '\n\n---\nImported from `' + SRC + '` ' + r.section + ', line ' + r.line + '. Legacy id **' + r.id + '**.';
+    '\n\n---\nImported from `' +
+    SRC +
+    '` ' +
+    r.section +
+    ', line ' +
+    r.line +
+    '. Legacy id **' +
+    r.id +
+    '**.';
   out.push([esc(r.title), esc(desc), esc(r.status), esc(PRIO[r.kind]), esc(labels)].join(','));
 }
 fs.writeFileSync(process.argv[2], out.join('\n') + '\n');
 
 const by = (k) => rows.filter((r) => r.kind === k).length;
 const st = (k) => rows.filter((r) => r.status === k).length;
-console.log('rows=' + rows.length + '  task=' + by('task') + ' blocker=' + by('blocker') + ' debt=' + by('debt') + ' risk=' + by('risk') + ' owner=' + by('owner-blocked'));
-console.log('Done=' + st('Done') + ' InProgress=' + st('In Progress') + ' Todo=' + st('Todo') + ' Backlog=' + st('Backlog'));
+console.log(
+  'rows=' +
+    rows.length +
+    '  task=' +
+    by('task') +
+    ' blocker=' +
+    by('blocker') +
+    ' debt=' +
+    by('debt') +
+    ' risk=' +
+    by('risk') +
+    ' owner=' +
+    by('owner-blocked'),
+);
+console.log(
+  'Done=' +
+    st('Done') +
+    ' InProgress=' +
+    st('In Progress') +
+    ' Todo=' +
+    st('Todo') +
+    ' Backlog=' +
+    st('Backlog'),
+);
 const ids = rows.map((r) => r.id);
 const dup = [...new Set(ids.filter((v, i) => ids.indexOf(v) !== i))];
 if (dup.length) console.log('DUPLICATE IDS: ' + dup.join(' '));

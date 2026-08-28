@@ -59,24 +59,29 @@ describe('document module — RBAC wiring against the real matrix', () => {
       ['getOne', 'doc_template.read'],
       ['putOne', 'doc_template.manage'],
       ['resetOne', 'doc_template.manage'],
-    ] as const)('%s (@RequirePermission(%s)) — every role, both directions', (methodName, permissionKey) => {
-      const handler = methodsOf(DocTemplateController)[methodName]!;
+    ] as const)(
+      '%s (@RequirePermission(%s)) — every role, both directions',
+      (methodName, permissionKey) => {
+        const handler = methodsOf(DocTemplateController)[methodName]!;
 
-      it.each(ALL_ROLES)('role %s matches RBAC_MATRIX exactly', (roleKey) => {
-        const expectedAllowed = RBAC_MATRIX[permissionKey][roleKey];
-        const ctx = contextFor(handler, DocTemplateController, roleKey);
+        it.each(ALL_ROLES)('role %s matches RBAC_MATRIX exactly', (roleKey) => {
+          const expectedAllowed = RBAC_MATRIX[permissionKey][roleKey];
+          const ctx = contextFor(handler, DocTemplateController, roleKey);
 
-        if (expectedAllowed) {
-          expect(guard.canActivate(ctx)).toBe(true);
-        } else {
-          expect(() => guard.canActivate(ctx)).toThrow();
-        }
-      });
-    });
+          if (expectedAllowed) {
+            expect(guard.canActivate(ctx)).toBe(true);
+          } else {
+            expect(() => guard.canActivate(ctx)).toThrow();
+          }
+        });
+      },
+    );
 
     it('sanity: doc_template.manage is refused for Kasir and allowed for Owner (CONTRACTS-style exact row)', () => {
       const handler = methodsOf(DocTemplateController).putOne!;
-      expect(guard.canActivate(contextFor(handler, DocTemplateController, RoleKey.OWNER))).toBe(true);
+      expect(guard.canActivate(contextFor(handler, DocTemplateController, RoleKey.OWNER))).toBe(
+        true,
+      );
       expect(() =>
         guard.canActivate(contextFor(handler, DocTemplateController, RoleKey.KASIR)),
       ).toThrow();
@@ -112,19 +117,22 @@ describe('document module — RBAC wiring against the real matrix', () => {
       ['getSuratJalan', 'delivery.read'],
       ['getVoucher', 'voucher.read'],
       ['getVoucherBatch', 'voucher.read'],
-    ] as const)('%s (@RequirePermission(%s)) — every role, both directions', (methodName, permissionKey) => {
-      const handler = methodsOf(DocumentController)[methodName]!;
+    ] as const)(
+      '%s (@RequirePermission(%s)) — every role, both directions',
+      (methodName, permissionKey) => {
+        const handler = methodsOf(DocumentController)[methodName]!;
 
-      it.each(ALL_ROLES)('role %s matches RBAC_MATRIX exactly', (roleKey) => {
-        const expectedAllowed = RBAC_MATRIX[permissionKey][roleKey];
-        const ctx = contextFor(handler, DocumentController, roleKey);
+        it.each(ALL_ROLES)('role %s matches RBAC_MATRIX exactly', (roleKey) => {
+          const expectedAllowed = RBAC_MATRIX[permissionKey][roleKey];
+          const ctx = contextFor(handler, DocumentController, roleKey);
 
-        if (expectedAllowed) {
-          expect(guard.canActivate(ctx)).toBe(true);
-        } else {
-          expect(() => guard.canActivate(ctx)).toThrow();
-        }
-      });
-    });
+          if (expectedAllowed) {
+            expect(guard.canActivate(ctx)).toBe(true);
+          } else {
+            expect(() => guard.canActivate(ctx)).toThrow();
+          }
+        });
+      },
+    );
   });
 });

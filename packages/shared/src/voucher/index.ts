@@ -58,12 +58,7 @@ export enum VoucherBatchStatus {
  * queue argue.
  */
 export type VoucherRejection =
-  | 'not_found'
-  | 'not_active'
-  | 'not_started'
-  | 'expired'
-  | 'below_minimum'
-  | 'wrong_location';
+  'not_found' | 'not_active' | 'not_started' | 'expired' | 'below_minimum' | 'wrong_location';
 
 /** The batch fields the redemption rules actually need — a narrow view, so the device can cache it. */
 export interface VoucherRules {
@@ -91,8 +86,7 @@ export interface VoucherCheckInput {
 }
 
 export type VoucherCheckResult =
-  | { ok: true; discount: Money }
-  | { ok: false; reason: VoucherRejection };
+  { ok: true; discount: Money } | { ok: false; reason: VoucherRejection };
 
 /**
  * What a voucher is worth against this basket, or why it is refused.

@@ -7,10 +7,10 @@ project is a grouping laid over them. Both matter, but only the team can be impo
 
 ## 1. The two integrations, and what each one does
 
-| | Direction | What it does | Setup |
-| --- | --- | --- | --- |
-| **GitHub integration** | Linear watches the repo | Moves an issue's state automatically from branch and PR activity | Linear → Settings → Integrations → GitHub, connect `ClementHansel/mimi-system` |
-| **Linear MCP** | Claude Code talks to Linear | Read a ticket, comment evidence, move state, open sub-issues | create `.mcp.json` locally (see below); `/mcp` → `linear` → Authenticate |
+|                        | Direction                   | What it does                                                     | Setup                                                                          |
+| ---------------------- | --------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **GitHub integration** | Linear watches the repo     | Moves an issue's state automatically from branch and PR activity | Linear → Settings → Integrations → GitHub, connect `ClementHansel/mimi-system` |
+| **Linear MCP**         | Claude Code talks to Linear | Read a ticket, comment evidence, move state, open sub-issues     | create `.mcp.json` locally (see below); `/mcp` → `linear` → Authenticate       |
 
 These are independent. The GitHub side is the automatic state machine; MCP is how
 narrative progress and QA evidence get written.
@@ -77,13 +77,13 @@ branch pushed → In Progress, PR opened → In Review, PR merged → Done.
 
 The tracker's legend maps onto Linear states like this:
 
-| `docs/PROGRESS.md` | Linear |
-| --- | --- |
-| `[x]` done & verified | Done |
-| `[~]` in flight | In Progress |
-| `[ ]` not started | Todo |
-| `[!]` blocked | Todo, plus a `blocked` label |
-| Technical debt (`D-nn`) | Backlog |
+| `docs/PROGRESS.md`      | Linear                       |
+| ----------------------- | ---------------------------- |
+| `[x]` done & verified   | Done                         |
+| `[~]` in flight         | In Progress                  |
+| `[ ]` not started       | Todo                         |
+| `[!]` blocked           | Todo, plus a `blocked` label |
+| Technical debt (`D-nn`) | Backlog                      |
 
 ## 4. QA flow — evidence lives in a sub-issue
 
@@ -110,21 +110,21 @@ test suite was asserting the wrong thing. A related rule from the same workspace
 wrong cause because the title alone sounded like a data bug.
 
 This matters immediately: the initial import brings in **76 issues already marked
-Done**, and that status comes from a *document*, not from a run. Treat imported
+Done**, and that status comes from a _document_, not from a run. Treat imported
 Done as a claim to be verified, not as verified.
 
 ## 5. What is in the team, and where it came from
 
 The team holds two distinct populations. They are different **axes**, not duplicates:
 
-| Range | What | Count | Origin |
-| --- | --- | --- | --- |
-| `MA-5`…`MA-120` | PRD requirements — `FR-*`/`NFR-*` plus 9 section parents | 116 | the PRD, authored in Linear |
-| `MA-121`…`MA-176` | Engineering register — blockers, debt, risks | 56 | migrated from `PROGRESS.md` |
-| `MA-1`…`MA-4` | Linear onboarding stubs | 4 | cancelled 2026-08-24 |
+| Range             | What                                                     | Count | Origin                      |
+| ----------------- | -------------------------------------------------------- | ----- | --------------------------- |
+| `MA-5`…`MA-120`   | PRD requirements — `FR-*`/`NFR-*` plus 9 section parents | 116   | the PRD, authored in Linear |
+| `MA-121`…`MA-176` | Engineering register — blockers, debt, risks             | 56    | migrated from `PROGRESS.md` |
+| `MA-1`…`MA-4`     | Linear onboarding stubs                                  | 4     | cancelled 2026-08-24        |
 
-The requirements say *what the system must do*. The migrated set says *what is wrong with it
-and what it owes*. Each requirement issue carries a **Specification** and **Acceptance
+The requirements say _what the system must do_. The migrated set says _what is wrong with it
+and what it owes_. Each requirement issue carries a **Specification** and **Acceptance
 Criteria** block — that is the QA input.
 
 ### The migrated 56
@@ -140,12 +140,12 @@ two taxonomies on one system. They stay in the frozen `PROGRESS.md`.
 
 ### Defects in the source, preserved rather than silently fixed
 
-- The tracker's **"67 tasks" total is 66** — `F-DOCS` is counted under Wave 5c *and* as
+- The tracker's **"67 tasks" total is 66** — `F-DOCS` is counted under Wave 5c _and_ as
   `W7-03` under Wave 7. One task, counted twice.
 - **`B-05` contradicts itself** — the Wave 3 gate marks it resolved, §2 lists it open. Both
   statements are recorded in `MA-122`; it needs a decision.
 - **`D-02` nearly imported as Done** because its text contains "(auth ✅ done)" — a note that
-  *one part* is finished. Only a tick in the ID cell means resolved. Caught before import.
+  _one part_ is finished. Only a tick in the ID cell means resolved. Caught before import.
 
 ### NFR status pass (2026-08-24)
 

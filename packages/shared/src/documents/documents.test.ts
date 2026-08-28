@@ -47,9 +47,12 @@ describe('seeded defaults', () => {
     }
   });
 
-  it.each(DOC_KINDS)('%s seeds no `text` element, so no product copy lives in this package', (kind) => {
-    expect(defaultDocTemplate(kind).elements.some((el) => el.type === 'text')).toBe(false);
-  });
+  it.each(DOC_KINDS)(
+    '%s seeds no `text` element, so no product copy lives in this package',
+    (kind) => {
+      expect(defaultDocTemplate(kind).elements.some((el) => el.type === 'text')).toBe(false);
+    },
+  );
 
   it.each(DOC_KINDS)('%s only places field tokens its own catalog advertises', (kind) => {
     const catalog = DOC_CATALOGS[kind];
@@ -122,9 +125,7 @@ describe('validateDocTemplate — structural only', () => {
   const base = () => defaultDocTemplate('invoice');
 
   it('rejects an unknown kind before looking at anything else', () => {
-    expect(validateDocTemplate('report', base())).toEqual([
-      "'report' is not a document kind",
-    ]);
+    expect(validateDocTemplate('report', base())).toEqual(["'report' is not a document kind"]);
   });
 
   it('rejects a template whose kind does not match the slot it is saved into', () => {
@@ -220,8 +221,26 @@ describe('validateDocTemplate — structural only', () => {
     const tpl = clone(base());
     // Two elements stacked directly on top of each other, at the smallest
     // legal font. Ugly, entirely legal.
-    tpl.elements.push({ id: 'a', type: 'text', text: 'a', x: 48, y: 48, w: 100, h: 20, fontSize: 4 });
-    tpl.elements.push({ id: 'b', type: 'text', text: 'b', x: 48, y: 48, w: 100, h: 20, fontSize: 4 });
+    tpl.elements.push({
+      id: 'a',
+      type: 'text',
+      text: 'a',
+      x: 48,
+      y: 48,
+      w: 100,
+      h: 20,
+      fontSize: 4,
+    });
+    tpl.elements.push({
+      id: 'b',
+      type: 'text',
+      text: 'b',
+      x: 48,
+      y: 48,
+      w: 100,
+      h: 20,
+      fontSize: 4,
+    });
     expect(validateDocTemplate('invoice', tpl)).toEqual([]);
   });
 

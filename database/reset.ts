@@ -36,8 +36,7 @@ function runStep(label: string, scriptFile: string): void {
 }
 
 async function reset(): Promise<void> {
-  const connectionString =
-    migrationConnectionString('db:reset');
+  const connectionString = migrationConnectionString('db:reset');
 
   // Safety check: refuse to run on production-like URLs
   if (connectionString.includes('production') || connectionString.includes('prod')) {

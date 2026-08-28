@@ -10,8 +10,8 @@ Three companion documents carry detail this one deliberately does not duplicate:
 | ----------------------- | ----------------------------------------------------------------------- |
 | `docs/CONTRACTS.md`     | Every endpoint, table, permission key, approval chain and posting rule  |
 | `docs/SYNC-PROTOCOL.md` | The offline/sync wire format, conflict rules and the degradation matrix |
-| `docs/LINEAR.md`        | How progress is tracked — Linear team `MA`, branch naming, the QA flow |
-| `docs/PROGRESS.md`      | **Frozen 2026-08-24.** Historical record of the build and its blockers |
+| `docs/LINEAR.md`        | How progress is tracked — Linear team `MA`, branch naming, the QA flow  |
+| `docs/PROGRESS.md`      | **Frozen 2026-08-24.** Historical record of the build and its blockers  |
 
 If this document and `CONTRACTS.md` ever disagree, **CONTRACTS.md is the contract** and this one is stale.
 

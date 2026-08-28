@@ -391,7 +391,13 @@ function CreateRequestModal({
 
     return {
       ok: true,
-      line: { itemId: full.id, qty: qty as Qty, unitId: full.baseUnit.id, estPrice, suggestedSupplierId },
+      line: {
+        itemId: full.id,
+        qty: qty as Qty,
+        unitId: full.baseUnit.id,
+        estPrice,
+        suggestedSupplierId,
+      },
     };
   }
 

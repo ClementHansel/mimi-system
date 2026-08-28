@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import { calculateCartSummary, clampMoneyToZero, subMoney, ZERO_MONEY, type CartSummary } from '@mimi/shared';
+import {
+  calculateCartSummary,
+  clampMoneyToZero,
+  subMoney,
+  ZERO_MONEY,
+  type CartSummary,
+} from '@mimi/shared';
 import type { Money, UUID } from '@/lib/shared-types';
 import type { PosCartLine } from './types';
 import type { AppliedVoucher } from './VoucherEntry';

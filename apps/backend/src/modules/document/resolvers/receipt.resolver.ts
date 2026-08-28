@@ -12,15 +12,15 @@ import {
   type ReceiptFieldToken,
 } from '@mimi/shared';
 import { formatDateTimeText, formatIdr, formatQtyText } from '../doc-format.util';
-import type {
-  SaleHeaderRow,
-  SaleLineRow,
-  SalePaymentRow,
-} from '../document.repository';
+import type { SaleHeaderRow, SaleLineRow, SalePaymentRow } from '../document.repository';
 import { buildCodes, documentHead, splitFieldsAndLabels, type DocRenderContext } from './common';
 
 /** Field tokens whose value is an i18n KEY, not display text — see `common.ts`'s header. */
-const RECEIPT_LABEL_TOKENS: readonly ReceiptFieldToken[] = ['document_title', 'channel_label', 'payment_method'];
+const RECEIPT_LABEL_TOKENS: readonly ReceiptFieldToken[] = [
+  'document_title',
+  'channel_label',
+  'payment_method',
+];
 
 export interface ResolveReceiptInput {
   sale: SaleHeaderRow;

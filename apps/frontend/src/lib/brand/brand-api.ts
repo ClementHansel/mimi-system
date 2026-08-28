@@ -56,7 +56,10 @@ export function coerceBrandIdentity(raw: unknown): BrandIdentity {
   const value = raw as Partial<Record<keyof BrandIdentity, unknown>>;
   const color = (key: 'primaryColor' | 'accentColor' | 'inkColor' | 'mutedColor'): string => {
     const candidate = value[key];
-    return (typeof candidate === 'string' ? normalizeHex(candidate) : null) ?? DEFAULT_BRAND_IDENTITY[key];
+    return (
+      (typeof candidate === 'string' ? normalizeHex(candidate) : null) ??
+      DEFAULT_BRAND_IDENTITY[key]
+    );
   };
   return {
     faviconAttachmentId:

@@ -150,10 +150,46 @@ describe('DocumentRenderer — brand colour resolution', () => {
    */
   it('resolves every brand token against the palette rather than hardcoding ink', () => {
     const tpl = template([
-      { id: 'p', type: 'field', field: 'invoice_number', x: 0, y: 0, w: 200, h: 20, color: 'brand.primary' },
-      { id: 'a', type: 'field', field: 'invoice_number', x: 0, y: 30, w: 200, h: 20, color: 'brand.accent' },
-      { id: 'i', type: 'field', field: 'invoice_number', x: 0, y: 60, w: 200, h: 20, color: 'brand.ink' },
-      { id: 'm', type: 'field', field: 'invoice_number', x: 0, y: 90, w: 200, h: 20, color: 'brand.muted' },
+      {
+        id: 'p',
+        type: 'field',
+        field: 'invoice_number',
+        x: 0,
+        y: 0,
+        w: 200,
+        h: 20,
+        color: 'brand.primary',
+      },
+      {
+        id: 'a',
+        type: 'field',
+        field: 'invoice_number',
+        x: 0,
+        y: 30,
+        w: 200,
+        h: 20,
+        color: 'brand.accent',
+      },
+      {
+        id: 'i',
+        type: 'field',
+        field: 'invoice_number',
+        x: 0,
+        y: 60,
+        w: 200,
+        h: 20,
+        color: 'brand.ink',
+      },
+      {
+        id: 'm',
+        type: 'field',
+        field: 'invoice_number',
+        x: 0,
+        y: 90,
+        w: 200,
+        h: 20,
+        color: 'brand.muted',
+      },
     ]);
     const { container } = render(<DocumentRenderer template={tpl} data={data()} />);
 
@@ -168,15 +204,22 @@ describe('DocumentRenderer — brand colour resolution', () => {
 
   it('re-colours the same template when the palette changes, with no template edit', () => {
     const tpl = template([
-      { id: 'p', type: 'field', field: 'invoice_number', x: 0, y: 0, w: 200, h: 20, color: 'brand.primary' },
+      {
+        id: 'p',
+        type: 'field',
+        field: 'invoice_number',
+        x: 0,
+        y: 0,
+        w: 200,
+        h: 20,
+        color: 'brand.primary',
+      },
     ]);
     const teal: BrandPalette = { ...BRAND, primary: '#0f766e' };
-    const { container } = render(
-      <DocumentRenderer template={tpl} data={data({ brand: teal })} />,
+    const { container } = render(<DocumentRenderer template={tpl} data={data({ brand: teal })} />);
+    expect(container.querySelector<HTMLElement>('[data-doc-element="p"] > div')?.style.color).toBe(
+      rgb('#0f766e'),
     );
-    expect(
-      container.querySelector<HTMLElement>('[data-doc-element="p"] > div')?.style.color,
-    ).toBe(rgb('#0f766e'));
   });
 
   it('falls back to ink for a colour that is neither a token nor a hex', () => {
@@ -184,12 +227,21 @@ describe('DocumentRenderer — brand colour resolution', () => {
     // `"chartreuse"` must print, not throw. `resolveDocColor` decides this and
     // the renderer must not second-guess it.
     const tpl = template([
-      { id: 'x', type: 'field', field: 'invoice_number', x: 0, y: 0, w: 200, h: 20, color: 'chartreuse' },
+      {
+        id: 'x',
+        type: 'field',
+        field: 'invoice_number',
+        x: 0,
+        y: 0,
+        w: 200,
+        h: 20,
+        color: 'chartreuse',
+      },
     ]);
     const { container } = render(<DocumentRenderer template={tpl} data={data()} />);
-    expect(
-      container.querySelector<HTMLElement>('[data-doc-element="x"] > div')?.style.color,
-    ).toBe(rgb(BRAND.ink));
+    expect(container.querySelector<HTMLElement>('[data-doc-element="x"] > div')?.style.color).toBe(
+      rgb(BRAND.ink),
+    );
   });
 });
 

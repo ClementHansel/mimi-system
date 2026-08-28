@@ -1,7 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Users, Boxes, ScrollText, Settings as SettingsIcon, FileText, Palette } from 'lucide-react';
+import {
+  Users,
+  Boxes,
+  ScrollText,
+  Settings as SettingsIcon,
+  FileText,
+  Palette,
+} from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';

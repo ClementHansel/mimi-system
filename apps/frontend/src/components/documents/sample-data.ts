@@ -1,6 +1,12 @@
 'use client';
 
-import { DOC_CATALOGS, DOC_TOTALS_ROWS, type BrandPalette, type DocData, type DocKind } from '@/lib/shared-types';
+import {
+  DOC_CATALOGS,
+  DOC_TOTALS_ROWS,
+  type BrandPalette,
+  type DocData,
+  type DocKind,
+} from '@/lib/shared-types';
 import { translate } from '@/lib/i18n';
 import type { Translate } from './DocumentRenderer';
 
@@ -111,10 +117,46 @@ function copyTokens(kind: DocKind, t: Translate): Record<string, string> {
 /** Line items, keyed by the column keys each kind's catalog allows. */
 const SAMPLE_ITEMS: Record<DocKind, Record<string, string>[]> = {
   invoice: [
-    { no: '1', code: 'AYM-001', name: 'Ayam Geprek Original', qty: '24', uom: 'porsi', unit_price: 'Rp18.000', discount: '—', line_total: 'Rp432.000' },
-    { no: '2', code: 'AYM-004', name: 'Ayam Geprek Sambal Matah', qty: '12', uom: 'porsi', unit_price: 'Rp21.000', discount: 'Rp6.000', line_total: 'Rp246.000' },
-    { no: '3', code: 'MIN-011', name: 'Es Teh Manis Jumbo', qty: '30', uom: 'gelas', unit_price: 'Rp6.000', discount: '—', line_total: 'Rp180.000' },
-    { no: '4', code: 'PKT-002', name: 'Paket Hemat Berdua', qty: '8', uom: 'paket', unit_price: 'Rp39.000', discount: '—', line_total: 'Rp312.000' },
+    {
+      no: '1',
+      code: 'AYM-001',
+      name: 'Ayam Geprek Original',
+      qty: '24',
+      uom: 'porsi',
+      unit_price: 'Rp18.000',
+      discount: '—',
+      line_total: 'Rp432.000',
+    },
+    {
+      no: '2',
+      code: 'AYM-004',
+      name: 'Ayam Geprek Sambal Matah',
+      qty: '12',
+      uom: 'porsi',
+      unit_price: 'Rp21.000',
+      discount: 'Rp6.000',
+      line_total: 'Rp246.000',
+    },
+    {
+      no: '3',
+      code: 'MIN-011',
+      name: 'Es Teh Manis Jumbo',
+      qty: '30',
+      uom: 'gelas',
+      unit_price: 'Rp6.000',
+      discount: '—',
+      line_total: 'Rp180.000',
+    },
+    {
+      no: '4',
+      code: 'PKT-002',
+      name: 'Paket Hemat Berdua',
+      qty: '8',
+      uom: 'paket',
+      unit_price: 'Rp39.000',
+      discount: '—',
+      line_total: 'Rp312.000',
+    },
   ],
   receipt: [
     { name: 'Ayam Geprek Original', qty: '2', unit_price: 'Rp18.000', line_total: 'Rp36.000' },
@@ -129,9 +171,33 @@ const SAMPLE_ITEMS: Record<DocKind, Record<string, string>[]> = {
     // yet. Printing '0' there would assert that nothing arrived (see
     // `documents/catalog.ts`), and a sample that lied about it would let an
     // owner lay the column out believing it prints a number.
-    { no: '1', code: 'FRZ-AYM-01', name: 'Ayam Potong Beku 1kg', qty_sent: '40', uom: 'kg', qty_received: '', notes: '' },
-    { no: '2', code: 'FRZ-KTG-02', name: 'Kentang Goreng Beku', qty_sent: '15', uom: 'kg', qty_received: '', notes: '' },
-    { no: '3', code: 'DRY-BRS-01', name: 'Beras Premium 25kg', qty_sent: '4', uom: 'sak', qty_received: '', notes: '' },
+    {
+      no: '1',
+      code: 'FRZ-AYM-01',
+      name: 'Ayam Potong Beku 1kg',
+      qty_sent: '40',
+      uom: 'kg',
+      qty_received: '',
+      notes: '',
+    },
+    {
+      no: '2',
+      code: 'FRZ-KTG-02',
+      name: 'Kentang Goreng Beku',
+      qty_sent: '15',
+      uom: 'kg',
+      qty_received: '',
+      notes: '',
+    },
+    {
+      no: '3',
+      code: 'DRY-BRS-01',
+      name: 'Beras Premium 25kg',
+      qty_sent: '4',
+      uom: 'sak',
+      qty_received: '',
+      notes: '',
+    },
   ],
 };
 

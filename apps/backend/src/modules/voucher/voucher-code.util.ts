@@ -1,9 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import {
-  VOUCHER_CODE_ALPHABET,
-  VOUCHER_CODE_BODY_LENGTH,
-  formatVoucherCode,
-} from '@mimi/shared';
+import { VOUCHER_CODE_ALPHABET, VOUCHER_CODE_BODY_LENGTH, formatVoucherCode } from '@mimi/shared';
 
 /**
  * Minting the random half of a voucher code.

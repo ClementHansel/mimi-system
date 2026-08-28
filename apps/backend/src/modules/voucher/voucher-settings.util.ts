@@ -33,9 +33,7 @@ import {
  */
 const KEY: SettingsKey = 'pos.voucher_offline';
 
-export async function getVoucherOfflinePolicy(
-  client: PoolClient,
-): Promise<VoucherOfflinePolicy> {
+export async function getVoucherOfflinePolicy(client: PoolClient): Promise<VoucherOfflinePolicy> {
   try {
     const res = await client.query<{ value: unknown }>(
       'SELECT value FROM settings WHERE key = $1',

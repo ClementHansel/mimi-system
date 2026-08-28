@@ -110,7 +110,9 @@ describe('MarketingReportPanel', () => {
   it('renders the em-dash "noBasis", never "0,0%", when the gross basis is zero', async () => {
     setPermissions(['dashboard.view']);
     mockApi({
-      channel: [channelRow({ groupKey: 'walk_in', groupLabel: 'walk_in', gross: '0.00', discount: '0.00' })],
+      channel: [
+        channelRow({ groupKey: 'walk_in', groupLabel: 'walk_in', gross: '0.00', discount: '0.00' }),
+      ],
     });
 
     render(<MarketingReportPanel from="2026-08-01" to="2026-08-27" />);
@@ -167,7 +169,12 @@ describe('MarketingReportPanel', () => {
 
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(reportApi.getSales).toHaveBeenCalledWith('channel', '2026-08-01', '2026-08-27', 'loc-42'),
+      expect(reportApi.getSales).toHaveBeenCalledWith(
+        'channel',
+        '2026-08-01',
+        '2026-08-27',
+        'loc-42',
+      ),
     );
     expect(reportApi.getSales).toHaveBeenCalledWith(
       'product',

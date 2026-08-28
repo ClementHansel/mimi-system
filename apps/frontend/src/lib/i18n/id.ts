@@ -4160,8 +4160,7 @@ export const id = {
     name: 'Nama Batch',
     nameHint: 'Nama yang dibaca kasir saat voucher diterima, mis. "Promo Pembukaan Samarinda".',
     value: 'Nilai Potongan',
-    percentHint:
-      'Isi angka persen, mis. 10 untuk 10%. Maksimal dua angka di belakang koma.',
+    percentHint: 'Isi angka persen, mis. 10 untuk 10%. Maksimal dua angka di belakang koma.',
     maxDiscount: 'Potongan Maksimal',
     maxDiscountHint: 'Batas atas potongan persen. Kosongkan bila tanpa batas.',
     minSubtotal: 'Minimum Belanja',

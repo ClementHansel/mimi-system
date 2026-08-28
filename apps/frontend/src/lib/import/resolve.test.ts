@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildItemIndex,
-  buildNameIndex,
-  resolveEnum,
-  resolveItem,
-  resolveNamed,
-} from './resolve';
+import { buildItemIndex, buildNameIndex, resolveEnum, resolveItem, resolveNamed } from './resolve';
 
 const ITEMS = [
   { id: 'i1', sku: 'AY-001', name: 'Ayam Paha Atas' },

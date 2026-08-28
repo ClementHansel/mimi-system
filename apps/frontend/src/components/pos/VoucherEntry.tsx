@@ -178,7 +178,10 @@ export function VoucherEntry({
  * coupon needs to hear "expired", not the same flat refusal a wrong-outlet
  * code gets, or they push back on the cashier instead of understanding why.
  */
-function voucherErrorMessage(t: (key: string, params?: Record<string, string>) => string, code: string): string {
+function voucherErrorMessage(
+  t: (key: string, params?: Record<string, string>) => string,
+  code: string,
+): string {
   const key = `voucher.pos.error.${code}`;
   const translated = t(key);
   return translated === key ? t('voucher.pos.error.unknown') : translated;

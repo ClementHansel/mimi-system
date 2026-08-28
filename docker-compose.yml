@@ -27,11 +27,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-mimi}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mimi_secret}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mimi} -d ${POSTGRES_DB:-mimi}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-mimi} -d ${POSTGRES_DB:-mimi}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -47,11 +47,11 @@ services:
       TZ: ${TZ:-Asia/Makassar}
     command: redis-server --requirepass ${REDIS_PASSWORD:-mimi_redis_secret}
     ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-mimi_redis_secret}", "ping"]
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-mimi_redis_secret}', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -69,12 +69,12 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-mimi_minio_secret}
     command: server /data --console-address ":9001"
     ports:
-      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
-      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+      - '127.0.0.1:${MINIO_API_PORT:-9000}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ['CMD', 'mc', 'ready', 'local']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -96,12 +96,12 @@ services:
       WEBHOOK_URL: ${N8N_PUBLIC_URL:-http://localhost:5678}/
       N8N_EDITOR_BASE_URL: ${N8N_PUBLIC_URL:-http://localhost:5678}/
     ports:
-      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+      - '127.0.0.1:${N8N_PORT:-5678}:5678'
     volumes:
       - n8n_data:/home/node/.n8n
       - ./infrastructure/n8n/workflows:/home/node/.n8n/workflows:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:5678/healthz || exit 1']
       interval: 15s
       timeout: 5s
       retries: 5
@@ -138,7 +138,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-mimi_redis_secret}@redis:6379
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
-      MINIO_USE_SSL: "false"
+      MINIO_USE_SSL: 'false'
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mimi_minio}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-mimi_minio_secret}
       MINIO_BUCKET: ${MINIO_BUCKET:-mimi-storage}
@@ -161,7 +161,7 @@ services:
       # Shared secret a branch-node presents when pairing (M22 node-gateway).
       BRANCH_NODE_PAIRING_SECRET: ${BRANCH_NODE_PAIRING_SECRET:-change_me_pairing_secret}
     ports:
-      - "127.0.0.1:${BACKEND_PORT:-4000}:4000"
+      - '127.0.0.1:${BACKEND_PORT:-4000}:4000'
     volumes:
       - ./apps/backend/src:/app/apps/backend/src
       - ./packages:/app/packages
@@ -173,7 +173,11 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:4000/health'').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"',
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -197,7 +201,7 @@ services:
       NEXT_PUBLIC_CURRENCY: ${CURRENCY:-IDR}
       BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:4000}
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+      - '127.0.0.1:${FRONTEND_PORT:-3000}:3000'
     volumes:
       - ./apps/frontend/src:/app/apps/frontend/src
       - ./packages:/app/packages
@@ -205,7 +209,11 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:3000'').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"',
+        ]
       interval: 15s
       timeout: 5s
       retries: 5

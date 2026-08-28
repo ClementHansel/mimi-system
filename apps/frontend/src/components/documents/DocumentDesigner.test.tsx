@@ -132,7 +132,9 @@ describe('DocumentDesigner', () => {
     // offending element, which is the only thing that makes the error
     // actionable.
     expect(
-      within(problems.parentElement as HTMLElement).getByText(/extends outside the 794px page width/),
+      within(problems.parentElement as HTMLElement).getByText(
+        /extends outside the 794px page width/,
+      ),
     ).toBeInTheDocument();
     expect(putDocTemplate).not.toHaveBeenCalled();
   });

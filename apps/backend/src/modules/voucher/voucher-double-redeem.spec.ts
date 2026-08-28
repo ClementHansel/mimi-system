@@ -82,7 +82,7 @@ const COMMIT_INPUT = {
 };
 
 describe('commit — the happy path', () => {
-  it('writes the redemption with the SERVER\'s discount and flips the coupon', async () => {
+  it("writes the redemption with the SERVER's discount and flips the coupon", async () => {
     const { service, client, repo } = harness({ collide: false });
 
     const redeemed = await service.commit(
@@ -102,7 +102,7 @@ describe('commit — the happy path', () => {
     expect(repo.markRedeemed).toHaveBeenCalledWith(client, VOUCHER_ID);
   });
 
-  it('raises a finance exception when the device\'s arithmetic disagreed', async () => {
+  it("raises a finance exception when the device's arithmetic disagreed", async () => {
     const { service, client, conflicts } = harness({ collide: false });
 
     await service.commit(
@@ -130,7 +130,12 @@ describe('commit — the happy path', () => {
 
   it('raises nothing when the device agreed', async () => {
     const { service, client, conflicts } = harness({ collide: false });
-    await service.commit(client, ACCEPTED, { ...COMMIT_INPUT, claimedDiscount: '10000.00' }, 'fact');
+    await service.commit(
+      client,
+      ACCEPTED,
+      { ...COMMIT_INPUT, claimedDiscount: '10000.00' },
+      'fact',
+    );
     expect(conflicts.recordConflictIfAbsent).not.toHaveBeenCalled();
   });
 });
@@ -198,8 +203,12 @@ describe('commit — the coupon was already spent (SQLSTATE 23505)', () => {
       }),
       markRedeemed: vi.fn(),
     } as unknown as VoucherRepository;
-    const service = new VoucherRedemptionService(repo, { recordConflictIfAbsent: vi.fn() } as never);
-    const client = { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } as unknown as PoolClient;
+    const service = new VoucherRedemptionService(repo, {
+      recordConflictIfAbsent: vi.fn(),
+    } as never);
+    const client = {
+      query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+    } as unknown as PoolClient;
 
     await expect(service.commit(client, ACCEPTED, COMMIT_INPUT, 'fact')).rejects.toThrow(
       'connection terminated',

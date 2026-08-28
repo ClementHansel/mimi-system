@@ -38,11 +38,7 @@ import { formatDateOnly } from '../../common/date-only.util';
 import { withWrite } from './db-tx';
 import { mintVoucherCode } from './voucher-code.util';
 import { errorCodeForRejection } from './voucher-rejection.util';
-import {
-  VoucherRepository,
-  type VoucherBatchRow,
-  type VoucherRow,
-} from './voucher.repository';
+import { VoucherRepository, type VoucherBatchRow, type VoucherRow } from './voucher.repository';
 import { VoucherRedemptionService } from './voucher-redemption.service';
 import type {
   CheckVoucherDto,
@@ -131,7 +127,13 @@ export class VoucherService {
     dto: CreateBatchDto,
     createdBy: UUID,
   ): Promise<VoucherBatchRes> {
-    this.assertBatchShape(dto.type, dto.value, dto.maxDiscount ?? null, dto.validFrom, dto.validUntil);
+    this.assertBatchShape(
+      dto.type,
+      dto.value,
+      dto.maxDiscount ?? null,
+      dto.validFrom,
+      dto.validUntil,
+    );
 
     return withWrite(client, async () => {
       const id = await this.repo.insertBatch(client, {
@@ -158,11 +160,7 @@ export class VoucherService {
    * matters. This method's own read is purely to turn "0 rows updated" into a
    * message that says WHICH of the two reasons applied.
    */
-  async updateBatch(
-    client: PoolClient,
-    id: UUID,
-    dto: UpdateBatchDto,
-  ): Promise<VoucherBatchRes> {
+  async updateBatch(client: PoolClient, id: UUID, dto: UpdateBatchDto): Promise<VoucherBatchRes> {
     const existing = await this.mustGetBatch(client, id);
     if (existing.status !== VoucherBatchStatus.Draft) {
       throw new ConflictException({

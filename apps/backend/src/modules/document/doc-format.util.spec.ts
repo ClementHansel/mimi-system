@@ -91,7 +91,9 @@ describe('doc-format.util — must match apps/frontend/src/lib/formatters.ts byt
     });
 
     it('accepts a Date instance', () => {
-      expect(formatDateTimeText(new Date('2026-08-29T10:00:00.000Z'))).toBe('2026-08-29 18.00 WITA');
+      expect(formatDateTimeText(new Date('2026-08-29T10:00:00.000Z'))).toBe(
+        '2026-08-29 18.00 WITA',
+      );
     });
 
     it('returns "—" for an unparsable value', () => {

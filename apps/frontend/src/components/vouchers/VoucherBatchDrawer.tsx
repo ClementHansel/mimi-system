@@ -17,12 +17,7 @@ import { PermissionGate } from '@/components/ui/PermissionGate';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { toast } from '@/components/ui/Toast';
 import { useApiList } from '@/components/admin/useApiList';
-import {
-  getVoucherBatch,
-  issueVoucherBatch,
-  closeVoucherBatch,
-  voidVoucher,
-} from './voucher-api';
+import { getVoucherBatch, issueVoucherBatch, closeVoucherBatch, voidVoucher } from './voucher-api';
 import { VoucherBatchModal } from './VoucherBatchModal';
 import type { VoucherBatch, Voucher } from './types';
 
@@ -151,7 +146,11 @@ export function VoucherBatchDrawer({
   }
 
   const voucherColumns: DataTableColumn<Voucher>[] = [
-    { key: 'code', header: t('voucher.columnVoucherCode'), render: (v) => <span className="font-mono">{v.code}</span> },
+    {
+      key: 'code',
+      header: t('voucher.columnVoucherCode'),
+      render: (v) => <span className="font-mono">{v.code}</span>,
+    },
     {
       key: 'status',
       header: t('voucher.columnVoucherStatus'),

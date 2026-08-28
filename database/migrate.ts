@@ -37,8 +37,7 @@ interface Migration {
 }
 
 async function getClient(): Promise<pg.Client> {
-  const connectionString =
-    migrationConnectionString('db:migrate');
+  const connectionString = migrationConnectionString('db:migrate');
 
   const client = new Client({ connectionString });
   await client.connect();

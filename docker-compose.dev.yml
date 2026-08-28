@@ -47,12 +47,12 @@ services:
     environment:
       NODE_ENV: development
       TZ: ${TZ:-Asia/Makassar}
-      SIMULATE: "true"
+      SIMULATE: 'true'
       BRANCH_NODE_CLOUD_URL: ${BRANCH_NODE_CLOUD_URL:-http://backend:4000}
       BRANCH_NODE_PAIRING_TOKEN: ${BRANCH_NODE_PAIRING_TOKEN:-simulate-token}
       BRANCH_NODE_HEALTH_PORT: 4010
     ports:
-      - "127.0.0.1:${BRANCH_NODE_PORT:-4010}:4010"
+      - '127.0.0.1:${BRANCH_NODE_PORT:-4010}:4010'
     volumes:
       - ./apps/branch-node/src:/app/apps/branch-node/src
       - ./packages:/app/packages
@@ -60,7 +60,11 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4010/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(''http://localhost:4010/health'').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"',
+        ]
       interval: 15s
       timeout: 5s
       retries: 5

@@ -95,7 +95,8 @@ describe('deriveBrandRamp', () => {
     const target = hexToHsl(teal)?.h ?? -1;
 
     const shippedDrift = BRAND_RAMP_STEPS.map(
-      (step) => (hexToHsl(SHIPPED[step] as string)?.h ?? 0) - (hexToHsl(SHIPPED[600] as string)?.h ?? 0),
+      (step) =>
+        (hexToHsl(SHIPPED[step] as string)?.h ?? 0) - (hexToHsl(SHIPPED[600] as string)?.h ?? 0),
     );
     const maxDrift = Math.max(...shippedDrift.map(Math.abs));
 

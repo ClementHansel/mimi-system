@@ -212,9 +212,7 @@ export function PurchaseOrdersPanel({
           <ExportButton
             rows={data.rows}
             columns={
-              canSeePrice
-                ? [...LIST_EXPORT_COLUMNS, LIST_EXPORT_TOTAL_COLUMN]
-                : LIST_EXPORT_COLUMNS
+              canSeePrice ? [...LIST_EXPORT_COLUMNS, LIST_EXPORT_TOTAL_COLUMN] : LIST_EXPORT_COLUMNS
             }
             filenameBase="pesanan-pembelian"
             pdfTitle={t('purchasing.tabs.orders')}

@@ -214,8 +214,6 @@ export function validateDocTemplate(kind: string, value: unknown): string[] {
   }
 
   const seenIds = new Set<string>();
-  tpl.elements.forEach((e, i) =>
-    validateElement(e, i, tpl as DocTemplate, kind, errors, seenIds),
-  );
+  tpl.elements.forEach((e, i) => validateElement(e, i, tpl as DocTemplate, kind, errors, seenIds));
   return errors;
 }

@@ -53,5 +53,13 @@ export interface DocData {
 
 /** An empty, renderable `DocData` — used by the designer before real data exists. */
 export function emptyDocData(brand: BrandPalette): DocData {
-  return { fields: {}, items: [], totals: [], logoUrl: null, backgroundUrl: null, codes: {}, brand };
+  return {
+    fields: {},
+    items: [],
+    totals: [],
+    logoUrl: null,
+    backgroundUrl: null,
+    codes: {},
+    brand,
+  };
 }

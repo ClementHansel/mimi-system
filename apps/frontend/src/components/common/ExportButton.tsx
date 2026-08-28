@@ -78,7 +78,10 @@ export function ExportButton<T>({
       // `CompanyProfile` is deliberately `Record<string, unknown>` (it holds
       // keys this feature does not own — see `brand-api.ts`), so `name` is
       // narrowed here rather than assumed to be a string.
-      footerLabel: typeof companyProfile.name === 'string' ? companyProfile.name.trim() || undefined : undefined,
+      footerLabel:
+        typeof companyProfile.name === 'string'
+          ? companyProfile.name.trim() || undefined
+          : undefined,
       brand: { primary: palette.primary, muted: palette.muted },
     });
     downloadPdf(businessDatePdfFilename(filenameBase, now), bytes);

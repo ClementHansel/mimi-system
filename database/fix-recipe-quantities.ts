@@ -74,8 +74,7 @@ interface LineRow {
 
 async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run');
-  const connectionString =
-    migrationConnectionString('fix-recipe-quantities');
+  const connectionString = migrationConnectionString('fix-recipe-quantities');
   const client = new Client({ connectionString });
   await client.connect();
 

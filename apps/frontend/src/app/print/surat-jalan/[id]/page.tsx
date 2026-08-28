@@ -128,7 +128,11 @@ export default function PrintSuratJalanPage({ params }: { params: Promise<{ id: 
 
           <p className="print-hide mb-4 rounded-md bg-surface-sunken px-3 py-2 text-sm text-text-secondary">
             {dropsExact
-              ? t('doc.print.sjCopyNotice', { drops: drops ?? 0, copies: COPY_HOLDERS.length, pages })
+              ? t('doc.print.sjCopyNotice', {
+                  drops: drops ?? 0,
+                  copies: COPY_HOLDERS.length,
+                  pages,
+                })
               : t('doc.print.sjCopyNoticeFallback', { pages })}
           </p>
 

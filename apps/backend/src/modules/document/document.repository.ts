@@ -231,7 +231,10 @@ export interface SjHeaderRow {
   notes: string | null;
 }
 
-export async function selectSjHeader(client: PoolClient, sjId: string): Promise<SjHeaderRow | null> {
+export async function selectSjHeader(
+  client: PoolClient,
+  sjId: string,
+): Promise<SjHeaderRow | null> {
   const res = await client.query<SjHeaderRow>(
     `SELECT sj.id, sj.sj_number, sj.origin_location_id, ol.name AS origin_name, ol.address AS origin_address,
             st.key AS shipment_type_key, sj.driver_id, dr.name AS driver_name,
@@ -357,7 +360,10 @@ export interface VoucherRow {
   status: string;
 }
 
-export async function selectVoucher(client: PoolClient, voucherId: string): Promise<VoucherRow | null> {
+export async function selectVoucher(
+  client: PoolClient,
+  voucherId: string,
+): Promise<VoucherRow | null> {
   const res = await client.query<VoucherRow>(
     `SELECT id, batch_id, code, status FROM vouchers WHERE id = $1`,
     [voucherId],

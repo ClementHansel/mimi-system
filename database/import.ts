@@ -83,8 +83,7 @@ async function main(): Promise<void> {
   const only = arg('only');
   const commit = hasFlag('commit');
 
-  const connectionString =
-    migrationConnectionString('db:import');
+  const connectionString = migrationConnectionString('db:import');
   const client = new Client({ connectionString });
   await client.connect();
 

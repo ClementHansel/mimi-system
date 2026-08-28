@@ -95,8 +95,19 @@ interface ResolveCopyInput {
 }
 
 function resolveSuratJalanCopy(input: ResolveCopyInput): DocPayload {
-  const { header, drop, dropCount, holder, pageNumber, totalPages, lines, seals, tempLogs, company, ctx } =
-    input;
+  const {
+    header,
+    drop,
+    dropCount,
+    holder,
+    pageNumber,
+    totalPages,
+    lines,
+    seals,
+    tempLogs,
+    company,
+    ctx,
+  } = input;
 
   // A drop is "received" iff BOTH its own status says so AND the specific
   // line has a recorded `qty_received` — reproducing the exact rule

@@ -42,8 +42,7 @@ import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
-const SOURCE_URL =
-  migrationConnectionString('db:drill:restore');
+const SOURCE_URL = migrationConnectionString('db:drill:restore');
 const CONTAINER = process.env.DRILL_DOCKER_CONTAINER ?? 'mimi-postgres';
 const OUT_DIR = process.env.DRILL_OUT_DIR ?? '.backups';
 const KEEP = process.argv.includes('--keep');

@@ -498,8 +498,7 @@ async function main(): Promise<void> {
         .map((c) => c.trim().toUpperCase())
     : null;
 
-  const connectionString =
-    migrationConnectionString('db:seed:history');
+  const connectionString = migrationConnectionString('db:seed:history');
   // No statement timeout: the balance replay and the matview refresh are both
   // legitimately long on a quarter of history, and being killed halfway is
   // worse than being slow.

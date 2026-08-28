@@ -184,7 +184,6 @@ describe('downloadPdf', () => {
   });
 });
 
-
 /**
  * Brand + the text-object fix. These assert the CONTENT STREAM, not just that
  * the file parses, because both regressions this covers produced a file that

@@ -126,7 +126,11 @@ export function DropOrderEditor({
   );
 
   const orderImportColumns = [
-    { header: t('deliveryAssign.order.seq'), hint: t('deliveryAssign.order.importSeqHint'), required: true },
+    {
+      header: t('deliveryAssign.order.seq'),
+      hint: t('deliveryAssign.order.importSeqHint'),
+      required: true,
+    },
     {
       header: t('deliveryAssign.order.outlet'),
       hint: t('deliveryAssign.order.importOutletHint'),
@@ -144,7 +148,8 @@ export function DropOrderEditor({
 
     const seqText = row.get(t('deliveryAssign.order.seq'));
     const seq = Number.parseInt(seqText, 10);
-    if (!Number.isFinite(seq)) return { ok: false, error: t('deliveryAssign.order.importMissingSeq') };
+    if (!Number.isFinite(seq))
+      return { ok: false, error: t('deliveryAssign.order.importMissingSeq') };
 
     return { ok: true, line: { dropId: stop.id, seq } };
   }

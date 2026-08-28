@@ -170,7 +170,6 @@ export class CreateLocationDto {
   @IsInt()
   @Min(0)
   geofenceRadiusM?: number | null;
-
 }
 
 /**

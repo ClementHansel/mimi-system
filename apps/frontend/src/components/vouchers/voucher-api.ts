@@ -59,7 +59,9 @@ export function listBatchVouchers(
   if (params.page) qs.set('page', String(params.page));
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));
   const query = qs.toString();
-  return api.get<Paginated<Voucher>>(`/vouchers/batches/${batchId}/vouchers${query ? `?${query}` : ''}`);
+  return api.get<Paginated<Voucher>>(
+    `/vouchers/batches/${batchId}/vouchers${query ? `?${query}` : ''}`,
+  );
 }
 
 /** Cancels a single issued code — a misprint, a recalled batch. Terminal (`VoucherStatus.Void`). */

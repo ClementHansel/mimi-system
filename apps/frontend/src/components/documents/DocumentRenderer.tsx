@@ -1,7 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
-import { resolveDocColor, type BrandPalette, type DocAlign, type DocData, type DocElement, type DocTemplate } from '@/lib/shared-types';
+import {
+  resolveDocColor,
+  type BrandPalette,
+  type DocAlign,
+  type DocData,
+  type DocElement,
+  type DocTemplate,
+} from '@/lib/shared-types';
 import { translate } from '@/lib/i18n';
 import { escapeXmlText, renderCodeSvg } from './codes';
 
@@ -204,7 +211,12 @@ function renderDivider(el: DocElement, ink: string): string {
   return `<div style="${style}"></div>`;
 }
 
-function renderBox(el: DocElement, brand: BrandPalette, options: RenderOptions, t: Translate): string {
+function renderBox(
+  el: DocElement,
+  brand: BrandPalette,
+  options: RenderOptions,
+  t: Translate,
+): string {
   const fill = el.background ? resolveDocColor(el.background, brand) : undefined;
   // A box with a `color` but no `background` is an outline — that is the only
   // sensible reading of the two properties, and it is how an owner draws a
@@ -219,7 +231,13 @@ function renderBox(el: DocElement, brand: BrandPalette, options: RenderOptions, 
   return `<div style="${style}">${empty ? placeholderHtml(tOr(t, 'doc.designer.element.box', 'box'), options) : ''}</div>`;
 }
 
-function renderTable(el: DocElement, data: DocData, brand: BrandPalette, ink: string, t: Translate): string {
+function renderTable(
+  el: DocElement,
+  data: DocData,
+  brand: BrandPalette,
+  ink: string,
+  t: Translate,
+): string {
   const columns = el.columns ?? [];
   if (columns.length === 0) return `<div style="${css(boxCss(el))}"></div>`;
 
@@ -236,19 +254,17 @@ function renderTable(el: DocElement, data: DocData, brand: BrandPalette, ink: st
   const head = columns
     .map((c) => {
       const label = c.labelText?.trim() || tOr(t, `doc.column.${c.key}`, c.key);
-      return (
-        `<th style="${css({
-          'text-align': textAlignFor(c.align),
-          padding: '3px 4px',
-          'font-weight': 700,
-          color: headerInk,
-          background: headerFill,
-          'border-bottom': `1px solid ${headerFill ?? ink}`,
-          'white-space': 'nowrap',
-          overflow: 'hidden',
-          'text-overflow': 'ellipsis',
-        })}">${escapeXmlText(label)}</th>`
-      );
+      return `<th style="${css({
+        'text-align': textAlignFor(c.align),
+        padding: '3px 4px',
+        'font-weight': 700,
+        color: headerInk,
+        background: headerFill,
+        'border-bottom': `1px solid ${headerFill ?? ink}`,
+        'white-space': 'nowrap',
+        overflow: 'hidden',
+        'text-overflow': 'ellipsis',
+      })}">${escapeXmlText(label)}</th>`;
     })
     .join('');
 
@@ -269,16 +285,14 @@ function renderTable(el: DocElement, data: DocData, brand: BrandPalette, ink: st
             value === ''
               ? `<span style="display:inline-block;width:80%;border-bottom:1px solid ${rule}">&nbsp;</span>`
               : escapeXmlText(value);
-          return (
-            `<td style="${css({
-              'text-align': textAlignFor(c.align),
-              padding: '3px 4px',
-              'border-bottom': `1px solid ${rule}`,
-              'white-space': 'nowrap',
-              overflow: 'hidden',
-              'text-overflow': 'ellipsis',
-            })}">${content}</td>`
-          );
+          return `<td style="${css({
+            'text-align': textAlignFor(c.align),
+            padding: '3px 4px',
+            'border-bottom': `1px solid ${rule}`,
+            'white-space': 'nowrap',
+            overflow: 'hidden',
+            'text-overflow': 'ellipsis',
+          })}">${content}</td>`;
         })
         .join('');
       return `<tr>${cells}</tr>`;
@@ -311,17 +325,15 @@ function renderTotals(el: DocElement, data: DocData, ink: string, t: Translate):
       // owner-authored label already resolved" (see `documents/data.ts`), so a
       // key that does not resolve is printed as-is rather than swallowed.
       const label = tOr(t, `doc.total.${row.key}`, row.key);
-      return (
-        `<div style="${css({
-          display: 'flex',
-          'justify-content': 'space-between',
-          gap: '8px',
-          'font-weight': row.strong ? 700 : 400,
-          'border-top': row.strong ? `1px solid ${ink}` : undefined,
-          'padding-top': row.strong ? 3 : 0,
-          'margin-top': row.strong ? 2 : 0,
-        })}"><span>${escapeXmlText(label)}</span><span>${escapeXmlText(row.value)}</span></div>`
-      );
+      return `<div style="${css({
+        display: 'flex',
+        'justify-content': 'space-between',
+        gap: '8px',
+        'font-weight': row.strong ? 700 : 400,
+        'border-top': row.strong ? `1px solid ${ink}` : undefined,
+        'padding-top': row.strong ? 3 : 0,
+        'margin-top': row.strong ? 2 : 0,
+      })}"><span>${escapeXmlText(label)}</span><span>${escapeXmlText(row.value)}</span></div>`;
     })
     .join('');
 
@@ -336,7 +348,13 @@ function renderTotals(el: DocElement, data: DocData, ink: string, t: Translate):
   return `<div style="${style}">${rows}</div>`;
 }
 
-function renderCode(el: DocElement, data: DocData, ink: string, options: RenderOptions, t: Translate): string {
+function renderCode(
+  el: DocElement,
+  data: DocData,
+  ink: string,
+  options: RenderOptions,
+  t: Translate,
+): string {
   const source = el.codeSource ?? '';
   const payload = data.codes[source] ?? data.fields[source] ?? '';
   const svg = renderCodeSvg(el.codeType, payload, el.w, el.h, ink);

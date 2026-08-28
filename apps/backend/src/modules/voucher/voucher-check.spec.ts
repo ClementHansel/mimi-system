@@ -157,9 +157,7 @@ const CASES: ReadonlyArray<{
 
 describe('errorCodeForRejection — every VoucherRejection has its own code', () => {
   it.each(CASES.map((c) => c.reason))('%s maps to a distinct ERR_VOUCHER_* code', (reason) => {
-    expect(errorCodeForRejection(reason)).toBe(
-      CASES.find((c) => c.reason === reason)!.expected,
-    );
+    expect(errorCodeForRejection(reason)).toBe(CASES.find((c) => c.reason === reason)!.expected);
   });
 
   it('maps the six reasons onto six DIFFERENT codes', () => {
@@ -225,7 +223,9 @@ describe('VoucherService.check — through the real shared rules', () => {
 
   it('reports an unparseable code as NOT_FOUND without touching the database', async () => {
     const repo = { findByCode: vi.fn() } as unknown as VoucherRepository;
-    const redemption = new VoucherRedemptionService(repo, { recordConflictIfAbsent: vi.fn() } as never);
+    const redemption = new VoucherRedemptionService(repo, {
+      recordConflictIfAbsent: vi.fn(),
+    } as never);
     const service = new VoucherService(repo, redemption);
 
     /**
@@ -269,7 +269,9 @@ describe('VoucherService.check — through the real shared rules', () => {
 describe('the offline gate', () => {
   it('refuses an offline-accepted coupon under pos.voucher_offline = reject, before any lookup', async () => {
     const repo = { findByCode: vi.fn() } as unknown as VoucherRepository;
-    const redemption = new VoucherRedemptionService(repo, { recordConflictIfAbsent: vi.fn() } as never);
+    const redemption = new VoucherRedemptionService(repo, {
+      recordConflictIfAbsent: vi.fn(),
+    } as never);
 
     const evaluation = await redemption.evaluate(fakeClient('reject'), {
       code: 'MC-ABCD-2345',

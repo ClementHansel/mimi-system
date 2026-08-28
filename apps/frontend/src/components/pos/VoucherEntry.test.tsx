@@ -37,12 +37,7 @@ const CASES: [code: string, message: string][] = [
 
 function renderEntry(onApplied = vi.fn()) {
   render(
-    <VoucherEntry
-      subtotal="150000.00"
-      locationId="loc-1"
-      applied={null}
-      onApplied={onApplied}
-    />,
+    <VoucherEntry subtotal="150000.00" locationId="loc-1" applied={null} onApplied={onApplied} />,
   );
   return onApplied;
 }

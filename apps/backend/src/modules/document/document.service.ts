@@ -87,7 +87,10 @@ export class DocumentService {
   async getInvoiceFromPurchaseOrder(poId: string, client: PoolClient): Promise<DocPayload> {
     const po = await selectPurchaseOrderHeader(client, poId);
     if (!po) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown purchase order '${poId}'` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Unknown purchase order '${poId}'`,
+      });
     }
     const [lines, { ctx, company }] = await Promise.all([
       selectPurchaseOrderLines(client, poId),
@@ -107,7 +110,10 @@ export class DocumentService {
   async getSuratJalan(sjId: string, client: PoolClient): Promise<DocCopySet> {
     const header = await selectSjHeader(client, sjId);
     if (!header) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown Surat Jalan '${sjId}'` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Unknown Surat Jalan '${sjId}'`,
+      });
     }
     const [drops, lines, seals, tempLogs, { ctx, company }] = await Promise.all([
       selectSjDrops(client, sjId),
@@ -130,7 +136,10 @@ export class DocumentService {
   async getVoucher(voucherId: string, client: PoolClient): Promise<DocPayload> {
     const voucher = await selectVoucher(client, voucherId);
     if (!voucher) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown voucher '${voucherId}'` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Unknown voucher '${voucherId}'`,
+      });
     }
     const batch = await this.requireVoucherBatch(voucher.batch_id, client);
     const [locationNames, { ctx, company }] = await Promise.all([
@@ -161,7 +170,10 @@ export class DocumentService {
   private async requireVoucherBatch(batchId: string, client: PoolClient) {
     const batch = await selectVoucherBatch(client, batchId);
     if (!batch) {
-      throw new NotFoundException({ code: ERR_NOT_FOUND, message: `Unknown voucher batch '${batchId}'` });
+      throw new NotFoundException({
+        code: ERR_NOT_FOUND,
+        message: `Unknown voucher batch '${batchId}'`,
+      });
     }
     return batch;
   }

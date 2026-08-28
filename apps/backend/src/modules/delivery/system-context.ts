@@ -9,38 +9,42 @@
  * (the ones who actually log temperatures), who would see only their OWN row
  * under their own session's RLS context. Resolving "who do we notify on a
  * cold-chain breach" is a cross-cutting, system-level lookup independent of
- * the acting user's own visibility — the identical class of problem
- * `kernel/sync`'s `system-rls-context.ts` and `modules/inventory/low-stock`'s
- * copy both solve for their own background/cross-location work.
+ * the acting user's own visibility.
  *
- * Duplicated here rather than importing either of those — this module owns
- * nothing outside `modules/delivery` (BUILD-PLAN §6 rule 1), and both of
- * those files are their own module's internal implementation detail, not a
- * published export. See `modules/inventory/low-stock/system-context.ts`'s
- * header for the fuller rationale this file mirrors.
+ * D-02 (2026-08-28) — this used to carry its OWN copy of the transaction +
+ * `set_config` logic, on the reasoning that `modules/delivery` should not
+ * import another module's internals (BUILD-PLAN §6 rule 1). That rule stands,
+ * and this now satisfies it a better way: it delegates to
+ * `common/database/system-context.ts`, which is shared infrastructure rather
+ * than another module's private detail — the canonical home the rule points
+ * at, not around.
+ *
+ * The copy had already diverged, which is why it was worth retiring rather
+ * than tolerating. It set `app.role` and `app.location_ids` but **never set
+ * `app.user_id`**, unlike every other implementation. Nothing this file
+ * guards keys off identity today, so no behaviour was observably wrong — but
+ * `modules/inventory/low-stock`'s equivalent explicitly sets a sentinel to
+ * avoid "depending on connection-reuse history", and this one silently did
+ * not. A second copy of the function that establishes the RLS context is a
+ * bad place for that kind of drift: a divergence there is a silent
+ * authorization difference, not a wrong number.
  */
 import type { Pool, PoolClient } from 'pg';
+import {
+  SYSTEM_CENTRAL_ROLE,
+  withSystemContext as withCanonicalSystemContext,
+} from '../../common/database/system-context';
 
-const SYSTEM_ROLE = 'owner';
-
-/** Runs `fn` inside a fresh transaction with the central-role RLS bypass asserted, committing on success. */
+/**
+ * Runs `fn` inside a fresh transaction with the central-role RLS bypass
+ * asserted, committing on success.
+ *
+ * Signature is unchanged from the local implementation this replaced, so
+ * every call site reads the same; only the body moved.
+ */
 export async function withSystemContext<T>(
   pool: Pool,
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL ROLE app_user');
-    await client.query(`SELECT set_config('app.role', $1, true)`, [SYSTEM_ROLE]);
-    await client.query(`SELECT set_config('app.location_ids', '', true)`);
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
+  return withCanonicalSystemContext(pool, { role: SYSTEM_CENTRAL_ROLE }, fn);
 }

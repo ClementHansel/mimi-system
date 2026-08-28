@@ -74,10 +74,23 @@
  * but harmless; do not remove it preemptively.
  */
 import type { Pool, PoolClient } from 'pg';
+import {
+  SYSTEM_CENTRAL_ROLE,
+  SYSTEM_SENTINEL_USER_ID,
+  assertSystemContext as assertCanonicalSystemContext,
+  withSystemContext as withCanonicalSystemContext,
+} from '../../common/database/system-context';
 import type { DbClient } from './sync-events.repository';
 
-/** Never a real row's id (`gen_random_uuid()` cannot produce it) — see the FIXED note above. */
-export const INERT_SENTINEL_USER_ID = '00000000-0000-0000-0000-000000000000';
+/**
+ * Never a real row's id (`gen_random_uuid()` cannot produce it) — see the
+ * FIXED note above.
+ *
+ * D-02 (2026-08-28): re-exported from `common/database/system-context.ts`
+ * rather than re-declared. The two constants were already the same UUID under
+ * different names, which is precisely the shape a duplication drifts out of.
+ */
+export const INERT_SENTINEL_USER_ID = SYSTEM_SENTINEL_USER_ID;
 
 /**
  * Asserts the central-role bypass on the CURRENT transaction only. Must run
@@ -85,12 +98,14 @@ export const INERT_SENTINEL_USER_ID = '00000000-0000-0000-0000-000000000000';
  * Safe to call even if the connection is (in some environment) still a
  * superuser — `SET LOCAL ROLE app_user` only ever narrows privilege, never
  * widens it, matching `RlsContextGuard`'s own defensive pattern.
+ *
+ * D-02: delegates to the canonical implementation. The GUCs set are identical
+ * to what this function set itself — role `owner`, empty `app.location_ids`,
+ * the sentinel `app.user_id` — so the sentinel reasoning documented above is
+ * preserved rather than dropped.
  */
 export async function assertSystemContext(client: PoolClient): Promise<void> {
-  await client.query('SET LOCAL ROLE app_user');
-  await client.query(`SELECT set_config('app.role', 'owner', true)`);
-  await client.query(`SELECT set_config('app.location_ids', '', true)`);
-  await client.query(`SELECT set_config('app.user_id', $1, true)`, [INERT_SENTINEL_USER_ID]);
+  await assertCanonicalSystemContext(client, { role: SYSTEM_CENTRAL_ROLE });
 }
 
 /** Runs `fn` inside a fresh transaction with the system context asserted, committing on success. For ad-hoc single-shot reads/writes that aren't already inside an ingest transaction. */
@@ -98,19 +113,7 @@ export async function withSystemContext<T>(
   pool: Pool,
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await assertSystemContext(client);
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
+  return withCanonicalSystemContext(pool, { role: SYSTEM_CENTRAL_ROLE }, fn);
 }
 
 /** `true` if `client` is a `PoolClient` (has its own transaction to assert context on) rather than a bare `Pool`. */

@@ -48,30 +48,27 @@
  * rather than depending on connection-reuse history.
  */
 import type { Pool, PoolClient } from 'pg';
+import {
+  SYSTEM_CENTRAL_ROLE,
+  withSystemContext as withCanonicalSystemContext,
+} from '../../../common/database/system-context';
 
-const SYSTEM_ROLE = 'owner';
-/** Syntactically valid, deliberately never a real `users.id` — see the file header's placeholder-GUC note. */
-const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
-
-/** Runs `fn` inside a fresh transaction with the central-role RLS bypass asserted, committing on success (read-only callers may also just let this commit — a plain SELECT has nothing to lose by committing an empty write set). */
+/**
+ * D-02 (2026-08-28) — the transaction + `set_config` body that used to live
+ * here now delegates to `common/database/system-context.ts`. The sentinel
+ * reasoning in this file's header still holds and is still what happens: the
+ * canonical implementation defaults `app.user_id` to the same
+ * `SYSTEM_SENTINEL_USER_ID` this module declared for itself, so the
+ * placeholder-GUC protection described above is preserved, not dropped.
+ *
+ * Runs `fn` inside a fresh transaction with the central-role RLS bypass
+ * asserted, committing on success (read-only callers may also just let this
+ * commit — a plain SELECT has nothing to lose by committing an empty write
+ * set). Signature unchanged, so call sites read the same.
+ */
 export async function withSystemContext<T>(
   pool: Pool,
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('SET LOCAL ROLE app_user');
-    await client.query(`SELECT set_config('app.role', $1, true)`, [SYSTEM_ROLE]);
-    await client.query(`SELECT set_config('app.user_id', $1, true)`, [SYSTEM_USER_ID]);
-    await client.query(`SELECT set_config('app.location_ids', '', true)`);
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
-  }
+  return withCanonicalSystemContext(pool, { role: SYSTEM_CENTRAL_ROLE }, fn);
 }

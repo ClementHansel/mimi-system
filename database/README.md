@@ -249,11 +249,37 @@ in for the sync path, which isn't any one human role) — returns the full
 
 - **`sync_events` is not monthly-partitioned.** The contract's comment says
   "monthly partitions, kept forever"; the DDL sketch itself is a plain
-  table. Implemented as a plain table for now — correct and fully
-  functional at Wave 1 volumes. Converting to native `PARTITION BY RANGE`
-  once volume warrants it is a straightforward `2xx` migration (create
-  partitioned parent, attach existing data as the first partition); flagging
-  here so it isn't forgotten before go-live traffic arrives.
+  table. Implemented as a plain table — correct and fully functional at
+  current volumes (3.2k rows / 3.8 MB as of 2026-08-29).
+
+  **This note used to call the conversion "a straightforward `2xx` migration
+  (create partitioned parent, attach existing data as the first partition)".
+  That is wrong, and the correction matters more than the deferral.** Postgres
+  requires every UNIQUE constraint on a partitioned table to include the
+  partition key. Partitioning by time therefore breaks `sync_events_pkey` on
+  `event_id` alone — and `event_id` is not an incidental surrogate, it is
+  SYNC-PROTOCOL §2.1's client-minted UUIDv7 idempotency key, the thing the
+  whole replay story rests on. Four foreign keys reference it
+  (`sync_conflicts` × 3, `offline_authorizations` × 1), and
+  `SyncEventsRepository.insertEvent` depends on `ON CONFLICT (event_id)`.
+
+  So the real choice is an architecture decision, not a migration:
+
+  1. **Range-partition by time and make every unique key composite.** Gets the
+     actual benefit — pruning and cheap retention — at the cost of changing
+     four FKs and the `ON CONFLICT` idempotency guard. That guard is load-
+     bearing; touching it needs care.
+  2. **Hash-partition on `event_id`.** Keeps every constraint valid with no
+     application change, but buys only write distribution: it cannot prune by
+     time and cannot drop an old partition, which is most of why one
+     partitions an append-only log.
+  3. **Do not partition; add retention/archival instead.** "Kept forever"
+     makes this the weakest option, but it should be rejected deliberately
+     rather than by omission.
+
+  Still flagged for before go-live traffic. See the D-07 issue for the
+  decision.
+
 - **`mv_employee_kpi_daily`'s SELECT body** is this agent's own design — the
   contract explicitly leaves the exact query bodies to W1-C ("grains and column
   names... are contract"). Grain: `(employee_id, kpi_date)`. See

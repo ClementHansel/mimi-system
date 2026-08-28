@@ -312,22 +312,34 @@ function readOnlineOrderRecorded(data: unknown): OnlineOrderRecordedPayload | un
  *     revenue via `applyOnlineOrderFact`'s `notes` marker.
  *  4. **Payment-status ladder** — see the refactor note above.
  *
- * `event.relayReceivedAt` is NOT read anywhere in this file (checked per the
- * coordinator's cross-module warning: `envelopeFromRow` doesn't populate it,
- * so a projector reading it would silently see `undefined`). POS has no
- * defensibility-bound logic that would need it — sale/shift timestamps here
+ * `event.relayReceivedAt` is NOT read anywhere in this file. The original
+ * reason given was that `envelopeFromRow` did not populate it, so a projector
+ * reading it would silently see `undefined`; that is no longer true (D-10 —
+ * it is carried across now). The standing reason is the other one: POS has no
+ * defensibility-bound logic that would need it. Sale and shift timestamps here
  * are business facts (`occurredAt`), not a clamped claim window the way HR
  * attendance is.
  *
- * `void_refunds.*` and `online_orders.*` are materialized too (this
- * projector owns every push-class op in its module), but
+ * `void_refunds.*` and `online_orders.*` are materialized too (this projector
+ * owns every push-class op in its module), but
  * `void_refunds.approved_offline`/`executed` skip full `ApprovalService`
- * bookkeeping (`approvals`/`approval_steps` rows) — flagged as a follow-up
- * in the module report, not guessed at here: the re-verification outcome
- * from `OfflineAuthService` is computed AFTER this projector runs in
- * `runApplyHooks`'s call order, so this projector can only ever record the
- * provisional grant on `void_refunds` itself, never drive the kernel's own
- * approval-state machine on the offline path's behalf.
+ * bookkeeping (`approvals`/`approval_steps` rows). This projector can only
+ * ever record the provisional grant on `void_refunds` itself, because
+ * `OfflineAuthService`'s re-verification outcome is computed AFTER it runs in
+ * `runApplyHooks`'s call order.
+ *
+ * D-11, on what it would take to change that. The ordering is NOT a hard
+ * constraint: `OfflineAuthService.verifyAndRecord` reads only the credential
+ * row and the event envelope — no domain rows, so nothing stops it running
+ * before projection. What is genuinely undecided is the SEMANTICS, and that is
+ * why this is still not guessed at here. §7.4 yields three outcomes, and each
+ * needs a deliberate answer: `verified` presumably writes an approved
+ * `approvals`/`approval_steps` pair backdated to the offline decision;
+ * `failed` has to represent a void that already physically happened at the
+ * till and was then repudiated, which is not "rejected" in the normal sense;
+ * and `unprovable` (§6.4 — an expired credential plus a backdated clock)
+ * belongs in the finance queue rather than resolved either way. Inventing that
+ * mapping in a projector would put fraud-control semantics in the wrong layer.
  */
 @Injectable()
 export class PosSyncProjector implements SyncProjector {

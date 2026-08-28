@@ -9,9 +9,11 @@ import {
   Router,
   Waypoints,
   HardDrive,
+  Settings as SettingsIcon,
   type LucideIcon,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { usePermissions } from '@/lib/permissions';
 import {
   Card,
   CardHeader,
@@ -20,12 +22,14 @@ import {
   StatusBadge,
   DataTable,
   Badge,
+  Button,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { fmtRelative } from '@/lib/dates';
 import { nodeDisplayState } from './lib/rollup';
 import type { TopologyLocation, TopologyDevice } from './lib/types';
 import { DeviceDetailDrawer } from './DeviceDetailDrawer';
+import { NodeSettingModal } from './NodeSettingModal';
 
 const CATEGORY_ICON: Record<TopologyDevice['category'], LucideIcon> = {
   tablet: Tablet,
@@ -46,9 +50,22 @@ const CATEGORY_ICON: Record<TopologyDevice['category'], LucideIcon> = {
  * week", it's just excluded from the online/stale/offline counts already,
  * server-side).
  */
-export function OutletCard({ location }: { location: TopologyLocation }) {
+export function OutletCard({
+  location,
+  locations = [],
+  onChanged = () => {},
+}: {
+  location: TopologyLocation;
+  /** Every location in the tree, for `DeviceDetailDrawer`'s "move to" picker. Optional — defaults to
+   * empty so existing callers/tests that only care about the read-only rollup don't need to supply it. */
+  locations?: { id: string; name: string }[];
+  /** Bubbled up to `TopologyTreePanel.load()` after a device rename/recategorise/move/unpair/retire. */
+  onChanged?: () => void;
+}) {
   const { t } = useI18n();
+  const { can } = usePermissions();
   const [openDevice, setOpenDevice] = useState<TopologyDevice | null>(null);
+  const [nodeSettingOpen, setNodeSettingOpen] = useState(false);
 
   const visibleDevices = location.devices.filter((d) => d.status !== 'retired');
   const nodeState = nodeDisplayState(location);
@@ -105,7 +122,19 @@ export function OutletCard({ location }: { location: TopologyLocation }) {
             {t('topology.outlet.deviceCount', { count: location.counts.total })}
           </Badge>
         </div>
-        <NodeIndicator location={location} nodeState={nodeState} />
+        <div className="flex items-center gap-2">
+          <NodeIndicator location={location} nodeState={nodeState} />
+          {can('node.manage') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setNodeSettingOpen(true)}
+              aria-label={t('topology.nodeSetting.title', { name: location.location.name })}
+            >
+              <SettingsIcon className="size-4" aria-hidden />
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <SyncHealthStrip location={location} />
@@ -125,8 +154,17 @@ export function OutletCard({ location }: { location: TopologyLocation }) {
       <DeviceDetailDrawer
         device={openDevice}
         location={location}
+        locations={locations}
         onClose={() => setOpenDevice(null)}
+        onChanged={onChanged}
       />
+      {nodeSettingOpen && (
+        <NodeSettingModal
+          location={location}
+          onClose={() => setNodeSettingOpen(false)}
+          onChanged={onChanged}
+        />
+      )}
     </Card>
   );
 }

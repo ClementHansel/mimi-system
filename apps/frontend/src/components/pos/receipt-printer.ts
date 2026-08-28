@@ -35,10 +35,23 @@ export interface ReceiptData {
   receiptNumber: string;
   kasirName: string;
   occurredAt: string;
+  /** F-POS-3 — "Kasir" / "GoFood" / "ShopeeFood", already localized by the caller. Always printed, not just when non-walk-in, so a stapled receipt is unambiguous evidence of which channel it belongs to. */
+  channelLabel: string;
   lines: ReceiptLine[];
   subtotal: Money;
   discount: Money;
   total: Money;
+  /**
+   * The redeemed voucher's code and what it took off, or `null`/absent when
+   * no voucher was applied. Printed for the same reason `channelLabel` is
+   * printed unconditionally rather than only on the non-default case: a
+   * customer disputing a discount at the counter, and a supervisor
+   * reconciling a till's cash-vs-system variance later, both need the
+   * specific coupon identified on the paper — "there was a discount" is not
+   * enough to look a redemption up by, but the code is.
+   */
+  voucherCode?: string | null;
+  voucherDiscount?: Money | null;
   paidAmount: Money;
   changeAmount: Money;
   paymentMethodLabel: string;
@@ -67,6 +80,7 @@ export function buildReceiptText(data: ReceiptData): string {
   rows.push(rule);
   rows.push(`Kasir: ${data.kasirName}`);
   rows.push(`Waktu: ${data.occurredAt}`);
+  rows.push(`Channel: ${data.channelLabel}`);
   rows.push(rule);
   for (const line of data.lines) {
     rows.push(`${line.productName}`);
@@ -82,6 +96,10 @@ export function buildReceiptText(data: ReceiptData): string {
   rows.push(padRow('Subtotal', formatMoney(data.subtotal), width));
   if (data.discount !== '0.00')
     rows.push(padRow('Diskon', `-${formatMoney(data.discount, { withSymbol: false })}`, width));
+  if (data.voucherCode && data.voucherDiscount && data.voucherDiscount !== '0.00') {
+    rows.push(`Voucher: ${data.voucherCode}`);
+    rows.push(padRow('', `-${formatMoney(data.voucherDiscount, { withSymbol: false })}`, width));
+  }
   rows.push(padRow('TOTAL', formatMoney(data.total), width));
   rows.push(padRow(data.paymentMethodLabel, formatMoney(data.paidAmount), width));
   if (data.changeAmount !== '0.00')

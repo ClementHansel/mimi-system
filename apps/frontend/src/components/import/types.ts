@@ -6,7 +6,24 @@
  * same as every other feature's wire types under `components/*`).
  */
 
-export type ImportEntityName = 'item_categories' | 'items' | 'products';
+/**
+ * Must match `IMPORT_ENTITIES` in
+ * `apps/backend/src/modules/import/import-schema.ts` — that array is the
+ * authority, and `/api/import/:entity/*` 400s on anything not in it. The two
+ * lists cannot be checked by the compiler (separate packages), so a name added
+ * there has to be added here before any UI can offer it.
+ */
+export type ImportEntityName =
+  | 'item_categories'
+  | 'items'
+  | 'products'
+  | 'chart_of_accounts'
+  | 'employees'
+  | 'work_shifts'
+  | 'assets'
+  | 'salary_components'
+  | 'suppliers'
+  | 'employment_contracts';
 
 export type ImportRowStatus = 'would-create' | 'would-update' | 'error';
 

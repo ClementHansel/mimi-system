@@ -5,7 +5,8 @@ import { Package } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { formatMoney } from '@/lib/formatters';
 import { Button, EmptyState } from '@/components/ui';
-import type { PosProduct } from './types';
+import type { PosChannel, PosProduct } from './types';
+import { priceForChannel } from './channel-pricing';
 import { getProductPhotoUrl } from './product-photo-cache';
 
 /**
@@ -13,14 +14,21 @@ import { getProductPhotoUrl } from './product-photo-cache';
  * fingers, not density": large touch targets (`--spacing-touch-lg`), one tap
  * per add, category filter as a horizontal chip row rather than a dropdown
  * (fewer taps, always visible).
+ *
+ * F-POS-3: the price on every tile is `priceForChannel(product, channel)`,
+ * never `product.price` directly — a cashier reads the price off THIS
+ * screen before tapping, so the tile is where a stale walk-in price would
+ * first be noticed (or, worse, not noticed).
  */
 export function ProductGrid({
   products,
   categories,
+  channel,
   onAdd,
 }: {
   products: PosProduct[];
   categories: string[];
+  channel: PosChannel;
   onAdd: (p: PosProduct) => void;
 }) {
   const { t } = useI18n();
@@ -82,7 +90,7 @@ export function ProductGrid({
               </span>
             )}
             <span className="mt-auto text-sm font-semibold tabular-nums text-brand-700">
-              {formatMoney(p.price)}
+              {formatMoney(priceForChannel(p, channel))}
             </span>
           </button>
         ))}

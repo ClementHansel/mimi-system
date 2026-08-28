@@ -119,6 +119,10 @@ export interface Product {
   category: string;
   categoryId: UUID;
   price: Money;
+  /** F-POS-3 — GoFood menu price (absorbs the platform commission). `null` = same as `price` (walk-in), never `0`. */
+  priceGofood: Money | null;
+  /** F-POS-3 — ShopeeFood menu price (absorbs the platform commission). `null` = same as `price` (walk-in), never `0`. */
+  priceShopeefood: Money | null;
   /** Presigned and EXPIRING (10 min) — fine to render now, never to cache. */
   photoUrl: string | null;
   /** Stable api-relative path to a cached thumbnail, or null when there is no photo. */

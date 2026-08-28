@@ -7,8 +7,10 @@ import { Button, DataTable, Select, StatusBadge, PermissionGate, toast } from '@
 import type { DataTableColumn } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
 import { formatMoney } from '@/lib/formatters';
+import { ExportButton } from '@/components/common/ExportButton';
 import { getJobs, startJob, verifyJob } from './lib/assets-api';
 import { CompleteJobModal } from './CompleteJobModal';
+import { MAINTENANCE_JOB_EXPORT_COLUMNS } from './lib/io-columns';
 import type { Job } from './lib/types';
 
 const STATUSES = ['scheduled', 'due', 'in_progress', 'done', 'verified', 'skipped'] as const;
@@ -32,6 +34,29 @@ export function MaintenanceJobsPanel() {
       .finally(() => setLoading(false));
   }
   useEffect(reload, [locationId, status]);
+
+  /**
+   * Every job for the current filters — `getJobs` caps a page at 100, the
+   * same number the on-screen table already reads as "everything" (no
+   * pagination controls here). Walked with an explicit page cursor so an
+   * outlet with a long job history past 100 rows doesn't quietly export as
+   * "complete" when it isn't (`SupplierPriceHistoryPanel.fetchAllHistory`'s
+   * reasoning). No import: a bulk write here would bypass the proof-photo
+   * completion and Supervisor/Manager verify steps (FR-PMS-02/04).
+   */
+  async function fetchAllJobs(): Promise<Job[]> {
+    const all: Job[] = [];
+    for (let page = 1; page <= 40; page += 1) {
+      const res = await getJobs({
+        locationId: locationId || undefined,
+        status: status || undefined,
+        page,
+      });
+      all.push(...res.rows);
+      if (res.rows.length === 0 || all.length >= res.total) break;
+    }
+    return all;
+  }
 
   async function handleStart(job: Job) {
     setBusyId(job.id);
@@ -142,6 +167,12 @@ export function MaintenanceJobsPanel() {
           options={STATUSES.map((s) => ({ value: s, label: t(`status.maintenanceJob.${s}`) }))}
           placeholder={t('common.all')}
           wrapperClassName="w-44"
+        />
+        <ExportButton
+          rows={rows}
+          columns={MAINTENANCE_JOB_EXPORT_COLUMNS}
+          filenameBase="tugas-maintenance"
+          fetchAll={fetchAllJobs}
         />
       </div>
 

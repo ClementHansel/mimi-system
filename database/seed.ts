@@ -941,6 +941,9 @@ async function main(): Promise<void> {
       name: string;
       category: string;
       price: number;
+      /** GoFood/ShopeeFood price (migration 249, three-tier channel pricing) — `undefined` on most products, which is exactly the "falls back to price" case the API contract promises. */
+      priceGofood?: number;
+      priceShopeefood?: number;
       ingredients: string[];
     }
     const productDefs: ProductDef[] = [];
@@ -966,32 +969,45 @@ async function main(): Promise<void> {
       price: number,
       ingredients: string[],
       yieldQty = 1,
+      channelPrices?: { gofood?: number; shopeefood?: number },
     ) {
       productDefs.push({
         code: `PRD${String(prodSeq++).padStart(3, '0')}`,
         name,
         category,
         price,
+        priceGofood: channelPrices?.gofood,
+        priceShopeefood: channelPrices?.shopeefood,
         ingredients,
         yieldQty,
       });
     }
     const fillet = 'Ayam Fillet Berbumbu Original';
-    addProduct('Ayam Goreng Original 1pc', 'Ayam', 12000, [
-      'Ayam Potong Utuh',
-      'Tepung Bumbu Original',
-      'Minyak Goreng Kemasan',
-    ]);
+    // Three-tier channel pricing (migration 249, owner decision 2026-08-27): a handful of the
+    // best-sellers get an explicit GoFood/ShopeeFood markup here so the till's channel toggle is
+    // demonstrable in dev — every other product deliberately keeps `priceGofood`/`priceShopeefood`
+    // unset, exercising the "falls back to `price`" contract path just as much as the override path.
+    addProduct(
+      'Ayam Goreng Original 1pc',
+      'Ayam',
+      12000,
+      ['Ayam Potong Utuh', 'Tepung Bumbu Original', 'Minyak Goreng Kemasan'],
+      1,
+      { gofood: 15000, shopeefood: 15000 },
+    );
     addProduct('Ayam Goreng Pedas 1pc', 'Ayam', 13000, [
       'Ayam Potong Utuh',
       'Tepung Bumbu Pedas',
       'Minyak Goreng Kemasan',
     ]);
-    addProduct('Ayam Geprek Original', 'Ayam', 15000, [
-      fillet,
-      'Sambal Bawang',
-      'Minyak Goreng Kemasan',
-    ]);
+    addProduct(
+      'Ayam Geprek Original',
+      'Ayam',
+      15000,
+      [fillet, 'Sambal Bawang', 'Minyak Goreng Kemasan'],
+      1,
+      { gofood: 18500, shopeefood: 18000 },
+    );
     addProduct('Ayam Geprek Keju', 'Ayam', 18000, [fillet, 'Sambal Bawang', 'Mentega']);
     addProduct('Ayam Crispy Extra', 'Ayam', 16000, [
       'Ayam Fillet Berbumbu Extra Crispy',
@@ -1007,12 +1023,14 @@ async function main(): Promise<void> {
       'Ayam Paha Berbumbu Madu',
       'Minyak Goreng Kemasan',
     ]);
-    addProduct('Paket Nasi + Ayam Original', 'Paket', 20000, [
-      'Beras Premium',
-      'Ayam Potong Utuh',
-      'Tepung Bumbu Original',
-      'Box Nasi Sedang',
-    ]);
+    addProduct(
+      'Paket Nasi + Ayam Original',
+      'Paket',
+      20000,
+      ['Beras Premium', 'Ayam Potong Utuh', 'Tepung Bumbu Original', 'Box Nasi Sedang'],
+      1,
+      { gofood: 24000, shopeefood: 23500 },
+    );
     addProduct('Paket Nasi + Ayam Geprek', 'Paket', 23000, [
       'Beras Premium',
       fillet,
@@ -1046,12 +1064,14 @@ async function main(): Promise<void> {
     addProduct('Nugget Ayam (5pc)', 'Tambahan', 10000, ['Nugget Ayam', 'Minyak Goreng Kemasan']);
     addProduct('Sosis Bakar (3pc)', 'Tambahan', 9000, ['Sosis Ayam']);
     addProduct('Bakso Goreng (5pc)', 'Tambahan', 9000, ['Bakso Ayam', 'Minyak Goreng Kemasan']);
-    addProduct('Es Teh Manis', 'Minuman', 5000, [
-      'Teh Celup',
-      'Gula Pasir',
-      'Es Batu Kristal',
-      'Cup Minuman 12oz',
-    ]);
+    addProduct(
+      'Es Teh Manis',
+      'Minuman',
+      5000,
+      ['Teh Celup', 'Gula Pasir', 'Es Batu Kristal', 'Cup Minuman 12oz'],
+      1,
+      { gofood: 7000, shopeefood: 6500 },
+    );
     addProduct('Es Jeruk', 'Minuman', 6000, ['Sirup Jeruk', 'Es Batu Kristal', 'Cup Minuman 12oz']);
     addProduct('Es Cocopandan', 'Minuman', 6000, [
       'Sirup Cocopandan',
@@ -1139,10 +1159,18 @@ async function main(): Promise<void> {
     const productId: Record<string, string> = {};
     for (const p of productDefs) {
       const res = await client.query(
-        `INSERT INTO products (code, name, category_id, price, sort_order)
-         VALUES ($1,$2,$3,$4,$5)
+        `INSERT INTO products (code, name, category_id, price, price_gofood, price_shopeefood, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT (code) DO NOTHING RETURNING id`,
-        [p.code, p.name, productCategoryId[p.category], p.price, 0],
+        [
+          p.code,
+          p.name,
+          productCategoryId[p.category],
+          p.price,
+          p.priceGofood ?? null,
+          p.priceShopeefood ?? null,
+          0,
+        ],
       );
       productId[p.name] =
         res.rows[0]?.id ??

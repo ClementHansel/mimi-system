@@ -9,6 +9,8 @@ import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.se
 import { StockMovedEventEmitter } from '../../../kernel/stock-ledger/stock-ledger-events';
 import { SyncEventsRepository } from '../../../kernel/sync/sync-events.repository';
 import { SyncConflictsRepository } from '../../../kernel/sync/sync-conflicts.repository';
+import { VoucherRedemptionService } from '../../voucher/voucher-redemption.service';
+import { VoucherRepository } from '../../voucher/voucher.repository';
 import { ConflictDetectorService } from '../../../kernel/sync/conflict-detector.service';
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
 import { NotificationService } from '../../../kernel/notification/notification.service';
@@ -304,6 +306,25 @@ export function buildApprovalCodeService(pool: Pool = getAppPool()): ApprovalCod
 /** `PosSaleService`'s escalated `payment_verifications` write for a bank-transfer sale (FR-ACCT-03). */
 export function buildPaymentVerificationsService(pool: Pool): PaymentVerificationsService {
   return new PaymentVerificationsService(buildSyncEmitService(pool), buildEventBus());
+}
+
+/**
+ * `PosSaleService` gained a `VoucherRedemptionService` dependency when voucher
+ * redemption was wired into `applySaleFact` (the ONE place a sale row is
+ * written on either path). These live-DB harnesses construct the service by
+ * hand rather than through Nest's injector, so the dependency has to be built
+ * by hand too.
+ *
+ * It is a REAL `VoucherRedemptionService` over a REAL `VoucherRepository`, not
+ * a stub. A stub would make every existing POS test pass while proving nothing
+ * about the path a sale with a coupon actually takes — and these suites run
+ * against a live database, which is the only place the unique-constraint guard
+ * is real. A sale rung WITHOUT a voucher never touches it, so the existing
+ * assertions are unaffected either way; this exists so a future test CAN ring
+ * one with a coupon and have it behave exactly as production does.
+ */
+export function buildVoucherRedemptionService(): VoucherRedemptionService {
+  return new VoucherRedemptionService(new VoucherRepository(), new SyncConflictsRepository());
 }
 
 export function buildStockLedgerService(eventBus: EventBus): StockLedgerService {

@@ -52,9 +52,17 @@ export function MyChatPanel() {
     // Fills the viewport instead of a fixed 560px card floating in a tall page.
     <div className="flex h-[calc(100vh-4rem)] flex-col gap-3 p-4">
       <h1 className="font-display text-2xl font-semibold text-text-primary">{t('chat.myTitle')}</h1>
-      <p className="rounded-lg bg-warning-50 p-2.5 text-xs text-warning-800">
-        {t('chat.deliveryDisabledNotice')}
-      </p>
+      {/* No WhatsApp-gateway notice here. Mail is an INTERNAL surface — it is
+          in every interface, it is read in-app by head office, and since
+          2026-08-27 WhatsApp is the dashboard's feature alone. The banner
+          ("not delivered to anyone's phone yet") described a delivery path
+          this screen no longer claims to have, so on Mail it was noise. It
+          stays on `/chat` (`ChatShell`), the WhatsApp inbox, where a supplier
+          or customer genuinely only exists at the other end of the gateway.
+
+          Note the backend still attempts a WA send on this thread when the
+          staff member has a phone on file (`ChatService.sendMessage`) —
+          decoupling that is a backend change, deliberately not made here. */}
       <Card className="flex min-h-0 flex-1 flex-col p-0">
         {loading ? (
           <EmptyState title={t('table.loading')} />

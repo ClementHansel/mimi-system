@@ -22,6 +22,8 @@ interface ProductRow {
   category: string;
   category_id: UUID;
   price: string;
+  price_gofood: string | null;
+  price_shopeefood: string | null;
   photo_attachment_id: UUID | null;
   sort_order: number;
   is_active: boolean;
@@ -74,6 +76,7 @@ export class PosCatalogService {
     // the authoritative posting was never affected — only the local estimate.)
     const res = await client.query<ProductRow>(
       `SELECT p.id, p.code, p.name, pc.name AS category, p.category_id, p.price,
+              p.price_gofood, p.price_shopeefood,
               p.photo_attachment_id, p.sort_order, p.is_active, p.kind,
               (r.id IS NOT NULL) AS has_recipe
          FROM products p
@@ -143,6 +146,8 @@ export class PosCatalogService {
       category: r.category,
       categoryId: r.category_id,
       price: r.price,
+      priceGofood: r.price_gofood,
+      priceShopeefood: r.price_shopeefood,
       photoUrl: null,
       photoPath: r.photo_attachment_id ? `/products/${r.id}/photo` : null,
       sortOrder: r.sort_order,

@@ -50,6 +50,18 @@ describe('ImportController — per-entity permission gate', () => {
     expect(can(RoleKey.KEPALA_GUDANG, 'product.manage')).toBe(false);
     expect(can(RoleKey.OWNER, 'product.manage')).toBe(true);
     expect(can(RoleKey.KASIR, 'item.manage')).toBe(false);
+    // Same premise-guard for the five 2026-08-27 entities' roles, below.
+    expect(can(RoleKey.HR_ADMIN, 'hr.employee.manage')).toBe(true);
+    expect(can(RoleKey.HR_ADMIN, 'hr.shift.manage')).toBe(true);
+    expect(can(RoleKey.HR_ADMIN, 'payroll.component.manage')).toBe(true);
+    expect(can(RoleKey.HR_ADMIN, 'accounting.coa.manage')).toBe(false);
+    expect(can(RoleKey.HR_ADMIN, 'asset.manage')).toBe(false);
+    expect(can(RoleKey.FINANCE, 'accounting.coa.manage')).toBe(true);
+    expect(can(RoleKey.FINANCE, 'payroll.component.manage')).toBe(true);
+    expect(can(RoleKey.FINANCE, 'hr.employee.manage')).toBe(false);
+    expect(can(RoleKey.FINANCE, 'asset.manage')).toBe(false);
+    expect(can(RoleKey.MANAGER, 'asset.manage')).toBe(true);
+    expect(can(RoleKey.MANAGER, 'accounting.coa.manage')).toBe(false);
   });
 
   it('refuses a role holding NEITHER permission on all three routes', () => {
@@ -60,6 +72,45 @@ describe('ImportController — per-entity permission gate', () => {
     // preview/commit reject before ever touching the request body or the file.
     expect(c.preview({} as never, 'items', undefined, kasir)).rejects.toThrow(ForbiddenException);
     expect(c.commit({} as never, 'items', undefined, kasir)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('refuses a role holding none of the FIVE 2026-08-27 entity permissions, on all five routes', () => {
+    const c = controller();
+    const kasir = userWithRole(RoleKey.KASIR);
+
+    for (const entity of [
+      'chart_of_accounts',
+      'employees',
+      'work_shifts',
+      'assets',
+      'salary_components',
+    ] as const) {
+      expect(() => c.getTemplate(res(), entity, kasir)).toThrow(ForbiddenException);
+    }
+  });
+
+  it('is gated PER ENTITY across the HR admin — holds employees/shifts/payroll-components, not accounting/assets/items/products', () => {
+    const c = controller();
+    const hrAdmin = userWithRole(RoleKey.HR_ADMIN);
+
+    expect(() => c.getTemplate(res(), 'employees', hrAdmin)).not.toThrow();
+    expect(() => c.getTemplate(res(), 'work_shifts', hrAdmin)).not.toThrow();
+    expect(() => c.getTemplate(res(), 'salary_components', hrAdmin)).not.toThrow();
+    expect(() => c.getTemplate(res(), 'chart_of_accounts', hrAdmin)).toThrow(ForbiddenException);
+    expect(() => c.getTemplate(res(), 'assets', hrAdmin)).toThrow(ForbiddenException);
+    expect(() => c.getTemplate(res(), 'items', hrAdmin)).toThrow(ForbiddenException);
+    expect(() => c.getTemplate(res(), 'products', hrAdmin)).toThrow(ForbiddenException);
+  });
+
+  it('is gated PER ENTITY across Finance — holds chart_of_accounts/payroll-components, not employees/shifts/assets', () => {
+    const c = controller();
+    const finance = userWithRole(RoleKey.FINANCE);
+
+    expect(() => c.getTemplate(res(), 'chart_of_accounts', finance)).not.toThrow();
+    expect(() => c.getTemplate(res(), 'salary_components', finance)).not.toThrow();
+    expect(() => c.getTemplate(res(), 'employees', finance)).toThrow(ForbiddenException);
+    expect(() => c.getTemplate(res(), 'work_shifts', finance)).toThrow(ForbiddenException);
+    expect(() => c.getTemplate(res(), 'assets', finance)).toThrow(ForbiddenException);
   });
 
   it('is gated PER ENTITY — `item.manage` does not unlock the POS menu', () => {
@@ -100,8 +151,15 @@ describe('ImportController — per-entity permission gate', () => {
     const c = controller();
     // A bad param must not fall through to a permission lookup that would throw
     // an unrelated error — the caller needs "no such entity", not "forbidden".
-    expect(() => c.getTemplate(res(), 'suppliers', userWithRole(RoleKey.OWNER))).toThrow(
-      /suppliers/,
+    //
+    // This used to pass 'suppliers', which became a REAL entity on 2026-08-27
+    // and quietly turned the test into a no-op assertion about a valid name.
+    // `supplier_prices` is deliberately chosen instead: it is a plausible-
+    // sounding entity that must NEVER exist here (prices live in
+    // `supplier_items` with append-only history, FR-SUP-04), so if someone
+    // ever adds it this test failing is the right alarm.
+    expect(() => c.getTemplate(res(), 'supplier_prices', userWithRole(RoleKey.OWNER))).toThrow(
+      /supplier_prices/,
     );
   });
 });

@@ -15,13 +15,14 @@ import {
   Select,
   QtyInput,
   Textarea,
-  EmptyState,
   toast,
   PermissionGate,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
-import { useOutletLocation } from './lib/use-outlet-location';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import { useOutletLocationContext } from './lib/outlet-location-context';
 import {
   getStorageAreas,
   listOpname,
@@ -36,6 +37,12 @@ import {
   canSubmitOpname,
   type OpnameLineDraft,
 } from './lib/opname-variance';
+import { OPNAME_EXPORT_COLUMNS } from './lib/outlet-export-columns';
+import {
+  OPNAME_IMPORT_COLUMNS,
+  makeOpnameCountMapper,
+  type OpnameCountFill,
+} from './lib/outlet-line-import';
 import type { Opname, OpnameDetail, StorageArea } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
 
@@ -47,7 +54,7 @@ import type { Qty } from '@/lib/shared-types';
  */
 export function OpnamePanel() {
   const { t } = useI18n();
-  const { locationId } = useOutletLocation();
+  const { locationId } = useOutletLocationContext();
   const [rows, setRows] = useState<Opname[]>([]);
   const [loading, setLoading] = useState(true);
   const [areas, setAreas] = useState<StorageArea[]>([]);
@@ -61,7 +68,6 @@ export function OpnamePanel() {
   const [startOpen, setStartOpen] = useState(false);
 
   function reload() {
-    if (!locationId) return;
     setLoading(true);
     listOpname(locationId)
       .then((res) => setRows(res.rows))
@@ -153,7 +159,8 @@ export function OpnamePanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportButton rows={rows} columns={OPNAME_EXPORT_COLUMNS} filenameBase="stock-opname" />
         <PermissionGate permission="opname.create">
           <Button
             leftIcon={<Plus className="size-4" />}
@@ -200,7 +207,50 @@ export function OpnamePanel() {
       >
         {active && (
           <div className="flex flex-col gap-4">
-            <StatusBadge domain="opname" status={active.status} />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <StatusBadge domain="opname" status={active.status} />
+              {/* Counts get typed into a phone spreadsheet on the freezer floor
+                  and reconciled later — this is the one Outlet flow where the
+                  CSV is the real-world source rather than a convenience. It can
+                  only FILL lines the server already put on this sheet, so a
+                  count still cannot claim stock the system has no record of;
+                  that is what the variance and approval steps are for. */}
+              <LineImportButton<OpnameCountFill>
+                title={t('outlet.opname.countSheet')}
+                note={t('outlet.opname.importNote')}
+                columns={OPNAME_IMPORT_COLUMNS}
+                templateBase="lembar-hitung"
+                mapRow={makeOpnameCountMapper(active.lines)}
+                hasExistingLines={Object.values(drafts).some((d) => d.countedQty !== null)}
+                onLines={(fills, mode) =>
+                  setDrafts((prev) => {
+                    // "replace" clears every count first, so a re-import after a
+                    // recount cannot leave a stale figure on a line the new file
+                    // omits — the failure that makes a sheet silently not add up.
+                    const next: typeof prev =
+                      mode === 'replace'
+                        ? Object.fromEntries(
+                            Object.keys(prev).map((id) => [
+                              id,
+                              { countedQty: null, varianceReason: '' },
+                            ]),
+                          )
+                        : { ...prev };
+                    for (const f of fills) {
+                      next[f.lineId] = {
+                        countedQty: f.countedQty,
+                        // A blank reason column keeps whatever was typed on
+                        // screen rather than wiping it: the file is filling in
+                        // counts, and it should not silently undo a reason the
+                        // counter already gave.
+                        varianceReason: f.varianceReason || (next[f.lineId]?.varianceReason ?? ''),
+                      };
+                    }
+                    return next;
+                  })
+                }
+              />
+            </div>
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">{t('outlet.opname.countSheet')}</CardTitle>
@@ -296,8 +346,6 @@ export function OpnamePanel() {
           </div>
         )}
       </Modal>
-
-      {!locationId && <EmptyState title={t('table.error')} size="lg" />}
     </div>
   );
 }

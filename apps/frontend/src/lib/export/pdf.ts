@@ -45,8 +45,26 @@
  * compression, no word-wrap (cells truncate with `..`), one monospaced
  * report style. Bahasa Indonesia text (this app's only locale) is plain
  * Latin-1, so this covers every real row this app will ever export. The
- * day this needs headers/footers with a logo or proportional fonts, the
- * honest move is `jsPDF`, not growing this file into one.
+ * day this needs proportional fonts, the honest move is `jsPDF`, not growing
+ * this file into one.
+ *
+ * ## Brand
+ *
+ * The heading, the rule under it and the footer take the owner's brand
+ * colours (`PdfBrand`), so a data export matches the invoices and receipts
+ * the designed-document path prints. Colour was cheap — `r g b rg` is one
+ * operator and needs no new object types.
+ *
+ * THE BRAND *LOGO* IS STILL NOT HERE, and that is a real limit rather than an
+ * oversight. Placing a raster logo means a PDF image XObject: a JPEG can be
+ * passed through with `DCTDecode`, but the logo an owner uploads is usually a
+ * PNG, and PNG needs its zlib stream un-filtered and re-encoded (or the whole
+ * image decoded to raw RGB) before it can be embedded — hundreds of lines of
+ * image handling in a file whose entire justification is that it hand-rolls
+ * only what is trivial to get exactly right. Documents that genuinely need
+ * the logo (invoice, receipt, voucher, Surat Jalan) go through the designed-
+ * template path instead (`components/documents/**`), which renders in the
+ * browser where an `<img>` costs nothing. This exporter is for LISTS.
  */
 
 import type { CsvColumn } from './csv';
@@ -83,6 +101,20 @@ const ROWS_AREA_BOTTOM = FOOTER_RULE_Y + 8;
 const ROWS_PER_PAGE = Math.max(1, Math.floor((FIRST_ROW_Y - ROWS_AREA_BOTTOM) / LINE_H) + 1);
 const MAX_TABLE_CHARS = Math.floor(CONTENT_W / (BODY_SIZE * CHAR_W));
 
+/**
+ * The brand colours this exporter uses. Only TWO of the four, deliberately:
+ * a data export is a document someone reads a hundred rows off, so the brand
+ * appears as the heading and the rules, and the body stays black. Printing
+ * table rows in a mid-tone brand colour is how a report becomes unreadable on
+ * a tired office laser — and the rows are the entire point of the file.
+ */
+export interface PdfBrand {
+  /** Heading + the rule under it. `#rrggbb`. */
+  primary: string;
+  /** Footer rule and footer text. `#rrggbb`. */
+  muted: string;
+}
+
 export interface PdfDocOptions {
   /** Printed as the page heading, e.g. "Stok Gudang". */
   title: string;
@@ -97,6 +129,35 @@ export interface PdfDocOptions {
   pageLabel: (page: number, totalPages: number) => string;
   /** Shown in place of the table when there are zero rows. */
   emptyLabel: string;
+  /**
+   * The company name printed in the footer. Was hardcoded to "Mimi Chicken
+   * OS" — which was both a user-facing string inside a formatting library and
+   * the wrong name once an owner sets their own in `company.profile`.
+   * Optional so every existing call site keeps its current output.
+   */
+  footerLabel?: string;
+  /**
+   * Brand colours. Omitted = the all-black document this exporter has always
+   * produced, which is what keeps this change safe for callers that have no
+   * brand context (a test, a script).
+   */
+  brand?: PdfBrand;
+}
+
+const DEFAULT_FOOTER_LABEL = 'Mimi Chicken OS';
+
+/**
+ * `#rrggbb` → a PDF `r g b` operand triple in the 0–1 range the `rg`/`RG`
+ * operators take. Junk in gives black out rather than throwing: this runs
+ * against a colour that came from a settings row, and an export that fails to
+ * generate is worse than one printed in black.
+ */
+function pdfColor(hex: string | undefined): string {
+  const match = /^#([0-9a-fA-F]{6})$/.exec((hex ?? '').trim());
+  if (!match?.[1]) return '0 0 0';
+  const int = parseInt(match[1], 16);
+  const channel = (shift: number) => (((int >> shift) & 0xff) / 255).toFixed(3);
+  return `${channel(16)} ${channel(8)} ${channel(0)}`;
 }
 
 // Numbers, money (`Rp 12.345,00`), and percentages read better right-aligned;
@@ -230,8 +291,15 @@ function buildPageContent(
   totalPages: number,
   options: PdfDocOptions,
 ): string {
+  const brandFill = pdfColor(options.brand?.primary);
+  const mutedFill = pdfColor(options.brand?.muted);
+
   const lines: string[] = ['0 0 0 rg', 'BT'];
+  // The heading carries the brand colour; everything after it is reset to
+  // black in the same text object, so a colour never leaks into the rows.
+  lines.push(`${brandFill} rg`);
   lines.push(textOp(MARGIN, TITLE_Y, 'F2', TITLE_SIZE, options.title));
+  lines.push('0 0 0 rg');
   lines.push(textOp(MARGIN, META_Y, 'F1', META_SIZE, options.generatedLabel));
 
   const pageText = options.pageLabel(pageIndex + 1, totalPages);
@@ -249,10 +317,29 @@ function buildPageContent(
   }
   lines.push('ET');
 
+  // The heavy rule under the title is the brand's second appearance; the
+  // column rule stays black because it belongs to the table, and the footer
+  // rule is muted so it recedes from the data above it.
+  lines.push(`${brandFill} rg`);
   lines.push(ruleOp(RULE1_Y, 0.75));
+  lines.push('0 0 0 rg');
   lines.push(ruleOp(RULE2_Y, 0.5));
+  lines.push(`${mutedFill} rg`);
   lines.push(ruleOp(FOOTER_RULE_Y, 0.5));
-  lines.push(textOp(MARGIN, FOOTER_TEXT_Y, 'F1', META_SIZE, 'Mimi Chicken OS'));
+
+  // BUG FIX: this footer line's `Tf`/`Tm`/`Tj` operators used to sit OUTSIDE
+  // any text object. Those are text operators and are only valid between `BT`
+  // and `ET` (PDF spec 9.4) — lenient viewers ignored the stray operators and
+  // silently dropped the footer, which is why an invalid file still looked
+  // fine in a browser and why nobody noticed. It gets its own `BT`/`ET` here
+  // rather than being moved up into the first one, so it keeps its own fill
+  // colour without having to restore black afterwards.
+  lines.push('BT');
+  lines.push(
+    textOp(MARGIN, FOOTER_TEXT_Y, 'F1', META_SIZE, options.footerLabel ?? DEFAULT_FOOTER_LABEL),
+  );
+  lines.push('ET');
+  lines.push('0 0 0 rg');
 
   return lines.join('\n');
 }

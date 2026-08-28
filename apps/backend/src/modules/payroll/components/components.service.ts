@@ -23,6 +23,16 @@ export interface ComponentApi {
   formulaKey: string | null;
   defaultAmount: Money | null;
   isSystem: boolean;
+  /**
+   * `salary_components.is_active` (migration 064) — `UpdateComponentDto`
+   * has always accepted `isActive` (the sanctioned way to retire a component
+   * created by mistake, since the table has no delete and a component
+   * referenced by a past payroll run must never be hard-deletable), but this
+   * mapper never read the column back, so no GET could show current status
+   * and no UI could tell an active row from a retired one. Added rather than
+   * left for the frontend to infer.
+   */
+  isActive: boolean;
 }
 
 export interface EmployeeComponentApi {
@@ -175,5 +185,6 @@ export class ComponentsService {
     formulaKey: r.formula_key ?? null,
     defaultAmount: r.default_amount ?? null,
     isSystem: r.is_system,
+    isActive: r.is_active,
   });
 }

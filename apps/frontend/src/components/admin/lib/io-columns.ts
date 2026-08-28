@@ -24,7 +24,12 @@
  * trip into a silent data-loss step the first time someone re-imports.
  */
 import type { CsvColumn } from '@/lib/export/csv';
-import type { Item, ItemCategory, Product } from '../types';
+import { fmtDateTime } from '@/lib/dates';
+import { roleLabel } from '../roleRank';
+import { specFor } from './settings-registry';
+import type { AuditRow, Item, ItemCategory, Product, Setting, UserRow } from '../types';
+
+type T = (key: string, params?: Record<string, string | number>) => string;
 
 /** How the importer's `boolean` kind wants a value written (`ya`/`tidak`, per its column hints). */
 function bool(value: boolean): string {
@@ -63,3 +68,120 @@ export const PRODUCT_IO_COLUMNS: CsvColumn<Product>[] = [
   { key: 'price', header: 'price' },
   { key: 'sortOrder', header: 'sort_order' },
 ];
+
+/**
+ * Everything below is EXPORT-ONLY, unlike the three round-trip const above —
+ * same split `purchasing/lib/io-columns.ts` makes between `SUPPLIER_IO_COLUMNS`
+ * and its append-only `PRICE_HISTORY_EXPORT_COLUMNS`. None of these three
+ * (audit log, users, settings) is a `chart_of_accounts`-style importer
+ * entity — see each function's comment for the specific reason a bulk import
+ * would be actively wrong here, not merely unbuilt.
+ */
+
+/**
+ * `Jejak Audit` (F10 audit log, CONTRACTS §4.0). EXPORT ONLY: the audit log
+ * is append-only by construction — every row is written by the
+ * `@Audited()` interceptor as a side effect of some OTHER write, never
+ * authored directly — so a CSV importer for it would be a way to forge
+ * history, which is the one thing this surface exists to make impossible.
+ *
+ * `beforeValue`/`afterValue` are exported as compact JSON so the export can
+ * answer the same "what changed" question the detail modal does, without
+ * reformatting either object — a money field inside one of them (say, a
+ * journal-post audit row) survives as whatever decimal string it already was.
+ */
+export function auditIoColumns(): CsvColumn<AuditRow>[] {
+  return [
+    { key: 'occurredAt', header: 'Waktu', format: (r) => fmtDateTime(r.occurredAt) },
+    { key: 'userName', header: 'Pengguna', format: (r) => r.userName ?? '' },
+    { key: 'roleKey', header: 'Peran', format: (r) => roleLabel(r.roleKey) },
+    { key: 'module', header: 'Modul' },
+    { key: 'action', header: 'Aksi' },
+    { key: 'entityType', header: 'Jenis Entitas' },
+    { key: 'entityId', header: 'ID Entitas', format: (r) => r.entityId ?? '' },
+    { key: 'reason', header: 'Alasan', format: (r) => r.reason ?? '' },
+    {
+      key: 'offlineAuthorized',
+      header: 'Diotorisasi Offline',
+      format: (r) => bool(r.offlineAuthorized),
+    },
+    {
+      key: 'beforeValue',
+      header: 'Sebelum',
+      format: (r) => (r.beforeValue ? JSON.stringify(r.beforeValue) : ''),
+    },
+    {
+      key: 'afterValue',
+      header: 'Sesudah',
+      format: (r) => (r.afterValue ? JSON.stringify(r.afterValue) : ''),
+    },
+  ];
+}
+
+/**
+ * `Pengguna` (F10 users, CONTRACTS §4.2). EXPORT ONLY: `users` is not one of
+ * the backend importer's nine entities (`ImportEntityName`) — creating a
+ * login needs a password, a rank-checked role assignment, and a location
+ * grant, none of which a bulk upsert-on-natural-key importer is built to
+ * carry safely. Payroll's `employees` entity is a deliberately separate
+ * concept (pay/HR data) and already has its own import; this is the login
+ * record, and it stays hand-created one at a time.
+ */
+export function userIoColumns(): CsvColumn<UserRow>[] {
+  return [
+    { key: 'username', header: 'Username' },
+    { key: 'name', header: 'Nama' },
+    { key: 'roleKey', header: 'Peran', format: (r) => roleLabel(r.roleKey) },
+    {
+      key: 'locations',
+      header: 'Lokasi',
+      format: (r) => r.locations.map((l) => l.name).join(' | '),
+    },
+    { key: 'isActive', header: 'Status', format: (r) => (r.isActive ? 'aktif' : 'nonaktif') },
+    {
+      key: 'lastLoginAt',
+      header: 'Login Terakhir',
+      format: (r) => (r.lastLoginAt ? fmtDateTime(r.lastLoginAt) : ''),
+    },
+    { key: 'createdAt', header: 'Dibuat Pada', format: (r) => fmtDateTime(r.createdAt) },
+  ];
+}
+
+/**
+ * `Pengaturan` (F10 settings, CONTRACTS §4.20). EXPORT ONLY, and for a third,
+ * different reason again: `settings` is a fixed, heterogeneous key/value
+ * table (money, booleans, structured objects, two keys that reject a raw PUT
+ * entirely — `payroll.statutory`, `approval.mode`), not a list of records a
+ * natural-key upsert could make sense of. It is also not in
+ * `ImportEntityName` at all.
+ *
+ * `rawSettingCell` is the reason this does NOT reuse `formatSettingValue`
+ * (`./settings-format.ts`): that helper runs a money-kind value through
+ * `formatMoney`, which prints `Rp200.000` — exactly the formatting CONTRACTS
+ * §0 forbids in an exported cell. This writes the wire value as-is: a string
+ * passes through untouched (so a money setting stays a verbatim decimal),
+ * and only a genuinely structured value is JSON-stringified.
+ */
+function rawSettingCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return JSON.stringify(value);
+}
+
+export function settingIoColumns(t: T): CsvColumn<Setting>[] {
+  return [
+    { key: 'key', header: 'Kunci' },
+    {
+      key: 'key',
+      header: 'Nama',
+      format: (r) => {
+        const spec = specFor(r.key);
+        return spec ? t(spec.labelKey) : r.key;
+      },
+    },
+    { key: 'value', header: 'Nilai', format: (r) => rawSettingCell(r.value) },
+    { key: 'updatedBy', header: 'Diperbarui Oleh', format: (r) => r.updatedBy ?? '' },
+    { key: 'updatedAt', header: 'Diperbarui Pada', format: (r) => fmtDateTime(r.updatedAt) },
+  ];
+}

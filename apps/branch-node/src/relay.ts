@@ -61,14 +61,32 @@ import {
 } from '@mimi/sync-protocol';
 import type { UUID } from '@mimi/shared';
 import type { NodeConfig } from './config';
-import type { Store, StoredSyncEvent } from './store/types';
+import {
+  emptyNetworkState,
+  type AppliableNetworkConfig,
+  type NodeNetworkState,
+  type Store,
+  type StoredSyncEvent,
+} from './store/types';
 import { BridgeClient, registerNode } from './bridge-client';
 import { CloudSyncClient } from './cloud-sync-client';
 import { LanServer, type HandlerResult, type LanServerHandlers } from './lan-server';
 import { applyWhitelistedEvent } from './projector';
 import { runScan } from './discovery/scanner';
-import type { NodeHeartbeat, NodeCommand, DiscoveryReport } from './bridge-types';
+import type {
+  NodeHeartbeat,
+  NodeCommand,
+  DiscoveryReport,
+  ConfigUpdated,
+  NetworkConfigWire,
+} from './bridge-types';
 import type { SocketFactory } from './socket-like';
+import {
+  InProcessNetworkApplier,
+  type FieldApplyResult,
+  type NetworkConfigApplier,
+} from './network/applier';
+import { installLogCapture, recentLogLines } from './log-buffer';
 import {
   helloAckToWire,
   helloFromWire,
@@ -78,6 +96,13 @@ import {
 } from './wire';
 
 const MAX_PULL_PAGE = 500;
+/** Gives `command:ack` (status:'accepted') time to actually reach the wire (socket.io's own send
+ *  buffer flush) before this process exits — `process.exit` does not wait for pending I/O. */
+const RESTART_ACK_FLUSH_MS = 300;
+
+function redactConfig(config: NetworkConfigWire): Record<string, unknown> {
+  return { ...config, wifiPassphrase: config.wifiPassphrase ? '[redacted]' : undefined };
+}
 
 interface ReadyIdentity {
   nodeId: UUID;
@@ -92,20 +117,43 @@ export class RelayEngine {
   private heartbeatTimer?: NodeJS.Timeout;
   private discoveryTimer?: NodeJS.Timeout;
   private pushTimer?: NodeJS.Timeout;
+  private networkConfigConfirmTimer?: NodeJS.Timeout;
   private pushing = false;
   private startedAt = Date.now();
   private discoveryLastRunAt: string | null = null;
   private identity?: ReadyIdentity;
+  private readonly networkApplier: NetworkConfigApplier;
 
   constructor(
     private config: NodeConfig,
     private store: Store,
     private socketFactory?: SocketFactory,
-  ) {}
+    /** Injectable so tests can observe a `restart` command's intent without actually killing the
+     *  test process — defaults to the real thing in production. */
+    private processExit: (code: number) => void = (code) => process.exit(code),
+  ) {
+    installLogCapture();
+    this.networkApplier = new InProcessNetworkApplier({
+      rebindLanServer: (port) => this.lanServer!.rebind(port),
+      setScanSubnet: (subnet) => {
+        this.config.scanSubnet = subnet ?? undefined;
+      },
+    });
+  }
 
   // ── lifecycle ─────────────────────────────────────────────────────────
   async start(): Promise<void> {
     this.identity = await this.ensureRegistered();
+
+    // W3-10: reconcile this node's own network settings BEFORE anything binds a port — a config
+    // remotely applied and confirmed on a PREVIOUS run must survive this restart; one still
+    // `'applying'` (unconfirmed) when the process last stopped must NOT survive it (see doc comment).
+    const bootNet = await this.resolveBootNetworkState();
+    this.config = {
+      ...this.config,
+      healthPort: bootNet.healthPort,
+      scanSubnet: bootNet.scanSubnet ?? undefined,
+    };
 
     this.bridge = new BridgeClient(
       this.config.cloudUrl,
@@ -118,6 +166,7 @@ export class RelayEngine {
           if (this.lanServer)
             await this.lanServer.rotateCert(payload.lanCert, this.config.healthPort);
         },
+        onConfigUpdated: (update) => this.handleNetworkConfigUpdate(update),
         onRevoked: () =>
           console.warn('[relay] node revoked by cloud — stop pushing (M22 kill switch)'),
       },
@@ -138,9 +187,79 @@ export class RelayEngine {
     this.lanServer = new LanServer(this.buildLanHandlers(this.identity), identitySnapshot.lanCert);
     await this.lanServer.listen(this.config.healthPort);
 
+    // `healthPort: 0` ("let the OS pick") is the ONE case `resolveBootNetworkState` above could not
+    // resolve to a real number — it ran before this bind. Reconcile the ACTUAL bound port back into
+    // persisted state now: without this, a later revert-to-last-known-good would target port 0 too,
+    // which rebinds to yet ANOTHER random port instead of the one already proven reachable.
+    const actualPort = this.lanServer.address()?.port;
+    if (actualPort !== undefined && actualPort !== bootNet.healthPort) {
+      const resolved: AppliableNetworkConfig = {
+        healthPort: actualPort,
+        scanSubnet: bootNet.scanSubnet,
+      };
+      await this.store.saveIdentity({
+        ...(await this.store.getIdentity()),
+        networkState: {
+          effective: resolved,
+          lastKnownGood: resolved,
+          status: 'stable',
+          pendingConfigId: null,
+        },
+      });
+    }
+
     this.startHeartbeatLoop(this.identity);
     this.startPushLoop();
     this.startDiscoveryLoop(this.identity);
+  }
+
+  /**
+   * W3-10: what network settings should this process actually boot with? Reads the LOCALLY
+   * persisted state (never the cloud — a node that cannot reach the cloud must still be able to
+   * answer this) and reconciles two cases the env-loaded `NodeConfig` alone can't:
+   *   - Never touched remotely: today's env config becomes day-one last-known-good.
+   *   - An apply was still `'applying'` (unconfirmed) when this process last stopped — a crash, or
+   *     the node's OWN `restart` command firing mid-confirm-window. An unconfirmed apply must never
+   *     be trusted across a process boundary; boot from `lastKnownGood` instead and mark the state
+   *     `'reverted'` so the discrepancy is visible (`GET /api/nodes/:id`'s `events`).
+   */
+  private async resolveBootNetworkState(): Promise<AppliableNetworkConfig> {
+    const identity = await this.store.getIdentity();
+    const persisted = identity.networkState;
+    const envFallback: AppliableNetworkConfig = {
+      healthPort: this.config.healthPort,
+      scanSubnet: this.config.scanSubnet ?? null,
+    };
+    // `healthPort: 0` is `emptyNetworkState()`'s sentinel for "nothing persisted yet" (0 is never a
+    // real port) — see `store/types.ts`.
+    const persistedIsSet = persisted.effective.healthPort > 0;
+
+    if (!persistedIsSet) {
+      const stable: NodeNetworkState = {
+        effective: envFallback,
+        lastKnownGood: envFallback,
+        status: 'stable',
+        pendingConfigId: null,
+      };
+      await this.store.saveIdentity({ ...identity, networkState: stable });
+      return envFallback;
+    }
+
+    if (persisted.status === 'applying') {
+      console.warn(
+        '[relay] a network config apply was still pending at last shutdown — booting from last-known-good instead of the unconfirmed value',
+      );
+      const reverted: NodeNetworkState = {
+        effective: persisted.lastKnownGood,
+        lastKnownGood: persisted.lastKnownGood,
+        status: 'reverted',
+        pendingConfigId: null,
+      };
+      await this.store.saveIdentity({ ...identity, networkState: reverted });
+      return persisted.lastKnownGood;
+    }
+
+    return persisted.effective;
   }
 
   /** The LAN listener's actual bound port (useful when `config.healthPort === 0` let the OS pick one — tests). */
@@ -152,6 +271,7 @@ export class RelayEngine {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.discoveryTimer) clearInterval(this.discoveryTimer);
     if (this.pushTimer) clearInterval(this.pushTimer);
+    if (this.networkConfigConfirmTimer) clearTimeout(this.networkConfigConfirmTimer);
     await this.lanServer?.close();
     this.cloudSync?.disconnect();
     this.bridge?.disconnect();
@@ -175,6 +295,9 @@ export class RelayEngine {
       version: this.config.version,
     });
 
+    // Fresh registration: no network state persisted yet — `resolveBootNetworkState` (called right
+    // after this) is what seeds it from the env-loaded config, exactly like every subsequent boot's
+    // "never touched remotely" branch.
     await this.store.saveIdentity({
       nodeId: response.nodeId,
       nodeToken: response.nodeToken,
@@ -182,6 +305,7 @@ export class RelayEngine {
       locationCode: response.location.code,
       locationName: response.location.name,
       lanCert: response.lanCert ?? null,
+      networkState: emptyNetworkState(),
     });
 
     return {
@@ -614,12 +738,17 @@ export class RelayEngine {
     this.discoveryTimer = setInterval(() => void run(), this.config.discoveryIntervalMs);
   }
 
+  /**
+   * Fleet remote-command channel (D-13; W3-10 hardening of what used to be a blanket 'done' no-op —
+   * see this file's history for the original skeleton). `discovery_scan` and `log_pull` are real,
+   * non-destructive actions honored directly. `restart` is real but destructive: `NodesController`
+   * is the one that enforces the "not during an open POS shift without an explicit override" gate
+   * BEFORE this ever arrives — by the time a node sees `type: 'restart'`, the cloud has already
+   * decided it's safe to fire. `update` is the one type this build genuinely cannot do (see the
+   * ack detail below) — it acks `'failed'`, never `'done'`, for work it did not perform.
+   */
   private async handleCommand(cmd: NodeCommand): Promise<void> {
-    // Fleet remote-command channel (D-13, W5-07 "hardening" territory — restart/update/log_pull/discovery_scan).
-    // This skeleton acks every command as 'done' immediately without doing anything destructive (no self-restart,
-    // no self-update, no log tailing yet); W5-07 owns turning these into real actions.
     if (cmd.type === 'discovery_scan') {
-      // The one command type safe + meaningful to actually honor right now: run discovery early.
       const outcome = await runScan({
         simulate: this.config.simulate,
         subnet: this.config.scanSubnet,
@@ -632,10 +761,219 @@ export class RelayEngine {
       });
       return;
     }
-    this.bridge?.ackCommand({
-      commandId: cmd.commandId,
-      status: 'done',
-      detail: `${cmd.type} acknowledged (no-op in this skeleton — see W5-07)`,
+
+    if (cmd.type === 'log_pull') {
+      const nodeId = this.identity!.nodeId;
+      const lines = recentLogLines(cmd.params?.lines ?? 500);
+      const CHUNK_SIZE = 100;
+      const chunks = lines.length > 0 ? Math.ceil(lines.length / CHUNK_SIZE) : 1;
+      for (let seq = 0; seq < chunks; seq++) {
+        this.bridge?.sendLogsChunk({
+          nodeId,
+          commandId: cmd.commandId,
+          seq,
+          done: seq === chunks - 1,
+          lines: lines.slice(seq * CHUNK_SIZE, (seq + 1) * CHUNK_SIZE),
+        });
+      }
+      this.bridge?.ackCommand({
+        commandId: cmd.commandId,
+        status: 'done',
+        detail: `${lines.length} log line(s) sent`,
+      });
+      return;
+    }
+
+    if (cmd.type === 'restart') {
+      console.warn(
+        `[relay] restart command received (override=${cmd.params?.override === true}) — acking and exiting; relies on the process supervisor (Docker 'restart: unless-stopped' / systemd 'Restart=always') to bring it back up`,
+      );
+      this.bridge?.ackCommand({
+        commandId: cmd.commandId,
+        status: 'accepted',
+        detail:
+          'restarting now — this node has no self-supervision; it relies on the deployment restart policy to come back up',
+      });
+      setTimeout(() => this.processExit(0), RESTART_ACK_FLUSH_MS);
+      return;
+    }
+
+    if (cmd.type === 'update') {
+      // Honest failure, not a lying 'done' — see `network/applier.ts`'s doc comment for the same
+      // stance on the network-config side. No fleet software-distribution mechanism exists in this
+      // build (no signing/artifact channel, no version-pinning/rollback story) — W5-07 territory.
+      this.bridge?.ackCommand({
+        commandId: cmd.commandId,
+        status: 'failed',
+        detail:
+          'no software-update distribution mechanism exists on this node build (W5-07 follow-up) — not applied',
+      });
+      return;
+    }
+  }
+
+  // ── network config apply-then-confirm (W3-10) ─────────────────────────
+  /**
+   * Cloud -> node `config_updated` push. Snapshots the PRE-apply state as the revert target before
+   * touching anything, applies via `networkApplier` (real for `healthPort`/`scanSubnet`, honestly
+   * `applied:false` for anything OS-level this build cannot do — see `network/applier.ts`), then
+   * either fails fast (a synchronous bind error) or starts the confirm-timeout window.
+   */
+  private async handleNetworkConfigUpdate(update: ConfigUpdated): Promise<void> {
+    const identity = await this.store.getIdentity();
+    const previousEffective = identity.networkState.effective;
+    const lastKnownGood =
+      identity.networkState.lastKnownGood.healthPort > 0
+        ? identity.networkState.lastKnownGood
+        : previousEffective;
+
+    await this.store.saveIdentity({
+      ...identity,
+      networkState: {
+        effective: previousEffective,
+        lastKnownGood,
+        status: 'applying',
+        pendingConfigId: update.configId,
+      },
+    });
+
+    let fieldResults: FieldApplyResult[];
+    try {
+      fieldResults = await this.networkApplier.apply(update.config);
+    } catch (err) {
+      // A field this build DOES apply (today: only `healthPort`, via `LanServer.rebind`) failed
+      // synchronously — e.g. EADDRINUSE. No point waiting out the confirm window for a failure
+      // already known; revert immediately (§ "a port collision should be rejected... not discovered
+      // by an outlet going dark").
+      console.error(
+        '[relay] network config apply failed synchronously, reverting now:',
+        (err as Error).message,
+      );
+      await this.revertNetworkConfig(lastKnownGood, 'bind_failed', update.configId, [
+        { field: 'healthPort', applied: false, reason: `bind_failed: ${(err as Error).message}` },
+      ]);
+      return;
+    }
+
+    const newEffective: AppliableNetworkConfig = {
+      healthPort: update.config.healthPort ?? previousEffective.healthPort,
+      scanSubnet:
+        update.config.scanSubnet !== undefined
+          ? update.config.scanSubnet
+          : previousEffective.scanSubnet,
+    };
+
+    await this.store.saveIdentity({
+      ...(await this.store.getIdentity()),
+      networkState: {
+        effective: newEffective,
+        lastKnownGood,
+        status: 'applying',
+        pendingConfigId: update.configId,
+      },
+    });
+
+    console.log(
+      `[relay] network config applied, confirming reachability within ${this.config.networkConfigConfirmTimeoutMs}ms:`,
+      redactConfig(update.config),
+    );
+
+    if (this.networkConfigConfirmTimer) clearTimeout(this.networkConfigConfirmTimer);
+    this.networkConfigConfirmTimer = setTimeout(() => {
+      void this.confirmOrRevertNetworkConfig(
+        update.configId,
+        newEffective,
+        lastKnownGood,
+        fieldResults,
+      );
+    }, this.config.networkConfigConfirmTimeoutMs);
+  }
+
+  /** The confirm-timeout firing: still reachable -> promote to last-known-good; not -> revert. */
+  private async confirmOrRevertNetworkConfig(
+    configId: UUID,
+    applied: AppliableNetworkConfig,
+    lastKnownGood: AppliableNetworkConfig,
+    fieldResults: FieldApplyResult[],
+  ): Promise<void> {
+    const identity = await this.store.getIdentity();
+    // A newer push superseded this one while we were waiting — that push owns the outcome now.
+    if (identity.networkState.pendingConfigId !== configId) return;
+
+    const reachable = this.bridge?.isConnected() ?? false;
+    if (reachable) {
+      await this.store.saveIdentity({
+        ...identity,
+        networkState: {
+          effective: applied,
+          lastKnownGood: applied,
+          status: 'stable',
+          pendingConfigId: null,
+        },
+      });
+      console.log('[relay] network config confirmed reachable — promoted to last-known-good');
+      this.bridge?.sendNetworkConfigAck({
+        configId,
+        nodeId: identity.nodeId!,
+        status: 'applied',
+        fields: fieldResults,
+      });
+      return;
+    }
+
+    await this.revertNetworkConfig(
+      lastKnownGood,
+      'confirm_timeout_unreachable',
+      configId,
+      fieldResults,
+    );
+  }
+
+  /** Reapplies `target` (always a previously-confirmed config) and reports the outcome — the
+   *  automatic-revert half of D-26's "must not be able to permanently strand an outlet" mandate. */
+  private async revertNetworkConfig(
+    target: AppliableNetworkConfig,
+    reason: string,
+    configId: UUID,
+    fieldResults: FieldApplyResult[],
+  ): Promise<void> {
+    console.warn(`[relay] reverting network config to last-known-good (${reason})`);
+    try {
+      await this.networkApplier.apply({
+        healthPort: target.healthPort,
+        scanSubnet: target.scanSubnet,
+      });
+    } catch (err) {
+      // The revert itself failing is the one truly bad outcome this design can't fully prevent (both
+      // the new AND the old port are somehow unbindable) — logged loudly; there is nothing further
+      // to automate from here without human/on-site intervention.
+      console.error(
+        '[relay] FAILED to revert network config — this node may be unreachable until manual intervention:',
+        (err as Error).message,
+      );
+    }
+
+    const identity = await this.store.getIdentity();
+    await this.store.saveIdentity({
+      ...identity,
+      networkState: {
+        effective: target,
+        lastKnownGood: target,
+        status: 'reverted',
+        pendingConfigId: null,
+      },
+    });
+
+    this.bridge?.sendNetworkConfigAck({
+      configId,
+      nodeId: identity.nodeId!,
+      status: 'reverted',
+      fields: fieldResults.map((f) =>
+        f.field === 'healthPort' || f.field === 'scanSubnet'
+          ? { field: f.field, applied: false, reason }
+          : f,
+      ),
+      detail: reason,
     });
   }
 }

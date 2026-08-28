@@ -85,6 +85,22 @@ interface LogsChunkBody {
   lines: string[];
 }
 
+interface NetworkConfigAckFieldBody {
+  field: string;
+  applied: boolean;
+  reason: string;
+}
+
+/** node -> cloud, `network_config_ack` (W3-10) — the apply-then-confirm outcome for a `config_updated`
+ *  push (`sendNetworkConfig` below). */
+interface NetworkConfigAckBody {
+  configId: UUID;
+  nodeId: UUID;
+  status: 'applied' | 'reverted' | 'failed';
+  fields: NetworkConfigAckFieldBody[];
+  detail?: string;
+}
+
 @Injectable()
 @WebSocketGateway({ namespace: '/bridge', transports: ['polling', 'websocket'] })
 export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -96,6 +112,9 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** nodeId -> connected socket id. In-process only (same scaling caveat `kernel/sync/sync.gateway.ts` already documents for its own fan-out — no Redis adapter wired yet). */
   private readonly nodeSockets = new Map<UUID, string>();
   private readonly lastKnownVersion = new Map<UUID, string>();
+  /** `commandId` -> accumulated log lines while a `log_pull`'s `logs:chunk` stream is still in flight (W3-10). */
+  private readonly pendingLogChunks = new Map<UUID, string[]>();
+  private static readonly MAX_PERSISTED_LOG_LINES = 200;
 
   constructor(
     private readonly nodes: BranchNodesRepository,
@@ -233,7 +252,10 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
-  /** `POST /api/nodes/:id/command`'s ack — recorded as a `device_events` row against the node for F12 visibility/history (W5-07 turns these into real remote actions; this skeleton — matching `apps/branch-node/src/relay.ts`'s own "no-op ack" stance — only needs to observe the acknowledgement). */
+  /** `POST /api/nodes/:id/command`'s ack — persisted as a `device_events` row (`command_result`,
+   *  migration 254) against the node for F12 visibility/history (W3-10: `restart`/`log_pull` are now
+   *  real actions, `update` an honest failure — none of them worth losing the moment this socket
+   *  handler returns). */
   @SubscribeMessage('command:ack')
   async onCommandAck(
     @ConnectedSocket() socket: Socket,
@@ -245,14 +267,91 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.debug(
       `command ${body.commandId} on node ${nodeId}: ${body.status}${body.detail ? ` (${body.detail})` : ''}`,
     );
+    await withSystemContext(this.pool, (client) =>
+      this.deviceRegistry.insertDeviceEvent(client, {
+        nodeId,
+        locationId,
+        type: 'command_result',
+        detail: { commandId: body.commandId, status: body.status, detail: body.detail },
+      }),
+    );
   }
 
-  /** `POST /api/nodes/:id/command {type:'log_pull'}`'s response stream — accepted and logged; a durable store for retrieved logs is W7-02/W5-07 territory (a log VIEWER surface is out of this ticket's scope), not silently dropped either way. */
+  /**
+   * `POST /api/nodes/:id/command {type:'log_pull'}`'s response stream (W3-10: now a real pull, see
+   * `apps/branch-node/src/relay.ts`'s `handleCommand`). Chunks are accumulated in-memory per
+   * `commandId` and, once `done`, persisted as ONE `device_events` row (`command_result`) — capped
+   * so a chatty pull can't bloat that table; a dedicated log-viewer surface is still F12/W7-02
+   * territory, out of this ticket's scope, but the lines are no longer silently dropped either way.
+   */
   @SubscribeMessage('logs:chunk')
-  onLogsChunk(@MessageBody() body: LogsChunkBody): void {
+  async onLogsChunk(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: LogsChunkBody,
+  ): Promise<void> {
     this.logger.debug(
       `log chunk ${body.seq}${body.done ? ' (final)' : ''} for command ${body.commandId}: ${body.lines.length} line(s)`,
     );
+    const acc = this.pendingLogChunks.get(body.commandId) ?? [];
+    acc.push(...body.lines);
+    this.pendingLogChunks.set(body.commandId, acc);
+    if (!body.done) return;
+
+    this.pendingLogChunks.delete(body.commandId);
+    const nodeId = (socket.data as { nodeId?: UUID }).nodeId;
+    const locationId = (socket.data as { locationId?: UUID }).locationId;
+    if (!nodeId || !locationId) return;
+
+    const kept = acc.slice(-BridgeGateway.MAX_PERSISTED_LOG_LINES);
+    await withSystemContext(this.pool, (client) =>
+      this.deviceRegistry.insertDeviceEvent(client, {
+        nodeId,
+        locationId,
+        type: 'command_result',
+        detail: {
+          commandId: body.commandId,
+          kind: 'log_pull',
+          lineCount: acc.length,
+          truncated: acc.length > kept.length,
+          lines: kept,
+        },
+      }),
+    );
+  }
+
+  /** node -> cloud, `network_config_ack` (W3-10) — the apply-then-confirm outcome for a `config_updated`
+   *  push (`sendNetworkConfig` below). Persisted both onto `branch_nodes` (what `GET /api/nodes/:id`
+   *  reads back as `networkConfigStatus`) and as a `device_events` row (`network_config_result`) for
+   *  history. Never contains a secret — the node's own ack (`bridge-types.ts`'s `NetworkConfigAck`)
+   *  carries only per-field `applied`/`reason`, never a passphrase value. */
+  @SubscribeMessage('network_config_ack')
+  async onNetworkConfigAck(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: NetworkConfigAckBody,
+  ): Promise<void> {
+    const nodeId = (socket.data as { nodeId?: UUID }).nodeId;
+    const locationId = (socket.data as { locationId?: UUID }).locationId;
+    if (!nodeId || !locationId) return;
+    this.logger.debug(`network_config_ack ${body.configId} on node ${nodeId}: ${body.status}`);
+
+    await withSystemContext(this.pool, async (client) => {
+      await this.nodes.recordNetworkConfigResult(client, nodeId, {
+        configId: body.configId,
+        status: body.status,
+        result: { fields: body.fields, detail: body.detail },
+      });
+      await this.deviceRegistry.insertDeviceEvent(client, {
+        nodeId,
+        locationId,
+        type: 'network_config_result',
+        detail: {
+          configId: body.configId,
+          status: body.status,
+          fields: body.fields,
+          detail: body.detail,
+        },
+      });
+    });
   }
 
   // ── cloud -> node pushes (CONTRACTS §1.12 branch_nodes pull ops) ──────
@@ -285,6 +384,23 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const socketId = this.nodeSockets.get(nodeId);
     if (!socketId) return false;
     this.server.to(socketId).emit('config_updated', { config });
+    return true;
+  }
+
+  /**
+   * `PUT /api/nodes/:id/network-config` (W3-10) — pushes the DECRYPTED full config (including a
+   * plaintext WiFi passphrase, if one was set) over this exact node's own authenticated `/bridge`
+   * socket. Callers (`NodesController.setNetworkConfig`) must check `isConnected(nodeId)` themselves
+   * BEFORE encrypting/persisting anything — this method's own `false` return only covers the narrow
+   * race where the node disconnected between that check and this call.
+   */
+  sendNetworkConfig(
+    nodeId: UUID,
+    payload: { configId: UUID; config: Record<string, unknown> },
+  ): boolean {
+    const socketId = this.nodeSockets.get(nodeId);
+    if (!socketId) return false;
+    this.server.to(socketId).emit('config_updated', payload);
     return true;
   }
 

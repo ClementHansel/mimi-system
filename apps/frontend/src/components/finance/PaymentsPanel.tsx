@@ -19,8 +19,11 @@ import { MoneyInput } from '@/components/ui/MoneyInput';
 import { FileUpload } from '@/components/ui/FileUpload';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PermissionGate } from '@/components/ui/PermissionGate';
+import { ExportButton } from '@/components/common/ExportButton';
 import { useApiList } from '@/components/admin/useApiList';
+import type { Paginated } from '@/lib/api';
 import { uploadAttachment } from './lib/attachments';
+import { paymentIoColumns } from './lib/io-columns';
 import {
   PaymentVerificationRefType,
   PayeeType,
@@ -59,6 +62,26 @@ export function PaymentsPanel() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+
+  /**
+   * Server-paginated (25/page default) — see `JournalPanel.fetchAllEntries`
+   * for why "Ekspor" alone is not enough. `pageSize=200` matches the
+   * server's `@Max(200)`; the loop stops on a short page or once the running
+   * total reaches `res.total`, and hard-stops at 200 pages regardless.
+   */
+  async function fetchAllPayments(): Promise<PaymentVerification[]> {
+    const all: PaymentVerification[] = [];
+    const size = 200;
+    for (let p = 1; p <= 200; p += 1) {
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(size) });
+      if (status) qs.set('status', status);
+      if (refType) qs.set('refType', refType);
+      const res = await api.get<Paginated<PaymentVerification>>(`/accounting/payments?${qs}`);
+      all.push(...res.rows);
+      if (res.rows.length < size || all.length >= res.total) break;
+    }
+    return all;
+  }
 
   const columns: DataTableColumn<PaymentVerification>[] = [
     { key: 'pvNumber', header: t('finance.payments.columnNumber') },
@@ -120,11 +143,25 @@ export function PaymentsPanel() {
             wrapperClassName="w-56"
           />
         </div>
-        <PermissionGate permission="payment.proof.upload">
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
-            {t('finance.payments.createButton')}
-          </Button>
-        </PermissionGate>
+        <div className="flex items-center gap-2">
+          {/* Export only, deliberately — no bulk import. Each row moves
+              through a permission-gated, proof-carrying workflow (upload
+              proof -> verify -> pay, FR-ACCT-01..04); a CSV row cannot carry
+              a proof attachment or an approver identity, so importing could
+              only create rows stuck at `pending` or invite skipping
+              verification entirely. */}
+          <ExportButton
+            rows={data.rows}
+            columns={paymentIoColumns(t)}
+            filenameBase="verifikasi-pembayaran"
+            fetchAll={fetchAllPayments}
+          />
+          <PermissionGate permission="payment.proof.upload">
+            <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
+              {t('finance.payments.createButton')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
 
       <DataTable

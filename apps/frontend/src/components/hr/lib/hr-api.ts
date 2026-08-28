@@ -29,6 +29,7 @@ import type {
   PayrollPeriod,
   PayrollRunDetail,
   PayrollComponent,
+  EmployeeComponentAssignment,
   Loan,
   BpjsRow,
   TerBracketRow,
@@ -135,6 +136,27 @@ export function listShifts(locationId?: string) {
   const qs = new URLSearchParams();
   if (locationId) qs.set('locationId', locationId);
   return api.get<WorkShift[]>(`/hr/shifts?${qs.toString()}`);
+}
+
+/**
+ * Location CODE keyed by id — what the importer's `location` column resolves
+ * against (`locations.code`).
+ *
+ * Keyed by ID, not by name, unlike the equivalent lookup in
+ * `components/assets/lib/assets-api.ts`. That one had no choice: `AssetDto`
+ * never puts `location_id` on the wire, so it matches on name and accepts that
+ * two locations sharing a name collide. `WorkShift` now carries `locationId`,
+ * so this map is exact and cannot mis-resolve.
+ *
+ * Returns an EMPTY map on failure rather than throwing: this only fills an
+ * optional export column, and a failed lookup should cost a blank cell, not
+ * the whole export.
+ */
+export function listLocationCodesById(): Promise<Map<string, string>> {
+  return api
+    .get<{ rows: { id: string; code: string }[] }>('/locations?active=true&pageSize=200')
+    .then((res) => new Map(res.rows.map((l) => [l.id, l.code])))
+    .catch(() => new Map<string, string>());
 }
 
 export function createShift(body: {
@@ -259,6 +281,50 @@ export function sendPayrollSlips(runId: string, channels: ('email' | 'whatsapp')
 
 export function listPayrollComponents() {
   return api.get<PayrollComponent[]>('/payroll/components');
+}
+
+/**
+ * `type`/`calcMethod` are creation-only — there is no way to change either
+ * afterward (`UpdateComponentDto` doesn't have the fields at all, matching
+ * the importer's `import-schema.ts` COMPONENT immutability rule), so this is
+ * the only function that ever sends them.
+ */
+export function createPayrollComponent(body: {
+  code: string;
+  name: string;
+  type: 'earning' | 'deduction';
+  calcMethod: 'fixed' | 'per_day' | 'per_hour' | 'formula' | 'manual';
+  defaultAmount?: string;
+}) {
+  return api.post<PayrollComponent>('/payroll/components', body);
+}
+
+/**
+ * `name` must be OMITTED entirely (not just left unchanged) for a
+ * `isSystem` component — the server 403s any update DTO that carries `name`
+ * for a system row (`ComponentsService.update`), so the caller decides
+ * whether to include it, not this wrapper.
+ */
+export function updatePayrollComponent(
+  id: string,
+  body: { defaultAmount?: string; isActive?: boolean; name?: string },
+) {
+  return api.patch<PayrollComponent>(`/payroll/components/${id}`, body);
+}
+
+// ── per-employee component assignment (§4.15 PIN-03..06) ───────────────────
+
+export function getEmployeeComponents(employeeId: string) {
+  return api.get<EmployeeComponentAssignment[]>(`/payroll/employees/${employeeId}/components`);
+}
+
+export function putEmployeeComponents(
+  employeeId: string,
+  assignments: { componentId: string; amount?: string; effectiveFrom: string }[],
+) {
+  return api.put<EmployeeComponentAssignment[]>(`/payroll/employees/${employeeId}/components`, {
+    assignments,
+  });
 }
 
 // ── loans (§4.15, POUT-06) ───────────────────────────────────────────────────

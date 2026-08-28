@@ -187,6 +187,14 @@ const SETTINGS_KEYS = [
   'sync.price_variance_tolerance',
   'pos.qris',
   'wa.enabled',
+  // Brand identity (favicon + the four document colours). The LOGO is not
+  // here — it already lives on `company.profile.logoAttachmentId`; see
+  // `brand.ts` for why that was not duplicated.
+  'brand.identity',
+  // Whether a till that cannot reach the cloud may still take a voucher.
+  // Defaults to refusing: an offline till cannot know the coupon was not
+  // already spent at the next outlet. See `voucher/index.ts`.
+  'pos.voucher_offline',
 ] as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[number];

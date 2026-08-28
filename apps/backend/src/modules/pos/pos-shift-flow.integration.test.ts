@@ -25,6 +25,7 @@ import {
   buildEventBus,
   buildNotificationService,
   buildPaymentVerificationsService,
+  buildVoucherRedemptionService,
   buildStockLedgerService,
   buildSyncEmitService,
   closePool,
@@ -59,7 +60,12 @@ function services(pool = getAppPool(), eventBus = buildEventBus()) {
   return {
     catalog: new PosCatalogService(),
     shifts: new PosShiftService(pool, approvals, notifications),
-    sales: new PosSaleService(pool, stockLedger, buildPaymentVerificationsService(pool)),
+    sales: new PosSaleService(
+      pool,
+      stockLedger,
+      buildPaymentVerificationsService(pool),
+      buildVoucherRedemptionService(),
+    ),
     approvalCodes: buildApprovalCodeService(pool),
     voidRefunds: new PosVoidRefundService(
       pool,
@@ -70,7 +76,7 @@ function services(pool = getAppPool(), eventBus = buildEventBus()) {
       notifications,
       eventBus,
     ),
-    onlineOrders: new PosOnlineOrderService(stockLedger, eventBus),
+    onlineOrders: new PosOnlineOrderService(stockLedger),
     cashVariances: new PosCashVarianceService(pool, approvals),
     dailyStock: new PosDailyStockService(),
   };
@@ -379,6 +385,170 @@ describe('POS — full shift, live database', () => {
         const report = await svc.dailyStock.getReport(client, fx.locationId, today);
         const usageRow = report.find((r) => Number(r.estimatedUsage) > 0);
         expect(usageRow).toBeDefined();
+      },
+    );
+  }, 30_000);
+
+  it('three-tier channel pricing (migration 249): a sale on each channel stores the unitPrice it was given (never re-derived from products.price) and still explodes stock', async () => {
+    await withRollback(
+      { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
+      async (client) => {
+        const svc = services();
+        await neutralizeOpenShifts(client, fx.locationId);
+        const shift = await svc.shifts.open(client, fx.kasirId, {
+          clientId: randomUUID(),
+          locationId: fx.locationId,
+          openingCash: '50000.00',
+        });
+
+        const usageOutCount = async () =>
+          Number(
+            (
+              await client.query(
+                `SELECT COUNT(*) AS n FROM stock_movements WHERE ref_type = 'sale' AND movement_type = 'usage_out'`,
+              )
+            ).rows[0].n,
+          );
+        const before = await usageOutCount();
+
+        // GoFood price deliberately set HIGHER than the walk-in `fx.productPrice` to prove the
+        // server stores the CALLER's channel price verbatim — re-deriving from `products.price` at
+        // posting time (the bug this test guards against) would silently overwrite it and the
+        // receipt/revenue would be wrong.
+        const gofoodPrice = (Number(fx.productPrice) + 3000).toFixed(2);
+        const gofoodSale = await svc.sales.create(
+          client,
+          fx.kasirId,
+          {
+            clientId: randomUUID(),
+            shiftId: shift.id,
+            locationId: fx.locationId,
+            occurredAt: new Date().toISOString(),
+            lines: [{ productId: fx.productId, qty: '1.000', unitPrice: gofoodPrice }],
+            payments: [{ method: PaymentMethod.CASH, amount: gofoodPrice }],
+            channel: 'gofood',
+          },
+          { roleKey: 'kasir', locationIds: [fx.locationId] },
+        );
+        expect(gofoodSale.channel).toBe('gofood');
+        expect(gofoodSale.lines[0]!.unitPrice).toBe(gofoodPrice);
+        expect(gofoodSale.lines[0]!.unitPrice).not.toBe(fx.productPrice);
+        expect(gofoodSale.total).toBe(gofoodPrice); // the channel price, not the walk-in price, drives the total
+        const afterGofood = await usageOutCount();
+        expect(afterGofood).toBeGreaterThan(before); // recipe explosion still ran — the point of retiring online_orders
+        const perSaleUsageRows = afterGofood - before; // fx.productId's recipe may post more than one ingredient line per sale
+
+        const shopeefoodPrice = (Number(fx.productPrice) + 2500).toFixed(2);
+        const shopeefoodSale = await svc.sales.create(
+          client,
+          fx.kasirId,
+          {
+            clientId: randomUUID(),
+            shiftId: shift.id,
+            locationId: fx.locationId,
+            occurredAt: new Date().toISOString(),
+            lines: [{ productId: fx.productId, qty: '1.000', unitPrice: shopeefoodPrice }],
+            payments: [{ method: PaymentMethod.CASH, amount: shopeefoodPrice }],
+            channel: 'shopeefood',
+          },
+          { roleKey: 'kasir', locationIds: [fx.locationId] },
+        );
+        expect(shopeefoodSale.channel).toBe('shopeefood');
+        expect(shopeefoodSale.lines[0]!.unitPrice).toBe(shopeefoodPrice);
+        expect(await usageOutCount()).toBe(before + perSaleUsageRows * 2);
+
+        // `channel` omitted entirely (older app build / plain walk-in cart) defaults to 'walk_in' —
+        // matches `sales.channel`'s own DB DEFAULT, never left NULL or rejected.
+        const walkInSale = await svc.sales.create(
+          client,
+          fx.kasirId,
+          {
+            clientId: randomUUID(),
+            shiftId: shift.id,
+            locationId: fx.locationId,
+            occurredAt: new Date().toISOString(),
+            lines: [{ productId: fx.productId, qty: '1.000', unitPrice: fx.productPrice }],
+            payments: [{ method: PaymentMethod.CASH, amount: fx.productPrice }],
+          },
+          { roleKey: 'kasir', locationIds: [fx.locationId] },
+        );
+        expect(walkInSale.channel).toBe('walk_in');
+        expect(await usageOutCount()).toBe(before + perSaleUsageRows * 3);
+      },
+    );
+  }, 30_000);
+
+  it('shift-close report.onlineOrders is continuous across the 249 cutover — a sales.channel row is counted AND a pre-cutover online_orders row is still counted (migration 251 regression guard)', async () => {
+    // This is the test that would have CAUGHT the ticket's bug: before migration 251,
+    // `PosShiftService.buildReport`'s `onlineOrders` box read `online_orders` alone, so a
+    // GoFood/ShopeeFood order rung up through `sales.channel` (the ONLY thing that writes new
+    // online revenue since migration 249 retired `online_orders` as a write path) would
+    // silently vanish from this box — while a genuinely pre-cutover `online_orders` row (still
+    // real, still owed revenue) must NOT stop being counted just because the write path moved.
+    // Both must be true in the SAME report for the fix to be right, which is why both are
+    // asserted here rather than in two separate tests.
+    await withRollback(
+      { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
+      async (client) => {
+        const svc = services();
+        await neutralizeOpenShifts(client, fx.locationId);
+        const shift = await svc.shifts.open(client, fx.kasirId, {
+          clientId: randomUUID(),
+          locationId: fx.locationId,
+          openingCash: '50000.00',
+        });
+
+        // POST-cutover path: a GoFood order rung up as an ordinary channel sale.
+        const gofoodPrice = '61000.00';
+        await svc.sales.create(
+          client,
+          fx.kasirId,
+          {
+            clientId: randomUUID(),
+            shiftId: shift.id,
+            locationId: fx.locationId,
+            occurredAt: new Date().toISOString(),
+            lines: [{ productId: fx.productId, qty: '1.000', unitPrice: gofoodPrice }],
+            payments: [{ method: PaymentMethod.CASH, amount: gofoodPrice }],
+            channel: 'gofood',
+          },
+          { roleKey: 'kasir', locationIds: [fx.locationId] },
+        );
+
+        // PRE-cutover path, still live data: a ShopeeFood order recorded the OLD way
+        // (`online_orders`, dormant as a write path for the app's own POS flow but still a
+        // real historical record `PosOnlineOrderService.create` can still write — see that
+        // service's header on why the table stays writable/readable).
+        await svc.onlineOrders.create(client, fx.kasirId, {
+          clientId: randomUUID(),
+          locationId: fx.locationId,
+          platform: OnlinePlatform.SHOPEEFOOD,
+          orderRef: `MIG251-${randomUUID().slice(0, 8)}`,
+          orderDate: businessDateOf(new Date()),
+          grossAmount: '42000.00',
+          discountAmount: '0.00',
+          platformFee: '0.00',
+          otherFee: '0.00',
+          netReceived: '42000.00',
+          status: OnlineOrderStatus.COMPLETED,
+          shiftId: shift.id,
+        });
+
+        const { report } = await svc.shifts.close(client, shift.id, fx.kasirId, {
+          closingCashCounted: '50000.00',
+        });
+
+        const byPlatform = new Map(report.onlineOrders.map((r) => [r.platform, r]));
+        expect(byPlatform.get(OnlinePlatform.GOFOOD)).toEqual({
+          platform: OnlinePlatform.GOFOOD,
+          count: 1,
+          net: gofoodPrice,
+        });
+        expect(byPlatform.get(OnlinePlatform.SHOPEEFOOD)).toEqual({
+          platform: OnlinePlatform.SHOPEEFOOD,
+          count: 1,
+          net: '42000.00',
+        });
       },
     );
   }, 30_000);

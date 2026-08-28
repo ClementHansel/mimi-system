@@ -44,5 +44,10 @@ import { StatutoryService } from './statutory/statutory.service';
     StatutoryController,
   ],
   providers: [PeriodsService, RunsService, ComponentsService, LoansService, StatutoryService],
+  // `ComponentsService` exported for `modules/import` (bulk import of
+  // `salary_components` master data, 2026-08-27 round) — safe precisely
+  // because, per this header, `ComponentsService` never touches
+  // `SyncEmitService` at all (class X, no sync path to inherit).
+  exports: [ComponentsService],
 })
 export class PayrollModule {}

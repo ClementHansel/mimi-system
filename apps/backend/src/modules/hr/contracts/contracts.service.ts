@@ -14,9 +14,23 @@ import { withWrite } from '../db-tx';
 import type {
   CreateContractDto,
   ListContractsQueryDto,
+  SignContractDto,
   TerminateContractDto,
   UpdateContractDto,
 } from '../dto/contract.dto';
+
+export interface ContractSignature {
+  id: UUID;
+  contractId: UUID;
+  partyType: 'employee' | 'company';
+  employeeId: UUID | null;
+  userId: UUID | null;
+  /** Name of the signer — the employee's or the company signer's, whichever party this row is. */
+  signerName: string;
+  signedAt: string;
+  method: 'wet_ink_scan' | 'digital' | 'in_person_witnessed';
+  notes: string | null;
+}
 
 export interface EmploymentContract {
   id: UUID;
@@ -42,6 +56,18 @@ export interface EmploymentContract {
    * meaningful countdown, and showing one would imply it still runs.
    */
   daysUntilExpiry: number | null;
+  /** Whether the employee's own signature row (migration 252) exists yet. */
+  employeeSigned: boolean;
+  /** How many distinct company signers have signed so far — can be more than one. */
+  companySignerCount: number;
+  /**
+   * Both required parties have signed. Mirrors EXACTLY the condition the DB
+   * trigger `contracts_require_signatures_before_active` (252) checks before
+   * allowing `status = 'active'` — computed here for display (e.g. "still
+   * needs a company signature" on a draft) rather than trusted as the gate
+   * itself, which stays in the database.
+   */
+  fullySigned: boolean;
 }
 
 /**
@@ -162,7 +188,15 @@ export class ContractsService {
           dto.baseSalary ?? null,
           dto.startDate,
           dto.endDate ?? null,
-          dto.status ?? 'active',
+          // A contract is born unsigned (migration 252's trigger refuses
+          // `status = 'active'` on INSERT unconditionally — nothing can
+          // reference a signature row for a contract that does not exist
+          // yet), so the honest default changed from 'active' to 'draft'.
+          // An explicit `dto.status` is still respected (and still checked
+          // by the trigger) so a caller CAN try 'active' — and correctly get
+          // rejected, the same defence-in-depth `assertTermMatchesType`
+          // already gives the type/term rule.
+          dto.status ?? 'draft',
           dto.signedAt ?? null,
           dto.documentAttachmentId ?? null,
           dto.notes ?? null,
@@ -246,6 +280,130 @@ export class ContractsService {
   }
 
   /**
+   * Records one party's signature (migration 252). `party: 'employee'`
+   * always signs FOR the contract's own employee (there is exactly one, and
+   * a caller cannot name a different one — that would let one employee's
+   * contract be recorded as signed by another). `party: 'company'` records
+   * the ACTOR as the signer — see `ContractsController.sign`'s doc comment
+   * for why. Signing does not itself change `status`; a separate `update`
+   * (or `create`) call to `status: 'active'` does that, and the DB trigger
+   * (252) is what actually enforces both parties are in before it succeeds —
+   * this method only ever adds evidence, it never flips the contract live.
+   */
+  async sign(
+    client: PoolClient,
+    id: UUID,
+    actorUserId: UUID,
+    dto: SignContractDto,
+  ): Promise<EmploymentContract> {
+    const existing = await this.getById(client, id);
+    if (existing.status === 'terminated') {
+      throw new BadRequestException({
+        code: ERR_CONFLICT,
+        message: `Contract ${existing.contractNumber} is terminated — it cannot be signed`,
+      });
+    }
+    return withWrite(client, async () => {
+      try {
+        if (dto.party === 'employee') {
+          await client.query(
+            `INSERT INTO contract_signatures
+               (contract_id, party_type, employee_id, signed_at, method, notes, created_by)
+             VALUES ($1, 'employee', $2, COALESCE($3, NOW()), $4, $5, $6)`,
+            [
+              id,
+              existing.employeeId,
+              dto.signedAt ?? null,
+              dto.method,
+              dto.notes ?? null,
+              actorUserId,
+            ],
+          );
+        } else {
+          await client.query(
+            `INSERT INTO contract_signatures
+               (contract_id, party_type, user_id, signed_at, method, notes, created_by)
+             VALUES ($1, 'company', $2, COALESCE($3, NOW()), $4, $5, $6)`,
+            [id, actorUserId, dto.signedAt ?? null, dto.method, dto.notes ?? null, actorUserId],
+          );
+        }
+      } catch (err) {
+        // 23505 = unique_violation — `ux_contract_signatures_employee`/
+        // `_company` (252) already refuse a second signature by the same
+        // party; caught here for a clear ERR_CONFLICT message rather than a
+        // raw Postgres error reaching the client.
+        if ((err as { code?: string }).code === '23505') {
+          throw new BadRequestException({
+            code: ERR_CONFLICT,
+            message:
+              dto.party === 'employee'
+                ? 'The employee has already signed this contract'
+                : 'This person has already signed this contract as the company',
+          });
+        }
+        throw err;
+      }
+      return this.getById(client, id);
+    });
+  }
+
+  /** Every recorded signature for one contract — who, when, how. RLS (252) scopes this identically to the contract itself. */
+  async listSignatures(client: PoolClient, contractId: UUID): Promise<ContractSignature[]> {
+    const res = await client.query<Record<string, unknown>>(
+      `SELECT s.id, s.contract_id, s.party_type, s.employee_id, s.user_id,
+              COALESCE(e.name, u.name) AS signer_name,
+              s.signed_at, s.method, s.notes
+         FROM contract_signatures s
+         LEFT JOIN employees e ON e.id = s.employee_id
+         LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.contract_id = $1
+        ORDER BY s.signed_at ASC`,
+      [contractId],
+    );
+    return res.rows.map((r) => ({
+      id: r.id as UUID,
+      contractId: r.contract_id as UUID,
+      partyType: r.party_type as ContractSignature['partyType'],
+      employeeId: (r.employee_id as UUID) ?? null,
+      userId: (r.user_id as UUID) ?? null,
+      signerName: r.signer_name as string,
+      signedAt: (r.signed_at as Date).toISOString(),
+      method: r.method as ContractSignature['method'],
+      notes: (r.notes as string) ?? null,
+    }));
+  }
+
+  /**
+   * Hard-deletes a contract. Deliberately narrow: a signed employment
+   * contract is a legal record (this is exactly what W7 exists to make
+   * trustworthy), so nothing that carries a signature or has ever left
+   * `draft` may be removed — `active`/`expired`/`terminated` are all facts
+   * that happened and stay in the record, same reasoning as `terminate`
+   * being a status change rather than a delete. A `draft` mistake with NO
+   * signatures yet is the one case this ticket's "need CRUD" audit found
+   * defensible to actually remove: nobody has acted on it, nothing points at
+   * it as evidence of anything.
+   */
+  async remove(client: PoolClient, id: UUID): Promise<void> {
+    const existing = await this.getById(client, id);
+    if (existing.status !== 'draft') {
+      throw new BadRequestException({
+        code: ERR_CONFLICT,
+        message: `Contract ${existing.contractNumber} is ${existing.status} — only a draft with no signatures can be deleted`,
+      });
+    }
+    if (existing.employeeSigned || existing.companySignerCount > 0) {
+      throw new BadRequestException({
+        code: ERR_CONFLICT,
+        message: `Contract ${existing.contractNumber} already has a recorded signature — it can no longer be deleted`,
+      });
+    }
+    await withWrite(client, async () => {
+      await client.query('DELETE FROM employment_contracts WHERE id = $1', [id]);
+    });
+  }
+
+  /**
    * Marks lapsed contracts `expired` — an explicit, auditable sweep an HR admin
    * runs (or a scheduled job calls), never a trigger. Returns what it changed
    * so the caller can show it rather than reporting a silent number.
@@ -296,6 +454,8 @@ export class ContractsService {
   private map(row: Record<string, unknown>): EmploymentContract {
     const endDate = row.end_date ? pgDateToIso(row.end_date as Date) : null;
     const status = row.status as EmploymentContract['status'];
+    const employeeSigned = row.employee_signed === true;
+    const companySignerCount = Number(row.company_signer_count ?? 0);
     return {
       id: row.id as UUID,
       contractNumber: row.contract_number as string,
@@ -320,6 +480,9 @@ export class ContractsService {
         status === 'active' && row.days_until_expiry !== null
           ? Number(row.days_until_expiry)
           : null,
+      employeeSigned,
+      companySignerCount,
+      fullySigned: employeeSigned && companySignerCount > 0,
     };
   }
 }
@@ -333,7 +496,15 @@ const SELECT_SQL = `
   SELECT c.*, e.name AS employee_name, e.employee_number, l.name AS location_name,
          CASE WHEN c.end_date IS NULL THEN NULL
               ELSE (c.end_date - (NOW() AT TIME ZONE 'Asia/Makassar')::date)
-         END AS days_until_expiry
+         END AS days_until_expiry,
+         EXISTS (
+           SELECT 1 FROM contract_signatures s
+            WHERE s.contract_id = c.id AND s.party_type = 'employee'
+         ) AS employee_signed,
+         (
+           SELECT COUNT(*) FROM contract_signatures s
+            WHERE s.contract_id = c.id AND s.party_type = 'company'
+         ) AS company_signer_count
     FROM employment_contracts c
     JOIN employees e ON e.id = c.employee_id
     LEFT JOIN locations l ON l.id = c.location_id`;

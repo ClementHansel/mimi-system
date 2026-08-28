@@ -8,8 +8,11 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
+import { ExportButton } from '@/components/common/ExportButton';
+import { api, type Paginated } from '@/lib/api';
 import { useApiList } from './useApiList';
 import { roleLabel } from './roleRank';
+import { auditIoColumns } from './lib/io-columns';
 import type { AuditRow } from './types';
 
 /**
@@ -39,6 +42,31 @@ export function AuditPanel() {
     page,
     pageSize,
   });
+
+  /**
+   * Server-paginated (25/page default), so "Ekspor" alone would silently
+   * ship one page of what can be a very long trail — the worst kind of
+   * wrong on a fraud-control surface, since it still looks complete.
+   * `pageSize=200` (the server's `@Max(200)`) with a 200-page ceiling
+   * matches `purchasing/SupplierPriceHistoryPanel`'s convention.
+   */
+  async function fetchAllAuditRows(): Promise<AuditRow[]> {
+    const all: AuditRow[] = [];
+    const size = 200;
+    for (let p = 1; p <= 200; p += 1) {
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(size) });
+      if (entityType) qs.set('entityType', entityType);
+      if (entityId) qs.set('entityId', entityId);
+      if (userId) qs.set('userId', userId);
+      if (module) qs.set('module', module);
+      if (range.from) qs.set('from', range.from);
+      if (range.to) qs.set('to', range.to);
+      const res = await api.get<Paginated<AuditRow>>(`/audit?${qs}`);
+      all.push(...res.rows);
+      if (res.rows.length < size || all.length >= res.total) break;
+    }
+    return all;
+  }
 
   const columns: DataTableColumn<AuditRow>[] = [
     {
@@ -85,49 +113,57 @@ export function AuditPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-2">
-        <Input
-          label={t('admin.audit.filterEntityType')}
-          value={entityType}
-          onChange={(e) => {
-            setEntityType(e.target.value);
-            setPage(1);
-          }}
-          wrapperClassName="w-40"
-        />
-        <Input
-          label={t('admin.audit.filterEntityId')}
-          value={entityId}
-          onChange={(e) => {
-            setEntityId(e.target.value);
-            setPage(1);
-          }}
-          wrapperClassName="w-48"
-        />
-        <Input
-          label={t('admin.audit.filterUser')}
-          value={userId}
-          onChange={(e) => {
-            setUserId(e.target.value);
-            setPage(1);
-          }}
-          wrapperClassName="w-40"
-        />
-        <Input
-          label={t('admin.audit.filterModule')}
-          value={module}
-          onChange={(e) => {
-            setModule(e.target.value);
-            setPage(1);
-          }}
-          wrapperClassName="w-40"
-        />
-        <DateRangePicker
-          value={range}
-          onChange={(v) => {
-            setRange(v);
-            setPage(1);
-          }}
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <Input
+            label={t('admin.audit.filterEntityType')}
+            value={entityType}
+            onChange={(e) => {
+              setEntityType(e.target.value);
+              setPage(1);
+            }}
+            wrapperClassName="w-40"
+          />
+          <Input
+            label={t('admin.audit.filterEntityId')}
+            value={entityId}
+            onChange={(e) => {
+              setEntityId(e.target.value);
+              setPage(1);
+            }}
+            wrapperClassName="w-48"
+          />
+          <Input
+            label={t('admin.audit.filterUser')}
+            value={userId}
+            onChange={(e) => {
+              setUserId(e.target.value);
+              setPage(1);
+            }}
+            wrapperClassName="w-40"
+          />
+          <Input
+            label={t('admin.audit.filterModule')}
+            value={module}
+            onChange={(e) => {
+              setModule(e.target.value);
+              setPage(1);
+            }}
+            wrapperClassName="w-40"
+          />
+          <DateRangePicker
+            value={range}
+            onChange={(v) => {
+              setRange(v);
+              setPage(1);
+            }}
+          />
+        </div>
+        <ExportButton
+          rows={data.rows}
+          columns={auditIoColumns()}
+          filenameBase="jejak-audit"
+          fetchAll={fetchAllAuditRows}
         />
       </div>
       <DataTable

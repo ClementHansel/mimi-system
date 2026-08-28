@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
@@ -20,6 +20,11 @@ import {
   PermissionGate,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import type { CsvColumn } from '@/lib/export/csv';
+import { parseDecimal, type CsvRecord } from '@/lib/import/csv-parse';
+import { buildNameIndex, resolveNamed } from '@/lib/import/resolve';
 import { formatQty } from '@/lib/formatters';
 import { ApiError } from '@/lib/api';
 import type { Opname, OpnameLine } from '@/lib/shared-types';
@@ -40,6 +45,60 @@ import {
 } from './lib/opname-variance';
 import type { StorageArea } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
+import { fmtDate } from '@/lib/dates';
+
+/** The opname DOCUMENT list — one row per count, for the register/audit trail. */
+const LIST_EXPORT_COLUMNS: CsvColumn<Opname>[] = [
+  { key: 'opnameNumber', header: 'No. Opname' },
+  { key: 'startedAt', header: 'Dimulai', format: (r) => fmtDate(r.startedAt) },
+  { key: 'status', header: 'Status' },
+  { key: 'countedBy', header: 'Dihitung Oleh' },
+  { key: 'lineCount', header: 'Jumlah Baris' },
+  { key: 'disputedCount', header: 'Selisih Disengketakan' },
+  {
+    key: 'submittedAt',
+    header: 'Diajukan',
+    format: (r) => (r.submittedAt ? fmtDate(r.submittedAt) : ''),
+  },
+];
+
+/**
+ * THE COUNT SHEET, which is the export that matters here.
+ *
+ * A warehouse count is not done at a laptop — it is done walking the freezer
+ * with a printout or a phone, and typed in afterwards. So the useful round trip
+ * is: export this sheet (every item, with the system quantity to compare
+ * against), count into the `Jumlah Dihitung` column in a spreadsheet, import it
+ * back. `Nama Barang` is the join key on the way back, which is why it is
+ * exported verbatim rather than prettified.
+ *
+ * `Jumlah Sistem` is exported for the counter to see and DELIBERATELY not read
+ * on import: the whole point of an opname is that the counted number is
+ * independent of what the system believed, and letting a file overwrite the
+ * system side would erase the variance the document exists to record.
+ */
+const SHEET_EXPORT_COLUMNS: CsvColumn<OpnameLine>[] = [
+  { key: 'itemName', header: 'Nama Barang' },
+  { key: 'storageAreaName', header: 'Area Penyimpanan' },
+  { key: 'unitCode', header: 'Satuan' },
+  { key: 'systemQty', header: 'Jumlah Sistem', format: (l) => formatQty(l.systemQty) },
+  {
+    key: 'countedQty',
+    header: 'Jumlah Dihitung',
+    // Blank, not "0", for a line nobody has counted yet — a zero here would be
+    // a claim that the shelf is empty, and re-importing the sheet would turn
+    // every uncounted line into a total write-off.
+    format: (l) => (l.countedQty === null ? '' : formatQty(l.countedQty)),
+  },
+  { key: 'varianceReason', header: 'Alasan Selisih', format: (l) => l.varianceReason ?? '' },
+];
+
+/** One imported count, addressed to a line that already exists in the sheet. */
+interface CountImportRow {
+  lineId: string;
+  countedQty: Qty;
+  varianceReason: string;
+}
 
 /**
  * Stock opname at the central warehouse — the same count-sheet/variance/
@@ -124,6 +183,91 @@ export function StockOpnamePanel() {
     ? canSubmitOpname(lineDrafts) && lineDrafts.some((l) => l.countedQty !== null)
     : false;
 
+  /**
+   * Count-sheet lines indexed by item name — the join key an imported file uses.
+   * Built from the OPEN document only: an opname's lines are created by the
+   * server for one storage area, so a row naming an item that is not on this
+   * sheet is not a new line to add, it is a row from the wrong file, and saying
+   * that is more useful than inventing a line the endpoint would reject.
+   */
+  const sheetIndex = useMemo(
+    () => buildNameIndex((active?.lines ?? []).map((l) => ({ id: l.id, name: l.itemName }))),
+    [active],
+  );
+
+  const countImportColumns = [
+    { header: 'Nama Barang', hint: 'nama persis seperti pada sheet hitung', required: true },
+    { header: 'Jumlah Dihitung', hint: 'angka hasil hitung fisik, mis. 12,5', required: true },
+    {
+      header: 'Alasan Selisih',
+      hint: 'wajib kalau hasil hitung berbeda dari jumlah sistem',
+    },
+  ];
+
+  function mapCountRow(
+    row: CsvRecord,
+  ): { ok: true; line: CountImportRow } | { ok: true; line: null } | { ok: false; error: string } {
+    const nameText = row.get('Nama Barang');
+    if (!nameText) return { ok: false, error: t('lineImport.missingItem') };
+    const line = resolveNamed(sheetIndex, nameText);
+    if (!line) return { ok: false, error: t('lineImport.notInDocument') };
+
+    const qtyText = row.get('Jumlah Dihitung');
+    // An UNCOUNTED line is skipped, not rejected. Exporting the sheet before
+    // the count leaves this column blank on every row, and a half-finished
+    // count is the normal case — flagging 200 "errors" for it would bury the
+    // rows that are genuinely wrong.
+    if (!qtyText) return { ok: true, line: null };
+    const qty = parseDecimal(qtyText);
+    if (qty === null) return { ok: false, error: t('lineImport.invalidQty', { value: qtyText }) };
+    if (qty.startsWith('-')) return { ok: false, error: t('lineImport.negativeQty') };
+
+    return {
+      ok: true,
+      line: {
+        lineId: line.id,
+        countedQty: qty as Qty,
+        varianceReason: row.get('Alasan Selisih'),
+      },
+    };
+  }
+
+  /**
+   * Imported counts land in `drafts`, exactly where the QtyInputs write.
+   *
+   * That is what keeps the import honest: the variance gate
+   * (`canSubmitOpname`) and the per-line "reason required" errors run over the
+   * same state whether a number was typed or imported, so a file cannot submit
+   * a variance without a reason when a human cannot. `replace` clears the
+   * counts it did not set, since a re-export/re-import of the sheet is meant to
+   * be the authoritative count, not a merge.
+   */
+  function applyCounts(imported: CountImportRow[], mode: 'append' | 'replace') {
+    setDrafts((prev) => {
+      const base =
+        mode === 'replace'
+          ? Object.fromEntries(
+              (active?.lines ?? []).map((l) => [
+                l.id,
+                { countedQty: null as Qty | null, varianceReason: '' },
+              ]),
+            )
+          : { ...prev };
+      for (const row of imported) {
+        base[row.lineId] = {
+          countedQty: row.countedQty,
+          // Keep a reason already on screen when the file leaves that cell
+          // blank — an operator who typed the explanation here should not lose
+          // it to a file that only carries quantities.
+          varianceReason: row.varianceReason || (prev[row.lineId]?.varianceReason ?? ''),
+        };
+      }
+      return base;
+    });
+  }
+
+  const hasTypedCounts = Object.values(drafts).some((d) => d.countedQty !== null);
+
   async function saveLines() {
     if (!active) return;
     setSavingLines(true);
@@ -182,7 +326,13 @@ export function StockOpnamePanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportButton
+          rows={rows}
+          columns={LIST_EXPORT_COLUMNS}
+          filenameBase="stock-opname"
+          pdfTitle={t('warehouse.tabs.opname')}
+        />
         <PermissionGate permission="opname.create">
           <Button
             leftIcon={<Plus className="size-4" />}
@@ -237,7 +387,29 @@ export function StockOpnamePanel() {
       >
         {active && (
           <div className="flex flex-col gap-4">
-            <StatusBadge domain="opname" status={active.status} />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <StatusBadge domain="opname" status={active.status} />
+              {/* Export → count on paper/phone → import back. Both halves sit on
+                  the sheet itself, because that is the document being counted;
+                  the list's export above is the register, a different thing. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <ExportButton
+                  rows={active.lines}
+                  columns={SHEET_EXPORT_COLUMNS}
+                  filenameBase={`sheet-hitung-${active.opnameNumber}`}
+                  pdfTitle={`${t('outlet.opname.countSheet')} — ${active.opnameNumber}`}
+                />
+                <LineImportButton<CountImportRow>
+                  title={`${t('outlet.opname.countSheet')} — ${active.opnameNumber}`}
+                  templateBase={`sheet-hitung-${active.opnameNumber}`}
+                  columns={countImportColumns}
+                  mapRow={mapCountRow}
+                  hasExistingLines={hasTypedCounts}
+                  disabled={active.lines.length === 0}
+                  onLines={applyCounts}
+                />
+              </div>
+            </div>
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">{t('outlet.opname.countSheet')}</CardTitle>

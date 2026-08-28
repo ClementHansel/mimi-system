@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Undo2, AlertTriangle } from 'lucide-react';
+import { Undo2, AlertTriangle, Printer } from 'lucide-react';
 import { calculateCartSummary } from '@mimi/shared';
 import { useI18n } from '@/lib/i18n';
 import { Button, TabsContent, Modal, EmptyState } from '@/components/ui';
@@ -12,16 +12,15 @@ import { ProductGrid } from '@/components/pos/ProductGrid';
 import { Cart } from '@/components/pos/Cart';
 import { PaymentPanel } from '@/components/pos/PaymentPanel';
 import { VoidRefundModal } from '@/components/pos/VoidRefundModal';
-import { OnlineOrderForm } from '@/components/pos/OnlineOrderForm';
 import { ShiftPanel } from '@/components/pos/ShiftPanel';
 import { usePosShell } from '@/components/pos/PosShellContext';
 import { PosLocationPicker } from '@/components/pos/PosLocationPicker';
-import { loadCatalog } from '@/components/pos/pos-runtime';
 import { releaseProductPhotoUrls } from '@/components/pos/product-photo-cache';
-import { usePosCartStore } from '@/components/pos/cart-store';
+import { usePosCartStore, applyVoucherToSummary } from '@/components/pos/cart-store';
 import { usePosShiftStore } from '@/components/pos/shift-store';
+import { usePosChannelStore } from '@/components/pos/channel-store';
+import { priceForChannel } from '@/components/pos/channel-pricing';
 import { useSessionStore } from '@/stores/session-store';
-import type { PosCatalog } from '@/components/pos/types';
 
 /**
  * POS (F02) — the cashier's tablet. See `docs/CONTRACTS.md` §4.13 and
@@ -32,27 +31,35 @@ import type { PosCatalog } from '@/components/pos/types';
  * F-POS-2: POS is now a standalone full-screen app — `app/pos/layout.tsx`
  * supplies the top bar/tab nav/branch line (`PosTopBar`/`PosStatusBar`), and
  * this file supplies the matching `<TabsContent>` panels once an outlet is
- * resolved and a shift is open. `actor`/`posLocation` come from
+ * resolved and a shift is open. `actor`/`posLocation`/`catalog` come from
  * `usePosShell()` (a context the layout also reads) instead of calling
- * `useActorMeta()`/`usePosLocation()` again here — one resolution, shared,
- * so the header and this page can never disagree about which outlet is
- * active or race each other's `/locations` fetch.
+ * `useActorMeta()`/`usePosLocation()`/`loadCatalog()` again here — one
+ * resolution, shared, so the header and this page can never disagree about
+ * which outlet is active, which prices are on screen, or race each other's
+ * `/locations`/`/pos/catalog` fetch.
+ *
+ * F-POS-3: GoFood/ShopeeFood are no longer a separate tab/form — they're a
+ * CHANNEL of the same sale, toggled from `PosTopBar` (`ChannelToggle`,
+ * global `usePosChannelStore`) and applied here to grid/cart pricing and to
+ * the committed sale. See `channel-pricing.ts` for the null->walk-in
+ * fallback and `ChannelToggle.tsx` for what happens when the channel is
+ * switched mid-cart.
  */
 export default function PosPage() {
   const { t } = useI18n();
-  const { actor, posLocation } = usePosShell();
+  const { actor, posLocation, catalog, catalogError } = usePosShell();
   const kasirName = useSessionStore((s) => s.user?.name ?? '');
   const currentShift = usePosShiftStore((s) => s.current);
   const cartLines = usePosCartStore((s) => s.lines);
   const saleDiscount = usePosCartStore((s) => s.saleDiscount);
   const setSaleDiscount = usePosCartStore((s) => s.setSaleDiscount);
   const addProduct = usePosCartStore((s) => s.addProduct);
+  const appliedVoucher = usePosCartStore((s) => s.appliedVoucher);
+  const channel = usePosChannelStore((s) => s.channel);
 
   const [runtime, setRuntime] = useState<LocalRuntime | null>(null);
   const [runtimeError, setRuntimeError] = useState(false);
   const [runtimeAttempt, setRuntimeAttempt] = useState(0);
-  const [catalog, setCatalog] = useState<PosCatalog | null>(null);
-  const [catalogError, setCatalogError] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
@@ -66,13 +73,6 @@ export default function PosPage() {
 
   const location = posLocation.status === 'ready' ? posLocation.location : null;
 
-  useEffect(() => {
-    if (!location) return;
-    loadCatalog(location.id)
-      .then(setCatalog)
-      .catch(() => setCatalogError(true));
-  }, [location]);
-
   // Menu photos are resolved to `blob:` urls that live as long as this surface
   // does (the grid re-mounts tiles constantly as the cashier flicks between
   // categories, so revoking per tile would re-decode the same images every
@@ -80,14 +80,23 @@ export default function PosPage() {
   // BYTES survive in the Cache API, so a return visit costs no re-download.
   useEffect(() => releaseProductPhotoUrls, []);
 
-  const summary = calculateCartSummary(
-    cartLines.map((l) => ({
-      productId: l.productId,
-      unitPrice: l.unitPrice,
-      qty: l.qty,
-      discount: l.discount,
-    })),
-    saleDiscount,
+  // `applyVoucherToSummary` composes the voucher's server-checked discount
+  // ON TOP of the shared calculator's own total, rather than being folded
+  // into `saleDiscount` — see that function's doc in `cart-store.ts` for why
+  // (the short version: `@mimi/shared` is frozen for this ticket, and the
+  // voucher must stay distinguishable from the cashier's own discount all
+  // the way to the receipt and the sync payload).
+  const summary = applyVoucherToSummary(
+    calculateCartSummary(
+      cartLines.map((l) => ({
+        productId: l.productId,
+        unitPrice: l.unitPrice,
+        qty: l.qty,
+        discount: l.discount,
+      })),
+      saleDiscount,
+    ),
+    appliedVoucher,
   );
 
   if (posLocation.status === 'error') {
@@ -158,8 +167,13 @@ export default function PosPage() {
             <ProductGrid
               products={catalog?.products ?? []}
               categories={catalog?.categories ?? []}
+              channel={channel}
               onAdd={(p) =>
-                addProduct({ productId: p.id, productName: p.name, unitPrice: p.price })
+                addProduct({
+                  productId: p.id,
+                  productName: p.name,
+                  unitPrice: priceForChannel(p, channel),
+                })
               }
             />
           </div>
@@ -186,12 +200,42 @@ export default function PosPage() {
             >
               {t('pos.voidLastSale')}
             </Button>
+            {/*
+              `lastSaleId` is a CLIENT-MINTED id (`mintClientId()` in
+              `pos-runtime.ts`) — the sale it names may not have reached the
+              server yet (offline, or synced but not yet processed), so
+              `/print/receipt/:saleId` (`getReceiptDocument`, `doc-api.ts`)
+              can 404 while this till is still offline. That is expected, not
+              a bug to guard against here: the print route already renders
+              its own load-failure state for a missing document rather than a
+              blank tab (see `app/print/receipt/[id]/page.tsx`), so a cashier
+              who taps "Cetak" moments after an offline sale sees an honest
+              "not available yet" instead of a stale/blank page, and can
+              retry once the till reconnects and syncs. Same idiom as the
+              Surat Jalan print link in `SuratJalanDetailDrawer.tsx` — an `<a
+              target="_blank">` to the print route, not a fetch-then-render
+              here.
+            */}
+            <a
+              href={lastSaleId ? `/print/receipt/${lastSaleId}` : undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!lastSaleId}
+              onClick={(e) => {
+                if (!lastSaleId) e.preventDefault();
+              }}
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<Printer className="size-4" />}
+                disabled={!lastSaleId}
+              >
+                {t('doc.print.receiptTitle')}
+              </Button>
+            </a>
           </div>
         </div>
-      </TabsContent>
-
-      <TabsContent value="online" className="pt-0">
-        <OnlineOrderForm runtime={runtime} actor={actor} locationId={location.id} />
       </TabsContent>
 
       <TabsContent value="shift" className="pt-0">
@@ -211,6 +255,7 @@ export default function PosPage() {
           locationId={location.id}
           locationName={location.name}
           summary={summary}
+          channel={channel}
           onCompleted={(saleId) => {
             setLastSaleId(saleId);
             setPayOpen(false);

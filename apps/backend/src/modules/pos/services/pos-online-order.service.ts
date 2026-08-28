@@ -7,12 +7,10 @@ import {
 } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
-  calculateOnlineOrderJournalSplit,
   calculateOnlineOrderNet,
   ERR_CONFLICT,
   ERR_NET_MISMATCH,
   ERR_NOT_FOUND,
-  JournalEventType,
   MovementType,
   OnlineOrderStatus,
   OnlinePlatform,
@@ -23,7 +21,6 @@ import {
   type Qty,
   type UUID,
 } from '@mimi/shared';
-import { EventBus } from '../../../kernel/events/event-bus.service';
 import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.service';
 import {
   StockInsufficientError,
@@ -67,13 +64,41 @@ const SELECT = `
  * Net-received maths is `@mimi/shared`'s cart module (`calculateOnlineOrderNet`
  * / the request-body-vs-computed check CONTRACTS.md calls `ERR_NET_MISMATCH`)
  * — never hand-rolled here, per the module brief.
+ *
+ * REVENUE POSTING RETIRED HERE, 2026-08-27 (owner decision — three-tier
+ * channel pricing, migration 249): GoFood/ShopeeFood orders are now rung up
+ * as an ordinary POS sale with `channel` set (`PosSaleService`), which is now
+ * the ONLY thing that posts `journal.action` for a platform order. This
+ * class used to publish its own `journal.action` (`OUTLET_SALES`, split via
+ * `calculateOnlineOrderJournalSplit`) from `applyOnlineOrderFact` right below
+ * — left in with both paths live, a completed channel sale AND a completed
+ * online order for the same real-world transaction would each post revenue,
+ * double-counting it. DO NOT ADD A `journal.action` PUBLISH BACK HERE — see
+ * `pos-online-order-gl-posting.spec.ts`, which now pins the ABSENCE of a
+ * journal entry from this path rather than its presence.
+ *
+ * The table, `create()`/`applyOnlineOrderFact()`, and `GET /pos/online-orders`
+ * are all left DORMANT rather than removed: 152+ completed historical rows
+ * are real reporting data (`SalesReportService.getOnlineOrdersReport`,
+ * `mv_sales_daily`'s online arm), and `applyOnlineOrderFact` is the shared
+ * core `PosSyncProjector` still calls for a `online_orders.recorded` sync
+ * event a device queued before it was upgraded past the retired entry form —
+ * D-17a: a fact that already happened on a device is never rejected just
+ * because the flow that produced it is being phased out. Nothing in this
+ * module's OWN surface calls `create()` any more once the frontend's entry
+ * form is gone; it is not additionally blocked here so the shift-close
+ * reconciliation report (`PosShiftService`, `pos-shift-flow.integration.test.ts`)
+ * and any legacy correction keep working exactly as before — only the double
+ * -post risk is what this owner decision required fixing.
+ *
+ * `EventBus` is no longer a constructor dependency — the `journal.action`
+ * publish it existed for is gone (see above) and TS's `noUnusedLocals`
+ * rightly refuses an injected-but-never-read private member, so every call
+ * site that built this service now passes `stockLedger` alone.
  */
 @Injectable()
 export class PosOnlineOrderService {
-  constructor(
-    private readonly stockLedger: StockLedgerService,
-    private readonly eventBus: EventBus,
-  ) {}
+  constructor(private readonly stockLedger: StockLedgerService) {}
 
   async create(
     client: PoolClient,
@@ -187,42 +212,16 @@ export class PosOnlineOrderService {
       );
     }
 
-    // B-16/E7 — a completed order is the terminal state for GL purposes (`OnlineOrderStatus` has
-    // only completed/cancelled, per migration 053's CHECK; there is no later "settled" transition
-    // that revenue-recognition should instead wait for). Independent of the items/stock guard above
-    // — a manually-entered order with no recipe items still needs its revenue/fee split recorded.
-    // `isConflictLoser` is excluded for the same reason `postUsage` above excludes it: SYNC-PROTOCOL
-    // C8 ("both kept; second flagged; revenue reports use first") means the loser's amounts must
-    // never touch the ledger, or the platform's revenue would be double-booked.
-    //
-    // Split via the SAME `calculateOnlineOrderJournalSplit` the property test already proves nets to
-    // `gross` (never re-derived here) — `resolveOutletSalesLegs`'s 'online' branch debits 1030 by
-    // `byMethod.online` (the net leg) and credits 4000, then debits 6300/credits 1030 by `onlineFees`
-    // (discount + platform fee + other fee), leaving 1030 at exactly `netReceived` for X5
-    // (`platform_settlement`) to clear later when the platform actually pays out.
-    if (input.status === OnlineOrderStatus.COMPLETED && !input.isConflictLoser) {
-      const { netLeg, feeLeg } = calculateOnlineOrderJournalSplit({
-        grossAmount: input.grossAmount,
-        discountAmount: input.discountAmount,
-        platformFee: input.platformFee,
-        otherFee: input.otherFee,
-      });
-      await this.eventBus.publish('journal.action', {
-        eventType: JournalEventType.OUTLET_SALES,
-        documentType: 'online_order',
-        documentId: id,
-        locationId: input.locationId,
-        amount: input.grossAmount,
-        context: { byMethod: { online: netLeg }, onlineFees: feeLeg },
-        // `order_date` is a DATE (no time-of-day) that may be recorded days after the fact — the
-        // entry has to land on THAT WITA business day, not the moment this code runs. Built the same
-        // way `daily-posting.service.ts`'s `endOfBusinessDay` is: the calendar string IS the WITA
-        // date already, so it only needs the explicit +08:00 offset tacked on, never a re-shift
-        // through `toWitaOccurredAt` (which expects a real instant, not an already-WITA date string —
-        // feeding one in would double-apply the 8-hour offset and land on the wrong day).
-        occurredAt: `${input.orderDate}T23:59:59.999+08:00`,
-      });
-    }
+    // B-16/E7 (HISTORICAL — REMOVED 2026-08-27, owner decision): this used to publish
+    // `journal.action` (`OUTLET_SALES`, split via `calculateOnlineOrderJournalSplit`) for every
+    // COMPLETED, non-conflict-loser order right here. Three-tier channel pricing (migration 249)
+    // made a completed GoFood/ShopeeFood order a POS `Sale` with `channel` set instead, and
+    // `PosSaleService.applySaleFact` posts ITS OWN `journal.action` for that sale — leaving this
+    // publish in would double-count the same real-world transaction's revenue. See the class header
+    // for the full rationale and `pos-online-order-gl-posting.spec.ts` for the regression test that
+    // now pins the ABSENCE of a journal entry here. DO NOT RE-ADD A `journal.action` PUBLISH IN
+    // THIS METHOD without also proving the channel-sale path has stopped posting for the same
+    // order — otherwise this is the exact double-count bug this comment documents.
 
     return this.mustGetById(client, id);
   }

@@ -6,6 +6,7 @@ import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
 import { Button, Input, MoneyInput, Select } from '@/components/ui';
 import { formatMoney } from '@/lib/formatters';
+import { ExportButton } from '@/components/common/ExportButton';
 import { EffectiveWindowEditor } from './EffectiveWindowEditor';
 import {
   getStatutoryArticle17,
@@ -17,6 +18,12 @@ import {
   putStatutoryPtkp,
   putStatutoryTer,
 } from './lib/hr-api';
+import {
+  ARTICLE17_EXPORT_COLUMNS,
+  BPJS_EXPORT_COLUMNS,
+  PTKP_EXPORT_COLUMNS,
+  TER_EXPORT_COLUMNS,
+} from './lib/io-columns';
 import type { Article17BracketRow, BpjsRow, PtkpRow, TerBracketRow } from './lib/types';
 
 const BPJS_PROGRAMS = ['kesehatan', 'jht', 'jkk', 'jkm', 'jp'] as const;
@@ -108,6 +115,9 @@ function BpjsEditor() {
       description={t('hr.statutory.bpjsDescription')}
       rows={rows}
       loading={loading}
+      headerActions={
+        <ExportButton rows={rows} columns={BPJS_EXPORT_COLUMNS} filenameBase="tarif-bpjs" />
+      }
       historyColumns={[
         t('hr.statutory.program'),
         t('hr.statutory.employerPct'),
@@ -232,6 +242,9 @@ function TerEditor() {
       description={t('hr.statutory.terDescription')}
       rows={rows}
       loading={loading}
+      headerActions={
+        <ExportButton rows={rows} columns={TER_EXPORT_COLUMNS} filenameBase="tarif-pph21-ter" />
+      }
       historyColumns={[
         t('hr.statutory.category'),
         t('hr.statutory.bracketMin'),
@@ -312,6 +325,9 @@ function PtkpEditor() {
       description={t('hr.statutory.ptkpDescription')}
       rows={rows}
       loading={loading}
+      headerActions={
+        <ExportButton rows={rows} columns={PTKP_EXPORT_COLUMNS} filenameBase="tabel-ptkp" />
+      }
       historyColumns={[
         t('hr.statutory.ptkpCode'),
         t('hr.statutory.annualAmount'),
@@ -438,6 +454,13 @@ function Article17Editor() {
       description={t('hr.statutory.article17Description')}
       rows={rows}
       loading={loading}
+      headerActions={
+        <ExportButton
+          rows={rows}
+          columns={ARTICLE17_EXPORT_COLUMNS}
+          filenameBase="tarif-pasal-17"
+        />
+      }
       historyColumns={[
         t('hr.statutory.bracketMin'),
         t('hr.statutory.bracketMax'),

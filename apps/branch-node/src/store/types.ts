@@ -27,6 +27,46 @@ export interface NodeIdentity {
   locationCode: string | null;
   locationName: string | null;
   lanCert: LanCert | null;
+  /** W3-10: this node's own network-config apply-then-confirm state — see `network/applier.ts`'s doc comment for why the revert decision lives here (locally) rather than on the cloud. */
+  networkState: NodeNetworkState;
+}
+
+/** The subset of a node's "network settings" this build can genuinely apply in-process, with no
+ *  host-level network-management privileges (WiFi SSID/passphrase and static-IP assignment are
+ *  OS-level concerns this Node.js process has no dependency/capability for — see
+ *  `network/applier.ts`'s doc comment; they are accepted and stored cloud-side but reported back
+ *  `applied: false, reason: 'unsupported...'` rather than silently no-opped). */
+export interface AppliableNetworkConfig {
+  /** This node's own LAN listener port (`LanServer`/`config.healthPort`). */
+  healthPort: number;
+  /** Discovery scan subnet (`config.scanSubnet`); `null` = auto-derive from local interfaces. */
+  scanSubnet: string | null;
+}
+
+export interface NodeNetworkState {
+  /** What this node is actually running with right now. */
+  effective: AppliableNetworkConfig;
+  /** The last config CONFIRMED reachable — the revert target. Only promoted from `effective` once
+   *  an apply is confirmed; an apply that never confirms leaves this untouched. */
+  lastKnownGood: AppliableNetworkConfig;
+  status: 'stable' | 'applying' | 'reverted';
+  /** Correlates with the cloud's `config_updated` push while an apply is in flight; `null` once acked. */
+  pendingConfigId: UUID | null;
+}
+
+/**
+ * The "nothing persisted yet" sentinel (`healthPort: 0`, never a valid real port) — a fresh store
+ * that has never gone through `RelayEngine`'s boot reconciliation (`resolveBootNetworkState`) reports
+ * this rather than a plausible-looking but made-up port/subnet, so the boot logic can tell "never set"
+ * apart from "genuinely applied port happens to look like a default" without a separate nullable field.
+ */
+export function emptyNetworkState(): NodeNetworkState {
+  return {
+    effective: { healthPort: 0, scanSubnet: null },
+    lastKnownGood: { healthPort: 0, scanSubnet: null },
+    status: 'stable',
+    pendingConfigId: null,
+  };
 }
 
 export interface LanCert {

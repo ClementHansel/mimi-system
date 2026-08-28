@@ -121,6 +121,35 @@ export class UpdateContractDto {
   notes?: string | null;
 }
 
+export const SIGNATURE_PARTIES = ['employee', 'company'] as const;
+export const SIGNATURE_METHODS = ['wet_ink_scan', 'digital', 'in_person_witnessed'] as const;
+
+/**
+ * Records one party's signature (migration 252). `party: 'employee'` records
+ * the contract's own employee; the person doing the recording is the
+ * signature's `created_by`, never its subject — an employee cannot be made to
+ * "sign" by someone else's say-so alone, this only records that they did.
+ * `party: 'company'` records the CALLER (`req.user.sub`) as the company
+ * signer — see `ContractsController.sign`'s doc comment for why there is no
+ * separate "which user signed" field: the acting user IS the signer.
+ */
+export class SignContractDto {
+  @IsIn(SIGNATURE_PARTIES)
+  party!: (typeof SIGNATURE_PARTIES)[number];
+
+  @IsIn(SIGNATURE_METHODS)
+  method!: (typeof SIGNATURE_METHODS)[number];
+
+  /** Defaults to now when omitted — e.g. backdating a scanned wet-ink signature. */
+  @IsOptional()
+  @IsDateString()
+  signedAt?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 export class TerminateContractDto {
   /**
    * Mandatory. A contract ended early without a recorded reason is exactly the

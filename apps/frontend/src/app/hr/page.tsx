@@ -1,6 +1,15 @@
 'use client';
 
-import { Users, CalendarClock, ClipboardCheck, FileClock, Wallet, Percent } from 'lucide-react';
+import {
+  Users,
+  CalendarClock,
+  ClipboardCheck,
+  FileClock,
+  Wallet,
+  Percent,
+  FileSignature,
+  Coins,
+} from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Tabs, TabsList, TabsTrigger, TabsContent, PermissionGate } from '@/components/ui';
 import { EmployeesPanel } from '@/components/hr/EmployeesPanel';
@@ -9,6 +18,8 @@ import { AttendancePanel } from '@/components/hr/AttendancePanel';
 import { LeaveApprovalPanel } from '@/components/hr/LeaveApprovalPanel';
 import { PayrollPanel } from '@/components/hr/PayrollPanel';
 import { StatutoryRatesPanel } from '@/components/hr/StatutoryRatesPanel';
+import { SalaryComponentsPanel } from '@/components/hr/SalaryComponentsPanel';
+import { ContractsPanel } from '@/components/hr/ContractsPanel';
 
 /**
  * F08 `hr` — the HR Admin / Supervisor back office (laptop, BUILD-PLAN
@@ -64,6 +75,18 @@ export default function HrPage() {
               {t('hr.tabs.statutory')}
             </span>
           </TabsTrigger>
+          <TabsTrigger value="components">
+            <span className="inline-flex items-center gap-1.5">
+              <Coins className="size-4" aria-hidden />
+              {t('hr.tabs.components')}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="contracts">
+            <span className="inline-flex items-center gap-1.5">
+              <FileSignature className="size-4" aria-hidden />
+              {t('hr.tabs.contracts')}
+            </span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="employees">
@@ -104,6 +127,26 @@ export default function HrPage() {
            */}
           <PermissionGate permission="payroll.statutory.read" showMessage>
             <StatutoryRatesPanel />
+          </PermissionGate>
+        </TabsContent>
+        <TabsContent value="components">
+          {/* `payroll.read`, matching the SERVER: `GET /payroll/components`
+              requires `payroll.read`, while `payroll.component.manage` is the
+              WRITE key (POST/PATCH only). Gating the tab on the manage key
+              would hide the component list from every read-only holder — the
+              same mistake the `statutory` tab below documents having made. */}
+          <PermissionGate permission="payroll.read" showMessage>
+            <SalaryComponentsPanel />
+          </PermissionGate>
+        </TabsContent>
+        <TabsContent value="contracts">
+          {/* `hr.contract.read` is the list permission;
+              `hr.contract.read.own` is a DIFFERENT, narrower key that backs
+              `GET /hr/contracts/me` for an employee reading their own contract
+              (that surface belongs on `/me`, not on this back-office tab), and
+              `hr.contract.manage` is the write key checked inside the panel. */}
+          <PermissionGate permission="hr.contract.read" showMessage>
+            <ContractsPanel />
           </PermissionGate>
         </TabsContent>
       </Tabs>

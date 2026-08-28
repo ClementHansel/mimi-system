@@ -7,6 +7,7 @@ import {
   VoidRefundType,
   type Money,
   type Qty,
+  type SaleChannel,
   type UUID,
 } from '@mimi/shared';
 import type { SyncEventEnvelope } from '@mimi/sync-protocol';
@@ -82,6 +83,9 @@ interface SalePaymentPayload {
   reference?: string;
   proofAttachmentId?: UUID;
 }
+/** `sales.channel`'s CHECK constraint values, verbatim (migration 249) — same list `sale.dto.ts`'s `SALE_CHANNELS` validates against on the REST path. */
+const SALE_CHANNELS: readonly SaleChannel[] = ['walk_in', 'gofood', 'shopeefood'];
+
 interface SaleCompletedPayload {
   clientId: UUID;
   locationId: UUID;
@@ -91,6 +95,10 @@ interface SaleCompletedPayload {
   payments: SalePaymentPayload[];
   discount?: Money;
   receiptNumber?: string;
+  /** Absent on a payload queued by a pre-channel-pricing app build — `applySaleFact` defaults it to `'walk_in'`. */
+  channel?: SaleChannel;
+  /** Absent on a payload queued by a pre-voucher app build, and on any sale rung without a coupon. */
+  voucher?: { code: string; discount?: Money; offlineAccepted: boolean };
 }
 function readSaleCompleted(data: unknown): SaleCompletedPayload | undefined {
   const d = obj(data);
@@ -102,6 +110,12 @@ function readSaleCompleted(data: unknown): SaleCompletedPayload | undefined {
   const paymentsRaw = Array.isArray(d.payments) ? d.payments : undefined;
   if (!clientId || !locationId || !shiftId || !occurredAt || !linesRaw || !paymentsRaw)
     return undefined;
+  const channelRaw = str(d.channel);
+  // Present but not one of the three known values is a malformed payload, not "absent" — fail the
+  // whole read rather than silently coercing a corrupt channel to the walk-in default.
+  if (channelRaw !== undefined && !SALE_CHANNELS.includes(channelRaw as SaleChannel))
+    return undefined;
+  const channel = channelRaw as SaleChannel | undefined;
 
   const lines: SaleLinePayload[] = [];
   for (const raw of linesRaw) {
@@ -128,6 +142,33 @@ function readSaleCompleted(data: unknown): SaleCompletedPayload | undefined {
     });
   }
 
+  /**
+   * The voucher block is OPTIONAL and its absence is the normal case, so a
+   * missing key reads as `undefined` rather than failing the payload. But a
+   * PRESENT block with no usable `code` is a malformed payload, not "absent" —
+   * failing the whole read there matches exactly how `channel` above treats a
+   * present-but-invalid value, and for the same reason: silently discarding a
+   * coupon a customer handed over would lose money with no trace, which is the
+   * one outcome this whole path is arranged to prevent.
+   *
+   * `offlineAccepted` defaults to FALSE when omitted. That is the conservative
+   * direction: a sale that does not claim it was rung offline is treated as
+   * online, so `pos.voucher_offline`'s gate is not consulted and the coupon is
+   * simply verified normally. Defaulting the other way would let a payload
+   * suppress verification by omitting a field.
+   */
+  let voucher: SaleCompletedPayload['voucher'];
+  if (d.voucher !== undefined && d.voucher !== null) {
+    const vo = obj(d.voucher);
+    const voucherCode = str(vo.code);
+    if (!voucherCode) return undefined;
+    voucher = {
+      code: voucherCode,
+      discount: str(vo.discount),
+      offlineAccepted: vo.offlineAccepted === true,
+    };
+  }
+
   return {
     clientId,
     locationId,
@@ -137,6 +178,8 @@ function readSaleCompleted(data: unknown): SaleCompletedPayload | undefined {
     payments,
     discount: str(d.discount),
     receiptNumber: str(d.receiptNumber),
+    channel,
+    voucher,
   };
 }
 
@@ -389,6 +432,14 @@ export class PosSyncProjector implements SyncProjector {
         payments: data.payments,
         discount: data.discount,
         receiptNumber: data.receiptNumber,
+        channel: data.channel,
+        voucher: data.voucher,
+        // Links a voucher reconciliation exception back to the event that
+        // carried it (`sync_conflicts.loser_event_id`) — see
+        // `PosSaleService.commitVoucher`. A refused coupon on this path never
+        // fails the projection: the sale already happened (D-17a), and the
+        // give-away is reported to finance instead of being dropped.
+        eventId: event.eventId,
         // The ingest connection already runs under `kernel/sync`'s own system/central context
         // (`SyncEventsRepository.withTransaction`) — restoring to 'owner'/no-scope after the
         // escalated `payment_verifications` INSERT is a same-role no-op, not a workaround.

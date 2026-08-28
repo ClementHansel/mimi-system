@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Snowflake, Package, Truck, MapPin } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
@@ -12,6 +12,8 @@ import {
   EmptyState,
   Button,
 } from '@/components/ui';
+import { ExportButton } from '@/components/common/ExportButton';
+import type { CsvColumn } from '@/lib/export/csv';
 import { formatQty } from '@/lib/formatters';
 import { ApiError } from '@/lib/api';
 import { getDailyRecap } from './lib/warehouse-api';
@@ -20,6 +22,45 @@ import type { DailyRecap } from './lib/types';
 function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+/**
+ * EXPORT ONLY, and there is no import to add here.
+ *
+ * The recap is DERIVED — the backend computes it from the day's Surat Jalan and
+ * drops (`GET /reports/daily-recap`). There is nothing to import into: a CSV of
+ * "yesterday's totals" would either be ignored or, worse, become a second,
+ * hand-editable version of numbers the documents already determine. Bulk import
+ * on this screen belongs upstream, on the Surat Jalan the recap counts.
+ *
+ * ONE ROW PER CITY+ITEM, which is the grain the on-screen cards and tables
+ * already show, flattened: the per-city heading becomes a column, because a
+ * spreadsheet pivots on a column and cannot pivot on a section header. The four
+ * headline counts are repeated on every row rather than left out — a filtered
+ * pivot of this file otherwise loses the document totals it was filtered from.
+ */
+interface RecapExportRow {
+  date: string;
+  city: string;
+  outlets: number;
+  itemName: string;
+  qty: string;
+  sjCount: number;
+  dropCount: number;
+  frozenSjCount: number;
+  drySjCount: number;
+}
+
+const EXPORT_COLUMNS: CsvColumn<RecapExportRow>[] = [
+  { key: 'date', header: 'Tanggal' },
+  { key: 'city', header: 'Kota' },
+  { key: 'outlets', header: 'Jumlah Outlet' },
+  { key: 'itemName', header: 'Nama Barang' },
+  { key: 'qty', header: 'Jumlah', format: (r) => formatQty(r.qty) },
+  { key: 'sjCount', header: 'Total Surat Jalan' },
+  { key: 'dropCount', header: 'Total Drop' },
+  { key: 'frozenSjCount', header: 'SJ Frozen' },
+  { key: 'drySjCount', header: 'SJ Dry' },
+];
 
 /**
  * Daily delivery recap (FR-LOG-04/08) — what is going where today: SJ and
@@ -49,15 +90,44 @@ export function RecapPanel() {
     };
   }, [date, t, reloadToken]);
 
+  const exportRows = useMemo<RecapExportRow[]>(() => {
+    if (!recap) return [];
+    return recap.byCity.flatMap((city) =>
+      city.items.map((item) => ({
+        date: recap.date,
+        city: city.city,
+        outlets: city.outlets,
+        itemName: item.itemName,
+        qty: item.qty,
+        sjCount: recap.sjCount,
+        dropCount: recap.dropCount,
+        frozenSjCount: recap.frozenSjCount,
+        drySjCount: recap.drySjCount,
+      })),
+    );
+  }, [recap]);
+
   return (
     <div className="flex flex-col gap-4">
-      <Input
-        type="date"
-        label={t('common.date')}
-        value={date}
-        onChange={(e) => setDate(e.target.value)}
-        wrapperClassName="max-w-xs"
-      />
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <Input
+          type="date"
+          label={t('common.date')}
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          wrapperClassName="max-w-xs"
+        />
+        {/* The date is part of the filename via `businessDateFilename`, but the
+            recap is for the CHOSEN day, which is not necessarily today — so the
+            selected date leads the base name too, otherwise a folder of exports
+            all claim to be the day they were downloaded. */}
+        <ExportButton
+          rows={exportRows}
+          columns={EXPORT_COLUMNS}
+          filenameBase={`rekap-harian-${date}`}
+          pdfTitle={`${t('warehouse.tabs.recap')} — ${date}`}
+        />
+      </div>
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
 

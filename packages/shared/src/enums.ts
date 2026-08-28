@@ -652,6 +652,10 @@ export enum DeviceEventType {
   CLOCK_SKEW = 'clock_skew',
   OUTLET_OFFLINE = 'outlet_offline',
   OUTLET_ONLINE = 'outlet_online',
+  /** `POST /api/nodes/:id/command` result (restart/update/log_pull/discovery_scan), recorded from the node's `command:ack` (W3-10 remote-command hardening — see `BridgeGateway.onCommandAck`). */
+  COMMAND_RESULT = 'command_result',
+  /** `PUT /api/nodes/:id/network-config` result — the node's `network_config_ack`, per-field applied/unsupported/reverted detail (W3-10). */
+  NETWORK_CONFIG_RESULT = 'network_config_result',
 }
 
 export enum DiscoverySource {

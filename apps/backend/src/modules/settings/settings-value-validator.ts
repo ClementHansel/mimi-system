@@ -50,6 +50,51 @@ const SCHEMAS: Partial<Record<SettingsKey, Schema>> = {
   'sync.price_variance_tolerance': { kind: 'object', fields: { pct: 'string' } },
   'pos.qris': { kind: 'object', fields: { mode: 'string' } },
   'wa.enabled': { kind: 'boolean' },
+
+  /**
+   * `BrandIdentity` from `packages/shared/src/brand.ts` — the favicon plus the
+   * four colours every printed document resolves its `brand.*` tokens against.
+   *
+   * The colours are declared `'string'`, not a hex pattern, and that is a
+   * deliberate limit of this validator rather than an oversight: `FieldType`
+   * carries no regex arm, and adding one for a single key would put a second
+   * validation vocabulary into a file whose whole value is that it is short
+   * and obviously correct. The real defence is downstream and already exists —
+   * `resolveDocColor()` (shared) accepts only `#rrggbb` or a `brand.*` token
+   * and falls back to `ink` for anything else, so a garbage colour prints in
+   * ink instead of throwing mid-render. A document that prints in the wrong
+   * colour is recoverable; one that fails to print is not. The Brand panel's
+   * own colour picker is what stops a human typing "reddish" in the first
+   * place.
+   *
+   * `faviconAttachmentId` is `'string|null'` for the same reason
+   * `company.profile.logoAttachmentId` is: null means "fall back to the
+   * shipped icons", and without an explicit null there would be no way to
+   * clear a favicon once set. Note there is deliberately NO `logoAttachmentId`
+   * here — the company logo stays on `company.profile`, in one place, for the
+   * reasons `brand.ts`'s header sets out.
+   */
+  'brand.identity': {
+    kind: 'object',
+    fields: {
+      faviconAttachmentId: 'string|null',
+      primaryColor: 'string',
+      accentColor: 'string',
+      inkColor: 'string',
+      mutedColor: 'string',
+    },
+  },
+
+  /**
+   * `VoucherOfflinePolicy` — `'reject'` (default) or `'accept'`. Declared as a
+   * plain `'string'` here and range-checked where it is CONSUMED
+   * (`getVoucherOfflinePolicy()` in `modules/voucher/voucher-settings.util.ts`
+   * returns `'reject'` for any value it does not recognise), matching how
+   * `pos.qris.mode` and `payroll.so_shortfall.mode` already treat their own
+   * closed sets. Failing closed at the consumer is what actually matters for
+   * this key: a typo must never be read as "accept unverifiable coupons".
+   */
+  'pos.voucher_offline': { kind: 'string' },
 };
 
 function typeMatches(value: unknown, type: FieldType): boolean {

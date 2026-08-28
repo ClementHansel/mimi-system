@@ -20,7 +20,9 @@ import {
 import { usePermissions } from '@/lib/permissions';
 import { useSessionStore } from '@/stores/session-store';
 import { fmtDateTime } from '@/lib/dates';
+import { ExportButton } from '@/components/common/ExportButton';
 import { correctAttendance, listAttendance } from './lib/hr-api';
+import { ATTENDANCE_EXPORT_COLUMNS } from './lib/io-columns';
 import type { AttendanceRow } from './lib/types';
 import type { Paginated } from '@/lib/shared-types';
 
@@ -63,6 +65,32 @@ export function AttendancePanel() {
   const visibleRows = suspectOnly ? data.rows.filter((r) => r.timeSuspect) : data.rows;
   const suspectCount = data.rows.filter((r) => r.timeSuspect).length;
 
+  /**
+   * Every page for the current location/date filters — this screen is
+   * server-paginated (50/page), so `rows` alone is one page. Walks with an
+   * explicit page cursor (same pattern as
+   * `SupplierPriceHistoryPanel.fetchAllHistory`), stops on a short page or
+   * once it has `total`, and hard-stops at 200 pages so a server that
+   * ignores `page` cannot spin here forever. NOT wired for import — see
+   * `io-columns.ts`'s header: a bulk write here would skip the
+   * geofence/selfie anti-fraud check (D-11/FR-HR-03) that every check-in
+   * goes through.
+   */
+  async function fetchAllAttendance(): Promise<AttendanceRow[]> {
+    const all: AttendanceRow[] = [];
+    const size = 200;
+    for (let p = 1; p <= 200; p += 1) {
+      const res = await listAttendance({
+        locationId: locationId || undefined,
+        date: date || undefined,
+        page: p,
+      });
+      all.push(...res.rows);
+      if (res.rows.length < size || all.length >= res.total) break;
+    }
+    return all;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
@@ -96,6 +124,12 @@ export function AttendancePanel() {
               </Badge>
             )}
           </Button>
+          <ExportButton
+            rows={visibleRows}
+            columns={ATTENDANCE_EXPORT_COLUMNS}
+            filenameBase="absensi"
+            fetchAll={fetchAllAttendance}
+          />
         </CardContent>
       </Card>
 

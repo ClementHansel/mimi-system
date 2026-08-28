@@ -39,6 +39,37 @@
  * Only `drivers_select` and `suppliers_select` name `leader_outlet` by hand, and
  * a cook needs neither.
  *
+ * OWNER IS ALL-ACCESS as of 2026-08-27, by the owner's own ruling ("owner and
+ * superadmin can do all"), asked and answered when the roster screen turned out
+ * to be read-only for them. Twenty-four rows flipped: the four POS shift/sale
+ * keys, the three `return.*` operational keys, `opname.submit`,
+ * `replenishment.submit`, `inventory.area_transfer.create`, `asset.job.execute`,
+ * `pettycash.verify`, `payment.verify`/`.reject`, both `accounting.journal.*`
+ * write keys, `hr.attendance.correct`, `hr.shift.manage`, four `payroll.*`
+ * run/slip/loan keys and `payroll.statutory.config`.
+ *
+ * KNOW WHAT THAT COSTS. Those rows were not accidents — they were the
+ * separation of duties: the account that RAISES a document could not also
+ * verify, post or pay it. An owner can now submit a stock count and approve it,
+ * verify a payment they requested, and post the journal for both, in one
+ * session. This is the same trade migration 222 already made for the five
+ * `*.create` keys and recorded rather than hid; it is now the whole column.
+ * `audit_log` and the approval engine's `requested_by`/`approver` rows remain
+ * the after-the-fact record, and they are the only control left on these paths
+ * for this one role. Every other role's column is untouched.
+ *
+ * SUPERVISOR GAINS `report.export` as of 2026-08-27, by the owner's ruling
+ * when the dashboard's new Sales/Marketing tabs shipped. A supervisor already
+ * held `report.sales.read` — they could always READ their own outlet's sales
+ * figures on screen — but not `report.export`, so the download buttons on
+ * those tabs would have had to be hidden from the one role whose whole
+ * dashboard IS a single outlet. That is not a security boundary worth
+ * keeping: the reports render client-side from JSON the role is already
+ * entitled to, so hiding the button withholds a file format, not data. The
+ * scope limit is unchanged and is the part that actually matters —
+ * `assertLocationInScope`/`scopeClause` still confine a supervisor's export
+ * to their own `user_locations`, so this ✓ widens FORMAT, never REACH.
+ *
  * `PermissionsGuard` (apps/backend) checks a key from here; RLS additionally
  * scopes rows by location — a ✓ never grants cross-location access for scoped
  * roles (KGD/SPV/LDR/KSR/DRV act only within their `user_locations`). Approval
@@ -125,17 +156,17 @@ const PERMISSION_ROWS = [
   ['inventory.balance.read',              [true,  true,  true,  true,  true,  true,  true,  false, false, true,  true ]],
   ['inventory.movement.read',             [true,  true,  true,  true,  true,  true,  false, false, false, true,  true ]],
   ['inventory.minstock.manage',           [true,  true,  false, true,  false, false, false, false, false, false, true ]],
-  ['inventory.area_transfer.create',      [false, false, false, true,  true,  true,  false, false, false, true,  true ]],
+  ['inventory.area_transfer.create',      [true,  false, false, true,  true,  true,  false, false, false, true,  true ]],
   ['inventory.suggestion.read',           [true,  true,  false, true,  true,  true,  false, false, false, false, true ]],
   // ── stock opname ───────────────────────────────────────────────────────────
   ['opname.read',                         [true,  true,  true,  true,  true,  true,  false, false, false, false, true ]],
   ['opname.create',                       [true,  false, false, true,  true,  true,  false, false, false, false, true ]],
-  ['opname.submit',                       [false, false, false, true,  true,  true,  false, false, false, false, true ]],
+  ['opname.submit',                       [true,  false, false, true,  true,  true,  false, false, false, false, true ]],
   ['opname.approve',                      [true,  true,  false, true,  true,  false, false, false, false, false, true ]],
   // ── replenishment ──────────────────────────────────────────────────────────
   ['replenishment.read',                  [true,  true,  false, true,  true,  true,  false, false, false, false, true ]],
   ['replenishment.create',                [true,  false, false, false, true,  true,  false, false, false, false, true ]],
-  ['replenishment.submit',                [false, false, false, false, true,  true,  false, false, false, false, true ]],
+  ['replenishment.submit',                [true,  false, false, false, true,  true,  false, false, false, false, true ]],
   ['replenishment.approve.supervisor',    [true,  true,  false, false, true,  false, false, false, false, false, true ]],
   ['replenishment.approve.warehouse',     [true,  true,  false, true,  false, false, false, false, false, false, true ]],
   ['replenishment.amend',                 [true,  true,  false, true,  true,  false, false, false, false, false, true ]],
@@ -157,25 +188,25 @@ const PERMISSION_ROWS = [
   ['purchasing.po.close',                 [true,  false, true,  false, false, false, false, false, false, false, true ]],
   ['pettycash.read',                      [true,  true,  true,  false, true,  true,  false, false, false, false, true ]],
   ['pettycash.create',                    [true,  false, false, false, true,  true,  false, false, false, false, true ]],
-  ['pettycash.verify',                    [false, true,  true,  false, false, false, false, false, false, false, true ]],
+  ['pettycash.verify',                    [true,  true,  true,  false, false, false, false, false, false, false, true ]],
   // ── waste / returns ────────────────────────────────────────────────────────
   ['waste.read',                          [true,  true,  true,  true,  true,  true,  false, false, false, true,  true ]],
   ['waste.create',                        [true,  false, false, true,  true,  true,  false, false, false, true,  true ]],
   ['waste.approve',                       [true,  true,  false, true,  true,  false, false, false, false, false, true ]],
   ['return.read',                         [true,  true,  true,  true,  true,  true,  false, false, false, false, true ]],
-  ['return.create',                       [false, false, false, true,  true,  true,  false, false, false, false, true ]],
+  ['return.create',                       [true,  false, false, true,  true,  true,  false, false, false, false, true ]],
   ['return.approve',                      [true,  true,  false, true,  true,  false, false, false, false, false, true ]],
-  ['return.ship',                         [false, false, false, true,  true,  true,  false, false, false, false, true ]],
-  ['return.receive',                      [false, false, false, true,  false, false, false, false, false, false, true ]],
+  ['return.ship',                         [true,  false, false, true,  true,  true,  false, false, false, false, true ]],
+  ['return.receive',                      [true,  false, false, true,  false, false, false, false, false, false, true ]],
   // ── POS ────────────────────────────────────────────────────────────────────
   ['pos.catalog.read',                    [true,  true,  false, false, true,  true,  true,  false, false, false, true ]],
-  ['pos.shift.open',                      [false, false, false, false, true,  false, true,  false, false, false, true ]],
-  ['pos.shift.close',                     [false, false, false, false, true,  false, true,  false, false, false, true ]],
-  ['pos.sale.create',                     [false, false, false, false, true,  false, true,  false, false, false, true ]],
+  ['pos.shift.open',                      [true,  false, false, false, true,  false, true,  false, false, false, true ]],
+  ['pos.shift.close',                     [true,  false, false, false, true,  false, true,  false, false, false, true ]],
+  ['pos.sale.create',                     [true,  false, false, false, true,  false, true,  false, false, false, true ]],
   ['pos.sale.read',                       [true,  true,  true,  false, true,  true,  true,  false, false, false, true ]],
-  ['pos.void.request',                    [false, false, false, false, true,  false, true,  false, false, false, true ]],
+  ['pos.void.request',                    [true,  false, false, false, true,  false, true,  false, false, false, true ]],
   ['pos.void.approve',                    [true,  true,  false, false, true,  false, false, false, false, false, true ]],
-  ['pos.online_order.record',             [false, false, false, false, true,  true,  true,  false, false, false, true ]],
+  ['pos.online_order.record',             [true,  false, false, false, true,  true,  true,  false, false, false, true ]],
   ['pos.online_order.read',               [true,  true,  true,  false, true,  true,  true,  false, false, false, true ]],
   ['pos.daily_stock.read',                [true,  true,  false, true,  true,  true,  true,  false, false, true,  true ]],
   ['pos.cash_variance.read',              [true,  true,  true,  false, true,  false, false, true,  false, false, true ]],
@@ -183,9 +214,9 @@ const PERMISSION_ROWS = [
   // ── HR ─────────────────────────────────────────────────────────────────────
   ['hr.attendance.check',                 [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true ]],
   ['hr.attendance.read',                  [true,  true,  false, false, true,  false, false, true,  false, false, true ]],
-  ['hr.attendance.correct',               [false, false, false, false, false, false, false, true,  false, false, true ]],
+  ['hr.attendance.correct',               [true,  false, false, false, false, false, false, true,  false, false, true ]],
   ['hr.shift.read',                       [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true ]],
-  ['hr.shift.manage',                     [false, true,  false, false, true,  false, false, true,  false, false, true ]],
+  ['hr.shift.manage',                     [true,  true,  false, false, true,  false, false, true,  false, false, true ]],
   ['hr.employee.read',                    [true,  true,  true,  false, true,  false, false, true,  false, false, true ]],
   // Your OWN employee record — name, NIK, position, join date, bank account —
   // for the `employee` interface. `hr.employee.read` above is the office's
@@ -204,11 +235,11 @@ const PERMISSION_ROWS = [
   // ── payroll ────────────────────────────────────────────────────────────────
   ['payroll.read',                        [true,  true,  true,  false, false, false, false, true,  false, false, true ]],
   ['payroll.component.manage',            [true,  false, true,  false, false, false, false, true,  false, false, true ]],
-  ['payroll.run.calculate',               [false, false, false, false, false, false, false, true,  false, false, true ]],
-  ['payroll.run.submit',                  [false, false, false, false, false, false, false, true,  false, false, true ]],
+  ['payroll.run.calculate',               [true,  false, false, false, false, false, false, true,  false, false, true ]],
+  ['payroll.run.submit',                  [true,  false, false, false, false, false, false, true,  false, false, true ]],
   ['payroll.run.approve',                 [true,  true,  true,  false, false, false, false, false, false, false, true ]],
   ['payroll.run.pay',                     [true,  false, true,  false, false, false, false, false, false, false, true ]],
-  ['payroll.slip.send',                   [false, false, false, false, false, false, false, true,  false, false, true ]],
+  ['payroll.slip.send',                   [true,  false, false, false, false, false, false, true,  false, false, true ]],
   ['payroll.slip.read.own',               [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true ]],
   // The `employee` interface (W7): reading and RAISING your own kasbon. Both
   // universal — a driver with no location scope still has a self, and these
@@ -216,37 +247,37 @@ const PERMISSION_ROWS = [
   // (`payroll.loan.approve` below).
   ['payroll.loan.read.own',               [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true ]],
   ['payroll.loan.request.own',            [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true ]],
-  ['payroll.loan.manage',                 [false, false, true,  false, false, false, false, true,  false, false, true ]],
+  ['payroll.loan.manage',                 [true,  false, true,  false, false, false, false, true,  false, false, true ]],
   ['payroll.loan.approve',                [true,  true,  true,  false, false, false, false, false, false, false, true ]],
   ['payroll.statutory.read',              [true,  true,  true,  false, false, false, false, true,  false, false, true ]],
-  ['payroll.statutory.config',            [false, false, true,  false, false, false, false, true,  false, false, true ]],
+  ['payroll.statutory.config',            [true,  false, true,  false, false, false, false, true,  false, false, true ]],
   ['payroll.statutory.enable',            [true,  true,  false, false, false, false, false, false, false, false, true ]],
   // ── assets (PMS) ───────────────────────────────────────────────────────────
   ['asset.read',                          [true,  true,  true,  true,  true,  true,  false, false, false, false, true ]],
   ['asset.manage',                        [true,  true,  false, false, false, false, false, false, false, false, true ]],
   ['asset.schedule.manage',               [true,  true,  false, false, false, false, false, false, false, false, true ]],
-  ['asset.job.execute',                   [false, true,  false, true,  true,  true,  false, false, false, false, true ]],
+  ['asset.job.execute',                   [true,  true,  false, true,  true,  true,  false, false, false, false, true ]],
   ['asset.job.verify',                    [true,  true,  false, false, true,  false, false, false, false, false, true ]],
   // ── accounting / payments ──────────────────────────────────────────────────
   ['accounting.coa.read',                 [true,  true,  true,  false, false, false, false, false, false, false, true ]],
   ['accounting.coa.manage',               [true,  false, true,  false, false, false, false, false, false, false, true ]],
   ['accounting.journal.read',             [true,  true,  true,  false, false, false, false, false, false, false, true ]],
-  ['accounting.journal.post',             [false, false, true,  false, false, false, false, false, false, false, true ]],
-  ['accounting.journal.reverse',          [false, false, true,  false, false, false, false, false, false, false, true ]],
+  ['accounting.journal.post',             [true,  false, true,  false, false, false, false, false, false, false, true ]],
+  ['accounting.journal.reverse',          [true,  false, true,  false, false, false, false, false, false, false, true ]],
   ['accounting.period.close',             [true,  false, true,  false, false, false, false, false, false, false, true ]],
   ['accounting.report.read',              [true,  true,  true,  false, false, false, false, false, false, false, true ]],
   ['payment.read',                        [true,  true,  true,  false, false, false, false, false, false, false, true ]],
   ['payment.proof.upload',                [true,  true,  true,  true,  true,  true,  true,  true,  false, false, true ]],
-  ['payment.verify',                      [false, false, true,  false, false, false, false, false, false, false, true ]],
+  ['payment.verify',                      [true,  false, true,  false, false, false, false, false, false, false, true ]],
   ['payment.pay',                         [true,  false, true,  false, false, false, false, false, false, false, true ]],
-  ['payment.reject',                      [false, false, true,  false, false, false, false, false, false, false, true ]],
+  ['payment.reject',                      [true,  false, true,  false, false, false, false, false, false, false, true ]],
   // ── dashboard / reports ─────────────────────────────────────────────────────
   ['dashboard.view',                      [true,  true,  false, false, false, false, false, false, false, false, true ]],
   ['dashboard.outlet.view',               [true,  true,  false, false, true,  false, false, false, false, false, true ]],
   ['report.sales.read',                   [true,  true,  true,  false, true,  false, false, false, false, false, true ]],
   ['report.logistics.read',               [true,  true,  false, true,  false, false, false, false, false, false, true ]],
   ['report.hr.read',                      [true,  true,  false, false, false, false, false, true,  false, false, true ]],
-  ['report.export',                       [true,  true,  true,  true,  false, false, false, true,  false, false, true ]],
+  ['report.export',                       [true,  true,  true,  true,  true,  false, false, true,  false, false, true ]],
   // ── devices / topology / sync ───────────────────────────────────────────────
   ['device.read',                         [true,  true,  false, false, true,  false, false, false, false, false, true ]],
   ['device.pair',                         [true,  true,  false, false, true,  false, false, false, false, false, true ]],
@@ -268,6 +299,23 @@ const PERMISSION_ROWS = [
   ['chat.read',                           [true,  true,  true,  true,  true,  false, false, true,  false, false, true ]],
   ['chat.send',                           [true,  true,  true,  true,  true,  false, false, true,  false, false, true ]],
   ['chat.manage',                         [true,  true,  false, true,  false, false, false, false, false, false, true ]],
+  // ── document designers + vouchers (2026-08-27) ─────────────────────────────
+  // `doc_template.read` is UNIVERSAL and deliberately so: a kasir does not hold
+  // `settings.read`, but the till must fetch the receipt layout to print, and a
+  // driver must fetch the Surat Jalan layout. Reading a LAYOUT discloses
+  // nothing — it is boxes and field tokens, never a customer, a price or a
+  // quantity (the data comes from a separate, permission-checked resolver).
+  // Gating it behind `settings.read` would have meant either widening that key
+  // to the whole floor or a POS that cannot print.
+  ['doc_template.read',                   [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true ]],
+  ['doc_template.manage',                 [true,  true,  false, false, false, false, false, false, false, false, true ]],
+  // Vouchers. `voucher.redeem` reaches the till and the outlet floor because
+  // taking a coupon IS the cashier's job; `voucher.issue` (minting a print run
+  // that is worth real money) does not, and stops at owner/manager/finance.
+  ['voucher.read',                        [true,  true,  true,  false, true,  false, true,  false, false, false, true ]],
+  ['voucher.manage',                      [true,  true,  true,  false, false, false, false, false, false, false, true ]],
+  ['voucher.issue',                       [true,  true,  true,  false, false, false, false, false, false, false, true ]],
+  ['voucher.redeem',                      [true,  true,  false, false, true,  false, true,  false, false, false, true ]],
   ['attachment.upload',                   [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true ]],
 ] as const;
 

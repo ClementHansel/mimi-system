@@ -14,8 +14,10 @@ import {
 } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { toast } from '@/components/ui';
-import { useOutletLocation } from './lib/use-outlet-location';
+import { ExportButton } from '@/components/common/ExportButton';
+import { useOutletLocationContext } from './lib/outlet-location-context';
 import { getBalances } from './lib/outlet-api';
+import { BALANCE_EXPORT_COLUMNS } from './lib/outlet-export-columns';
 import type { Balance } from './lib/types';
 
 /**
@@ -26,13 +28,12 @@ import type { Balance } from './lib/types';
  */
 export function StockPanel() {
   const { t } = useI18n();
-  const { locationId } = useOutletLocation();
+  const { locationId, locationName } = useOutletLocationContext();
   const [balances, setBalances] = useState<Balance[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
 
   useEffect(() => {
-    if (!locationId) return;
     let cancelled = false;
     setLoading(true);
     getBalances({ locationId })
@@ -44,32 +45,47 @@ export function StockPanel() {
     };
   }, [locationId, t]);
 
+  const filtered = useMemo(
+    () =>
+      q.trim()
+        ? balances.filter(
+            (b) =>
+              b.itemName.toLowerCase().includes(q.trim().toLowerCase()) ||
+              b.sku.toLowerCase().includes(q.trim().toLowerCase()),
+          )
+        : balances,
+    [balances, q],
+  );
+
   const byArea = useMemo(() => {
-    const filtered = q.trim()
-      ? balances.filter(
-          (b) =>
-            b.itemName.toLowerCase().includes(q.trim().toLowerCase()) ||
-            b.sku.toLowerCase().includes(q.trim().toLowerCase()),
-        )
-      : balances;
     const groups = new Map<string, Balance[]>();
     for (const b of filtered) {
       const key = b.storageAreaName;
       groups.set(key, [...(groups.get(key) ?? []), b]);
     }
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [balances, q]);
-
-  if (!locationId) return <EmptyState title={t('table.error')} size="lg" />;
+  }, [filtered]);
 
   return (
     <div className="flex flex-col gap-4">
-      <Input
-        placeholder={t('common.filter')}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        wrapperClassName="max-w-sm"
-      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Input
+          placeholder={t('common.filter')}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          wrapperClassName="max-w-sm"
+        />
+        {/* `fetchAll` needs no request: every balance is already held client-side
+            (the list fetches pageSize=500), so "everything" vs "what I filtered
+            to" is a real and free choice. */}
+        <ExportButton
+          rows={filtered}
+          columns={BALANCE_EXPORT_COLUMNS}
+          filenameBase={`stok-${locationName.toLowerCase().replace(/\s+/g, '-')}`}
+          fetchAll={async () => balances}
+          pdfTitle={t('outlet.stock.reportTitle', { outlet: locationName })}
+        />
+      </div>
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
 

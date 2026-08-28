@@ -86,10 +86,20 @@ export interface DiscoveryReport {
 /** `POST /api/nodes/:id/command` types the cloud may push over the socket. */
 export type NodeCommandType = 'restart' | 'update' | 'log_pull' | 'discovery_scan';
 
+export interface NodeCommandParams {
+  /** `restart`/`update` only (W3-10 hardening): the caller explicitly accepted firing a destructive
+   *  command against an outlet with an open POS shift. `NodesController` is the one that actually
+   *  enforces the gate — this flag only travels with the command for the node's own log line. */
+  override?: boolean;
+  /** `log_pull` only: how many of the most recent buffered log lines to send back (capped server-side
+   *  by `LOG_RING_BUFFER_SIZE` regardless of what's requested here). */
+  lines?: number;
+}
+
 export interface NodeCommand {
   commandId: UUID;
   type: NodeCommandType;
-  params?: Record<string, unknown>;
+  params?: NodeCommandParams;
 }
 
 export interface CommandAck {
@@ -111,6 +121,51 @@ export interface CertRotated {
   lanCert: LanCertWire;
 }
 
+/**
+ * `PUT /api/nodes/:id/network-config` (W3-10), delivered over `/bridge` — never REST, never a sync
+ * event — the same "sensitive material rides the node's own authenticated socket only" precedent
+ * `CertRotated`'s `pem`/`keyPem` already set. `wifiPassphrase` in particular MUST NEVER be logged,
+ * echoed back through any REST response, or included in the `branch_nodes.config_updated` sync event
+ * this same PUT also emits for audit history (that event's payload is a separate, secret-free
+ * projection built by the controller — see `nodes.controller.ts`).
+ *
+ * Only `healthPort`/`scanSubnet` are genuinely appliable by this node build — see
+ * `network/applier.ts`'s doc comment for exactly why the rest (WiFi SSID/passphrase, static IP,
+ * subnet mask, gateway, DNS) are accepted, validated, and stored cloud-side but reported back
+ * `applied: false` rather than silently no-opped.
+ */
+export interface NetworkConfigWire {
+  healthPort?: number;
+  scanSubnet?: string | null;
+  wifiSsid?: string;
+  wifiPassphrase?: string;
+  staticIp?: string;
+  subnetMask?: string;
+  gateway?: string;
+  dns?: string[];
+}
+
 export interface ConfigUpdated {
-  config: Record<string, unknown>;
+  /** Correlates this push with the `network_config_ack` this node sends back either way. */
+  configId: UUID;
+  config: NetworkConfigWire;
+}
+
+export interface NetworkConfigAckField {
+  field: string;
+  applied: boolean;
+  /** e.g. `'ok'`, `'unsupported_no_os_network_manager'`, `'reverted_unreachable'`, `'bind_failed'`. */
+  reason: string;
+}
+
+/** node -> cloud, `network_config_ack` (W3-10) — the apply-then-confirm outcome. `status` is
+ *  'applied' only when EVERY appliable field bound successfully and the confirm window passed with
+ *  the node still reachable; 'reverted' when it rolled back to `lastKnownGood`; 'failed' only for a
+ *  request this node could not even attempt (e.g. every field unsupported). */
+export interface NetworkConfigAck {
+  configId: UUID;
+  nodeId: UUID;
+  status: 'applied' | 'reverted' | 'failed';
+  fields: NetworkConfigAckField[];
+  detail?: string;
 }

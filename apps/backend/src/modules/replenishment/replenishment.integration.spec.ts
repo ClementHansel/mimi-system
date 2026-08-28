@@ -653,7 +653,10 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
       // accepted by the owner when the segregation-of-duties trade-off was
       // put to them.
       'replenishment.create': [RoleKey.OWNER, RoleKey.SUPERVISOR, RoleKey.LEADER_OUTLET],
-      'replenishment.submit': [RoleKey.SUPERVISOR, RoleKey.LEADER_OUTLET],
+      // OWNER added 2026-08-27 for the same reason `.create` was, taken to its
+      // conclusion: "owner and superadmin can do all" (packages/shared/src/rbac.ts,
+      // migration 250). An owner can now raise, submit AND approve one request.
+      'replenishment.submit': [RoleKey.OWNER, RoleKey.SUPERVISOR, RoleKey.LEADER_OUTLET],
       'replenishment.approve.supervisor': [RoleKey.OWNER, RoleKey.MANAGER, RoleKey.SUPERVISOR],
       'replenishment.approve.warehouse': [RoleKey.OWNER, RoleKey.MANAGER, RoleKey.KEPALA_GUDANG],
       'replenishment.amend': [
@@ -666,7 +669,9 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
     for (const [key, allowedRoles] of Object.entries(ALLOW)) {
       for (const role of Object.values(RoleKey)) {
         // SUPERADMIN holds every key by construction — the CONTRACTS §3 claim
-        // being verified is about the nine business roles.
+        // being verified is about the nine business roles. (OWNER now also
+        // holds every key, but it is left in the loop because its expected
+        // value is stated row by row above, not assumed.)
         if (role === RoleKey.SUPERADMIN) continue;
         const expected = allowedRoles.includes(role);
         expect(can(role, key as never)).toBe(expected);

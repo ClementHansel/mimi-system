@@ -16,8 +16,18 @@
 import { describe, expect, it } from 'vitest';
 import type { CsvColumn } from '@/lib/export/csv';
 import { toCsv } from '@/lib/export/csv';
-import { ITEM_CATEGORY_IO_COLUMNS, ITEM_IO_COLUMNS, PRODUCT_IO_COLUMNS } from './io-columns';
-import type { Item, ItemCategory, Product } from '../types';
+import { translate } from '@/lib/i18n';
+import {
+  ITEM_CATEGORY_IO_COLUMNS,
+  ITEM_IO_COLUMNS,
+  PRODUCT_IO_COLUMNS,
+  auditIoColumns,
+  userIoColumns,
+  settingIoColumns,
+} from './io-columns';
+import type { AuditRow, Item, ItemCategory, Product, Setting, UserRow } from '../types';
+
+const t = translate;
 
 /** Verbatim from `IMPORT_ENTITIES` in `apps/backend/src/modules/import/import-schema.ts`. */
 const IMPORTER_COLUMNS = {
@@ -123,5 +133,102 @@ describe('exported VALUES are in the shape the importer parses', () => {
 
     const csv = toCsv([category], ITEM_CATEGORY_IO_COLUMNS);
     expect(csv.trim().split('\n')[1]).toBe('Bumbu,20');
+  });
+});
+
+/**
+ * `auditIoColumns`/`userIoColumns`/`settingIoColumns` are EXPORT ONLY — none
+ * of them mirrors an importer entity, so these tests pin behavior (blanks
+ * stay blank, money stays verbatim) rather than a cross-package header
+ * contract like the describe blocks above.
+ */
+describe('auditIoColumns', () => {
+  const row: AuditRow = {
+    id: 'a1',
+    userId: 'u1',
+    userName: 'Budi',
+    roleKey: 'finance_staff',
+    module: 'accounting',
+    action: 'accounting.journal.post',
+    entityType: 'journal_entries',
+    entityId: null,
+    beforeValue: null,
+    afterValue: { amount: '125000.00' },
+    reason: null,
+    offlineAuthorized: true,
+    occurredAt: '2026-08-01T10:00:00Z',
+  };
+
+  it('writes blanks, never "null", for a login-style row with no entity/reason', () => {
+    const csv = toCsv([row], auditIoColumns());
+    expect(csv).not.toContain('null');
+  });
+
+  it('serializes afterValue as JSON without reformatting a money field inside it', () => {
+    const csv = toCsv([row], auditIoColumns());
+    // Verbatim decimal string, not `Rp125.000` — this column passes the raw
+    // object straight through `JSON.stringify`, it does not re-render it.
+    expect(csv).toContain('125000.00');
+    expect(csv).not.toContain('Rp');
+  });
+
+  it('writes ya/tidak for the offline-authorized flag', () => {
+    const csv = toCsv([row], auditIoColumns());
+    const dataRow = csv.trim().split('\n')[1];
+    expect(dataRow).toContain('ya');
+  });
+});
+
+describe('userIoColumns', () => {
+  it('joins multiple locations and writes a blank (not "Belum pernah") for no last login', () => {
+    const user: UserRow = {
+      id: 'u1',
+      username: 'budi',
+      name: 'Budi Santoso',
+      email: null,
+      phone: null,
+      roleKey: 'outlet_staff',
+      roleName: 'Staf Outlet',
+      locations: [
+        { id: 'l1', name: 'Outlet A' },
+        { id: 'l2', name: 'Outlet B' },
+      ],
+      isActive: true,
+      lastLoginAt: null,
+      createdAt: '2026-01-01T00:00:00Z',
+    };
+    const csv = toCsv([user], userIoColumns());
+    const row = csv.trim().split('\n')[1];
+    expect(row).toContain('Outlet A | Outlet B');
+    expect(row).toContain('aktif');
+    expect(csv).not.toContain('null');
+  });
+});
+
+describe('settingIoColumns', () => {
+  it('passes a string (money) value through verbatim — no Rp, no thousands separator', () => {
+    const setting: Setting = {
+      key: 'finance.void_threshold',
+      value: '200000.00',
+      description: 'x',
+      updatedBy: null,
+      updatedAt: '2026-08-01T00:00:00Z',
+    };
+    const csv = toCsv([setting], settingIoColumns(t));
+    expect(csv).toContain('200000.00');
+    expect(csv).not.toContain('Rp');
+  });
+
+  it('JSON-stringifies a structured (object) value rather than dropping it', () => {
+    const setting: Setting = {
+      key: 'hr.overtime',
+      value: { ratePerHour: '15000.00', minMinutes: 30 },
+      description: 'x',
+      updatedBy: 'Budi',
+      updatedAt: '2026-08-01T00:00:00Z',
+    };
+    const csv = toCsv([setting], settingIoColumns(t));
+    expect(csv).toContain('15000.00');
+    expect(csv).not.toContain('Rp');
   });
 });

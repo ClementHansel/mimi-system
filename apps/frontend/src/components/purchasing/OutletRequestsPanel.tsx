@@ -16,6 +16,8 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { useApiList } from '@/components/admin/useApiList';
+import { ExportButton } from '@/components/common/ExportButton';
+import type { CsvColumn } from '@/lib/export/csv';
 import { getLocations, createPurchaseRequestFromReplenishment } from './lib/api';
 import type { LocationOption } from './lib/types';
 // `Replenishment` is re-exported through the outlet module's own types file,
@@ -78,6 +80,55 @@ export function OutletRequestsPanel() {
       .then((r: Paginated<LocationOption>) => setLocations(r.rows))
       .catch(() => {});
   }, []);
+
+  /**
+   * EXPORT ONLY on this tab, and not for want of effort.
+   *
+   * These are the OUTLETS' requests — raised in the outlet interface, approved
+   * by a supervisor, then converted here into a PR. The office does not author
+   * them, so there is nothing to bulk-import: a CSV that created replenishment
+   * requests on outlets' behalf would put words in their mouth and bypass the
+   * approval the request needs before it can be converted at all. The bulk
+   * import in this module lives on the two documents the office DOES author,
+   * Permintaan Pembelian and Pesanan Pembelian.
+   *
+   * One row per REQUEST LINE, so the file answers "what are the stores actually
+   * asking for across all of them" — the question this tab exists for, and one
+   * a "5 lines" cell cannot answer.
+   */
+  const exportRows = data.rows.flatMap((req) =>
+    req.lines.length === 0
+      ? [
+          {
+            requestNumber: req.requestNumber,
+            locationName: req.locationName,
+            status: req.status,
+            neededBy: req.neededBy ? fmtDate(req.neededBy) : '',
+            itemName: '',
+            qtyRequested: '',
+            qtyApproved: '',
+          },
+        ]
+      : req.lines.map((line) => ({
+          requestNumber: req.requestNumber,
+          locationName: req.locationName,
+          status: req.status,
+          neededBy: req.neededBy ? fmtDate(req.neededBy) : '',
+          itemName: line.itemName,
+          qtyRequested: line.qtyRequested,
+          qtyApproved: line.qtyApproved ?? '',
+        })),
+  );
+
+  const exportColumns: CsvColumn<(typeof exportRows)[number]>[] = [
+    { key: 'requestNumber', header: t('purchasing.outletRequests.columnNumber') },
+    { key: 'locationName', header: t('purchasing.outletRequests.columnLocation') },
+    { key: 'neededBy', header: t('purchasing.outletRequests.columnNeededBy') },
+    { key: 'status', header: t('common.status') },
+    { key: 'itemName', header: t('purchasing.requests.item') },
+    { key: 'qtyRequested', header: t('outlet.replenishment.qty') },
+    { key: 'qtyApproved', header: t('purchasing.outletRequests.exportQtyApproved') },
+  ];
 
   const columns: DataTableColumn<Replenishment>[] = [
     { key: 'requestNumber', header: t('purchasing.outletRequests.columnNumber') },
@@ -169,6 +220,14 @@ export function OutletRequestsPanel() {
           ]}
           wrapperClassName="w-48"
         />
+        <div className="ml-auto">
+          <ExportButton
+            rows={exportRows}
+            columns={exportColumns}
+            filenameBase="permintaan-outlet"
+            pdfTitle={t('purchasing.tabs.outletRequests')}
+          />
+        </div>
       </div>
 
       <DataTable

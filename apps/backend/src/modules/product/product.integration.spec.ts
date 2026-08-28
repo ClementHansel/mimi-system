@@ -175,6 +175,49 @@ describe('ProductService / RecipeService (live database)', () => {
     }
   });
 
+  it('priceGofood/priceShopeefood default to null (fallback to price) and round-trip when set, cleared, and re-set (migration 249)', async () => {
+    const created = await withRollback(async (client) =>
+      productService.create(
+        client,
+        {
+          code: nextCode('PRD'),
+          name: 'Channel Priced',
+          categoryId: await categoryId('Ayam'),
+          price: '15000.00',
+        },
+        ACTOR,
+        SYSTEM_USER,
+        null,
+      ),
+    );
+    createdProductIds.push(created.id);
+    // Unset at creation — the wire contract is "falls back to price", never a silent 0.
+    expect(created.priceGofood).toBeNull();
+    expect(created.priceShopeefood).toBeNull();
+
+    const withChannelPrices = await withRollback(async (client) =>
+      productService.update(
+        client,
+        created.id,
+        { priceGofood: '18000.00', priceShopeefood: '17500.00' },
+        ACTOR,
+        SYSTEM_USER,
+        null,
+      ),
+    );
+    expect(withChannelPrices.priceGofood).toBe('18000.00');
+    expect(withChannelPrices.priceShopeefood).toBe('17500.00');
+    expect(withChannelPrices.price).toBe('15000.00'); // walk-in price untouched by the channel-price update
+
+    // Explicit `null` clears an override back to falling through to `price` — distinct from omitting
+    // the field (`undefined`), which must leave the existing override alone.
+    const clearedGofoodOnly = await withRollback(async (client) =>
+      productService.update(client, created.id, { priceGofood: null }, ACTOR, SYSTEM_USER, null),
+    );
+    expect(clearedGofoodOnly.priceGofood).toBeNull();
+    expect(clearedGofoodOnly.priceShopeefood).toBe('17500.00'); // untouched — the field was omitted, not nulled
+  });
+
   it('deactivates a product', async () => {
     const created = await withRollback(async (client) =>
       productService.create(

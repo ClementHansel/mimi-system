@@ -62,6 +62,14 @@ import { LeaveSyncProjector } from './sync/leave-sync-projector.service';
     AttendanceSyncProjector,
     LeaveSyncProjector,
   ],
+  // `EmployeesService`/`ShiftsService` exported for `modules/import` (bulk
+  // import of `employees`/`work_shifts` master data, 2026-08-27 round) —
+  // same "import a module's own already-exported provider" pattern
+  // `AccountingModule` already uses for `modules/asset`. `ContractsService`
+  // exported in the same round's contracts CRUD+import+sign follow-up, for
+  // `modules/import`'s `employment_contracts` entity — see that module's
+  // `planContract` for why signatures are NOT importable through it.
+  exports: [EmployeesService, ShiftsService, ContractsService],
 })
 export class HrModule implements OnModuleInit {
   constructor(

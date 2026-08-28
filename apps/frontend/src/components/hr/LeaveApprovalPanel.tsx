@@ -16,7 +16,9 @@ import {
 } from '@/components/ui';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDateRange } from '@/lib/dates';
+import { ExportButton } from '@/components/common/ExportButton';
 import { approveLeave, listLeaves, rejectLeave } from './lib/hr-api';
+import { LEAVE_EXPORT_COLUMNS } from './lib/io-columns';
 import type { Leave } from './lib/types';
 import type { Paginated } from '@/lib/shared-types';
 
@@ -40,6 +42,27 @@ export function LeaveApprovalPanel() {
   }
 
   useEffect(reload, [status, type, data.page]);
+
+  /**
+   * Every page for the current status/type filters (server-paginated,
+   * 50/page — see `AttendancePanel.fetchAllAttendance` for the same pattern
+   * and why the bound exists). NOT wired for import: a bulk write here would
+   * bypass the approve/reject workflow (F-HR-06) entirely.
+   */
+  async function fetchAllLeaves(): Promise<Leave[]> {
+    const all: Leave[] = [];
+    const size = 50;
+    for (let p = 1; p <= 200; p += 1) {
+      const res = await listLeaves({
+        status: status || undefined,
+        type: type || undefined,
+        page: p,
+      });
+      all.push(...res.rows);
+      if (res.rows.length < size || all.length >= res.total) break;
+    }
+    return all;
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -67,6 +90,12 @@ export function LeaveApprovalPanel() {
               ...LEAVE_TYPES.map((lt) => ({ value: lt, label: t(`hr.leaves.type.${lt}`) })),
             ]}
             wrapperClassName="w-48"
+          />
+          <ExportButton
+            rows={data.rows}
+            columns={LEAVE_EXPORT_COLUMNS}
+            filenameBase="cuti-izin"
+            fetchAll={fetchAllLeaves}
           />
         </CardContent>
       </Card>

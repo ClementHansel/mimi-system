@@ -67,6 +67,13 @@ export interface AttendanceSummaryRow {
 export interface WorkShift {
   id: UUID;
   name: string;
+  /**
+   * The outlet this shift belongs to, or `null` for a company-wide shift.
+   * Added to `ShiftDto` on 2026-08-27 — until then the list endpoint only
+   * FILTERED by location and never reported it, which is what blocked bulk
+   * import: the importer's natural key is (name, location).
+   */
+  locationId: UUID | null;
   startTime: string;
   endTime: string;
   breakMinutes: number;
@@ -105,6 +112,50 @@ export interface LeaveQuota {
 export interface MyLeaves {
   leaves: Leave[];
   quota: LeaveQuota;
+}
+
+/**
+ * Employment contract (W7 + the 2026-08-27 CRUD/import/export/signature
+ * follow-up, migration 230 + 252). `signedAt` here is the LEGACY single date
+ * on the row (when the physical document was dated) — NOT the same thing as
+ * `employeeSigned`/`companySignerCount`/`fullySigned`, which come from the
+ * per-party `contract_signatures` table and are what actually gates
+ * `status: 'active'` at the database (see `ContractsPanel`'s doc comment).
+ */
+export interface Contract {
+  id: UUID;
+  contractNumber: string;
+  employeeId: UUID;
+  employeeName: string;
+  employeeNumber: string;
+  contractType: 'pkwt' | 'pkwtt' | 'probation' | 'internship';
+  position: string;
+  locationId: UUID | null;
+  locationName: string | null;
+  baseSalary: Money | null;
+  startDate: ISODate;
+  endDate: ISODate | null;
+  status: 'draft' | 'active' | 'expired' | 'terminated';
+  signedAt: ISODate | null;
+  documentAttachmentId: UUID | null;
+  terminationReason: string | null;
+  notes: string | null;
+  daysUntilExpiry: number | null;
+  employeeSigned: boolean;
+  companySignerCount: number;
+  fullySigned: boolean;
+}
+
+export interface ContractSignature {
+  id: UUID;
+  contractId: UUID;
+  partyType: 'employee' | 'company';
+  employeeId: UUID | null;
+  userId: UUID | null;
+  signerName: string;
+  signedAt: ISODateTime;
+  method: 'wet_ink_scan' | 'digital' | 'in_person_witnessed';
+  notes: string | null;
 }
 
 // ── §4.15 payroll ────────────────────────────────────────────────────────────
@@ -182,11 +233,36 @@ export interface PayrollComponent {
   id: UUID;
   code: string;
   name: string;
-  type: 'earning' | 'deduction';
+  /**
+   * `'employer_cost'` (BPJS employer shares, Amendment 1) is a real value
+   * `GET /payroll/components` returns — it is one of the 16+ seeded
+   * `is_system` rows — but `CreateComponentDto` only ever accepts
+   * `'earning'|'deduction'`, so it can never be the value a CREATE form
+   * submits. Widened here (past the narrower `'earning'|'deduction'` this
+   * interface used to declare) so the master list can display every row the
+   * server actually returns; `SalaryComponentsPanel`'s create form still only
+   * offers the two creatable values.
+   */
+  type: 'earning' | 'deduction' | 'employer_cost';
   calcMethod: string;
   formulaKey: string | null;
   defaultAmount: Money | null;
   isSystem: boolean;
+  /**
+   * `salary_components.is_active` — the sanctioned way to retire a component
+   * created by mistake (the table has no delete, and a component referenced
+   * by a past payroll run must never be hard-deletable). `UpdateComponentDto`
+   * has always accepted this field on write; it reached the wire on read only
+   * as of the components.service.ts `mapComponent` fix that added it.
+   */
+  isActive: boolean;
+}
+
+/** One row of a component's per-employee assignment history (`GET`/`PUT /payroll/employees/:employeeId/components`, §4.15 PIN-03..06). */
+export interface EmployeeComponentAssignment extends EffectiveDatedRow {
+  componentId: UUID;
+  code: string;
+  amount: Money | null;
 }
 
 export interface Loan {

@@ -22,6 +22,7 @@ import {
   buildEventBus,
   buildNotificationService,
   buildPaymentVerificationsService,
+  buildVoucherRedemptionService,
   buildStockLedgerService,
   buildSyncEmitService,
   closePool,
@@ -62,7 +63,12 @@ function services(pool = getAppPool()) {
   const notifications = buildNotificationService(pool);
   return {
     shifts: new PosShiftService(pool, approvals, notifications),
-    sales: new PosSaleService(pool, stockLedger, buildPaymentVerificationsService(pool)),
+    sales: new PosSaleService(
+      pool,
+      stockLedger,
+      buildPaymentVerificationsService(pool),
+      buildVoucherRedemptionService(),
+    ),
     approvalCodes: buildApprovalCodeService(pool),
     voidRefunds: new PosVoidRefundService(
       pool,

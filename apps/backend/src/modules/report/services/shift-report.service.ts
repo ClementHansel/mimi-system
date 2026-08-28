@@ -98,9 +98,25 @@ export class ShiftReportService {
           WHERE s.shift_id = $1 AND vr.status = 'approved'`,
         [shiftId],
       ),
+      // Same fix, same reasoning, as `pos-shift.service.ts#buildReport` — kept
+      // in lockstep with it per this class's own header comment. Migration
+      // 249 retired `online_orders` as a write path, so a shift closed after
+      // that cutover has its GoFood/ShopeeFood revenue in `sales.channel`,
+      // not `online_orders`; UNIONing both keeps this box correct on both
+      // sides of the cutover (see migration 251's header for the matview
+      // half of the same bug). No double count: a given order lives in
+      // exactly one of the two sources, never both.
       client.query<{ platform: string; count: string; net: Money }>(
-        `SELECT platform, COUNT(*)::int AS count, COALESCE(SUM(net_received), '0.00') AS net
-           FROM online_orders WHERE shift_id = $1 AND status = 'completed'
+        `SELECT platform, COUNT(*)::int AS count, COALESCE(SUM(net), '0.00') AS net
+           FROM (
+             SELECT channel AS platform, total AS net
+               FROM sales
+              WHERE shift_id = $1 AND status = 'completed' AND channel <> 'walk_in'
+             UNION ALL
+             SELECT platform, net_received AS net
+               FROM online_orders
+              WHERE shift_id = $1 AND status = 'completed'
+           ) x
           GROUP BY platform`,
         [shiftId],
       ),

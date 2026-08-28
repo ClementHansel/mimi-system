@@ -103,12 +103,18 @@ describe('M07 inventory controller — RBAC wiring against the real matrix (CONT
     },
   );
 
-  it('sanity: inventory.area_transfer.create is denied for Owner/Manager/Kasir but allowed for Kepala Gudang/Supervisor/Leader Outlet (CONTRACTS §3 exact row)', () => {
+  // Owner was on the DENIED side of this row until 2026-08-27, when the owner
+  // ruled "owner and superadmin can do all" (see `packages/shared/src/rbac.ts`
+  // and migration 250). Manager and Kasir are unchanged — the row still
+  // separates the stock floor from the office, it simply no longer excludes the
+  // two all-access roles.
+  it('sanity: inventory.area_transfer.create is denied for Manager/Kasir but allowed for Kepala Gudang/Supervisor/Leader Outlet/Owner (CONTRACTS §3 exact row)', () => {
     const handler = methodsOf(InventoryController).areaTransfer!;
     expect(guard.canActivate(contextFor(handler, RoleKey.KEPALA_GUDANG))).toBe(true);
     expect(guard.canActivate(contextFor(handler, RoleKey.SUPERVISOR))).toBe(true);
     expect(guard.canActivate(contextFor(handler, RoleKey.LEADER_OUTLET))).toBe(true);
-    expect(() => guard.canActivate(contextFor(handler, RoleKey.OWNER))).toThrow();
+    expect(guard.canActivate(contextFor(handler, RoleKey.OWNER))).toBe(true);
+    expect(guard.canActivate(contextFor(handler, RoleKey.SUPERADMIN))).toBe(true);
     expect(() => guard.canActivate(contextFor(handler, RoleKey.MANAGER))).toThrow();
     expect(() => guard.canActivate(contextFor(handler, RoleKey.KASIR))).toThrow();
   });

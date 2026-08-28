@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
@@ -21,6 +21,17 @@ import {
   EmptyState,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import type { CsvColumn } from '@/lib/export/csv';
+import { parseDecimal, type CsvRecord } from '@/lib/import/csv-parse';
+import {
+  buildItemIndex,
+  buildNameIndex,
+  resolveEnum,
+  resolveItem,
+  resolveNamed,
+} from '@/lib/import/resolve';
 import { fmtDate } from '@/lib/dates';
 import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
@@ -46,6 +57,71 @@ import type {
 import type { Qty } from '@/lib/shared-types';
 
 const CONDITIONS = ['damaged', 'expired', 'wrong_item', 'other'] as const;
+
+/**
+ * BOTH retur lists export, and they export DIFFERENT columns, because they are
+ * two different documents that happen to share a table shape. Retur ke supplier
+ * is a claim being raised (who it is against, what is on it, where it has got
+ * to); retur dari outlet is a receipt being checked (which outlet, when it
+ * shipped, how much actually arrived). One shared column set would have carried
+ * blank columns on both.
+ *
+ * ONE ROW PER LINE, not per document. A retur document's whole content is its
+ * lines, and a spreadsheet cannot do anything with a "3 lines" cell — this is
+ * the same call `StockPanel` makes about its storage-area grouping.
+ */
+interface ReturnLineExportRow {
+  returnNumber: string;
+  status: string;
+  counterparty: string;
+  shippedAt: string;
+  itemName: string;
+  qty: string;
+  qtyReceived: string;
+  condition: string;
+  reason: string;
+}
+
+function toLineRows(docs: ReturnDoc[], counterpartyOf: (doc: ReturnDoc) => string) {
+  return docs.flatMap((doc) =>
+    doc.lines.map(
+      (line): ReturnLineExportRow => ({
+        returnNumber: doc.returnNumber,
+        status: doc.status,
+        counterparty: counterpartyOf(doc),
+        shippedAt: doc.shippedAt ? fmtDate(doc.shippedAt) : '',
+        itemName: line.itemName,
+        qty: line.qty,
+        qtyReceived: line.qtyReceived ?? '',
+        condition: line.condition,
+        reason: line.reason,
+      }),
+    ),
+  );
+}
+
+const SUPPLIER_EXPORT_COLUMNS: CsvColumn<ReturnLineExportRow>[] = [
+  { key: 'returnNumber', header: 'No. Retur' },
+  { key: 'status', header: 'Status' },
+  { key: 'counterparty', header: 'Supplier' },
+  { key: 'shippedAt', header: 'Dikirim' },
+  { key: 'itemName', header: 'Nama Barang' },
+  { key: 'qty', header: 'Jumlah' },
+  { key: 'condition', header: 'Kondisi' },
+  { key: 'reason', header: 'Alasan' },
+];
+
+const OUTLET_EXPORT_COLUMNS: CsvColumn<ReturnLineExportRow>[] = [
+  { key: 'returnNumber', header: 'No. Retur' },
+  { key: 'counterparty', header: 'Outlet' },
+  { key: 'shippedAt', header: 'Dikirim' },
+  { key: 'status', header: 'Status' },
+  { key: 'itemName', header: 'Nama Barang' },
+  { key: 'qty', header: 'Jumlah Dikirim' },
+  { key: 'qtyReceived', header: 'Jumlah Diterima' },
+  { key: 'condition', header: 'Kondisi' },
+  { key: 'reason', header: 'Alasan' },
+];
 
 interface ReturnLineDraft {
   itemId: string;
@@ -248,6 +324,81 @@ export function ReturnPanel() {
   const areaOptions = areas.map((a) => ({ value: a.id, label: a.name }));
   const supplierOptions = suppliers.map((s) => ({ value: s.id, label: s.name }));
 
+  const itemIndex = useMemo(() => buildItemIndex(items), [items]);
+  const areaIndex = useMemo(() => buildNameIndex(areas), [areas]);
+
+  /**
+   * Headers deliberately equal to `SUPPLIER_EXPORT_COLUMNS`' item-level ones, so
+   * an exported claim can be edited and fed back as the basis for a new one —
+   * `No. Retur`/`Status` come along in such a file and are reported as ignored
+   * rather than rejected (the server assigns both).
+   *
+   * `Area Penyimpanan` has no export counterpart because a retur document does
+   * not carry it back; it is required on the way IN, since the stock has to come
+   * out of a specific freezer.
+   */
+  const importColumns = [
+    { header: 'SKU', hint: 'opsional — pakai ini kalau ada dua barang dengan nama sama' },
+    {
+      header: 'Nama Barang',
+      hint: 'nama persis seperti di Data Master (wajib kalau SKU kosong)',
+      required: true,
+    },
+    { header: 'Area Penyimpanan', hint: 'nama area asal barang, mis. "Chiller"', required: true },
+    { header: 'Jumlah', hint: 'angka, mis. 3 atau 2,5', required: true },
+    {
+      header: 'Kondisi',
+      hint: `salah satu: ${CONDITIONS.map((c) => t(`warehouse.return.conditions.${c}`)).join(' / ')}`,
+      required: true,
+    },
+    { header: 'Alasan', hint: 'wajib — alasan retur per baris', required: true },
+  ];
+
+  function mapReturnRow(
+    row: CsvRecord,
+  ): { ok: true; line: ReturnLineDraft } | { ok: false; error: string } {
+    const item = resolveItem(itemIndex, { sku: row.get('SKU'), name: row.get('Nama Barang') });
+    if (!item) {
+      const typed = row.get('SKU') || row.get('Nama Barang');
+      if (!typed) return { ok: false, error: t('lineImport.missingItem') };
+      return { ok: false, error: t('lineImport.unknownItem', { value: typed }) };
+    }
+
+    const areaText = row.get('Area Penyimpanan');
+    if (!areaText) return { ok: false, error: t('lineImport.missingArea') };
+    const area = resolveNamed(areaIndex, areaText);
+    if (!area) return { ok: false, error: t('lineImport.unknownArea', { value: areaText }) };
+
+    const qtyText = row.get('Jumlah');
+    if (!qtyText) return { ok: false, error: t('lineImport.missingQty') };
+    const qty = parseDecimal(qtyText);
+    if (qty === null) return { ok: false, error: t('lineImport.invalidQty', { value: qtyText }) };
+    if (qty.startsWith('-')) return { ok: false, error: t('lineImport.negativeQty') };
+
+    const conditionText = row.get('Kondisi');
+    const condition = conditionText
+      ? resolveEnum(conditionText, CONDITIONS, (c) => t(`warehouse.return.conditions.${c}`))
+      : null;
+    if (!condition) {
+      return conditionText
+        ? { ok: false, error: t('lineImport.unknownReason', { value: conditionText }) }
+        : { ok: false, error: t('lineImport.missingReason') };
+    }
+
+    // Rejected at PARSE time rather than left to the submit filter, which
+    // silently drops a reasonless line — a retur that quietly loses two of its
+    // six lines is a claim understated against the supplier.
+    const reason = row.get('Alasan');
+    if (!reason.trim()) return { ok: false, error: t('lineImport.missingReason') };
+
+    return {
+      ok: true,
+      line: { itemId: item.id, storageAreaId: area.id, qty: qty as Qty, condition, reason },
+    };
+  }
+
+  const hasTypedLines = lines.some((l) => l.itemId || l.storageAreaId || l.qty || l.reason.trim());
+
   const supplierColumns: DataTableColumn<ReturnDoc>[] = [
     { key: 'returnNumber', header: t('warehouse.return.number') },
     {
@@ -306,7 +457,13 @@ export function ReturnPanel() {
 
       <TabsContent value="toSupplier">
         <div className="flex flex-col gap-4">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <ExportButton
+              rows={toLineRows(supplierRows, (d) => d.toLocationName ?? '')}
+              columns={SUPPLIER_EXPORT_COLUMNS}
+              filenameBase="retur-supplier"
+              pdfTitle={t('warehouse.return.tabToSupplier')}
+            />
             <PermissionGate permission="return.create">
               <Button
                 leftIcon={<Plus className="size-4" />}
@@ -404,20 +561,32 @@ export function ReturnPanel() {
                 />
               </div>
             ))}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              leftIcon={<Plus className="size-4" />}
-              onClick={() =>
-                setLines((ls) => [
-                  ...ls,
-                  { itemId: '', storageAreaId: '', qty: null, condition: 'damaged', reason: '' },
-                ])
-              }
-            >
-              {t('outlet.replenishment.addLine')}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                leftIcon={<Plus className="size-4" />}
+                onClick={() =>
+                  setLines((ls) => [
+                    ...ls,
+                    { itemId: '', storageAreaId: '', qty: null, condition: 'damaged', reason: '' },
+                  ])
+                }
+              >
+                {t('outlet.replenishment.addLine')}
+              </Button>
+              <LineImportButton<ReturnLineDraft>
+                title={t('warehouse.return.new')}
+                templateBase="retur-supplier"
+                columns={importColumns}
+                mapRow={mapReturnRow}
+                hasExistingLines={hasTypedLines}
+                onLines={(imported, mode) =>
+                  setLines((ls) => (mode === 'replace' ? imported : [...ls, ...imported]))
+                }
+              />
+            </div>
             <PhotoCapture
               label={t('warehouse.return.photoLabel')}
               value={photo ? URL.createObjectURL(photo) : null}
@@ -443,6 +612,20 @@ export function ReturnPanel() {
 
       <TabsContent value="fromOutlet">
         <div className="flex flex-col gap-4">
+          {/* Export only, and that is not an omission: the warehouse RECEIVES
+              these, it does not raise them. The importable half of this tab is
+              the per-line received quantity, which is checked against physical
+              goods on the dock with a photo — a CSV of what "arrived" with
+              nobody at the pallet is exactly the audit hole retur exists to
+              close. */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <ExportButton
+              rows={toLineRows(outletRows, (d) => d.fromLocationName)}
+              columns={OUTLET_EXPORT_COLUMNS}
+              filenameBase="retur-dari-outlet"
+              pdfTitle={t('warehouse.return.tabFromOutlet')}
+            />
+          </div>
           <DataTable
             columns={outletColumns}
             data={{

@@ -11,7 +11,7 @@ import {
 } from './rbac';
 
 describe('RBAC matrix shape', () => {
-  it('has exactly 150 permission keys (CONTRACTS.md §3 as amended by D-18/D-19/D-20, + D-23, + W7 chat/employee-self/contract keys, + the two B-15 keys)', () => {
+  it('has exactly 156 permission keys (CONTRACTS.md §3 as amended by D-18/D-19/D-20, + D-23, + W7 chat/employee-self/contract keys, + the two B-15 keys)', () => {
     // 137 at CONTRACTS.md's own last count (already stale relative to its table — see rbac.ts's
     // header) + 1: `settings.approval_mode.manage` (D-23, owner-decided, not yet folded into
     // CONTRACTS.md §3 — same documented-drift situation, flagged for the architect to reconcile),
@@ -24,8 +24,8 @@ describe('RBAC matrix shape', () => {
     // + 2 for B-15 (owner 2026-08-22): `approval.code.issue` and
     // `auth.lockout.clear`, the two keys behind the one-time approval code that
     // replaced `POST /auth/pin/verify`.
-    expect(PERMISSION_KEY_COUNT).toBe(150);
-    expect(new Set(PERMISSION_KEYS).size).toBe(150); // no duplicate keys
+    expect(PERMISSION_KEY_COUNT).toBe(156);
+    expect(new Set(PERMISSION_KEYS).size).toBe(156); // no duplicate keys
   });
 
   it('has exactly 11 roles, in contract column order', () => {

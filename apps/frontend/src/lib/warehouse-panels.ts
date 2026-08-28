@@ -1,6 +1,5 @@
 import {
   Boxes,
-  CalendarRange,
   ClipboardCheck,
   ListChecks,
   PackageCheck,
@@ -87,13 +86,22 @@ export const WAREHOUSE_PANELS: readonly WarehousePanelMeta[] = [
     icon: Route,
     permission: ['delivery.sj.create', 'delivery.read'],
   },
-  {
-    slug: 'rekap',
-    labelKey: 'warehouse.tabs.recap',
-    icon: CalendarRange,
-    permission: 'report.logistics.read',
-  },
 ];
+
+/**
+ * `rekap` ("Rekap Harian") IS NO LONGER A PANEL HERE. Owner, 2026-08-27: the
+ * daily recap, Pengiriman (Dispatcher) and Penugasan Pengiriman "need to be
+ * combined like dashboard" — three sidebar entries for one job (what is going
+ * out today, who is driving it, and the day's totals) meant three screens to
+ * cross-check by hand. All three are now tabs of `DeliveryShell`
+ * (`components/delivery/DeliveryShell.tsx`), which is what "like dashboard"
+ * means here: one surface, tabs across it, each still permission-gated on its
+ * own key (`report.logistics.read` for this one, unchanged).
+ *
+ * `/warehouse/rekap` still resolves — `app/warehouse/rekap/page.tsx` redirects
+ * to `/delivery/rekap` — so bookmarks and old links land on the tab instead of
+ * a 404. `CalendarRange` is no longer imported for the same reason.
+ */
 
 export function isWarehousePanelSlug(slug: string): boolean {
   return WAREHOUSE_PANELS.some((p) => p.slug === slug);

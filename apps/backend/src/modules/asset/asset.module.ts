@@ -39,5 +39,8 @@ import { MaintenanceDueSweepService } from './maintenance-due-sweep.service';
   imports: [StorageModule, NotificationModule, SyncEngineModule, AccountingModule],
   controllers: [JobsController, SchedulesController, AssetsController],
   providers: [AssetsService, SchedulesService, JobsService, MaintenanceDueSweepService],
+  // `AssetsService` exported for `modules/import` (bulk import of `assets`
+  // master data, 2026-08-27 round).
+  exports: [AssetsService],
 })
 export class AssetModule {}

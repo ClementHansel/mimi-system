@@ -183,3 +183,84 @@ describe('downloadPdf', () => {
     clickSpy.mockRestore();
   });
 });
+
+
+/**
+ * Brand + the text-object fix. These assert the CONTENT STREAM, not just that
+ * the file parses, because both regressions this covers produced a file that
+ * still parsed fine and simply looked wrong (or silently lost a line) in a
+ * viewer.
+ */
+describe('toPdf — brand colours and a valid footer text object', () => {
+  function contentOf(bytes: Uint8Array<ArrayBuffer>): string {
+    let text = '';
+    for (const byte of bytes) text += String.fromCharCode(byte);
+    return text;
+  }
+
+  const rows: Row[] = [{ name: 'Ayam Fillet', qty: 12, amount: 'Rp125.000' }];
+
+  it('draws the heading and the rule under it in the brand primary', () => {
+    const text = contentOf(
+      toPdf(rows, columns, baseOptions({ brand: { primary: '#a8481a', muted: '#78716c' } })),
+    );
+    // #a8481a -> 168/255, 72/255, 26/255
+    expect(text).toContain('0.659 0.282 0.102 rg');
+    // ...and #78716c for the footer rule/text.
+    expect(text).toContain('0.471 0.443 0.424 rg');
+  });
+
+  it('resets to black before the table rows, so a colour never leaks into the data', () => {
+    const text = contentOf(
+      toPdf(rows, columns, baseOptions({ brand: { primary: '#a8481a', muted: '#78716c' } })),
+    );
+    const headingAt = text.indexOf('(Stok Gudang) Tj');
+    const rowAt = text.indexOf('Ayam Fillet');
+    expect(headingAt).toBeGreaterThan(-1);
+    expect(rowAt).toBeGreaterThan(headingAt);
+    // Between the heading and the first row there must be a reset to black.
+    expect(text.slice(headingAt, rowAt)).toContain('0 0 0 rg');
+  });
+
+  it('stays entirely black when no brand is supplied — every existing caller is unchanged', () => {
+    const text = contentOf(toPdf(rows, columns, baseOptions()));
+    expect(text).not.toMatch(/0\.\d{3} 0\.\d{3} 0\.\d{3} rg/);
+  });
+
+  it('falls back to black for a junk brand colour rather than emitting a broken operand', () => {
+    const text = contentOf(
+      toPdf(rows, columns, baseOptions({ brand: { primary: 'chartreuse', muted: '#ABC' } })),
+    );
+    expect(text).not.toContain('chartreuse');
+    expect(text).not.toMatch(/NaN/);
+  });
+
+  it('keeps every text operator inside a BT/ET pair', () => {
+    // REGRESSION: the footer's `Tf`/`Tm`/`Tj` used to sit outside any text
+    // object, which is invalid (PDF spec 9.4). Lenient viewers dropped the
+    // footer silently, so the file "worked" while being malformed.
+    const text = contentOf(toPdf(rows, columns, baseOptions()));
+    const stream = text.slice(text.indexOf('stream'), text.indexOf('endstream'));
+    let depth = 0;
+    for (const token of stream.split(/\s+/)) {
+      if (token === 'BT') depth += 1;
+      else if (token === 'ET') depth -= 1;
+      else if (token === 'Tj' || token === 'Tf' || token === 'Tm') {
+        expect(depth, `text operator ${token} outside BT/ET`).toBe(1);
+      }
+      expect(depth).toBeGreaterThanOrEqual(0);
+    }
+    expect(depth).toBe(0);
+  });
+
+  it('prints the company name in the footer when one is supplied', () => {
+    const text = contentOf(toPdf(rows, columns, baseOptions({ footerLabel: 'PT Mimi Jaya' })));
+    expect(text).toContain('(PT Mimi Jaya) Tj');
+    expect(text).not.toContain('(Mimi Chicken OS) Tj');
+  });
+
+  it('keeps the historical footer when none is supplied', () => {
+    const text = contentOf(toPdf(rows, columns, baseOptions()));
+    expect(text).toContain('(Mimi Chicken OS) Tj');
+  });
+});

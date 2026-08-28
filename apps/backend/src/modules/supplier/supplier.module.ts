@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { SyncEngineModule } from '../../kernel/sync/sync.module';
 import { SupplierController } from './supplier.controller';
 import { SupplierService } from './supplier.service';
 
@@ -24,11 +23,13 @@ import { SupplierService } from './supplier.service';
  * - GET /api/suppliers/:id/transactions (PO history)
  */
 @Module({
-  // SyncEngineModule provides SyncEmitService (collision rule 6 — every
-  // mutation emits a sync event). Missing here until boot-tested: the unit and
-  // integration suites construct SupplierService directly, so nothing
-  // exercised Nest's DI container and the app could not start.
-  imports: [SyncEngineModule],
+  // NO SyncEngineModule (2026-08-27). It used to be imported so
+  // `SupplierService` could inject `SyncEmitService` — "collision rule 6, every
+  // mutation emits a sync event". That rule does not apply to this module:
+  // `suppliers` and `supplier_items` are class `X` in the authority matrix,
+  // never on the wire in either direction (FR-SUP-06), so `emit` THREW on every
+  // supplier write and the whole surface failed. See `supplier.service.ts`'s
+  // constructor comment. With the emits gone the dependency is gone too.
   controllers: [SupplierController],
   providers: [SupplierService],
   exports: [SupplierService],

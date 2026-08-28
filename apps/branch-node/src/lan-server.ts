@@ -85,11 +85,13 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 export class LanServer {
   private server: http.Server | https.Server;
   private listening = false;
+  private cert: LanCert | null;
 
   constructor(
     private handlers: LanServerHandlers,
     cert: LanCert | null,
   ) {
+    this.cert = cert;
     this.server = this.buildServer(cert);
   }
 
@@ -103,8 +105,34 @@ export class LanServer {
   /** Swaps in a freshly-issued LAN cert (rotation, §1.3) — requires a listen()/close() cycle to take effect on a live port. */
   async rotateCert(cert: LanCert, port: number): Promise<void> {
     await this.close();
+    this.cert = cert;
     this.server = this.buildServer(cert);
     await this.listen(port);
+  }
+
+  /**
+   * W3-10: rebinds this listener to a new port (a remotely-applied `healthPort` network-config
+   * change) — same cert, new port. Binds a CANDIDATE server on the new port FIRST and only swaps it
+   * in once that succeeds, so a successful rebind never has a downtime gap and a FAILED one never
+   * touches the currently-live listener at all (the old port keeps serving LAN devices right up
+   * until the moment a working replacement exists). Throws (never resolves) on a bind failure —
+   * already in use, out of range, insufficient privilege on a <1024 port — which `RelayEngine`'s
+   * `handleNetworkConfigUpdate` treats as an immediate, no-timeout-needed reason to revert, rather
+   * than waiting out the full confirm window for a failure it already knows about.
+   */
+  async rebind(port: number): Promise<void> {
+    const candidate = this.buildServer(this.cert);
+    await new Promise<void>((resolve, reject) => {
+      const onError = (err: Error) => reject(err);
+      candidate.once('error', onError);
+      candidate.listen(port, () => {
+        candidate.off('error', onError);
+        resolve();
+      });
+    });
+    await this.close();
+    this.server = candidate;
+    this.listening = true;
   }
 
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -151,9 +179,19 @@ export class LanServer {
     }
   }
 
+  /**
+   * Rejects (never crashes the process) on a bind failure — EADDRINUSE, an invalid/out-of-range
+   * port, or insufficient privilege on a <1024 port. Before this fix, `http.Server.listen()`'s
+   * `'error'` event had no listener at all, so a bind failure was an UNCAUGHT exception that would
+   * take the whole node process down — exactly backwards for `rebind()` (W3-10), whose entire
+   * contract depends on a bind failure being a catchable, revertable outcome rather than a crash.
+   */
   listen(port: number): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      const onError = (err: Error) => reject(err);
+      this.server.once('error', onError);
       this.server.listen(port, () => {
+        this.server.off('error', onError);
         this.listening = true;
         resolve();
       });

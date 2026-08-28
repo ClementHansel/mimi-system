@@ -21,6 +21,7 @@ import type {
   NodeRegisterResponse,
   CertRotated,
   ConfigUpdated,
+  NetworkConfigAck,
 } from './bridge-types';
 
 /** `POST /api/nodes/register` (CONTRACTS §4.22) — public endpoint, single-use pairing token in the body. */
@@ -120,6 +121,12 @@ export class BridgeClient {
 
   sendLogsChunk(chunk: LogsChunk): void {
     this.socket.emit('logs:chunk', chunk);
+  }
+
+  /** The apply-then-confirm outcome for a `config_updated` push (W3-10) — sent exactly once, after
+   *  the confirm window resolves one way or the other (never mid-flight). */
+  sendNetworkConfigAck(ack: NetworkConfigAck): void {
+    this.socket.emit('network_config_ack', ack);
   }
 
   disconnect(): void {

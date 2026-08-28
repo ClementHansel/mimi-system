@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { PermissionGate } from '@/components/ui/PermissionGate';
+import { ExportButton } from '@/components/common/ExportButton';
 import { PayrollStatutoryCard } from './PayrollStatutoryCard';
 import { SettingDetailModal } from './SettingDetailModal';
 import {
@@ -19,6 +20,7 @@ import {
   type SettingSection,
 } from './lib/settings-registry';
 import { formatSettingValue } from './lib/settings-format';
+import { settingIoColumns } from './lib/io-columns';
 import type { Setting } from './types';
 
 /**
@@ -131,12 +133,22 @@ export function SettingsPanel() {
         <div className="flex flex-col gap-4">
           <p className="text-sm text-text-secondary">{t('admin.settings.description')}</p>
 
-          <Input
-            placeholder={t('admin.settings.searchPlaceholder')}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            wrapperClassName="w-72"
-          />
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <Input
+              placeholder={t('admin.settings.searchPlaceholder')}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              wrapperClassName="w-72"
+            />
+            {/* Export only, deliberately — `settings` is not a bulk-importer
+                entity at all (not in `ImportEntityName`), and could not
+                sensibly be one: it is a fixed, heterogeneous key/value table
+                (money, booleans, structured objects), not a list of records
+                a natural-key upsert makes sense of — and two keys
+                (`payroll.statutory`, `approval.mode`) reject a raw PUT
+                outright in favor of their own guarded screens. */}
+            <ExportButton rows={visible} columns={settingIoColumns(t)} filenameBase="pengaturan" />
+          </div>
 
           {error && <p className="text-sm text-danger-600">{error}</p>}
 

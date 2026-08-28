@@ -6,7 +6,9 @@ import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
 import { Button, Card, CardContent, EmptyState, Input, toast } from '@/components/ui';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { MasterDataIo } from '@/components/admin/MasterDataIo';
 import { getSuppliers, deactivateSupplier } from './lib/api';
+import { SUPPLIER_IO_COLUMNS } from './lib/io-columns';
 import { SupplierFormModal } from './SupplierFormModal';
 import { SupplierDetailDrawer } from './SupplierDetailDrawer';
 import type { Paginated } from '@/lib/shared-types';
@@ -162,11 +164,30 @@ export function SuppliersPanel() {
             aria-label={t('purchasing.suppliers.searchPlaceholder')}
           />
         </div>
-        {canManage && (
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
-            {t('purchasing.suppliers.createButton')}
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Export/import as toolbar buttons on the list they act on, not a
+              separate destination (owner, 2026-08-25). `rows` is the current
+              search result, which is what an operator means by "export this".
+
+              Bulk supplier import was BLOCKED until 2026-08-27 by a backend bug
+              that made every supplier write throw before it could commit — the
+              same one that broke the "Tambah Supplier" button beside this. See
+              `modules/supplier/supplier.service.ts`'s constructor comment. */}
+          <MasterDataIo
+            entity="suppliers"
+            titleKey="purchasing.suppliers.title"
+            rows={data.rows}
+            columns={SUPPLIER_IO_COLUMNS}
+            filenameBase="supplier"
+            onImported={reload}
+            canImport={canManage}
+          />
+          {canManage && (
+            <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
+              {t('purchasing.suppliers.createButton')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {error ? (

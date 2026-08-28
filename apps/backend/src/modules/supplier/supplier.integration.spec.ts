@@ -151,11 +151,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
   // it up via the owner pool in a `finally` block.
   describe('FR-SUP-01: Supplier CRUD (create, read, update, delete)', () => {
     it('should create and read back a supplier — write and read on SEPARATE connections', async () => {
-      const syncEmit = { emit: async () => {} } as any;
       let supplierId: string | undefined;
       try {
         const created = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
-          new SupplierService(syncEmit).create(
+          new SupplierService().create(
             client,
             {
               code: `TEST-${randomUUID().slice(0, 8)}`,
@@ -184,7 +183,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
         // A GENUINELY separate connection/transaction — never sees `create`'s connection's
         // uncommitted state, only what it actually COMMITted.
         const fetched = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
-          new SupplierService(syncEmit).getById(client, created.id),
+          new SupplierService().getById(client, created.id),
         );
         expect(fetched.id).toBe(created.id);
         expect(fetched.name).toBe('Test Supplier Corp');
@@ -196,11 +195,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     });
 
     it('should update a supplier — create and update on SEPARATE connections', async () => {
-      const syncEmit = { emit: async () => {} } as any;
       let supplierId: string | undefined;
       try {
         const created = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
-          new SupplierService(syncEmit).create(
+          new SupplierService().create(
             client,
             {
               code: `UPD-${randomUUID().slice(0, 8)}`,
@@ -214,7 +212,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
         supplierId = created.id;
 
         const updated = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
-          new SupplierService(syncEmit).update(
+          new SupplierService().update(
             client,
             created.id,
             {
@@ -232,7 +230,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
         // Independent read-back, a THIRD connection: proves `update`'s write genuinely
         // committed, not merely visible within its own now-closed transaction.
         const reread = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
-          new SupplierService(syncEmit).getById(client, created.id),
+          new SupplierService().getById(client, created.id),
         );
         expect(reread.name).toBe('Updated Name');
         expect(reread.paymentTermsDays).toBe(45);
@@ -243,11 +241,10 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
     });
 
     it('should soft-delete (deactivate) a supplier — create, deactivate, and verifying read all on SEPARATE connections', async () => {
-      const syncEmit = { emit: async () => {} } as any;
       let supplierId: string | undefined;
       try {
         const created = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
-          new SupplierService(syncEmit).create(
+          new SupplierService().create(
             client,
             {
               code: `DEL-${randomUUID().slice(0, 8)}`,
@@ -259,14 +256,14 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
         supplierId = created.id;
 
         const deactivated = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
-          new SupplierService(syncEmit).deactivate(client, created.id, SYSTEM_USER_ID),
+          new SupplierService().deactivate(client, created.id, SYSTEM_USER_ID),
         );
         expect(deactivated.deactivated).toBe(true);
 
         // A later GET (new connection) sees the deactivated status, not the pre-deactivate one —
         // proving `deactivate`'s write persisted past its own request.
         const fetched = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
-          new SupplierService(syncEmit).getById(client, created.id),
+          new SupplierService().getById(client, created.id),
         );
         expect(fetched.isActive).toBe(false);
       } finally {
@@ -297,8 +294,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.SUPERVISOR, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const dir = await service.getDirectory(client);
           const visibleFound = dir.rows.find((r) => r.id === visibleId);
@@ -326,8 +322,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.SUPERVISOR, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const dir = await service.getDirectory(client);
           const entry = dir.rows.find((r) => r.id === supplierId);
@@ -365,8 +360,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.SUPERVISOR, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const items = await service.getItems(client, supplierId);
           expect(items).toHaveLength(0);
@@ -397,8 +391,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.SUPERVISOR, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const history = await service.getPriceHistory(client, supplierId);
           expect(history.rows).toHaveLength(0);
@@ -425,8 +418,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const list = await service.list(client);
           const found = list.rows.find((s) => s.id === supplierId);
@@ -460,8 +452,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const items = await service.getItems(client, supplierId);
           expect(items).toHaveLength(1);
@@ -494,8 +485,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const history = await service.getPriceHistory(client, supplierId);
           expect(history.rows.length).toBeGreaterThanOrEqual(1);
@@ -531,8 +521,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const history = await service.getPriceHistory(client, supplierId);
           const row = history.rows.find((r) => r.price === '77000.00');
@@ -598,8 +587,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.OWNER, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           // Previously: `column pv.po_id does not exist` (wrong join) — this call could never
           // have succeeded before BE-PURCH-FIX's query rewrite.
@@ -649,8 +637,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
       try {
         await withRollback(RoleKey.KEPALA_GUDANG, [], async (client) => {
-          const syncEmit = { emit: async () => {} } as any;
-          const service = new SupplierService(syncEmit);
+          const service = new SupplierService();
 
           const items = await service.getItems(client, supplierId);
           expect(items[0].currentPrice).toBe('250500.75');

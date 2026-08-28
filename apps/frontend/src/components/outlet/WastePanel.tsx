@@ -21,7 +21,18 @@ import {
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
-import { useOutletLocation } from './lib/use-outlet-location';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import { useOutletLocationContext } from './lib/outlet-location-context';
+import { WASTE_EXPORT_COLUMNS, RETURN_EXPORT_COLUMNS } from './lib/outlet-export-columns';
+import {
+  WASTE_IMPORT_COLUMNS,
+  RETURN_IMPORT_COLUMNS,
+  makeWasteMapper,
+  makeReturnMapper,
+  type WasteImportLine,
+  type ReturnImportLine,
+} from './lib/outlet-line-import';
 import {
   getStorageAreas,
   getItems,
@@ -54,9 +65,13 @@ interface ReturnLineDraft {
 }
 
 /** Waste (with photo) and retur-to-warehouse — both live under one tab set since they share the same source data (items/areas) and both post to the warehouse. */
-export function WastePanel() {
+/**
+ * `only` renders a single flow, for the per-flow sidebar routes. Omitted, it
+ * renders both as tabs — what this component always did.
+ */
+export function WastePanel({ only }: { only?: 'waste' | 'return' } = {}) {
   const { t } = useI18n();
-  const { locationId } = useOutletLocation();
+  const { locationId } = useOutletLocationContext();
   const [areas, setAreas] = useState<StorageArea[]>([]);
   const [items, setItems] = useState<Item[]>([]);
 
@@ -79,20 +94,17 @@ export function WastePanel() {
   const [returnSaving, setReturnSaving] = useState(false);
 
   useEffect(() => {
-    if (!locationId) return;
     getStorageAreas(locationId).then(setAreas);
     getItems().then((r) => setItems(r.rows));
   }, [locationId]);
 
   function reloadWaste() {
-    if (!locationId) return;
     setWasteLoading(true);
     listWaste(locationId)
       .then((r) => setWasteRows(r.rows))
       .finally(() => setWasteLoading(false));
   }
   function reloadReturns() {
-    if (!locationId) return;
     setReturnLoading(true);
     // `ReturnDirection` (`@mimi/shared`) is `outlet_to_warehouse` |
     // `warehouse_to_supplier` — the Indonesian-slang value here never
@@ -228,99 +240,102 @@ export function WastePanel() {
   const itemOptions = items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }));
   const areaOptions = areas.map((a) => ({ value: a.id, label: a.name }));
 
-  return (
-    <Tabs defaultValue="waste">
-      <TabsList>
-        <TabsTrigger value="waste">{t('outlet.waste.tab')}</TabsTrigger>
-        <TabsTrigger value="return">{t('outlet.return.tab')}</TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="waste">
-        <div className="flex flex-col gap-4">
-          <div className="flex justify-end">
-            <PermissionGate permission="waste.create">
-              <Button
-                leftIcon={<Plus className="size-4" />}
-                size="touch"
-                onClick={() => setWasteOpen(true)}
-              >
-                {t('outlet.waste.new')}
-              </Button>
-            </PermissionGate>
-          </div>
-          <DataTable
-            columns={wasteColumns}
-            data={{
-              rows: wasteRows,
-              total: wasteRows.length,
-              page: 1,
-              pageSize: Math.max(wasteRows.length, 1),
-            }}
-            keyField={(r) => r.id}
-            loading={wasteLoading}
-            emptyDescription={t('outlet.waste.empty')}
-          />
+  // Split into named blocks so each flow can render on its own: the two are
+  // separate sidebar routes now (`/outlet/waste`, `/outlet/retur`), and were
+  // only ever tabs because they share this component's `items`/`areas` fetch.
+  // They still share it — mounting either route loads both lists once — which
+  // is why splitting the FILE in two would have been the costlier change.
+  const wasteContent = (
+    // The list and its create modal are siblings — a fragment, not a wrapper
+    // div, so the surrounding layout is unchanged from when this was a tab.
+    <>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ExportButton rows={wasteRows} columns={WASTE_EXPORT_COLUMNS} filenameBase="waste" />
+          <PermissionGate permission="waste.create">
+            <Button
+              leftIcon={<Plus className="size-4" />}
+              size="touch"
+              onClick={() => setWasteOpen(true)}
+            >
+              {t('outlet.waste.new')}
+            </Button>
+          </PermissionGate>
         </div>
+        <DataTable
+          columns={wasteColumns}
+          data={{
+            rows: wasteRows,
+            total: wasteRows.length,
+            page: 1,
+            pageSize: Math.max(wasteRows.length, 1),
+          }}
+          keyField={(r) => r.id}
+          loading={wasteLoading}
+          emptyDescription={t('outlet.waste.empty')}
+        />
+      </div>
 
-        <Modal
-          open={wasteOpen}
-          onClose={() => setWasteOpen(false)}
-          title={t('outlet.waste.new')}
-          size="lg"
-        >
-          <div className="flex flex-col gap-4">
-            {wasteLines.map((line, idx) => (
-              <div key={idx} className="grid gap-3 sm:grid-cols-2">
-                <Select
-                  label={t('outlet.receiving.storageArea')}
-                  value={line.storageAreaId}
-                  options={areaOptions}
-                  onValueChange={(v) =>
-                    setWasteLines((ls) =>
-                      ls.map((l, i) => (i === idx ? { ...l, storageAreaId: v } : l)),
-                    )
-                  }
-                  placeholder={t('common.selectPlaceholder')}
-                />
-                <Select
-                  label={t('outlet.replenishment.item')}
-                  value={line.itemId}
-                  options={itemOptions}
-                  onValueChange={(v) =>
-                    setWasteLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))
-                  }
-                  placeholder={t('common.selectPlaceholder')}
-                />
-                <QtyInput
-                  label={t('outlet.opname.countedQty')}
-                  value={line.qty}
-                  onChange={(v) =>
-                    setWasteLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qty: v } : l)))
-                  }
-                />
-                <Select
-                  label={t('common.reason')}
-                  value={line.reason}
-                  options={WASTE_REASONS.map((r) => ({
-                    value: r,
-                    label: t(`outlet.waste.reason.${r}`),
-                  }))}
-                  onValueChange={(v) =>
-                    setWasteLines((ls) => ls.map((l, i) => (i === idx ? { ...l, reason: v } : l)))
-                  }
-                />
-                <Textarea
-                  wrapperClassName="sm:col-span-2"
-                  label={t('common.notes')}
-                  value={line.reasonDetail}
-                  onChange={(e) =>
-                    setWasteLines((ls) =>
-                      ls.map((l, i) => (i === idx ? { ...l, reasonDetail: e.target.value } : l)),
-                    )
-                  }
-                />
-              </div>
-            ))}
+      <Modal
+        open={wasteOpen}
+        onClose={() => setWasteOpen(false)}
+        title={t('outlet.waste.new')}
+        size="lg"
+      >
+        <div className="flex flex-col gap-4">
+          {wasteLines.map((line, idx) => (
+            <div key={idx} className="grid gap-3 sm:grid-cols-2">
+              <Select
+                label={t('outlet.receiving.storageArea')}
+                value={line.storageAreaId}
+                options={areaOptions}
+                onValueChange={(v) =>
+                  setWasteLines((ls) =>
+                    ls.map((l, i) => (i === idx ? { ...l, storageAreaId: v } : l)),
+                  )
+                }
+                placeholder={t('common.selectPlaceholder')}
+              />
+              <Select
+                label={t('outlet.replenishment.item')}
+                value={line.itemId}
+                options={itemOptions}
+                onValueChange={(v) =>
+                  setWasteLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))
+                }
+                placeholder={t('common.selectPlaceholder')}
+              />
+              <QtyInput
+                label={t('outlet.opname.countedQty')}
+                value={line.qty}
+                onChange={(v) =>
+                  setWasteLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qty: v } : l)))
+                }
+              />
+              <Select
+                label={t('common.reason')}
+                value={line.reason}
+                options={WASTE_REASONS.map((r) => ({
+                  value: r,
+                  label: t(`outlet.waste.reason.${r}`),
+                }))}
+                onValueChange={(v) =>
+                  setWasteLines((ls) => ls.map((l, i) => (i === idx ? { ...l, reason: v } : l)))
+                }
+              />
+              <Textarea
+                wrapperClassName="sm:col-span-2"
+                label={t('common.notes')}
+                value={line.reasonDetail}
+                onChange={(e) =>
+                  setWasteLines((ls) =>
+                    ls.map((l, i) => (i === idx ? { ...l, reasonDetail: e.target.value } : l)),
+                  )
+                }
+              />
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
@@ -329,106 +344,137 @@ export function WastePanel() {
               onClick={() =>
                 setWasteLines((ls) => [
                   ...ls,
-                  { storageAreaId: '', itemId: '', qty: null, reason: 'expired', reasonDetail: '' },
+                  {
+                    storageAreaId: '',
+                    itemId: '',
+                    qty: null,
+                    reason: 'expired',
+                    reasonDetail: '',
+                  },
                 ])
               }
             >
               {t('outlet.replenishment.addLine')}
             </Button>
-            <PhotoCapture
-              label={t('outlet.waste.photoLabel')}
-              value={wastePhoto ? URL.createObjectURL(wastePhoto) : null}
-              onCapture={setWastePhoto}
-              onRemove={() => setWastePhoto(null)}
-              required
+            {/* The photo below stays mandatory. A CSV can say what was thrown
+                  away; only the photo evidences that it was. */}
+            <LineImportButton<WasteImportLine>
+              title={t('outlet.waste.new')}
+              note={t('outlet.waste.importNote')}
+              columns={WASTE_IMPORT_COLUMNS}
+              templateBase="waste"
+              mapRow={makeWasteMapper(items, areas)}
+              hasExistingLines={wasteLines.some((l) => l.itemId !== '' || l.qty !== null)}
+              onLines={(imported, mode) =>
+                setWasteLines((prev) => [
+                  ...(mode === 'replace'
+                    ? []
+                    : prev.filter((l) => l.itemId !== '' || l.qty !== null)),
+                  ...imported,
+                ])
+              }
             />
           </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setWasteOpen(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button loading={wasteSaving} disabled={!wastePhoto} onClick={submitWaste}>
-              {t('common.submit')}
-            </Button>
-          </div>
-        </Modal>
-      </TabsContent>
-
-      <TabsContent value="return">
-        <div className="flex flex-col gap-4">
-          <div className="flex justify-end">
-            <PermissionGate permission="return.create">
-              <Button
-                leftIcon={<Plus className="size-4" />}
-                size="touch"
-                onClick={() => setReturnOpen(true)}
-              >
-                {t('outlet.return.new')}
-              </Button>
-            </PermissionGate>
-          </div>
-          <DataTable
-            columns={returnColumns}
-            data={{
-              rows: returnRows,
-              total: returnRows.length,
-              page: 1,
-              pageSize: Math.max(returnRows.length, 1),
-            }}
-            keyField={(r) => r.id}
-            loading={returnLoading}
-            emptyDescription={t('outlet.return.empty')}
+          <PhotoCapture
+            label={t('outlet.waste.photoLabel')}
+            value={wastePhoto ? URL.createObjectURL(wastePhoto) : null}
+            onCapture={setWastePhoto}
+            onRemove={() => setWastePhoto(null)}
+            required
           />
         </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setWasteOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button loading={wasteSaving} disabled={!wastePhoto} onClick={submitWaste}>
+            {t('common.submit')}
+          </Button>
+        </div>
+      </Modal>
+    </>
+  );
 
-        <Modal
-          open={returnOpen}
-          onClose={() => setReturnOpen(false)}
-          title={t('outlet.return.new')}
-          size="lg"
-        >
-          <div className="flex flex-col gap-4">
-            {returnLines.map((line, idx) => (
-              <div key={idx} className="grid gap-3 sm:grid-cols-2">
-                <Select
-                  label={t('outlet.replenishment.item')}
-                  value={line.itemId}
-                  options={itemOptions}
-                  onValueChange={(v) =>
-                    setReturnLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))
-                  }
-                  placeholder={t('common.selectPlaceholder')}
-                />
-                <Select
-                  label={t('outlet.receiving.storageArea')}
-                  value={line.storageAreaId}
-                  options={areaOptions}
-                  onValueChange={(v) =>
-                    setReturnLines((ls) =>
-                      ls.map((l, i) => (i === idx ? { ...l, storageAreaId: v } : l)),
-                    )
-                  }
-                  placeholder={t('common.selectPlaceholder')}
-                />
-                <QtyInput
-                  label={t('outlet.opname.countedQty')}
-                  value={line.qty}
-                  onChange={(v) =>
-                    setReturnLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qty: v } : l)))
-                  }
-                />
-                <Textarea
-                  label={t('common.reason')}
-                  required
-                  value={line.reason}
-                  onChange={(e) =>
-                    setReturnLines((ls) =>
-                      ls.map((l, i) => (i === idx ? { ...l, reason: e.target.value } : l)),
-                    )
-                  }
-                />
-              </div>
-            ))}
+  const returnContent = (
+    // The list and its create modal are siblings — a fragment, not a wrapper
+    // div, so the surrounding layout is unchanged from when this was a tab.
+    <>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ExportButton rows={returnRows} columns={RETURN_EXPORT_COLUMNS} filenameBase="retur" />
+          <PermissionGate permission="return.create">
+            <Button
+              leftIcon={<Plus className="size-4" />}
+              size="touch"
+              onClick={() => setReturnOpen(true)}
+            >
+              {t('outlet.return.new')}
+            </Button>
+          </PermissionGate>
+        </div>
+        <DataTable
+          columns={returnColumns}
+          data={{
+            rows: returnRows,
+            total: returnRows.length,
+            page: 1,
+            pageSize: Math.max(returnRows.length, 1),
+          }}
+          keyField={(r) => r.id}
+          loading={returnLoading}
+          emptyDescription={t('outlet.return.empty')}
+        />
+      </div>
+
+      <Modal
+        open={returnOpen}
+        onClose={() => setReturnOpen(false)}
+        title={t('outlet.return.new')}
+        size="lg"
+      >
+        <div className="flex flex-col gap-4">
+          {returnLines.map((line, idx) => (
+            <div key={idx} className="grid gap-3 sm:grid-cols-2">
+              <Select
+                label={t('outlet.replenishment.item')}
+                value={line.itemId}
+                options={itemOptions}
+                onValueChange={(v) =>
+                  setReturnLines((ls) => ls.map((l, i) => (i === idx ? { ...l, itemId: v } : l)))
+                }
+                placeholder={t('common.selectPlaceholder')}
+              />
+              <Select
+                label={t('outlet.receiving.storageArea')}
+                value={line.storageAreaId}
+                options={areaOptions}
+                onValueChange={(v) =>
+                  setReturnLines((ls) =>
+                    ls.map((l, i) => (i === idx ? { ...l, storageAreaId: v } : l)),
+                  )
+                }
+                placeholder={t('common.selectPlaceholder')}
+              />
+              <QtyInput
+                label={t('outlet.opname.countedQty')}
+                value={line.qty}
+                onChange={(v) =>
+                  setReturnLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qty: v } : l)))
+                }
+              />
+              <Textarea
+                label={t('common.reason')}
+                required
+                value={line.reason}
+                onChange={(e) =>
+                  setReturnLines((ls) =>
+                    ls.map((l, i) => (i === idx ? { ...l, reason: e.target.value } : l)),
+                  )
+                }
+              />
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
@@ -443,24 +489,56 @@ export function WastePanel() {
             >
               {t('outlet.replenishment.addLine')}
             </Button>
-            <PhotoCapture
-              label={t('outlet.return.photoLabel')}
-              value={returnPhoto ? URL.createObjectURL(returnPhoto) : null}
-              onCapture={setReturnPhoto}
-              onRemove={() => setReturnPhoto(null)}
-              required
+            <LineImportButton<ReturnImportLine>
+              title={t('outlet.return.new')}
+              note={t('outlet.return.importNote')}
+              columns={RETURN_IMPORT_COLUMNS}
+              templateBase="retur"
+              mapRow={makeReturnMapper(items, areas)}
+              hasExistingLines={returnLines.some((l) => l.itemId !== '' || l.qty !== null)}
+              onLines={(imported, mode) =>
+                setReturnLines((prev) => [
+                  ...(mode === 'replace'
+                    ? []
+                    : prev.filter((l) => l.itemId !== '' || l.qty !== null)),
+                  ...imported,
+                ])
+              }
             />
           </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setReturnOpen(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button loading={returnSaving} disabled={!returnPhoto} onClick={submitReturnDoc}>
-              {t('common.submit')}
-            </Button>
-          </div>
-        </Modal>
-      </TabsContent>
+          <PhotoCapture
+            label={t('outlet.return.photoLabel')}
+            value={returnPhoto ? URL.createObjectURL(returnPhoto) : null}
+            onCapture={setReturnPhoto}
+            onRemove={() => setReturnPhoto(null)}
+            required
+          />
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setReturnOpen(false)}>
+            {t('common.cancel')}
+          </Button>
+          <Button loading={returnSaving} disabled={!returnPhoto} onClick={submitReturnDoc}>
+            {t('common.submit')}
+          </Button>
+        </div>
+      </Modal>
+    </>
+  );
+
+  if (only === 'waste') return wasteContent;
+  if (only === 'return') return returnContent;
+
+  // No `only`: the combined view, unchanged. Kept so the component still works
+  // standalone and its existing tests keep exercising both halves together.
+  return (
+    <Tabs defaultValue="waste">
+      <TabsList>
+        <TabsTrigger value="waste">{t('outlet.waste.tab')}</TabsTrigger>
+        <TabsTrigger value="return">{t('outlet.return.tab')}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="waste">{wasteContent}</TabsContent>
+      <TabsContent value="return">{returnContent}</TabsContent>
     </Tabs>
   );
 }

@@ -13,6 +13,7 @@
  * a connected/disconnected answer.
  */
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { ConfigService } from '@nestjs/config';
 import {
   ERR_FORBIDDEN,
   ERR_NODE_QUEUE_PENDING,
@@ -376,6 +377,7 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
       bridge as never,
       syncEmit,
       outletSetting,
+      new ConfigService(),
       pool,
     );
 

@@ -40,6 +40,55 @@ export function getBalances(params: { locationId: string; storageAreaId?: string
   return api.get<Paginated<Balance>>(`/inventory/balances?${qs.toString()}`);
 }
 
+/**
+ * EVERY balance row for a location, not just the first page.
+ *
+ * `getBalances` above is capped at the backend-wide `pageSize` ceiling of 200
+ * (`ListBalancesQueryDto`'s `@Max(200)`), and `StockPanel` filtered the rows it
+ * got CLIENT-SIDE. Those two facts together are why the Stok Gudang filter
+ * looked broken (owner, 2026-08-27: "filter need to work properly"): a
+ * warehouse carrying frozen + chilled + dry areas is well past 200 item/area
+ * balance rows, so anything on page 2 was invisible to the list AND unfindable
+ * by typing its name — the filter was searching a truncated copy of the data
+ * and honestly reporting "no results" for items sitting in the freezer.
+ *
+ * Pages through to `total` instead. `MAX_PAGES` is a runaway guard, not a
+ * product limit: 20 * 200 = 4000 balance rows, far beyond one warehouse's
+ * distinct item/area combinations, and hitting it degrades to "the list is
+ * truncated" rather than looping forever against a mis-reported `total`.
+ */
+const BALANCES_PAGE_SIZE = 200;
+const BALANCES_MAX_PAGES = 20;
+
+export async function getAllBalances(params: {
+  locationId: string;
+  storageAreaId?: string;
+  q?: string;
+}): Promise<{ rows: Balance[]; total: number; truncated: boolean }> {
+  const rows: Balance[] = [];
+  let total = 0;
+
+  for (let page = 1; page <= BALANCES_MAX_PAGES; page += 1) {
+    const qs = new URLSearchParams({
+      locationId: params.locationId,
+      page: String(page),
+      pageSize: String(BALANCES_PAGE_SIZE),
+    });
+    if (params.storageAreaId) qs.set('storageAreaId', params.storageAreaId);
+    if (params.q) qs.set('q', params.q);
+    const res = await api.get<Paginated<Balance>>(`/inventory/balances?${qs.toString()}`);
+    total = res.total;
+    rows.push(...res.rows);
+    // Stop on a short page as well as on reaching `total` — a page that came
+    // back smaller than requested is the last one whatever `total` claims.
+    if (rows.length >= res.total || res.rows.length < BALANCES_PAGE_SIZE) {
+      return { rows, total, truncated: false };
+    }
+  }
+
+  return { rows, total, truncated: rows.length < total };
+}
+
 export function getStorageAreas(locationId: string) {
   return api.get<StorageArea[]>(`/locations/${locationId}/storage-areas?active=true`);
 }

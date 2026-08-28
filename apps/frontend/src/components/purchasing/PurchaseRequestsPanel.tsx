@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, History, ArrowRightLeft } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
@@ -11,6 +11,11 @@ import { fmtDate, fmtDateTime } from '@/lib/dates';
 import { formatMoney } from '@/lib/formatters';
 import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import type { CsvColumn } from '@/lib/export/csv';
+import { parseDecimal, type CsvRecord } from '@/lib/import/csv-parse';
+import { buildItemIndex, buildNameIndex, resolveItem, resolveNamed } from '@/lib/import/resolve';
 import { Select } from '@/components/ui/Select';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { Input } from '@/components/ui/Input';
@@ -84,6 +89,25 @@ const EMPTY_LINE: LineDraft = {
   estPrice: null,
   suggestedSupplierId: '',
 };
+
+/**
+ * The PR LIST export — one row per request, matching what the table shows.
+ *
+ * Deliberately NOT one row per line, unlike the retur and Surat Jalan exports.
+ * The list endpoint returns `lineCount`, not the lines themselves (each PR's
+ * lines come from `GET /purchasing/requests/:id`), so a per-line file would mean
+ * N extra requests to build one download. The per-line view of a PR is its
+ * drawer, and the per-line CSV that matters is the IMPORT one below — which is
+ * about raising a request, not reporting on it.
+ */
+const LIST_EXPORT_COLUMNS: CsvColumn<PurchaseRequestListRow>[] = [
+  { key: 'prNumber', header: 'No. PR' },
+  { key: 'locationName', header: 'Lokasi' },
+  { key: 'requestedBy', header: 'Diminta Oleh' },
+  { key: 'neededBy', header: 'Dibutuhkan', format: (r) => (r.neededBy ? fmtDate(r.neededBy) : '') },
+  { key: 'lineCount', header: 'Jumlah Baris' },
+  { key: 'status', header: 'Status' },
+];
 
 /**
  * F-PUR-01 — Permintaan Pembelian (purchase requests). Draft -> Submitted ->
@@ -169,11 +193,24 @@ export function PurchaseRequestsPanel({ onCreatePo }: { onCreatePo?: (prId: stri
             wrapperClassName="w-48"
           />
         </div>
-        <PermissionGate permission="purchasing.pr.create">
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
-            {t('purchasing.requests.createButton')}
-          </Button>
-        </PermissionGate>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* `data.rows` is ONE PAGE. The label says "terfilter" precisely
+              because of that, and `fetchAll` is not wired here: the list is
+              server-paginated, so an honest "export everything" would have to
+              walk every page — worth adding when someone asks for a month of
+              PRs, not worth pretending to do now. */}
+          <ExportButton
+            rows={data.rows}
+            columns={LIST_EXPORT_COLUMNS}
+            filenameBase="permintaan-pembelian"
+            pdfTitle={t('purchasing.tabs.requests')}
+          />
+          <PermissionGate permission="purchasing.pr.create">
+            <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
+              {t('purchasing.requests.createButton')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
 
       <DataTable
@@ -282,6 +319,83 @@ function CreateRequestModal({
     label: l.name,
     hint: l.city ?? undefined,
   }));
+
+  const itemIndex = useMemo(() => buildItemIndex(items), [items]);
+  const supplierIndex = useMemo(() => buildNameIndex(suppliers), [suppliers]);
+
+  /**
+   * Bulk line entry, which is what a purchase request actually is: a list of
+   * what to buy, usually assembled in a spreadsheet from several outlets' asks
+   * before anyone opens this screen.
+   *
+   * `Satuan` is NOT an importable column. The unit is derived from the item
+   * (`updateLine` does the same thing when a line is picked by hand — it copies
+   * `item.baseUnit.id`), and letting a file name a different one would create a
+   * request whose quantity means something other than what the item is stocked
+   * in. `Harga Perkiraan` and `Saran Supplier` are optional here exactly as they
+   * are in the form.
+   */
+  const importColumns = [
+    { header: 'SKU', hint: 'opsional — pakai ini kalau ada dua barang dengan nama sama' },
+    {
+      header: 'Nama Barang',
+      hint: 'nama persis seperti di Data Master (wajib kalau SKU kosong)',
+      required: true,
+    },
+    { header: 'Jumlah', hint: 'angka, mis. 20 atau 12,5', required: true },
+    { header: 'Harga Perkiraan', hint: 'opsional — angka rupiah tanpa "Rp", mis. 25000' },
+    { header: 'Saran Supplier', hint: 'opsional — nama supplier persis seperti di daftar' },
+  ];
+
+  function mapLineRow(
+    row: CsvRecord,
+  ): { ok: true; line: LineDraft } | { ok: false; error: string } {
+    const item = resolveItem(itemIndex, { sku: row.get('SKU'), name: row.get('Nama Barang') });
+    if (!item) {
+      const typed = row.get('SKU') || row.get('Nama Barang');
+      if (!typed) return { ok: false, error: t('lineImport.missingItem') };
+      return { ok: false, error: t('lineImport.unknownItem', { value: typed }) };
+    }
+    // Resolved against the loaded item, never from the file — see the note above.
+    const full = items.find((i) => i.id === item.id);
+    if (!full) return { ok: false, error: t('lineImport.unknownItem', { value: item.name }) };
+
+    const qtyText = row.get('Jumlah');
+    if (!qtyText) return { ok: false, error: t('lineImport.missingQty') };
+    const qty = parseDecimal(qtyText);
+    if (qty === null) return { ok: false, error: t('lineImport.invalidQty', { value: qtyText }) };
+    if (qty.startsWith('-')) return { ok: false, error: t('lineImport.negativeQty') };
+
+    const priceText = row.get('Harga Perkiraan');
+    let estPrice: Money | null = null;
+    if (priceText) {
+      const parsed = parseDecimal(priceText);
+      if (parsed === null) {
+        return { ok: false, error: t('lineImport.invalidPrice', { value: priceText }) };
+      }
+      estPrice = parsed as Money;
+    }
+
+    const supplierText = row.get('Saran Supplier');
+    let suggestedSupplierId = '';
+    if (supplierText) {
+      const supplier = resolveNamed(supplierIndex, supplierText);
+      // A named-but-unknown supplier is an ERROR, not a silent blank: the
+      // suggestion is what the buyer works from, and dropping it turns a
+      // deliberate instruction into an omission nobody sees.
+      if (!supplier) {
+        return { ok: false, error: t('lineImport.unknownSupplier', { value: supplierText }) };
+      }
+      suggestedSupplierId = supplier.id;
+    }
+
+    return {
+      ok: true,
+      line: { itemId: full.id, qty: qty as Qty, unitId: full.baseUnit.id, estPrice, suggestedSupplierId },
+    };
+  }
+
+  const hasTypedLines = lines.some((l) => l.itemId || l.qty || l.estPrice);
 
   function updateLine(idx: number, patch: Partial<LineDraft>) {
     setLines((ls) =>
@@ -425,15 +539,27 @@ function CreateRequestModal({
               )}
             </div>
           ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            leftIcon={<Plus className="size-4" />}
-            onClick={() => setLines((ls) => [...ls, { ...EMPTY_LINE }])}
-          >
-            {t('purchasing.requests.addLine')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              leftIcon={<Plus className="size-4" />}
+              onClick={() => setLines((ls) => [...ls, { ...EMPTY_LINE }])}
+            >
+              {t('purchasing.requests.addLine')}
+            </Button>
+            <LineImportButton<LineDraft>
+              title={t('purchasing.tabs.requests')}
+              templateBase="baris-permintaan-pembelian"
+              columns={importColumns}
+              mapRow={mapLineRow}
+              hasExistingLines={hasTypedLines}
+              onLines={(imported, mode) =>
+                setLines((ls) => (mode === 'replace' ? imported : [...ls, ...imported]))
+              }
+            />
+          </div>
         </div>
       </div>
     </Modal>

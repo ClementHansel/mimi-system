@@ -80,6 +80,7 @@ export class FakeCloud {
   public heartbeatsReceived: { nodeId: UUID; payload: unknown }[] = [];
   public discoveryReportsReceived: { nodeId: UUID; payload: unknown }[] = [];
   public commandAcksReceived: unknown[] = [];
+  public networkConfigAcksReceived: unknown[] = [];
 
   constructor(private location: FakeLocation) {}
 
@@ -160,13 +161,35 @@ export class FakeCloud {
       this.discoveryReportsReceived.push({ nodeId, payload: args[0] }),
     );
     server.on('command:ack', (...args) => this.commandAcksReceived.push(args[0]));
-    server.on('logs:chunk', () => {});
+    server.on('logs:chunk', (...args) => this.logsChunksReceived.push(args[0]));
+    server.on('network_config_ack', (...args) => this.networkConfigAcksReceived.push(args[0]));
   }
 
   /** Cloud -> node: push a remote command over `/bridge` (mirrors `POST /api/nodes/:id/command`). */
   sendCommand(nodeId: UUID, command: unknown): void {
     this.bridgeSockets.get(nodeId)?.emit('command', command);
   }
+
+  /** Cloud -> node: push a network-config change over `/bridge` (mirrors `PUT
+   *  /api/nodes/:id/network-config`, W3-10). */
+  sendConfigUpdated(nodeId: UUID, update: unknown): void {
+    this.bridgeSockets.get(nodeId)?.emit('config_updated', update);
+  }
+
+  /** Test-only: sever just the `/bridge` control-plane connection (never `/sync`) — simulates a node
+   *  that applied a network change and can no longer be reached, without tearing down the whole
+   *  fake-cloud harness. `FakeSocket.disconnect()` does not auto-reconnect (unlike the real
+   *  `socket.io-client` this stands in for), which is exactly what a revert-on-timeout test needs:
+   *  the outage simply persists until the test moves on. */
+  disconnectBridge(nodeId: UUID): void {
+    this.bridgeSockets.get(nodeId)?.disconnect();
+  }
+
+  isBridgeConnected(nodeId: UUID): boolean {
+    return this.bridgeSockets.get(nodeId)?.connected ?? false;
+  }
+
+  public logsChunksReceived: unknown[] = [];
 
   private wireSyncServer(server: FakeSocket, nodeId: UUID, locationId: UUID): void {
     server.on('sync:hello', (...args) => {

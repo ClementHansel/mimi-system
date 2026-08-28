@@ -138,6 +138,14 @@ export class ReportsService {
     client: PoolClient,
     asOf: string,
   ): Promise<{ assets: PLLine[]; liabilities: PLLine[]; equity: PLLine[]; balanced: boolean }> {
+    // `coa.normal_balance` MUST be in the GROUP BY: the CASE below reads it, and
+    // Postgres rejects a query selecting a non-aggregated column that is absent
+    // from GROUP BY ("column coa.normal_balance must appear in the GROUP BY
+    // clause or be used in an aggregate function"). That fired on every single
+    // request, so Neraca had never once rendered. Grouping by it — rather than
+    // wrapping it in MIN()/MAX() to silence the error — is also right on the
+    // merits: `normal_balance` is a property of the account, and the query
+    // already groups by that same account's `code`, so it cannot add rows.
     const res = await client.query<{ code: string; name: string; type: string; balance: Money }>(
       `SELECT coa.code, coa.name, coa.type,
               CASE WHEN coa.normal_balance = 'debit' THEN COALESCE(SUM(jl.debit - jl.credit), 0)
@@ -146,7 +154,7 @@ export class ReportsService {
          LEFT JOIN journal_lines jl ON jl.account_id = coa.id
          LEFT JOIN journal_entries je ON je.id = jl.entry_id AND je.status = 'posted' AND je.entry_date <= $1
         WHERE coa.type IN ('asset','liability','equity') AND coa.is_postable = true
-        GROUP BY coa.code, coa.name, coa.type
+        GROUP BY coa.code, coa.name, coa.type, coa.normal_balance
        HAVING COALESCE(SUM(jl.debit), 0) <> 0 OR COALESCE(SUM(jl.credit), 0) <> 0
         ORDER BY coa.code`,
       [asOf],
@@ -198,12 +206,30 @@ export class ReportsService {
       category_name: string;
       value: Money;
     }>(
-      `SELECT sb.location_id, l.name AS location_name, ic.name AS category_name,
-              COALESCE(SUM(sb.qty_on_hand * i.avg_cost), 0)::text AS value
+      // ROUND(..., 2) is load-bearing, not cosmetic. `stock_balances.qty_on_hand`
+      // is NUMERIC(_,3) and `items.avg_cost` is NUMERIC(_,2), so their product
+      // carries FIVE fractional digits and `SUM` keeps them: the raw value came
+      // back as e.g. "1517025226.00000", and `addMoney` below runs every value
+      // through `@mimi/shared`'s fixed-point guard, which throws on more than
+      // the field's 2 digits. The report therefore failed for every location
+      // that had any stock at all. Rounding in SQL — once, on the summed value
+      // — keeps the money arithmetic in one place and rounds after summation
+      // rather than per row, which is what stops a per-item half-rupiah from
+      // being rounded thousands of times over.
+      //
+      // `item_categories` is a LEFT join: `items.category_id` is nullable, and
+      // an inner join silently dropped every uncategorised item's stock from the
+      // valuation — an inventory report that quietly understates inventory. An
+      // item with no category is reported under its own named bucket (the
+      // COALESCE below) instead of vanishing — a blank label would otherwise
+      // render as an empty row and be used as a React key.
+      `SELECT sb.location_id, l.name AS location_name,
+              COALESCE(ic.name, 'Tanpa Kategori') AS category_name,
+              ROUND(COALESCE(SUM(sb.qty_on_hand * i.avg_cost), 0), 2)::text AS value
          FROM stock_balances sb
          JOIN locations l ON l.id = sb.location_id
          JOIN items i ON i.id = sb.item_id
-         JOIN item_categories ic ON ic.id = i.category_id
+         LEFT JOIN item_categories ic ON ic.id = i.category_id
          ${where}
         GROUP BY sb.location_id, l.name, ic.name
         ORDER BY l.name, ic.name`,

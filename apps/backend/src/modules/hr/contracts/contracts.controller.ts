@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Audited, RequirePermission } from '../../../common/decorators';
 import type { RequestWithDbContext } from '../../../common/guards/rls-context.guard';
 import {
   CreateContractDto,
   ListContractsQueryDto,
+  SignContractDto,
   TerminateContractDto,
   UpdateContractDto,
 } from '../dto/contract.dto';
@@ -61,6 +62,54 @@ export class ContractsController {
     @Body() dto: UpdateContractDto,
   ) {
     return this.service.update(req.dbClient!, id, dto);
+  }
+
+  /**
+   * Every recorded signature for one contract. Gated on EITHER the office's
+   * `hr.contract.read` OR the universal `hr.contract.read.own` — unlike
+   * `getById` above, this one deliberately also accepts the self-only key:
+   * an employee checking whether their own contract still needs a company
+   * signature is exactly the "who signed, who is outstanding" view this
+   * endpoint exists for (owner ask, W7 follow-up). RLS (migration 252) is
+   * still what actually restricts the ROWS returned — a self-only caller who
+   * passes someone else's `:id` gets an empty list, not another employee's
+   * signatures, the same defence-in-depth the `hr.contract.read.own` path
+   * relies on everywhere else in this module.
+   */
+  @Get(':id/signatures')
+  @RequirePermission('hr.contract.read', 'hr.contract.read.own')
+  listSignatures(@Req() req: RequestWithDbContext, @Param('id') id: string) {
+    return this.service.listSignatures(req.dbClient!, id);
+  }
+
+  /**
+   * Records one party's signature (migration 252). `hr.contract.manage` only
+   * — there is deliberately NO self-sign path, even for `party: 'employee'`.
+   * An employee's own read access (`hr.contract.read.own`) lets them SEE
+   * their contract is signed; it does not let them ASSERT that it is. The
+   * office (HR/owner) is the one recording that a signature — wet-ink,
+   * witnessed, or digital — actually happened, the same control boundary
+   * §3 of this ticket draws for the importer (a signature is never something
+   * a CSV, or a bare API call from the subject themselves, can manufacture).
+   */
+  @Post(':id/sign')
+  @RequirePermission('hr.contract.manage')
+  @Audited({ module: 'hr', entityType: 'employment_contracts', action: 'hr.contract.manage' })
+  sign(@Req() req: RequestWithDbContext, @Param('id') id: string, @Body() dto: SignContractDto) {
+    return this.service.sign(req.dbClient!, id, req.user!.sub, dto);
+  }
+
+  /**
+   * Hard delete — `draft`, unsigned contracts only (`ContractsService.remove`
+   * is where the rule actually lives; see its doc comment). A signed or
+   * non-draft contract is a legal record and this never removes one.
+   */
+  @Delete(':id')
+  @RequirePermission('hr.contract.manage')
+  @Audited({ module: 'hr', entityType: 'employment_contracts', action: 'hr.contract.manage' })
+  async remove(@Req() req: RequestWithDbContext, @Param('id') id: string) {
+    await this.service.remove(req.dbClient!, id);
+    return { deleted: true };
   }
 
   /** Ends a contract early, with a reason on the record (a CHECK enforces it). */

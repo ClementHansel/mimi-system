@@ -28,11 +28,12 @@ import type { ReportCallerContext } from './report.types';
  *      value — the controller's json branch is a straight `res.json(...)`
  *      of it, so exercising the service is exercising the json contract).
  *  (b) `format=csv` is rejected with a permission error for a role lacking
- *      `report.export` (Supervisor) but succeeds (permission-wise) for one
- *      that has it (Owner) — `assertExportPermission` IS the per-request
- *      gate every controller handler calls; testing it directly against the
- *      real RBAC matrix (`can()`) is exercising the actual gate, not a
- *      stand-in for it.
+ *      `report.export` (Kasir) but succeeds (permission-wise) for ones that
+ *      have it (Owner, and Supervisor since 2026-08-27) —
+ *      `assertExportPermission` IS the per-request gate every controller
+ *      handler calls; testing it directly against the real RBAC matrix
+ *      (`can()`) is exercising the actual gate, not a stand-in for it. The
+ *      gate is FORMAT-only: (c) is what proves it never widened scope.
  *  (c) a scoped role (Supervisor) requesting a `locationId` outside their
  *      own scope is rejected (403) — `assertLocationInScope`, called by
  *      every service before it queries.
@@ -100,13 +101,49 @@ describe('report module (integration, live Postgres)', () => {
       );
     });
 
-    it('GET /reports/sales groupBy=method includes both POS methods and online platforms', async () => {
+    it('GET /reports/sales groupBy=method returns PAYMENT METHODS ONLY, never a channel', async () => {
+      // This test asserted the opposite until 2026-08-27 ("includes both POS
+      // methods and online platforms"). That mixed two dimensions in one flat
+      // array, and migration 249 turned it into a double count, since channel
+      // sales are now ordinary `sales` rows with real `sale_payments`. See
+      // `groupByMethod`'s doc comment; `groupBy=channel` is the other dimension.
       if (!dbAvailable) return;
       await withRollbackAs(
         { role: 'owner', userId: ownerContext().userId, locationIds: [] },
         async (client) => {
           const result = await sales.getSalesReport(client, ownerContext(), { groupBy: 'method' });
           expect(result.rows.length).toBeGreaterThan(0);
+          const keys = result.rows.map((r) => r.groupKey);
+          // The live seed carries pre-cutover `online_orders` history, so before
+          // the narrowing these two DID show up here.
+          expect(keys).not.toContain('gofood');
+          expect(keys).not.toContain('shopeefood');
+          expect(keys).not.toContain('walk_in');
+          // Every key must be a payment method the POS can actually record.
+          for (const key of keys) {
+            expect(['cash', 'qris', 'bank_transfer', 'transfer', 'card']).toContain(key);
+          }
+        },
+      );
+    });
+
+    it('GET /reports/sales groupBy=channel returns walk_in/gofood/shopeefood rows, continuous across the 249 cutover (migration 251 regression guard)', async () => {
+      if (!dbAvailable) return;
+      await withRollbackAs(
+        { role: 'owner', userId: ownerContext().userId, locationIds: [] },
+        async (client) => {
+          const result = await sales.getSalesReport(client, ownerContext(), { groupBy: 'channel' });
+          expect(result.groupBy).toBe('channel');
+          // walk_in always exists (every seeded sale defaults to it); gofood/shopeefood exist here
+          // because the live seed already carries pre-cutover `online_orders` history — this proves
+          // that history is still reachable through the NEW dimension, not just the old `method` one.
+          const keys = result.rows.map((r) => r.groupKey);
+          expect(keys).toContain('walk_in');
+          for (const row of result.rows) {
+            expect(typeof row.gross).toBe('string');
+            expect(typeof row.net).toBe('string');
+            expect(typeof row.txCount).toBe('number');
+          }
         },
       );
     });
@@ -291,13 +328,28 @@ describe('report module (integration, live Postgres)', () => {
       expect(() => assertExportPermission(RoleKey.OWNER, 'xlsx')).not.toThrow();
     });
 
-    it('Supervisor (holds report.sales.read but NOT report.export) is rejected for csv, even though json is fine', () => {
+    // Supervisor GAINED `report.export` on 2026-08-27 (see `rbac.ts`'s header)
+    // when the dashboard's Sales/Marketing tabs shipped: their whole dashboard
+    // IS one outlet, and the reports render client-side from json they already
+    // hold, so withholding the download withheld a file format, not data. This
+    // test inverted with the matrix rather than being deleted — the assertion
+    // that matters is the NEXT one: the format gate opening does not open the
+    // scope gate, which section (c) below proves against the real service.
+    it('Supervisor (now holds report.export) is allowed csv/xlsx — format only, never wider scope', () => {
       expect(can(RoleKey.SUPERVISOR, 'report.sales.read')).toBe(true);
-      expect(can(RoleKey.SUPERVISOR, 'report.export')).toBe(false);
+      expect(can(RoleKey.SUPERVISOR, 'report.export')).toBe(true);
       expect(() => assertExportPermission(RoleKey.SUPERVISOR, 'json')).not.toThrow();
-      expect(() => assertExportPermission(RoleKey.SUPERVISOR, 'csv')).toThrow(
-        expect.objectContaining({ response: expect.objectContaining({ code: 'ERR_FORBIDDEN' }) }),
-      );
+      expect(() => assertExportPermission(RoleKey.SUPERVISOR, 'csv')).not.toThrow();
+      expect(() => assertExportPermission(RoleKey.SUPERVISOR, 'xlsx')).not.toThrow();
+    });
+
+    it('Kepala Gudang holds report.export but NOT report.sales.read — the two keys stay independent', () => {
+      expect(can(RoleKey.KEPALA_GUDANG, 'report.export')).toBe(true);
+      expect(can(RoleKey.KEPALA_GUDANG, 'report.sales.read')).toBe(false);
+      // The export gate is format-only by design; the ROUTE guard
+      // (`@RequirePermission('report.sales.read')`) is what keeps this role off
+      // /reports/sales at all, in json or csv.
+      expect(() => assertExportPermission(RoleKey.KEPALA_GUDANG, 'csv')).not.toThrow();
     });
 
     it('Kasir/Leader Outlet (hold neither report.sales.read nor report.export) — export gate still 403s independent of the route guard', () => {

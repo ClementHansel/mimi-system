@@ -9,7 +9,6 @@ import { ReceivingPanel } from './ReceivingPanel';
 import { StockOpnamePanel } from './StockOpnamePanel';
 import { WastePanel } from './WastePanel';
 import { ReturnPanel } from './ReturnPanel';
-import { RecapPanel } from './RecapPanel';
 
 /**
  * slug -> the component that renders that Gudang area.
@@ -30,7 +29,10 @@ const PANEL_COMPONENTS: Record<string, () => ReactNode> = {
   waste: () => <WastePanel />,
   retur: () => <ReturnPanel />,
   pengiriman: () => <OutboundPanel />,
-  rekap: () => <RecapPanel />,
+  // No `rekap` entry: the daily recap is a tab of `DeliveryShell` now, not a
+  // Gudang panel (see `lib/warehouse-panels.ts`'s note). `RecapPanel` itself
+  // still lives in this folder — it reads through `lib/warehouse-api.ts` — and
+  // is imported directly by the delivery shell.
 };
 
 export function renderWarehousePanel(slug: string): ReactNode | null {

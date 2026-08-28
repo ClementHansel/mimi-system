@@ -218,6 +218,9 @@ export class LocationService {
       if (dto.latitude !== undefined) set('latitude', dto.latitude);
       if (dto.longitude !== undefined) set('longitude', dto.longitude);
       if (dto.geofenceRadiusM !== undefined) set('geofence_radius_m', dto.geofenceRadiusM);
+      // The only way back from `deactivate()` below — see `UpdateLocationDto`'s
+      // note on why reactivation is a PATCH rather than its own route.
+      if (dto.isActive !== undefined) set('is_active', dto.isActive);
 
       if (sets.length > 0) {
         params.push(id);

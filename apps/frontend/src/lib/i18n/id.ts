@@ -40,8 +40,12 @@ export const id = {
       outlet: 'Outlet',
       driver: 'Pengiriman',
       referensi: 'Referensi',
-      // WhatsApp is in every interface (owner, 2026-08-21).
+      // Chats + Mail are in every interface (owner, 2026-08-27); WhatsApp sits
+      // in this same section but only in the dashboard.
       pesan: 'Pesan',
+      // POS's own section. Never drawn at the till (POS is chromeless) — it is
+      // the sidebar a cashier gets on Chats/Mail, which keeps them in POS.
+      kasir: 'Kasir',
       // The `employee` interface's own section — everything about yourself.
       personal: 'Personal',
     },
@@ -68,9 +72,10 @@ export const id = {
     // rather than "Karyawan": on their phone this is *their* space, not an HR
     // module about them.
     employee: 'Akun Saya',
-    // The staff-facing WhatsApp thread (`/me/chat`) — "my messages", as
-    // opposed to `chat` above, which is the head-office inbox of everyone's.
-    myChat: 'Pesan Saya',
+    // Your own thread with head office (`/me/chat`). Renamed from "Pesan
+    // Saya" to "Mail" (owner, 2026-08-27) so it reads distinctly from `chat`
+    // above (the WhatsApp inbox, dashboard-only) and from Chats.
+    myChat: 'Mail',
   },
 
   auth: {
@@ -247,8 +252,22 @@ export const id = {
     voidCountLabel: 'Jumlah Void/Refund',
 
     tabKasir: 'Kasir',
-    tabOnlineOrder: 'GoFood/ShopeeFood',
     tabShift: 'Shift',
+
+    // F-POS-3 — one POS interface, three prices (owner: "need only 1
+    // interface for 3 of them"). GoFood/ShopeeFood used to be their own
+    // tab/form; they're now a CHANNEL of the same till, toggled here.
+    channelToggleLabel: 'Pilih channel penjualan',
+    channelWalkIn: 'Kasir',
+    channelGofood: 'GoFood',
+    channelShopeefood: 'ShopeeFood',
+    channelActiveLabel: 'Transaksi ini: {{channel}}',
+    channelBannerActive: 'Mode channel aktif: {{channel}} — harga berbeda dari Kasir (walk-in).',
+    channelSwitchConfirmTitle: 'Ganti Channel Penjualan?',
+    channelSwitchConfirmDescription: 'Mengganti ke {{channel}} akan memperbarui harga.',
+    channelSwitchConfirmBody:
+      'Keranjang belum kosong. Semua harga item di keranjang akan diperbarui mengikuti channel baru. Item yang tidak ditemukan di katalog akan tetap memakai harga saat ini.',
+    channelSwitchConfirmSubmit: 'Ganti & Perbarui Harga',
     catalogEmptyTitle: 'Katalog produk belum tersedia',
     catalogEmptyDescription:
       'Sambungkan perangkat ke internet minimal sekali untuk mengunduh katalog produk.',
@@ -337,17 +356,6 @@ export const id = {
     voidProvisionalTitle: 'Void/refund tersimpan (sementara)',
     voidProvisionalDescription: 'Menunggu verifikasi ulang oleh sistem pusat saat tersinkron.',
     voidFailed: 'Gagal memproses void/refund',
-
-    platform: 'Platform',
-    orderRef: 'Nomor Pesanan',
-    grossAmount: 'Jumlah Kotor (Gross)',
-    discountAmount: 'Diskon',
-    platformFee: 'Biaya Platform',
-    otherFee: 'Biaya Lainnya',
-    netReceived: 'Diterima Bersih (Net)',
-    onlineOrderSave: 'Simpan Pesanan',
-    onlineOrderSavedTitle: 'Pesanan online tersimpan',
-    onlineOrderFailed: 'Gagal menyimpan pesanan online',
   },
 
   common: {
@@ -379,6 +387,7 @@ export const id = {
     next: 'Lanjut',
     close: 'Tutup',
     filter: 'Filter',
+    reset: 'Reset Filter',
     export: 'Ekspor',
     upload: 'Unggah',
     retry: 'Coba Lagi',
@@ -417,6 +426,53 @@ export const id = {
     fileTooLarge: 'Ukuran berkas melebihi {{maxMb}} MB',
   },
 
+  // Bulk LINE import, shared by every document create form that offers it
+  // (`components/common/LineImportButton`). Distinct from `importData` below,
+  // which is the server-validated master-data importer: this one fills in the
+  // form and writes nothing by itself.
+  lineImport: {
+    openButton: 'Impor CSV',
+    modalTitle: 'Impor Baris — {{entity}}',
+    intro:
+      'Unggah atau tempel CSV untuk mengisi baris dokumen ini. Tidak ada yang tersimpan sampai Anda menekan Simpan/Ajukan pada formulir.',
+    downloadTemplate: 'Unduh Template CSV',
+    column: 'Kolom',
+    expected: 'Isi yang diharapkan',
+    fileLabel: 'Berkas CSV',
+    fileHint: 'Ekspor daftar, ubah di spreadsheet, lalu unggah kembali berkasnya.',
+    pasteLabel: 'Atau tempel dari spreadsheet',
+    pasteHint: 'Salin blok sel (termasuk baris judul) lalu tempel di sini.',
+    check: 'Periksa Berkas',
+    readError: 'Berkas tidak dapat dibaca',
+    emptyFile: 'Berkas kosong atau tidak memiliki baris judul',
+    readyCount: '{{count}} baris siap diimpor',
+    errorCount: '{{count}} baris ditolak',
+    skippedCount: '{{count}} baris dilewati',
+    lineNo: 'Baris {{line}}',
+    missingHeaders: 'Kolom wajib tidak ditemukan: {{headers}}',
+    unknownHeaders: 'Kolom tidak dikenali (diabaikan): {{headers}}',
+    stale: 'Berkas atau tempelan berubah setelah diperiksa — periksa ulang sebelum menerapkan.',
+    applyLines: 'Terapkan {{count}} Baris',
+    append: 'Tambahkan ke Baris Yang Ada',
+    replace: 'Ganti Semua Baris',
+    applied: '{{count}} baris dimasukkan ke formulir',
+    // Row-level rejections, worded so the operator knows which cell to fix.
+    unknownItem: 'Barang tidak ditemukan: "{{value}}" (gunakan SKU atau nama persis)',
+    unknownArea: 'Area penyimpanan tidak ditemukan: "{{value}}"',
+    unknownOutlet: 'Outlet tidak ditemukan: "{{value}}"',
+    unknownSupplier: 'Supplier tidak ditemukan: "{{value}}"',
+    missingItem: 'Kolom barang kosong',
+    missingArea: 'Kolom area penyimpanan kosong',
+    invalidQty: 'Jumlah tidak valid: "{{value}}"',
+    missingQty: 'Kolom jumlah kosong',
+    negativeQty: 'Jumlah tidak boleh negatif',
+    invalidPrice: 'Harga tidak valid: "{{value}}"',
+    unknownReason: 'Alasan tidak dikenali: "{{value}}"',
+    missingReason: 'Alasan wajib diisi',
+    duplicateLine: 'Baris ganda untuk barang/area yang sama',
+    notInDocument: 'Barang/area ini tidak ada pada dokumen yang sedang dibuka',
+  },
+
   // CSV export, shared by every list that offers it (`components/common/ExportButton`).
   exportData: {
     export: 'Ekspor CSV',
@@ -439,7 +495,8 @@ export const id = {
     picker: {
       label: 'Surat Jalan',
       placeholder: 'Pilih Surat Jalan...',
-      empty: 'Tidak ada Surat Jalan draft/siap saat ini',
+      empty:
+        'Penugasan sopir & truk hanya berlaku untuk Surat Jalan berstatus draft atau siap — saat ini tidak ada Surat Jalan berstatus tersebut.',
       noneSelected: 'Pilih Surat Jalan untuk mulai',
     },
     form: {
@@ -463,6 +520,16 @@ export const id = {
       save: 'Simpan Urutan',
       saved: 'Urutan drop berhasil disimpan',
       saveError: 'Gagal menyimpan urutan drop',
+      seq: 'Urutan',
+      outlet: 'Outlet',
+      city: 'Kota',
+      // The importable column: the sequence an outlet should be visited in.
+      importSeqHint: 'angka urutan kunjungan, mis. 1',
+      importOutletHint: 'nama outlet persis seperti pada daftar drop',
+      importNote:
+        'Impor hanya MENGUBAH URUTAN drop yang sudah ada pada Surat Jalan ini — drop tidak bisa ditambah atau dihapus dari berkas.',
+      importMissingSeq: 'Kolom urutan kosong atau bukan angka',
+      importIncomplete: 'Berkas harus memuat semua drop Surat Jalan ini ({{count}} drop)',
     },
   },
 
@@ -482,6 +549,7 @@ export const id = {
       itemCategories: 'Kategori Item',
       items: 'Item / Bahan Baku',
       products: 'Produk Menu',
+      chartOfAccounts: 'Bagan Akun',
     },
     step1: '1. Unduh Template',
     downloadTemplate: 'Unduh Template CSV',
@@ -518,8 +586,10 @@ export const id = {
   // Internal staff chat (direct + group), `/chat/internal`. Distinct from
   // `chat.*`, which is the outbound WhatsApp inbox.
   chatInternal: {
-    title: 'Obrolan Internal',
-    newChat: 'Obrolan Baru',
+    // "Obrolan" → "Chats" (owner, 2026-08-27), matching the nav entry every
+    // interface now carries.
+    title: 'Chats',
+    newChat: 'Chat Baru',
     empty: 'Belum ada percakapan',
     noMessages: 'Belum ada pesan',
     noResults: 'Tidak ada hasil',
@@ -551,6 +621,10 @@ export const id = {
     showingRows: 'Menampilkan {{from}}–{{to}} dari {{total}}',
     sortAscending: 'Urutkan naik',
     sortDescending: 'Urutkan turun',
+    // Distinct from `empty` on purpose. "Belum ada data" tells an operator who
+    // is filtering that the warehouse is empty, which is false and sends them
+    // to look for a bug; this says the filter is what hid everything.
+    noMatches: 'Tidak ada yang cocok dengan filter',
   },
 
   photo: {
@@ -1251,7 +1325,11 @@ export const id = {
       noPeriods: 'Belum ada periode fiskal',
       noPeriodsHint:
         'Buat periode di tab Periode Fiskal terlebih dahulu — Neraca Saldo dihitung per periode.',
-      selectPeriod: 'Pilih periode untuk menampilkan laporan',
+      // Short enough to fit the control that shows it. The long form ("Pilih
+      // periode untuk menampilkan laporan") was clipped mid-word, and the
+      // Select's own label already says "Periode", so the extra words were
+      // repeating what was on screen anyway.
+      selectPeriod: 'Pilih periode…',
       loadError: 'Laporan gagal dimuat',
       loadErrorHint: 'Coba muat ulang. Bila masih gagal, laporkan ke admin.',
       emptyHint: 'Belum ada jurnal yang terposting pada rentang yang dipilih.',
@@ -1276,7 +1354,7 @@ export const id = {
   // W7 — two-way WhatsApp chat.
   chat: {
     title: 'Pesan Masuk (WhatsApp)',
-    myTitle: 'Pesan ke Kantor Pusat',
+    myTitle: 'Mail — Kantor Pusat',
     empty: 'Belum ada percakapan',
     myEmpty: 'Belum ada pesan. Tulis pesan pertama Anda ke kantor pusat.',
     noMessages: 'Belum ada pesan',
@@ -1305,6 +1383,8 @@ export const id = {
       priceHistory: 'Riwayat Harga Supplier',
     },
     suppliers: {
+      // The entity name the import modal heading is built from.
+      title: 'Supplier',
       searchPlaceholder: 'Cari kode atau nama supplier…',
       createButton: 'Tambah Supplier',
       createTitle: 'Tambah Supplier',
@@ -1368,6 +1448,7 @@ export const id = {
       filterStatusAll: 'Semua Status',
       empty: 'Belum ada permintaan dari outlet.',
       convertButton: 'Jadikan PR',
+      exportQtyApproved: 'Disetujui',
       notConvertible: 'Hanya permintaan yang sudah diajukan outlet yang bisa dijadikan PR.',
       convertTitle: 'Jadikan PR — {{number}}',
       convertDescription:
@@ -1525,6 +1606,13 @@ export const id = {
       masterData: 'Data Master',
       audit: 'Jejak Audit',
       settings: 'Pengaturan',
+      // F-DOC — the two owner-facing surfaces the document designers added.
+      // `documents` is gated on `doc_template.manage` and `brand` on
+      // `settings.manage`, not on `settings.read`: both WRITE (a layout, a
+      // settings key), and a role that may only read settings must not see a
+      // canvas it cannot save.
+      documents: 'Dokumen',
+      brand: 'Merek',
     },
     users: {
       title: 'Pengguna',
@@ -1656,7 +1744,13 @@ export const id = {
         code: 'Kode',
         name: 'Nama',
         category: 'Kategori',
-        price: 'Harga Jual',
+        price: 'Harga Jual (Kasir)',
+        // F-POS-3 — the two channel prices. "Kasir" here is the walk-in
+        // price the field above already carries; the hint spells out the
+        // null->walk-in fallback in the same words the toggle/receipt use.
+        priceGofood: 'Harga GoFood',
+        priceShopeefood: 'Harga ShopeeFood',
+        priceChannelHint: 'Kosongkan jika sama dengan harga Kasir (walk-in).',
         editRecipe: 'Ubah Resep',
         categoryAll: 'Semua Kategori',
         activated: '{{name}} ditampilkan kembali di POS.',
@@ -1740,6 +1834,18 @@ export const id = {
         address: 'Alamat',
         phone: 'No. Telepon',
         geofenceRadius: 'Radius Geofence (m)',
+        // Closing / reopening an outlet. The copy is deliberate: this is a SOFT
+        // close (`is_active = false`), and promising deletion would be a lie —
+        // every Surat Jalan, stock balance and shift that ever touched the
+        // location still refers to it.
+        deactivateTitle: 'Tutup lokasi "{{name}}"?',
+        deactivateWarning:
+          'Lokasi disembunyikan dari semua pilihan (pengiriman, opname, absensi, POS) tetapi seluruh riwayatnya tetap tersimpan. Lokasi dapat dibuka kembali kapan saja.',
+        deactivated: 'Lokasi ditutup',
+        reactivateTitle: 'Buka kembali lokasi "{{name}}"?',
+        reactivateWarning:
+          'Lokasi akan kembali muncul di semua pilihan dan dapat menerima pengiriman serta transaksi lagi.',
+        reactivated: 'Lokasi dibuka kembali',
         storageAreas: 'Area Penyimpanan',
         // GEOFENCE (owner, 2026-08-21: attendance fenced at 200 m of the outlet).
         // These fields did not exist, so an outlet created here had no centre and
@@ -2022,6 +2128,17 @@ export const id = {
   // above touched) per this file's own "Wave 4–5 agents add keys here"
   // contract.
   outlet: {
+    // Which outlet these flows act on. A central role (owner/superadmin) has no
+    // assigned outlet, so it picks one — and can switch to monitor others.
+    location: {
+      current: 'Outlet:',
+      change: 'Ganti Outlet',
+      chooseTitle: 'Pilih Outlet',
+      chooseDescription:
+        'Akun Anda tidak terikat ke satu outlet. Pilih outlet yang ingin Anda lihat atau kelola.',
+      loadFailedTitle: 'Gagal memuat daftar outlet',
+      loadFailedDescription: 'Periksa koneksi Anda lalu coba lagi.',
+    },
     tabs: {
       replenishment: 'Minta Barang',
       receiving: 'Terima Barang',
@@ -2029,6 +2146,7 @@ export const id = {
       opname: 'Stock Opname',
       waste: 'Waste / Retur',
       pettyCash: 'Kas Kecil',
+      roster: 'Jadwal Shift',
     },
     replenishment: {
       number: 'No. Permintaan',
@@ -2063,9 +2181,16 @@ export const id = {
     },
     stock: {
       belowMin: 'Di Bawah Stok Minimum',
+      // Names the outlet in the heading: a printed stock sheet ends up on a
+      // clipboard next to another outlet's, and an untitled one is unusable.
+      reportTitle: 'Laporan Stok — {{outlet}}',
     },
     opname: {
       number: 'No. Opname',
+      // Says the one thing a CSV cannot do here, before the operator finds out
+      // from a list of rejected rows.
+      importNote:
+        'Impor hanya mengisi qty pada baris yang sudah ada di lembar hitung ini. Barang yang belum ada di lembar akan dilaporkan sebagai baris gagal, bukan ditambahkan.',
       new: 'Mulai Opname',
       area: 'Area Penyimpanan',
       countSheet: 'Lembar Hitung',
@@ -2079,6 +2204,8 @@ export const id = {
       reasonGateHint: 'Setiap baris yang selisih wajib diisi alasannya sebelum diajukan.',
     },
     waste: {
+      importNote:
+        'Impor mengisi baris waste. Foto bukti tetap wajib dan diunggah di bawah — CSV tidak menggantikan bukti foto.',
       tab: 'Waste',
       number: 'No. Waste',
       new: 'Catat Waste',
@@ -2100,8 +2227,11 @@ export const id = {
       photoLabel: 'Foto Bukti',
       created: 'Retur berhasil diajukan',
       empty: 'Belum ada retur',
+      importNote: 'Impor mengisi baris retur. Foto bukti tetap wajib dan diunggah di bawah.',
     },
     pettyCash: {
+      importNote:
+        'Impor mengisi baris belanja. Bukti pembayaran dan foto barang tetap wajib diunggah di bawah. Tulis jumlah dalam rupiah, mis. 120.000.',
       number: 'No. Kas Kecil',
       new: 'Catat Kas Kecil',
       storeName: 'Nama Toko/Supplier',
@@ -2219,6 +2349,13 @@ export const id = {
       cancelled: 'Surat Jalan berhasil dibatalkan',
     },
     stock: {
+      // Naming the searchable fields, because the filter searches more than the
+      // one column an operator can see the point of typing into.
+      filterPlaceholder: 'Cari nama barang, SKU, atau area…',
+      filterAreaAll: 'Semua Area',
+      filterCount: 'Menampilkan {{shown}} dari {{total}} baris',
+      truncated:
+        'Daftar dipotong pada {{shown}} baris — persempit dengan filter area agar hasil pencarian lengkap.',
       movementType: 'Jenis Mutasi',
       counterparty: 'Lokasi Lawan',
       movementTypes: {
@@ -2344,6 +2481,14 @@ export const id = {
     columnPlannedDate: 'Tgl. Rencana',
     columnProgress: 'Progres Drop',
     columnStatus: 'Status',
+    // Columns that exist only in the CSV/PDF export — one row per DROP there,
+    // so it carries per-stop facts the on-screen table has no room for.
+    exportSeq: 'Urutan Drop',
+    exportCity: 'Kota',
+    exportDropStatus: 'Status Drop',
+    exportReceivedBy: 'Diterima Oleh',
+    exportReceivedAt: 'Waktu Diterima',
+    exportDiscrepancy: 'Catatan Selisih',
     truckChiller: 'Truk Chiller (Beku + Dingin)',
     truckDry: 'Truk Kering (Dry)',
     truckSplitNotice:
@@ -2385,6 +2530,8 @@ export const id = {
       leaves: 'Cuti/Izin',
       payroll: 'Payroll',
       statutory: 'Tarif Statutori',
+      components: 'Komponen Gaji',
+      contracts: 'Kontrak Kerja',
     },
     employees: {
       searchPlaceholder: 'Cari nomor pegawai atau nama…',
@@ -2410,6 +2557,91 @@ export const id = {
       createSuccess: 'Pegawai berhasil ditambahkan.',
       updateSuccess: 'Data pegawai berhasil diperbarui.',
     },
+    // Kontrak Kerja — CRUD + tanda tangan per pihak + import/export (W7
+    // follow-up, owner ask 2026-08-27). Additive block inside `hr:`, added in
+    // the same round as two other agents' concurrent edits to this file —
+    // anchored right after `employees` so a merge conflict here is obvious.
+    contracts: {
+      title: 'Kontrak Kerja',
+      searchPlaceholder: 'Cari nomor kontrak…',
+      createButton: 'Buat Kontrak',
+      createTitle: 'Buat Kontrak Baru',
+      editTitle: 'Ubah Kontrak',
+      columnNumber: 'No. Kontrak',
+      columnEmployee: 'Pegawai',
+      columnType: 'Jenis',
+      columnPosition: 'Jabatan',
+      columnLocation: 'Lokasi',
+      columnPeriod: 'Masa Kontrak',
+      columnStatus: 'Status',
+      columnSigned: 'Tanda Tangan',
+      columnExpiry: 'Sisa Hari',
+      employee: 'Pegawai',
+      contractType: 'Jenis Kontrak',
+      type: {
+        pkwt: 'PKWT (Waktu Tertentu)',
+        pkwtt: 'PKWTT (Tetap)',
+        probation: 'Masa Percobaan',
+        internship: 'Magang',
+      },
+      position: 'Jabatan',
+      location: 'Penempatan',
+      locationPlaceholder: 'Seluruh perusahaan',
+      baseSalary: 'Gaji Pokok (sesuai kontrak)',
+      startDate: 'Tanggal Mulai',
+      endDate: 'Tanggal Berakhir',
+      endDateHint: 'Wajib diisi kecuali PKWTT (permanen).',
+      signedAtLegacy: 'Tanggal Dokumen Ditandatangani',
+      notes: 'Catatan',
+      createSuccess: 'Kontrak berhasil dibuat sebagai draf.',
+      updateSuccess: 'Kontrak berhasil diperbarui.',
+      deleteButton: 'Hapus',
+      deleteConfirm: 'Hapus draf kontrak {{number}}? Tindakan ini tidak dapat dibatalkan.',
+      deleteSuccess: 'Draf kontrak berhasil dihapus.',
+      deleteBlockedSigned: 'Kontrak yang sudah ada tanda tangan tidak bisa dihapus.',
+      deleteBlockedStatus: 'Hanya draf yang bisa dihapus — kontrak ini sudah {{status}}.',
+      expiringFilter: 'Akan Berakhir Dalam (hari)',
+      expiringFilterHint: 'Kosongkan untuk menampilkan semua kontrak aktif dan draf.',
+      empty: 'Belum ada kontrak tercatat.',
+      // Signing (migration 252).
+      signatures: {
+        title: 'Status Tanda Tangan',
+        employeeParty: 'Pegawai',
+        companyParty: 'Perusahaan',
+        signed: 'Sudah tanda tangan',
+        outstanding: 'Belum tanda tangan',
+        signedAt: 'pada {{when}}',
+        method: {
+          wet_ink_scan: 'Tanda tangan basah (dipindai)',
+          digital: 'Tanda tangan digital',
+          in_person_witnessed: 'Tanda tangan langsung, disaksikan',
+        },
+        signButton: 'Catat Tanda Tangan',
+        signTitle: 'Catat Tanda Tangan — {{number}}',
+        signParty: 'Pihak',
+        signMethod: 'Cara Tanda Tangan',
+        signSignedAt: 'Tanggal/Waktu Ditandatangani',
+        signSignedAtHint: 'Kosongkan untuk memakai waktu sekarang.',
+        signNotes: 'Catatan (opsional)',
+        signSuccess: 'Tanda tangan berhasil dicatat.',
+        alreadySigned: 'Pihak ini sudah menandatangani kontrak ini.',
+        fullySigned: 'Sudah ditandatangani semua pihak',
+        activateHint:
+          'Kontrak baru bisa diaktifkan setelah pegawai DAN perusahaan sama-sama menandatangani.',
+      },
+      // Terminate — a status change with a mandatory reason, never a delete.
+      terminate: {
+        button: 'Putus Kontrak',
+        title: 'Putus Kontrak — {{number}}',
+        reason: 'Alasan',
+        endDate: 'Tanggal Efektif (opsional)',
+        endDateHint: 'Kosongkan untuk memakai tanggal hari ini.',
+        success: 'Kontrak berhasil diputus.',
+      },
+      status: {
+        allStatuses: 'Semua Status',
+      },
+    },
     roster: {
       location: 'Lokasi',
       week: 'Minggu',
@@ -2420,6 +2652,8 @@ export const id = {
       shiftStart: 'Mulai',
       shiftEnd: 'Selesai',
       addShift: 'Tambah Shift',
+      noLocation: 'Pilih lokasi terlebih dahulu untuk mengatur jadwal shift.',
+      noEmployees: 'Belum ada pegawai aktif di lokasi ini.',
     },
     attendance: {
       location: 'Lokasi',
@@ -2497,6 +2731,10 @@ export const id = {
       markPaidHint: 'Tandai lunas dilakukan dari antrean verifikasi pembayaran Keuangan.',
     },
     statutory: {
+      // Shown instead of the add-vintage button to a read-only holder, so the
+      // screen never reads as "there is no way to change these".
+      readOnlyHint:
+        'Anda dapat melihat tarif ini tetapi tidak dapat mengubahnya. Menambah tarif baru memerlukan izin "payroll.statutory.config" (Pemilik, Finance, atau HR Admin) — hubungi admin bila perlu diubah.',
       addVintage: 'Tambah Vintage Baru',
       saveVintage: 'Simpan Vintage',
       saveSuccess: 'Tarif berhasil disimpan.',
@@ -2541,11 +2779,94 @@ export const id = {
       article17Description:
         'Lapisan tarif progresif tahunan untuk perhitungan ulang PPh21 Desember.',
     },
+    // `SalaryComponentsPanel` — the salary component master
+    // (`payroll.component.manage`) plus per-employee assignment
+    // (PIN-03..06). Additive block, own key namespace.
+    components: {
+      title: 'Komponen Gaji',
+      masterTitle: 'Master Komponen Gaji',
+      masterDescription:
+        'Komponen pendapatan, potongan, dan beban perusahaan yang dipakai dalam perhitungan payroll.',
+      searchPlaceholder: 'Cari kode atau nama komponen…',
+      createButton: 'Tambah Komponen',
+      createTitle: 'Tambah Komponen Gaji',
+      editTitle: 'Ubah Komponen — {{name}}',
+      columnCode: 'Kode',
+      columnName: 'Nama',
+      columnType: 'Jenis',
+      columnCalcMethod: 'Metode Hitung',
+      columnDefaultAmount: 'Nominal Default',
+      columnStatus: 'Status',
+      fieldCode: 'Kode',
+      fieldName: 'Nama',
+      fieldType: 'Jenis',
+      fieldCalcMethod: 'Metode Hitung',
+      fieldDefaultAmount: 'Nominal Default',
+      isActiveLabel: 'Komponen aktif',
+      systemBadge: 'Sistem',
+      systemLockedNameHint: 'Komponen bawaan sistem — nama tidak dapat diubah.',
+      immutableAfterCreateHint:
+        'Jenis dan metode hitung tidak dapat diubah setelah komponen dibuat.',
+      statusActive: 'Aktif',
+      statusInactive: 'Nonaktif',
+      createSuccess: 'Komponen berhasil ditambahkan.',
+      updateSuccess: 'Komponen berhasil diperbarui.',
+      typeLabel: {
+        earning: 'Pendapatan',
+        deduction: 'Potongan',
+        employer_cost: 'Beban Perusahaan',
+      },
+      calcMethodLabel: {
+        fixed: 'Tetap',
+        per_day: 'Per Hari',
+        per_hour: 'Per Jam',
+        formula: 'Formula',
+        manual: 'Manual',
+      },
+      assignmentTitle: 'Komponen per Pegawai',
+      assignmentDescription:
+        'Atur nominal komponen kustom untuk satu pegawai, mis. tunjangan jabatan atau insentif.',
+      selectEmployee: 'Pilih Pegawai',
+      selectEmployeePlaceholder: 'Cari pegawai…',
+      noEmployeeSelected: 'Pilih pegawai untuk melihat dan mengatur komponennya.',
+      assignmentColumnComponent: 'Komponen',
+      assignmentColumnAmount: 'Nominal',
+      addAssignmentRow: 'Tambah Baris',
+      removeRow: 'Hapus Baris',
+      saveAssignments: 'Simpan Komponen Pegawai',
+      saveAssignmentsSuccess: 'Komponen pegawai berhasil disimpan.',
+      noAssignments: 'Belum ada komponen kustom untuk pegawai ini.',
+      useDefaultAmountHint: 'Kosongkan nominal untuk memakai nominal default komponen.',
+      usesDefaultAmount: 'Pakai nominal default',
+    },
   },
 
   // F11 `me` (W4-10) — every employee's own mobile view: Absen (GPS +
   // selfie), Slip Gaji, Ajukan Cuti/Izin. Additive-only namespace.
   me: {
+    // `/me` — the personal-analytics overview the six own-data routes hang off
+    // (owner, 2026-08-27).
+    overview: {
+      greeting: '{{name}} · {{role}}',
+      thisMonth: 'Bulan ini — {{month}}',
+      days: '{{n}} hari',
+      times: '{{n}} kali',
+      minutes: '{{m}}m',
+      hoursMinutes: '{{h}}j {{m}}m',
+      attendanceRate: 'Kehadiran {{rate}}%',
+      absentDays: '{{n}} hari alpha',
+      overtime: 'Lembur',
+      leaveLeft: 'Sisa Cuti Tahunan',
+      leavePending: '{{n}} pengajuan menunggu',
+      attendanceStrip: 'Absensi Bulan Ini',
+      noAttendance: 'Belum ada catatan absensi bulan ini.',
+      lastPeriod: 'Periode {{period}}',
+      openSlips: 'Lihat semua slip gaji',
+      outstanding: 'Sisa pinjaman berjalan',
+      openLoans: 'Lihat pinjaman',
+      unavailable:
+        'Data personal Anda belum tersedia — akun ini belum terhubung ke data kepegawaian.',
+    },
     tabs: {
       absen: 'Absen',
       slip: 'Slip Gaji',
@@ -2743,6 +3064,7 @@ export const id = {
     empty: 'Tidak ada Surat Jalan untuk hari ini',
     picker: {
       label: 'Lihat rute driver',
+      noFleet: 'Belum ada driver aktif yang terdaftar — tambahkan driver di Data Master.',
     },
     notADriver: {
       title: 'Layar ini menampilkan rute milik seorang driver',
@@ -2980,6 +3302,8 @@ export const id = {
     refreshPartialFailure: '{{count}} tampilan gagal disegarkan — data mungkin belum terbaru.',
     tabs: {
       overview: 'Ringkasan',
+      sales: 'Penjualan',
+      marketing: 'Pemasaran',
       outlets: 'Outlet',
       topProducts: 'Produk Terlaris',
       staffKpi: 'KPI Staf',
@@ -3037,6 +3361,88 @@ export const id = {
       columnAttendanceRate: 'Tingkat Kehadiran',
       columnLateCount: 'Jumlah Terlambat',
       empty: 'Belum ada data KPI pegawai untuk periode ini.',
+    },
+
+    // Sales tab — `GET /api/reports/sales` (CONTRACTS §4.19), all outlets or
+    // one, with CSV/PDF export.
+    sales: {
+      title: 'Laporan Penjualan',
+      description:
+        'Penjualan semua outlet atau satu outlet, dirinci per tanggal, outlet, produk, metode bayar, atau kanal.',
+      outlet: 'Outlet',
+      allOutlets: 'Semua Outlet',
+      groupBy: 'Rincian',
+      groupByDay: 'Per Tanggal',
+      groupByOutlet: 'Per Outlet',
+      groupByProduct: 'Per Produk',
+      groupByMethod: 'Per Metode Bayar',
+      groupByChannel: 'Per Kanal',
+      columnDay: 'Tanggal',
+      columnOutlet: 'Outlet',
+      columnProduct: 'Produk',
+      columnMethod: 'Metode Bayar',
+      columnChannel: 'Kanal',
+      columnTxCount: 'Transaksi',
+      columnGross: 'Bruto',
+      columnDiscount: 'Diskon',
+      columnPlatformFees: 'Biaya Platform',
+      columnNet: 'Neto',
+      totals: 'Total',
+      platformFeesNote:
+        'Biaya Platform bersifat informatif — Neto sudah dikurangi biaya tersebut di sumbernya, jadi jangan dikurangi dua kali.',
+      empty: 'Belum ada penjualan pada periode dan filter ini.',
+      emptyHint: 'Coba perlebar rentang tanggal atau pilih Semua Outlet.',
+      loadError: 'Laporan penjualan gagal dimuat',
+      loadErrorHint: 'Periksa koneksi lalu muat ulang; jika tetap gagal, hubungi admin.',
+      exportTitle: 'Laporan Penjualan — {{scope}} — {{from}} s/d {{to}}',
+    },
+
+    // Marketing tab — no new endpoint: kanal/diskon/biaya platform are all
+    // read off `GET /api/reports/sales` + `/api/reports/online-orders`.
+    marketing: {
+      title: 'Laporan Pemasaran',
+      description:
+        'Kinerja per kanal penjualan, belanja diskon, dan biaya platform — semua outlet atau satu outlet.',
+      spendTitle: 'Belanja Diskon & Biaya Platform',
+      statGross: 'Bruto',
+      statDiscount: 'Total Diskon',
+      statDiscountPct: 'Diskon terhadap Bruto',
+      statPlatformFees: 'Biaya Platform',
+      statFeesPct: 'Biaya Platform terhadap Bruto',
+      statNet: 'Neto',
+      noBasis: '—',
+      noBasisHint: 'Tidak ada penjualan pada periode ini, jadi persentase tidak dapat dihitung.',
+      channelTitle: 'Kinerja per Kanal',
+      channelDescription:
+        'Walk-in (kasir) dibanding GoFood dan ShopeeFood. Komisi platform GoFood/ShopeeFood sejak Agustus 2026 sudah termasuk di harga jual kanal tersebut, sehingga Biaya Platform hanya terisi untuk pesanan online lama.',
+      columnChannel: 'Kanal',
+      columnShare: 'Kontribusi Bruto',
+      columnDiscountPct: '% Diskon',
+      channelWalkIn: 'Walk-in (Kasir)',
+      channelGofood: 'GoFood',
+      channelShopeefood: 'ShopeeFood',
+      productsTitle: 'Produk Terlaris & Diskonnya',
+      productsDescription:
+        'Produk dengan bruto tertinggi pada periode ini, beserta diskon yang menempel padanya. Hanya penjualan kasir — item pesanan online tidak menyimpan harga per produk.',
+      channelEmpty: 'Belum ada penjualan pada periode dan filter ini.',
+      productsEmpty: 'Belum ada penjualan produk pada periode dan filter ini.',
+      reconTitle: 'Rekonsiliasi Pesanan Online',
+      reconDescription:
+        'Rincian bruto → neto per pesanan untuk pesanan online: diskon, komisi platform, biaya lain, dan status penyelesaian.',
+      reconEmpty: 'Tidak ada pesanan online pada periode ini.',
+      reconEmptyHint:
+        'Pesanan GoFood/ShopeeFood kini dicatat sebagai penjualan kasir berkanal, bukan pesanan online terpisah — lihat Kinerja per Kanal di atas. Tabel ini hanya memuat riwayat sebelum perubahan tersebut.',
+      columnOrderRef: 'No. Pesanan',
+      columnOrderDate: 'Tanggal',
+      columnPlatform: 'Platform',
+      columnOtherFee: 'Biaya Lain',
+      columnStatus: 'Status',
+      columnSettlement: 'Penyelesaian',
+      loadError: 'Laporan pemasaran gagal dimuat',
+      loadErrorHint: 'Periksa koneksi lalu muat ulang; jika tetap gagal, hubungi admin.',
+      exportChannelTitle: 'Pemasaran — Kinerja per Kanal — {{scope}} — {{from}} s/d {{to}}',
+      exportProductsTitle: 'Pemasaran — Produk & Diskon — {{scope}} — {{from}} s/d {{to}}',
+      exportReconTitle: 'Pemasaran — Rekonsiliasi Online — {{scope}} — {{from}} s/d {{to}}',
     },
   },
 
@@ -3107,6 +3513,116 @@ export const id = {
       storageNote:
         'Data penyimpanan belum tersedia dari perangkat (placeholder backend) — tidak ditampilkan agar tidak menyesatkan.',
       empty: 'Belum ada perangkat terdaftar di outlet ini.',
+      // Rename / recategorise / move / unpair / retire — DeviceDetailDrawer's
+      // management section, gated on `device.manage`.
+      manage: {
+        title: 'Kelola Perangkat',
+        nameLabel: 'Nama Perangkat',
+        categoryLabel: 'Kategori',
+        locationLabel: 'Lokasi',
+        save: 'Simpan Perubahan',
+        saved: 'Perangkat berhasil diperbarui',
+        saveError: 'Gagal memperbarui perangkat',
+        unpair: 'Lepas Pasangan',
+        unpairTitle: 'Lepas pasangan perangkat ini?',
+        unpairDescription:
+          '"{{name}}" akan berhenti tersambung dan token perangkatnya dicabut. Perangkat ini masih bisa dipasangkan ulang nanti dengan kode pemasangan baru.',
+        unpairReason: 'Alasan (opsional)',
+        unpairConfirm: 'Ya, Lepas Pasangan',
+        unpairSuccess: 'Perangkat dilepas pasangannya.',
+        unpairError: 'Gagal melepas pasangan perangkat',
+        retire: 'Pensiunkan',
+        retireTitle: 'Pensiunkan perangkat ini?',
+        retireDescription:
+          '"{{name}}" akan ditandai pensiun dan disembunyikan dari daftar aktif. Tindakan ini bukan untuk dibatalkan dari layar ini.',
+        retireConfirm: 'Ya, Pensiunkan',
+        retireSuccess: 'Perangkat dipensiunkan.',
+        retireError: 'Gagal mempensiunkan perangkat',
+        disabledRetired: 'Perangkat ini sudah pensiun — tidak ada tindakan lebih lanjut di sini.',
+        disabledUnpaired:
+          'Perangkat ini sudah dilepas pasangannya. Masih bisa diganti nama, dikategorikan ulang, atau dipensiunkan.',
+      },
+    },
+    // "Tambah Perangkat" — mints a short-lived (15 menit), sekali pakai
+    // pairing token (`POST /devices/pairing-tokens`) whose display code is
+    // read off to whoever is at the outlet; they redeem it on the tablet/
+    // node itself (`POST /devices/register`, outside this app).
+    addDevice: {
+      button: 'Tambah Perangkat',
+      title: 'Tambah Perangkat Baru',
+      description:
+        'Buat kode pemasangan sekali pakai. Bacakan kodenya ke petugas di lokasi tujuan — mereka memasukkannya saat mendaftarkan perangkat baru.',
+      locationLabel: 'Lokasi',
+      locationPlaceholder: 'Pilih lokasi...',
+      categoryLabel: 'Kategori (opsional)',
+      categoryPlaceholder: 'Biarkan perangkat menentukan sendiri',
+      submit: 'Buat Kode Pemasangan',
+      error: 'Gagal membuat kode pemasangan',
+      resultTitle: 'Kode Pemasangan Dibuat',
+      resultHint: 'Bacakan kode ini ke petugas di lokasi tersebut.',
+      codeLabel: 'Kode Pemasangan',
+      expiresIn: 'Berlaku {{minutes}} menit lagi — kedaluwarsa {{time}}',
+      expired: 'Kode ini sudah kedaluwarsa. Buat kode baru.',
+      done: 'Selesai',
+      another: 'Buat Kode Lain',
+    },
+    // The one "network setting" this ticket found real backing for (D-26) —
+    // whether an outlet runs a branch node, and pairing it. See
+    // `lib/node-api.ts`'s doc comment for what has NO backing (WiFi/static
+    // IP/subnet — local-only config on the node's own machine).
+    nodeSetting: {
+      title: 'Pengaturan Node — {{name}}',
+      description: 'Node cabang menghubungkan perangkat di outlet ini ke jaringan lokal (LAN).',
+      currentState: 'Status saat ini',
+      ownerOnly: 'Hanya Owner yang dapat mengubah pengaturan ini.',
+      enable: 'Aktifkan Node',
+      disable: 'Nonaktifkan Node',
+      disableHint:
+        'Node akan dilepas pasangannya setelah antreannya kosong sepenuhnya. Jika masih ada data tertunda atau node tidak dapat dihubungi, permintaan ini akan ditolak — coba lagi setelah node tersambung dan antreannya kosong.',
+      toggleError: 'Gagal mengubah pengaturan node',
+      pairTitle: 'Pasangkan Node',
+      pairHint:
+        'Buat kode pemasangan sekali pakai untuk PC yang akan menjadi node cabang outlet ini.',
+      mint: 'Buat Kode Pemasangan Node',
+      mintError: 'Gagal membuat kode pemasangan node',
+      pairedAt: 'Terlihat terakhir {{when}}',
+      network: {
+        title: 'Pengaturan Jaringan Node',
+        hint: 'Hanya port pendengar LAN dan subnet pemindaian yang benar-benar diterapkan oleh node saat ini — perubahan disimpan dan dikonfirmasi otomatis, dengan pemulihan otomatis jika node tidak dapat dihubungi lagi.',
+        status: 'Status konfigurasi',
+        statusValue: {
+          none: 'Belum pernah diubah',
+          pending: 'Sedang diterapkan…',
+          applied: 'Diterapkan',
+          reverted: 'Dikembalikan (gagal dikonfirmasi)',
+          failed: 'Gagal',
+        },
+        currentPort: 'port saat ini: {{port}}',
+        disconnectedWarning: 'Node tidak terhubung — pengaturan tidak dapat diubah sekarang.',
+        healthPort: 'Port LAN',
+        scanSubnet: 'Subnet Pemindaian',
+        save: 'Simpan',
+        pushed: 'Konfigurasi terkirim ke node — menunggu konfirmasi',
+        error: 'Gagal mengirim konfigurasi jaringan',
+        invalidPort: 'Port harus berupa angka bulat',
+        emptyPatch: 'Isi minimal satu kolom untuk disimpan',
+      },
+      commands: {
+        title: 'Perintah Jarak Jauh',
+        hint: 'Perintah ini benar-benar dijalankan oleh node — bukan sekadar tombol.',
+        restart: 'Mulai Ulang Node',
+        restartSent: 'Perintah mulai ulang terkirim',
+        restartError: 'Gagal mengirim perintah mulai ulang',
+        restartShiftOpen: 'Outlet ini memiliki shift POS yang sedang berjalan.',
+        restartShiftOpenHint:
+          'Mulai ulang node akan mengganggu shift yang sedang berjalan di outlet ini. Lanjutkan hanya jika benar-benar diperlukan.',
+        restartOverride: 'Mulai Ulang Meski Shift Terbuka',
+        pullLogs: 'Ambil Log Terbaru',
+        logPullError: 'Gagal mengambil log',
+        logPullWaiting: 'Menunggu log dari node…',
+        logPullResult: '{{count}} baris log diterima',
+        logPullEmpty: '(tidak ada baris log)',
+      },
     },
     quietNote:
       'Outlet yang tutup wajar terlihat offline — perangkat tunggal yang offline tidak selalu berarti gangguan. Peringatan hanya berlaku saat seluruh outlet gelap.',
@@ -3184,6 +3700,540 @@ export const id = {
       reconAdjustmentHint: 'Nomor opname atau penyesuaian stok yang memperbaiki selisih ini.',
       reconResolveButton: 'Tandai Selesai',
       reconResolveSuccess: 'Selisih stok ditandai selesai.',
+    },
+  },
+
+  /**
+   * F-DOC (2026-08-27) — the printable-document vocabulary: every label that
+   * appears ON PAPER (invoice / receipt / voucher / Surat Jalan), plus the
+   * designer UI that lays them out.
+   *
+   * WHY THIS IS `doc` AND NOT `docs`. The obvious name is taken. `docs.*` is
+   * the USER MANUAL namespace (`app/docs/**`, ~20 keys above), and it already
+   * owns `docs.title` as a STRING ('Panduan Pengguna') — so `docs.title.invoice`
+   * cannot exist without either breaking the manual's heading or nesting a
+   * document title under a namespace that means "documentation". Two different
+   * things called "docs" is exactly the kind of collision `t()` resolves
+   * silently and wrongly: `resolvePath` would hand `translate` an object, and
+   * `translate` would warn and return the raw key — printing `docs.title` onto
+   * a customer's invoice. So the printable-document vocabulary is `doc.*`,
+   * singular. (Rejected alternative: renaming the manual's `docs.title` to free
+   * the path. It would work, but it puts two unrelated features in one
+   * namespace forever, and the next person to add a manual key would have to
+   * know that half of `docs.*` is really about invoices.)
+   *
+   * THIS IS ALSO A WIRE CONTRACT. `DocPayload.labelKeys` (see
+   * `packages/shared/src/documents/payload.ts`) carries i18n KEYS the backend
+   * chooses and this dictionary resolves — the server may not hold Bahasa
+   * Indonesia copy (BUILD-PLAN §6.9). Every key the resolvers emit must exist
+   * below, under `doc.`. `components/documents/doc-payload.ts` degrades to the
+   * server's own raw `fields` value when a key does not resolve, rather than
+   * printing `doc.title.invoice` on paper — but that is a safety net, not a
+   * licence to let the two drift.
+   */
+  doc: {
+    /**
+     * One entry for EVERY token in every kind's catalog
+     * (`DOC_CATALOGS[kind].fields`). The designer's "add field" palette is
+     * driven straight off that list, so a missing key here shows an owner a
+     * button labelled with a raw token. Tokens shared by several kinds
+     * (`document_title`, `company_name`, `notes`, `terms`) are declared once.
+     */
+    field: {
+      // shared across kinds
+      document_title: 'Judul Dokumen',
+      company_name: 'Nama Perusahaan',
+      company_address: 'Alamat Perusahaan',
+      company_city: 'Kota',
+      company_phone: 'Telepon Perusahaan',
+      company_npwp: 'NPWP',
+      notes: 'Catatan',
+      terms: 'Syarat & Ketentuan',
+      // invoice
+      invoice_number: 'Nomor Faktur',
+      invoice_date: 'Tanggal Faktur',
+      due_date: 'Jatuh Tempo',
+      source_label: 'Jenis Faktur',
+      party_label: 'Label Pihak',
+      party_name: 'Nama Pihak',
+      party_address: 'Alamat Pihak',
+      party_phone: 'Telepon Pihak',
+      location_name: 'Lokasi',
+      issued_by: 'Diterbitkan Oleh',
+      payment_method: 'Metode Pembayaran',
+      payment_status: 'Status Pembayaran',
+      // receipt
+      outlet_name: 'Nama Outlet',
+      outlet_address: 'Alamat Outlet',
+      outlet_phone: 'Telepon Outlet',
+      receipt_number: 'Nomor Struk',
+      datetime: 'Tanggal & Jam',
+      kasir_name: 'Kasir',
+      channel_label: 'Kanal Penjualan',
+      paid_amount: 'Dibayar',
+      change_amount: 'Kembalian',
+      voucher_code: 'Kode Voucher',
+      // voucher
+      voucher_name: 'Nama Voucher',
+      voucher_value: 'Nilai Voucher',
+      voucher_type_label: 'Jenis Voucher',
+      min_subtotal: 'Minimum Belanja',
+      valid_from: 'Berlaku Mulai',
+      valid_until: 'Berlaku Sampai',
+      batch_code: 'Kode Batch',
+      outlet_scope: 'Berlaku di Outlet',
+      // surat jalan
+      sj_number: 'Nomor Surat Jalan',
+      sj_date: 'Tanggal Surat Jalan',
+      shipment_type_label: 'Jenis Muatan',
+      origin_name: 'Asal',
+      destination_name: 'Tujuan',
+      destination_address: 'Alamat Tujuan',
+      driver_name: 'Driver',
+      vehicle_plate: 'Nomor Kendaraan',
+      drop_label: 'Titik Kirim',
+      copy_holder_label: 'Salinan Untuk',
+      seal_number: 'Nomor Segel',
+      temp_c: 'Suhu',
+      dispatcher_name: 'Petugas Gudang',
+      page_label: 'Halaman',
+    },
+
+    /**
+     * Printed table headers. An owner may override any of these per column
+     * (`DocTableColumn.labelText`) — that override is THEIR copy, typed into
+     * their own document, and deliberately not a translation key.
+     */
+    column: {
+      no: 'No.',
+      code: 'Kode',
+      name: 'Nama Barang',
+      qty: 'Jumlah',
+      uom: 'Satuan',
+      unit_price: 'Harga Satuan',
+      discount: 'Diskon',
+      line_total: 'Jumlah',
+      qty_sent: 'Dikirim',
+      qty_received: 'Diterima',
+      notes: 'Catatan',
+    },
+
+    /** Rows of the totals block, in `DOC_TOTALS_ROWS` order. */
+    total: {
+      subtotal: 'Subtotal',
+      discount: 'Diskon',
+      total: 'TOTAL',
+      paid: 'Dibayar',
+      balance: 'Sisa Tagihan',
+      change: 'Kembalian',
+      voucher: 'Voucher',
+    },
+
+    /** Who signs, printed under the rule a `signature` element draws. */
+    signature: {
+      issuer: 'Hormat Kami',
+      recipient: 'Diterima Oleh',
+      sender: 'Pengirim (Gudang)',
+      driver: 'Driver',
+      receiver: 'Penerima di Outlet',
+    },
+
+    /** The `document_title` field token's value, per kind. */
+    title: {
+      invoice: 'FAKTUR',
+      receipt: 'STRUK PEMBELIAN',
+      voucher: 'VOUCHER',
+      surat_jalan: 'SURAT JALAN',
+    },
+
+    /** Which of the three Surat Jalan copies a sheet is. */
+    copyHolder: {
+      gudang: 'Gudang Pusat',
+      outlet: 'Outlet Penerima',
+      kantor: 'Kantor',
+    },
+
+    /**
+     * `party_label` — who the invoice is addressed to. One invoice template
+     * serves three sources, so the LABEL changes rather than the token (see
+     * `catalog.ts`'s note on why the tokens are `party_*`, not `customer_*`).
+     */
+    party: {
+      customer: 'Ditagihkan Kepada',
+      supplier: 'Pemasok',
+      manual: 'Kepada',
+    },
+
+    /** `source_label` — where an invoice's contents came from. */
+    source: {
+      sale: 'Penjualan Kasir',
+      purchase_order: 'Pesanan Pembelian',
+      manual: 'Faktur Manual',
+    },
+
+    /** `channel_label` on a receipt. The printed twin of `pos.channel*`. */
+    channel: {
+      walk_in: 'Kasir',
+      gofood: 'GoFood',
+      shopeefood: 'ShopeeFood',
+    },
+
+    /** `shipment_type_label` on a Surat Jalan. */
+    shipmentType: {
+      dry: 'Kering',
+      frozen: 'Beku',
+    },
+
+    paymentMethod: {
+      cash: 'Tunai',
+      qris: 'QRIS',
+      bank_transfer: 'Transfer Bank',
+    },
+
+    paymentStatus: {
+      pending: 'Menunggu Verifikasi',
+      verified: 'Terverifikasi',
+      paid: 'Lunas',
+    },
+
+    voucherType: {
+      fixed: 'Potongan Tetap',
+      percentage: 'Potongan Persen',
+    },
+
+    // ── The designer (Admin → Dokumen) ────────────────────────────────────
+    designer: {
+      title: 'Perancang Dokumen',
+      description:
+        'Atur tata letak dokumen yang dicetak. Seret elemen di kanvas, atau pilih elemen lalu gunakan tombol panah untuk menggeser satu per satu.',
+      kind: {
+        invoice: 'Faktur',
+        receipt: 'Struk Kasir',
+        voucher: 'Voucher',
+        surat_jalan: 'Surat Jalan',
+      },
+      paletteTitle: 'Tambah Elemen',
+      fieldsTitle: 'Tambah Isian',
+      fieldsHint: 'Isian yang tersedia untuk dokumen ini. Klik untuk menaruhnya di kanvas.',
+      layersTitle: 'Elemen di Kanvas',
+      propertiesTitle: 'Properti Elemen',
+      noSelection: 'Pilih sebuah elemen di kanvas untuk mengubah propertinya.',
+      element: {
+        text: 'Teks',
+        field: 'Isian',
+        logo: 'Logo',
+        table: 'Tabel Barang',
+        totals: 'Blok Total',
+        code: 'QR / Barcode',
+        divider: 'Garis',
+        box: 'Kotak',
+        signature: 'Tanda Tangan',
+      },
+      // Deliberately NOT 'Teks': that is already the name of the element TYPE
+      // in the palette and in the layer list, and two controls with the same
+      // accessible name in one panel is ambiguous for a screen reader (and
+      // for a test) about which one is being addressed.
+      propText: 'Isi Teks',
+      propFontSize: 'Ukuran Huruf',
+      propColor: 'Warna',
+      propBackground: 'Warna Latar',
+      propAlign: 'Perataan',
+      propBold: 'Tebal',
+      propWrap: 'Bungkus teks panjang',
+      propWrapHint:
+        'Aktif: teks panjang turun ke baris berikutnya di dalam kotak. Nonaktif: dipotong satu baris.',
+      propX: 'Posisi X',
+      propY: 'Posisi Y',
+      propW: 'Lebar',
+      propH: 'Tinggi',
+      propField: 'Isian',
+      propSignatureRole: 'Penanda Tangan',
+      propCodeType: 'Jenis Kode',
+      propCodeSource: 'Sumber Kode',
+      propColumns: 'Kolom Tabel',
+      propColumnLabel: 'Judul Kolom',
+      propColumnLabelHint: 'Kosongkan untuk memakai judul bawaan.',
+      propColumnWidth: 'Lebar Kolom',
+      propColumnAlign: 'Perataan Kolom',
+      addColumn: 'Tambah Kolom',
+      removeColumn: 'Hapus Kolom',
+      columnWidthNotice:
+        'Lebar kolom selalu dijumlahkan pas dengan lebar tabel ({{width}} px): menambah lebar satu kolom mengurangi kolom lain, supaya kolom paling kanan tidak keluar dari kertas.',
+      align: { left: 'Kiri', center: 'Tengah', right: 'Kanan' },
+      codeType: { qr: 'QR Code', barcode: 'Barcode (Code 128)' },
+      colorBrandPrimary: 'Warna Merek',
+      colorBrandAccent: 'Warna Aksen',
+      colorBrandInk: 'Warna Teks',
+      colorBrandMuted: 'Warna Teks Samar',
+      colorCustom: 'Warna Sendiri',
+      colorNone: 'Tanpa Warna',
+      colorBrandHint:
+        'Warna merek mengikuti pengaturan di Admin → Merek. Pilih warna sendiri hanya bila elemen ini memang harus berbeda selamanya.',
+      zoom: 'Perbesaran',
+      snap: 'Kunci ke Grid',
+      snapHint: 'Elemen menempel ke kelipatan {{size}} px saat digeser.',
+      paper: 'Ukuran Kertas',
+      background: 'Gambar Latar',
+      backgroundUpload: 'Unggah Gambar Latar',
+      backgroundRemove: 'Hapus Gambar Latar',
+      backgroundHint: 'Untuk kop surat pra-cetak. Gambar diregangkan mengikuti ukuran kertas.',
+      duplicate: 'Gandakan',
+      deleteElement: 'Hapus Elemen',
+      save: 'Simpan Tata Letak',
+      saved: 'Tata letak tersimpan.',
+      saveFailed: 'Tata letak gagal disimpan',
+      resetToDefault: 'Kembalikan ke Bawaan',
+      resetConfirmTitle: 'Kembalikan ke tata letak bawaan?',
+      resetConfirmBody:
+        'Semua perubahan pada tata letak {{kind}} akan hilang dan diganti dengan bawaan sistem. Tindakan ini tidak bisa dibatalkan.',
+      resetDone: 'Tata letak dikembalikan ke bawaan.',
+      unsaved: 'Ada perubahan yang belum disimpan.',
+      validationTitle: 'Tata letak belum bisa disimpan',
+      previewTitle: 'Pratinjau',
+      previewHint: 'Pratinjau memakai data contoh, bukan data asli.',
+      loadFailed: 'Gagal memuat tata letak',
+      keyboardHint:
+        'Panah menggeser 1 px, Shift+Panah menggeser {{step}} px, Delete menghapus elemen terpilih.',
+      uploadFailed: 'Gagal mengunggah gambar',
+      canvasLabel: 'Kanvas dokumen',
+      elementCount: '{{count}} dari {{max}} elemen',
+    },
+
+    // ── Print routes ───────────────────────────────────────────────────────
+    print: {
+      loadFailed: 'Gagal memuat dokumen',
+      notFound: 'Dokumen tidak ditemukan.',
+      invoiceTitle: 'Faktur',
+      receiptTitle: 'Struk',
+      voucherTitle: 'Voucher',
+      suratJalanTitle: 'Surat Jalan',
+      // Manual invoice entry surface (`/print/invoice/manual`).
+      manualTitle: 'Faktur Manual',
+      manualDescription:
+        'Buat faktur untuk penerima di luar penjualan kasir dan pesanan pembelian. Nomor faktur diterbitkan oleh sistem saat faktur dibuat.',
+      manualPartyName: 'Nama Penerima',
+      manualPartyAddress: 'Alamat Penerima',
+      manualPartyPhone: 'Telepon Penerima',
+      manualDueDate: 'Jatuh Tempo',
+      manualNotes: 'Catatan',
+      manualLines: 'Rincian',
+      manualLineName: 'Uraian',
+      manualLineQty: 'Jumlah',
+      manualLineUom: 'Satuan',
+      manualLineUnitPrice: 'Harga Satuan',
+      manualAddLine: 'Tambah Baris',
+      manualRemoveLine: 'Hapus Baris',
+      manualSubmit: 'Buat & Tampilkan Faktur',
+      manualNeedsLine: 'Tambahkan minimal satu baris rincian.',
+      manualNeedsParty: 'Isi nama penerima.',
+      manualFailed: 'Gagal membuat faktur',
+      manualBack: 'Ubah Faktur',
+      // Voucher sheet.
+      voucherSheetNotice:
+        '{{count}} voucher dicetak {{perSheet}} per halaman A4 = {{pages}} halaman. Gunting mengikuti garis putus-putus.',
+      voucherEmpty: 'Batch ini belum memiliki voucher yang diterbitkan.',
+      // Shown when the batch endpoint returned its maximum. Says plainly
+      // that this is not the whole run, because the alternative is
+      // somebody believing 24 sheets finished a batch of 500.
+      voucherCapNotice:
+        'Batch ini berisi lebih dari {{cap}} voucher. Hanya {{cap}} kode pertama yang dicetak di halaman ini — sisanya belum bisa dicetak dari layar ini.',
+      // Surat Jalan — the three-copies rule survives the move to templates.
+      sjCopyNotice:
+        '{{drops}} tujuan × {{copies}} salinan (gudang, outlet, kantor) = {{pages}} halaman. Siapkan kertas di printer sebelum mencetak.',
+      sjEmpty: 'Surat jalan ini belum memiliki titik kirim.',
+      // Shown instead of `sjCopyNotice` when the resolver's sheet count is not
+      // a whole number of copies per drop — the route refuses to state a drop
+      // count it cannot derive, and says only how much paper this is.
+      sjCopyNoticeFallback:
+        '{{pages}} halaman akan dicetak. Siapkan kertas di printer sebelum mencetak.',
+    },
+  },
+
+  /**
+   * F-DOC — Admin → Merek. The brand identity: the logo every document and
+   * every letterhead prints, the favicon the browser tab shows, and the four
+   * colours `resolveDocColor` resolves a template's `brand.*` tokens against.
+   */
+  brand: {
+    title: 'Merek',
+    description:
+      'Logo, ikon, dan warna yang dipakai di seluruh aplikasi dan di setiap dokumen yang dicetak.',
+    logoTitle: 'Logo',
+    logoHint:
+      'Dipakai di kop faktur, struk, voucher, dan surat jalan. Format PNG dengan latar transparan memberi hasil terbaik.',
+    logoUpload: 'Unggah Logo',
+    logoReplace: 'Ganti Logo',
+    logoRemove: 'Hapus Logo',
+    logoEmpty: 'Belum ada logo.',
+    faviconTitle: 'Ikon Aplikasi (Favicon)',
+    faviconHint:
+      'Ikon kecil di tab peramban dan di layar utama tablet. Gunakan gambar persegi, minimal 192×192 piksel.',
+    faviconUpload: 'Unggah Ikon',
+    faviconReplace: 'Ganti Ikon',
+    faviconRemove: 'Hapus Ikon',
+    faviconEmpty: 'Belum ada ikon khusus — memakai ikon bawaan sistem.',
+    colorsTitle: 'Warna',
+    colorsHint:
+      'Empat warna ini dipakai oleh semua dokumen. Mengubahnya di sini langsung mengubah warna setiap dokumen yang belum diberi warna sendiri.',
+    primaryColor: 'Warna Merek',
+    primaryColorHint: 'Warna utama: judul dokumen, latar baris kepala tabel, dan warna aplikasi.',
+    accentColor: 'Warna Aksen',
+    accentColorHint: 'Penegas di samping warna merek: nilai voucher, label salinan.',
+    inkColor: 'Warna Teks',
+    inkColorHint: 'Warna teks isi dokumen.',
+    mutedColor: 'Warna Teks Samar',
+    mutedColorHint: 'Teks sekunder: alamat, keterangan kecil, garis pemisah.',
+    previewTitle: 'Pratinjau Dokumen',
+    previewHint: 'Contoh faktur dengan warna di atas.',
+    save: 'Simpan Merek',
+    saved: 'Pengaturan merek tersimpan.',
+    saveFailed: 'Pengaturan merek gagal disimpan',
+    resetToDefault: 'Kembalikan ke Bawaan',
+    resetDone: 'Warna dikembalikan ke bawaan.',
+    invalidColor: 'Warna harus berformat #rrggbb.',
+    loadFailed: 'Gagal memuat pengaturan merek',
+    uploadFailed: 'Gagal mengunggah gambar',
+    unsaved: 'Ada perubahan yang belum disimpan.',
+  },
+
+  /**
+   * F-DOC — vouchers. A batch is a print run; issuing mints N codes that are
+   * worth real money, which is why `voucher.issue` is a narrower permission
+   * than `voucher.read` and why every count on this surface is stated plainly.
+   */
+  voucher: {
+    title: 'Voucher',
+    description:
+      'Kelola batch voucher diskon: buat batch, terbitkan kode, cetak, dan batalkan voucher yang salah cetak.',
+    empty: 'Belum ada batch voucher.',
+    emptyDescription: 'Buat batch untuk mulai menerbitkan kode voucher.',
+    loadFailed: 'Gagal memuat voucher',
+    detailTitle: 'Detail Batch Voucher',
+    filterStatusAll: 'Semua Status',
+
+    // Batch list columns.
+    columnName: 'Nama Batch',
+    columnCode: 'Kode Batch',
+    columnType: 'Jenis',
+    columnValue: 'Nilai',
+    columnValidity: 'Masa Berlaku',
+    columnIssued: 'Terbit',
+    columnRedeemed: 'Terpakai',
+    columnStatus: 'Status',
+    validityRange: '{{from}} – {{until}}',
+
+    // Issued-code list columns.
+    columnVoucherCode: 'Kode',
+    columnVoucherStatus: 'Status',
+    columnRedeemedAt: 'Dipakai',
+
+    /**
+     * TWO status ladders, deliberately named apart. `batchStatus` is the print
+     * run's lifecycle (draft → issued → closed); `status` is one coupon's
+     * (active → redeemed | void). They are different vocabularies about
+     * different things and a batch that is "closed" still contains "active"
+     * codes — collapsing them into one namespace is how a screen ends up
+     * telling a cashier a live voucher is closed.
+     */
+    batchStatus: {
+      draft: 'Draf',
+      issued: 'Terbit',
+      closed: 'Ditutup',
+    },
+    status: {
+      active: 'Aktif',
+      redeemed: 'Terpakai',
+      void: 'Dibatalkan',
+    },
+    type: {
+      fixed: 'Potongan Tetap',
+      percentage: 'Potongan Persen',
+    },
+
+    // Create / edit.
+    createButton: 'Buat Batch',
+    createTitle: 'Buat Batch Voucher',
+    editTitle: 'Ubah Batch Voucher',
+    createSuccess: 'Batch voucher dibuat.',
+    updated: 'Batch voucher diperbarui.',
+    saveFailed: 'Batch gagal disimpan',
+    name: 'Nama Batch',
+    nameHint: 'Nama yang dibaca kasir saat voucher diterima, mis. "Promo Pembukaan Samarinda".',
+    value: 'Nilai Potongan',
+    percentHint:
+      'Isi angka persen, mis. 10 untuk 10%. Maksimal dua angka di belakang koma.',
+    maxDiscount: 'Potongan Maksimal',
+    maxDiscountHint: 'Batas atas potongan persen. Kosongkan bila tanpa batas.',
+    minSubtotal: 'Minimum Belanja',
+    minSubtotalHint: 'Voucher hanya berlaku bila subtotal mencapai jumlah ini.',
+    validFrom: 'Berlaku Mulai',
+    validUntil: 'Berlaku Sampai',
+    locationsLabel: 'Outlet',
+    allOutlets: 'Semua outlet',
+    locationsCount: '{{count}} outlet',
+    terms: 'Syarat & Ketentuan',
+
+    // Issue.
+    issueTitle: 'Terbitkan Kode Voucher',
+    issueButton: 'Terbitkan Kode',
+    issueQuantity: 'Jumlah Kode',
+    issueQuantityHint:
+      'Setiap kode berlaku sekali pakai dan bernilai uang sungguhan. Kode yang sudah terbit tidak bisa ditarik — hanya bisa dibatalkan satu per satu.',
+    issueSuccess: '{{count}} kode voucher diterbitkan.',
+    issueFailed: 'Gagal menerbitkan kode',
+
+    // Close.
+    closeTitle: 'Tutup batch ini?',
+    closeButton: 'Tutup Batch',
+    closeConfirm:
+      'Batch yang ditutup tidak bisa menerbitkan kode baru. Kode yang sudah terbit tetap berlaku sampai masa berlakunya habis.',
+    closeSuccess: 'Batch ditutup.',
+    closeFailed: 'Gagal menutup batch',
+
+    printButton: 'Cetak Batch',
+
+    // Issued codes.
+    codesTitle: 'Kode dalam Batch',
+    codesEmpty: 'Batch ini belum menerbitkan kode.',
+    voidButton: 'Batalkan',
+    voidConfirmTitle: 'Batalkan voucher ini?',
+    voidConfirm:
+      'Kode {{code}} tidak akan bisa dipakai lagi. Gunakan ini untuk kode yang salah cetak atau hilang.',
+    voidSuccess: 'Voucher dibatalkan.',
+    voidFailed: 'Gagal membatalkan voucher',
+
+    /**
+     * The till's voucher entry (`components/pos/VoucherEntry.tsx`).
+     *
+     * Every `ERR_VOUCHER_*` gets its OWN sentence. `checkVoucher`'s header
+     * says why: "tidak berlaku" with no reason is what makes a queue argue —
+     * a customer told "expired" walks away, a customer told "invalid" asks
+     * the cashier to try again three times.
+     */
+    pos: {
+      label: 'Kode Voucher',
+      placeholder: 'MC-XXXX-XXXX',
+      apply: 'Terapkan',
+      remove: 'Hapus Voucher',
+      checking: 'Memeriksa…',
+      applied: 'Voucher {{code}} diterapkan: potongan {{discount}}.',
+      appliedBatch: '{{batch}} — potongan {{discount}}',
+      // The till shows a PREVIEW. The server recomputes the discount when the
+      // sale lands, and its number is the one that reaches the ledger.
+      previewNote:
+        'Potongan dihitung ulang oleh sistem pusat saat transaksi tersimpan. Angka di sini adalah perkiraan.',
+      malformed: 'Format kode tidak dikenali. Kode voucher berbentuk MC-XXXX-XXXX.',
+      error: {
+        ERR_VOUCHER_NOT_FOUND: 'Kode voucher tidak ditemukan.',
+        ERR_VOUCHER_NOT_ACTIVE: 'Voucher ini sudah pernah dipakai atau sudah dibatalkan.',
+        ERR_VOUCHER_NOT_STARTED: 'Voucher ini belum berlaku.',
+        ERR_VOUCHER_EXPIRED: 'Masa berlaku voucher ini sudah habis.',
+        ERR_VOUCHER_BELOW_MINIMUM: 'Belanja belum mencapai minimum untuk voucher ini.',
+        ERR_VOUCHER_WRONG_LOCATION: 'Voucher ini tidak berlaku di outlet ini.',
+        ERR_VOUCHER_OFFLINE_BLOCKED:
+          'Voucher tidak bisa diperiksa saat perangkat offline. Coba lagi setelah tersambung.',
+        unknown: 'Voucher tidak bisa diperiksa. Coba lagi.',
+      },
     },
   },
 } as const;

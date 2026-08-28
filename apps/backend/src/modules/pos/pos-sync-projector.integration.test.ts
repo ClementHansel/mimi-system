@@ -31,6 +31,7 @@ import {
   buildEventBus,
   buildNotificationService,
   buildPaymentVerificationsService,
+  buildVoucherRedemptionService,
   buildStockLedgerService,
   buildSyncEmitService,
   closePool,
@@ -68,7 +69,12 @@ function services(pool: Pool) {
   const approvals = buildApprovalService();
   const syncEmit = buildSyncEmitService(pool);
   const shifts = new PosShiftService(pool, approvals, notifications);
-  const sales = new PosSaleService(pool, stockLedger, buildPaymentVerificationsService(pool));
+  const sales = new PosSaleService(
+      pool,
+      stockLedger,
+      buildPaymentVerificationsService(pool),
+      buildVoucherRedemptionService(),
+    );
   // All SEVEN constructor params, in order. This call used to pass six —
   // `approvalCodes` was missing — which silently shifted every later argument by
   // one: `stockLedger` landed in `approvalCodes`, `notifications` received the
@@ -85,7 +91,7 @@ function services(pool: Pool) {
     notifications,
     eventBus,
   );
-  const onlineOrders = new PosOnlineOrderService(stockLedger, eventBus);
+  const onlineOrders = new PosOnlineOrderService(stockLedger);
   const projector = new PosSyncProjector(shifts, sales, voidRefunds, onlineOrders);
   return { shifts, sales, voidRefunds, onlineOrders, projector, stockLedger };
 }

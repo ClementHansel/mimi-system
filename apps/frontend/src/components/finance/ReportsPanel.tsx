@@ -11,29 +11,23 @@ import { Select } from '@/components/ui/Select';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ExportButton } from '@/components/common/ExportButton';
-import type { CsvColumn } from '@/lib/export/csv';
 import { sumMoney } from './lib/money';
+import {
+  trialBalanceIoColumns,
+  profitLossIoColumns,
+  profitLossExportRows,
+  balanceSheetIoColumns,
+  balanceSheetExportRows,
+  stockValueIoColumns,
+  stockValueExportRows,
+} from './lib/io-columns';
 import type {
-  FiscalPeriodRow,
+  FiscalPeriod,
   TrialBalanceReport,
   ProfitLossReport,
   BalanceSheetReport,
   StockValueRow,
 } from './types';
-
-type TrialBalanceRow = TrialBalanceReport['rows'][number];
-
-function trialBalanceExportColumns(
-  t: (key: string, params?: Record<string, string | number>) => string,
-): CsvColumn<TrialBalanceRow>[] {
-  return [
-    { key: 'accountCode', header: 'Kode Akun' },
-    { key: 'accountName', header: 'Nama Akun' },
-    { key: 'type', header: 'Tipe Akun', format: (r) => t(`finance.accountType.${r.type}`) },
-    { key: 'debit', header: 'Debit', format: (r) => formatMoney(r.debit, { cents: 'always' }) },
-    { key: 'credit', header: 'Kredit', format: (r) => formatMoney(r.credit, { cents: 'always' }) },
-  ];
-}
 
 /**
  * F07 finance — reports (CONTRACTS §4.17: trial balance, P&L, balance sheet,
@@ -83,7 +77,7 @@ function errMsg(err: unknown, fallback: string): string {
 
 function TrialBalanceTab() {
   const { t } = useI18n();
-  const [periods, setPeriods] = useState<FiscalPeriodRow[]>([]);
+  const [periods, setPeriods] = useState<FiscalPeriod[]>([]);
   const [periodCode, setPeriodCode] = useState('');
   const [report, setReport] = useState<TrialBalanceReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -94,10 +88,10 @@ function TrialBalanceTab() {
 
   useEffect(() => {
     api
-      .get<FiscalPeriodRow[]>('/accounting/periods')
+      .get<FiscalPeriod[]>('/accounting/periods')
       .then((rows) => {
         setPeriods(rows);
-        setPeriodCode((prev) => prev || rows[rows.length - 1]?.period_code || '');
+        setPeriodCode((prev) => prev || rows[rows.length - 1]?.periodCode || '');
       })
       .catch((err: unknown) => setError(errMsg(err, t('finance.reports.loadError'))))
       .finally(() => setPeriodsLoaded(true));
@@ -127,14 +121,19 @@ function TrialBalanceTab() {
           value={periodCode}
           onValueChange={setPeriodCode}
           placeholder={t('finance.reports.selectPeriod')}
-          options={periods.map((p) => ({ value: p.period_code, label: p.period_code }))}
-          wrapperClassName="w-48"
+          options={periods.map((p) => ({ value: p.periodCode, label: p.periodCode }))}
+          // Wide enough for the PLACEHOLDER, not just for a "2026-08" period
+          // code. At `w-48` the prompt was clipped mid-word ("Pilih periode
+          // untuk me…"), which reads as a broken control rather than an
+          // instruction — and this is the one control on the screen that has to
+          // be understood before anything else renders.
+          wrapperClassName="w-full sm:w-72"
           disabled={periods.length === 0}
         />
         {report && (
           <ExportButton
             rows={report.rows}
-            columns={trialBalanceExportColumns(t)}
+            columns={trialBalanceIoColumns(t)}
             filenameBase={`trial-balance-${periodCode}`}
             pdfTitle={`Neraca Saldo — ${periodCode}`}
           />
@@ -245,7 +244,17 @@ function ProfitLossTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <DateRangePicker label={t('finance.reports.range')} value={range} onChange={setRange} />
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <DateRangePicker label={t('finance.reports.range')} value={range} onChange={setRange} />
+        {report && (
+          <ExportButton
+            rows={profitLossExportRows(report)}
+            columns={profitLossIoColumns(t)}
+            filenameBase={`laba-rugi-${range.from}-${range.to}`}
+            pdfTitle={`${t('finance.reports.tabs.profitLoss')} — ${range.from} – ${range.to}`}
+          />
+        )}
+      </div>
       {loading && <p className="text-sm text-text-muted">{t('common.loading')}</p>}
       {!loading && error && <ReportError message={error} />}
       {!loading && !error && !report && (
@@ -346,15 +355,25 @@ function BalanceSheetTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <label className="flex w-56 flex-col gap-1.5">
-        <span className="text-sm font-medium text-text-primary">{t('finance.reports.asOf')}</span>
-        <input
-          type="date"
-          value={asOf}
-          onChange={(e) => setAsOf(e.target.value)}
-          className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-text-primary focus-visible:border-brand-500"
-        />
-      </label>
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <label className="flex w-56 flex-col gap-1.5">
+          <span className="text-sm font-medium text-text-primary">{t('finance.reports.asOf')}</span>
+          <input
+            type="date"
+            value={asOf}
+            onChange={(e) => setAsOf(e.target.value)}
+            className="rounded-md border border-border-strong bg-surface-raised px-3 py-2 text-sm text-text-primary focus-visible:border-brand-500"
+          />
+        </label>
+        {report && (
+          <ExportButton
+            rows={balanceSheetExportRows(report)}
+            columns={balanceSheetIoColumns(t)}
+            filenameBase={`neraca-${asOf}`}
+            pdfTitle={`${t('finance.reports.tabs.balanceSheet')} — ${asOf}`}
+          />
+        )}
+      </div>
       {loading && <p className="text-sm text-text-muted">{t('common.loading')}</p>}
       {!loading && error && <ReportError message={error} />}
       {!loading && !error && !report && (
@@ -416,6 +435,14 @@ function StockValueTab() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
+        <ExportButton
+          rows={stockValueExportRows(rows)}
+          columns={stockValueIoColumns()}
+          filenameBase="nilai-stok"
+          pdfTitle={t('finance.reports.tabs.stockValue')}
+        />
+      </div>
       {rows.map((r) => (
         <section
           key={r.locationId}

@@ -1,0 +1,21 @@
+-- Branch-node local schema, part 3: this node's own network-config
+-- apply-then-confirm state (W3-10 hardening — a real, node-applied remote
+-- write path for the settings `config.ts` used to load from local env only).
+--
+-- `network_state` (JSONB, same "small per-row settings blob" convention as
+-- `node_identity`'s own singleton-row shape) holds:
+--   { effective: { healthPort, scanSubnet },       -- what this node is running with RIGHT NOW
+--     lastKnownGood: { healthPort, scanSubnet },    -- the last config CONFIRMED reachable — the
+--                                                    -- revert target; never overwritten by an
+--                                                    -- unconfirmed apply
+--     status: 'stable' | 'applying' | 'reverted',
+--     pendingConfigId: string | null }              -- correlates with the cloud's push, cleared
+--                                                    -- once the ack is sent either way
+--
+-- Read/written alongside `node_identity` (one process, one singleton row) so
+-- a node that restarts mid-window still knows its own last-known-good config
+-- without needing the cloud to tell it — the entire point of D-26's "must not
+-- be able to permanently strand an outlet" constraint: the revert decision is
+-- made LOCALLY, because if a bad config broke this node's own reachability,
+-- the cloud has no channel left to make that decision for it.
+ALTER TABLE node_identity ADD COLUMN IF NOT EXISTS network_state JSONB NOT NULL DEFAULT '{}';

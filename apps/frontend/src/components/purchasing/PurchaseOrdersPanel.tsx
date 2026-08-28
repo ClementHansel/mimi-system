@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Plus, Upload } from 'lucide-react';
+import { useMemo, useEffect, useRef, useState } from 'react';
+import { Plus, Printer, Upload } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
@@ -26,6 +26,11 @@ import { ApprovalTimeline } from '@/components/ui/ApprovalTimeline';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useApiList } from '@/components/admin/useApiList';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import type { CsvColumn } from '@/lib/export/csv';
+import { parseDecimal, type CsvRecord } from '@/lib/import/csv-parse';
+import { buildItemIndex, resolveItem } from '@/lib/import/resolve';
 import { uploadAttachment } from './lib/attachments';
 import {
   getLocations,
@@ -67,6 +72,31 @@ interface LineDraft {
 }
 
 const EMPTY_LINE: LineDraft = { itemId: '', qtyOrdered: null, unitId: '', unitPrice: null };
+
+/**
+ * The PO list export. `Total` is omitted from the column list here and added
+ * conditionally at the call site, on the SAME `supplier.price.read` check the
+ * table's total column uses (D-20/Amendment 3): an export is a second way out of
+ * the building for the same data, and a role that must not see supplier pricing
+ * on screen must not be able to download it either.
+ */
+const LIST_EXPORT_COLUMNS: CsvColumn<PurchaseOrderListRow>[] = [
+  { key: 'poNumber', header: 'No. PO' },
+  { key: 'supplierName', header: 'Supplier' },
+  { key: 'orderDate', header: 'Tanggal Pesan', format: (r) => fmtDate(r.orderDate) },
+  {
+    key: 'expectedDate',
+    header: 'Perkiraan Datang',
+    format: (r) => (r.expectedDate ? fmtDate(r.expectedDate) : ''),
+  },
+  { key: 'status', header: 'Status' },
+];
+
+const LIST_EXPORT_TOTAL_COLUMN: CsvColumn<PurchaseOrderListRow> = {
+  key: 'total',
+  header: 'Total',
+  format: (r) => formatMoney(r.total),
+};
 
 /**
  * FR-PO-01..04 — Purchase Orders + receiving. Draft -> pending_approval ->
@@ -178,11 +208,23 @@ export function PurchaseOrdersPanel({
             wrapperClassName="w-48"
           />
         </div>
-        <PermissionGate permission="purchasing.po.create">
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
-            {t('purchasing.orders.createButton')}
-          </Button>
-        </PermissionGate>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportButton
+            rows={data.rows}
+            columns={
+              canSeePrice
+                ? [...LIST_EXPORT_COLUMNS, LIST_EXPORT_TOTAL_COLUMN]
+                : LIST_EXPORT_COLUMNS
+            }
+            filenameBase="pesanan-pembelian"
+            pdfTitle={t('purchasing.tabs.orders')}
+          />
+          <PermissionGate permission="purchasing.po.create">
+            <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
+              {t('purchasing.orders.createButton')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
 
       <DataTable
@@ -339,6 +381,70 @@ function CreateOrderModal({
   }, [initialPrId]);
 
   const itemOptions = items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }));
+
+  const itemIndex = useMemo(() => buildItemIndex(items), [items]);
+
+  /**
+   * Bulk line entry for a PO — the supplier's quotation, which arrives as a
+   * spreadsheet or an email table far more often than as something worth
+   * retyping line by line.
+   *
+   * IT COMPLEMENTS the PR picker above rather than competing with it: "Dari PR"
+   * copies an approved internal request across, and this imports the prices the
+   * supplier came back with. `Satuan` is again not importable — the unit comes
+   * from the item, same as `updateLine` does on a hand-picked line.
+   */
+  const importColumns = [
+    { header: 'SKU', hint: 'opsional — pakai ini kalau ada dua barang dengan nama sama' },
+    {
+      header: 'Nama Barang',
+      hint: 'nama persis seperti di Data Master (wajib kalau SKU kosong)',
+      required: true,
+    },
+    { header: 'Jumlah', hint: 'angka, mis. 20 atau 12,5', required: true },
+    { header: 'Harga Satuan', hint: 'angka rupiah tanpa "Rp", mis. 25000', required: true },
+  ];
+
+  function mapLineRow(
+    row: CsvRecord,
+  ): { ok: true; line: LineDraft } | { ok: false; error: string } {
+    const match = resolveItem(itemIndex, { sku: row.get('SKU'), name: row.get('Nama Barang') });
+    if (!match) {
+      const typed = row.get('SKU') || row.get('Nama Barang');
+      if (!typed) return { ok: false, error: t('lineImport.missingItem') };
+      return { ok: false, error: t('lineImport.unknownItem', { value: typed }) };
+    }
+    const full = items.find((i) => i.id === match.id);
+    if (!full) return { ok: false, error: t('lineImport.unknownItem', { value: match.name }) };
+
+    const qtyText = row.get('Jumlah');
+    if (!qtyText) return { ok: false, error: t('lineImport.missingQty') };
+    const qty = parseDecimal(qtyText);
+    if (qty === null) return { ok: false, error: t('lineImport.invalidQty', { value: qtyText }) };
+    if (qty.startsWith('-')) return { ok: false, error: t('lineImport.negativeQty') };
+
+    // Required here, unlike on a PR: a purchase request ESTIMATES, a purchase
+    // order commits money. A line with no price would submit a PO whose total
+    // understates what the supplier will invoice.
+    const priceText = row.get('Harga Satuan');
+    if (!priceText) return { ok: false, error: t('lineImport.invalidPrice', { value: '' }) };
+    const price = parseDecimal(priceText);
+    if (price === null) {
+      return { ok: false, error: t('lineImport.invalidPrice', { value: priceText }) };
+    }
+
+    return {
+      ok: true,
+      line: {
+        itemId: full.id,
+        qtyOrdered: qty as Qty,
+        unitId: full.baseUnit.id,
+        unitPrice: price as Money,
+      },
+    };
+  }
+
+  const hasTypedLines = lines.some((l) => l.itemId || l.qtyOrdered || l.unitPrice);
 
   function updateLine(idx: number, patch: Partial<LineDraft>) {
     setLines((ls) =>
@@ -507,6 +613,16 @@ function CreateOrderModal({
           >
             {t('purchasing.orders.addLine')}
           </Button>
+          <LineImportButton<LineDraft>
+            title={t('purchasing.tabs.orders')}
+            templateBase="baris-pesanan-pembelian"
+            columns={importColumns}
+            mapRow={mapLineRow}
+            hasExistingLines={hasTypedLines}
+            onLines={(imported, mode) =>
+              setLines((ls) => (mode === 'replace' ? imported : [...ls, ...imported]))
+            }
+          />
         </div>
       </div>
     </Modal>
@@ -768,6 +884,20 @@ function OrderDrawer({
           </section>
 
           <section className="flex flex-wrap gap-2 border-t border-border pt-4">
+            {/*
+              Printing is available at ANY status and to anyone who can read
+              the PO — same reasoning `SuratJalanDetailDrawer` records for the
+              Surat Jalan print button: a buyer checks the invoice before
+              submitting, finance reads it back weeks later during a payment
+              dispute, and gating it behind approval/issue permissions would
+              put a document that is just a rendering of data already on
+              screen out of reach of the people who need a copy of it.
+            */}
+            <a href={`/print/invoice/purchase_order/${po.id}`} target="_blank" rel="noreferrer">
+              <Button variant="outline" size="sm" leftIcon={<Printer className="size-4" />}>
+                {t('doc.print.invoiceTitle')}
+              </Button>
+            </a>
             {po.status === PurchaseOrderStatus.DRAFT && canCreate && (
               <Button
                 size="sm"

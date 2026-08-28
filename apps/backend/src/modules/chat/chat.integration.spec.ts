@@ -195,4 +195,28 @@ describe.skipIf(!process.env.DATABASE_URL)('ChatService — live database', () =
       },
     );
   });
+
+  it('Mail never goes near the gateway — an internal thread sends as SENT with WA off', async () => {
+    await withRollback(
+      { userId: fx.kasirId, roleKey: 'kasir', locationIds: [fx.locationId] },
+      async (client) => {
+        const service = new ChatService(disabledWhatsApp());
+        const { conversation } = await service.getOwnConversation(client, fx.kasirId);
+
+        const sent = await service.sendMessage(client, conversation.id, fx.kasirId, 'Izin telat');
+
+        // A supplier thread with WA disabled is `pending` (see the test above)
+        // — correctly, because it IS waiting on a gateway. Mail is not: head
+        // office reads it in-app, so the message has arrived and no
+        // "Belum terkirim" warning belongs on it.
+        expect(sent.deliveryStatus).toBe('sent');
+        // Nothing was queued for delivery either — no outbox row to point at.
+        const row = await client.query<{ outbox_id: string | null }>(
+          `SELECT outbox_id FROM chat_messages WHERE id = $1`,
+          [sent.id],
+        );
+        expect(row.rows[0]!.outbox_id).toBeNull();
+      },
+    );
+  });
 });

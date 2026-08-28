@@ -57,7 +57,8 @@ describe('asset module RBAC + RLS (integration, live Postgres)', () => {
       ['asset.manage', RoleKey.SUPERVISOR],
       ['asset.manage', RoleKey.KEPALA_GUDANG],
       ['asset.schedule.manage', RoleKey.SUPERVISOR],
-      ['asset.job.execute', RoleKey.OWNER],
+      // Owner moved to the ALLOWED list on 2026-08-27 ("owner and superadmin
+      // can do all" — see packages/shared/src/rbac.ts and migration 250).
       ['asset.job.execute', RoleKey.KASIR],
       ['asset.job.verify', RoleKey.KEPALA_GUDANG],
       ['asset.job.verify', RoleKey.LEADER_OUTLET],
@@ -74,6 +75,7 @@ describe('asset module RBAC + RLS (integration, live Postgres)', () => {
       ['asset.manage', RoleKey.OWNER],
       ['asset.manage', RoleKey.MANAGER],
       ['asset.schedule.manage', RoleKey.MANAGER],
+      ['asset.job.execute', RoleKey.OWNER],
       ['asset.job.execute', RoleKey.MANAGER],
       ['asset.job.execute', RoleKey.KEPALA_GUDANG],
       ['asset.job.execute', RoleKey.SUPERVISOR],

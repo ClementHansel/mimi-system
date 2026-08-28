@@ -61,6 +61,16 @@ export interface FiscalPeriod {
   startDate: string;
   endDate: string;
   status: 'open' | 'closed' | 'locked';
+  /**
+   * WHO closed it and WHEN. Added because the fiscal-periods screen has a
+   * "Ditutup Pada" column and the wire shape had no field to fill it from, so it
+   * could only ever render an em dash — including for periods that really were
+   * closed. `closedBy` is the raw user id (the same thing every other §4.17
+   * shape returns for an actor); the screen shows the timestamp, and the id is
+   * there for the audit trail rather than for display.
+   */
+  closedBy: UUID | null;
+  closedAt: string | null;
 }
 
 export function toFiscalPeriod(row: FiscalPeriodRow): FiscalPeriod {
@@ -70,6 +80,10 @@ export function toFiscalPeriod(row: FiscalPeriodRow): FiscalPeriod {
     startDate: formatDateOnly(row.start_date),
     endDate: formatDateOnly(row.end_date),
     status: row.status,
+    closedBy: row.closed_by,
+    // A timestamp, not a date — kept as the ISO instant `pg` returns so the
+    // client can format it in WITA, the same as every other `*At` field.
+    closedAt: row.closed_at === null ? null : new Date(row.closed_at).toISOString(),
   };
 }
 

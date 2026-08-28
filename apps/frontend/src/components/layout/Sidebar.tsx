@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
  * route showed all 14 links, so a Kepala Gudang on the warehouse floor was one
  * tap from Payroll and the dashboard's areas read as peers of POS.
  *
- * SHARED surfaces (`/delivery`, `/me/chat`) resolve against
+ * SHARED surfaces (`/delivery`, `/chat/internal`, `/me/chat`) resolve against
  * `currentInterfaceId` — the interface you were last unambiguously in — so
  * opening Surat Jalan from the office keeps the office sidebar and opening it
  * from gudang keeps gudang's. Without that, one of the two would have to be
@@ -156,7 +156,9 @@ export function Sidebar({ variant = 'desktop' }: { variant?: 'desktop' | 'mobile
             )}
             <ul className="flex flex-col gap-0.5">
               {section.items.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const isActive = item.exact
+                  ? pathname === item.href
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
                 const Icon = item.icon;
                 return (
                   <li key={item.id}>

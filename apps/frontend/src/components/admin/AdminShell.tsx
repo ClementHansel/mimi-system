@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Users, Boxes, ScrollText, Settings as SettingsIcon } from 'lucide-react';
+import { Users, Boxes, ScrollText, Settings as SettingsIcon, FileText, Palette } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
@@ -10,12 +10,30 @@ import { UsersPanel } from './UsersPanel';
 import { MasterDataPanel } from './MasterDataPanel';
 import { AuditPanel } from './AuditPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { DocumentsPanel } from './DocumentsPanel';
+import { BrandPanel } from './BrandPanel';
 
 /**
  * F10 admin (CONTRACTS §8.3: Owner/Manager, laptop; §4.2-4.4/§4.20/audit
- * §4.0). One page, four permission-gated tabs — this is a back-office
+ * §4.0). One page, six permission-gated tabs — this is a back-office
  * surface where an Owner/Manager flips between Users/Master Data/Audit/
- * Settings constantly, so tabs beat four separate route loads.
+ * Settings constantly, so tabs beat six separate route loads.
+ *
+ * F-DOC (2026-08-27) added the last two. DOKUMEN is the four document
+ * designers and BRAND is the logo/favicon/palette they all draw from, and both
+ * belong here rather than as routes of their own for the same reason as the
+ * other four: they are owner-only back-office configuration that is edited in
+ * one sitting — an owner picks the brand colour and then immediately looks at
+ * what it did to the invoice.
+ *
+ * They are gated on their WRITE keys (`doc_template.manage`, `settings.manage`),
+ * not their read keys, and that is a deliberate departure from the Settings tab
+ * next door, which is gated on `settings.read`. Settings has something to show a
+ * reader — the current values. A designer canvas and a colour picker have
+ * nothing to show somebody who cannot save: `doc_template.read` is UNIVERSAL
+ * (every till fetches the receipt layout to print it — see `rbac.ts`), so
+ * gating Dokumen on the read key would have put a full editor in front of every
+ * cashier in the company.
  *
  * Each tab is independently gated (ANY relevant permission for that tab)
  * rather than the whole page behind one key, because the 9-role matrix
@@ -57,6 +75,20 @@ export function AdminShell() {
         icon: SettingsIcon,
         visible: can('settings.read'),
         content: <SettingsPanel />,
+      },
+      {
+        value: 'documents',
+        labelKey: 'admin.tabs.documents',
+        icon: FileText,
+        visible: can('doc_template.manage'),
+        content: <DocumentsPanel />,
+      },
+      {
+        value: 'brand',
+        labelKey: 'admin.tabs.brand',
+        icon: Palette,
+        visible: can('settings.manage'),
+        content: <BrandPanel />,
       },
     ],
     [can],

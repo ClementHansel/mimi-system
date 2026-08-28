@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
@@ -17,6 +17,17 @@ import {
   EmptyState,
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import type { CsvColumn } from '@/lib/export/csv';
+import { parseDecimal, type CsvRecord } from '@/lib/import/csv-parse';
+import {
+  buildItemIndex,
+  buildNameIndex,
+  resolveEnum,
+  resolveItem,
+  resolveNamed,
+} from '@/lib/import/resolve';
 import { formatQty, formatMoney } from '@/lib/formatters';
 import { fmtDate } from '@/lib/dates';
 import { ApiError } from '@/lib/api';
@@ -27,6 +38,31 @@ import type { WasteRecord, StorageArea, Item } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
 
 const WASTE_REASONS = ['expired', 'damaged', 'spoiled', 'prep_error', 'other'] as const;
+
+/**
+ * The CSV shape, shared by the export and the line import ON PURPOSE (same
+ * reasoning as `components/admin/MasterDataIo`): the realistic bulk edit is
+ * "export what happened, fix it in a spreadsheet, feed it back", and that only
+ * works if a file this screen produced is a file it accepts. The headers match
+ * the importable columns below, header for header.
+ *
+ * The export carries MORE columns than the import reads (number, cost, status,
+ * reporter) because those are the report half of the round trip — server-owned
+ * values an importer must never be allowed to dictate. Extra columns in an
+ * uploaded file are reported as "ignored" rather than rejected, precisely so an
+ * unedited export can be fed straight back in.
+ */
+const EXPORT_COLUMNS: CsvColumn<WasteRecord>[] = [
+  { key: 'wasteNumber', header: 'No. Waste' },
+  { key: 'occurredAt', header: 'Tanggal', format: (r) => fmtDate(r.occurredAt) },
+  { key: 'itemName', header: 'Nama Barang' },
+  { key: 'storageAreaName', header: 'Area Penyimpanan' },
+  { key: 'qty', header: 'Jumlah', format: (r) => formatQty(r.qty) },
+  { key: 'unitCost', header: 'Harga Satuan', format: (r) => formatMoney(r.unitCost) },
+  { key: 'reason', header: 'Alasan' },
+  { key: 'status', header: 'Status' },
+  { key: 'reportedBy', header: 'Dilaporkan Oleh' },
+];
 
 interface WasteLineDraft {
   storageAreaId: string;
@@ -152,6 +188,74 @@ export function WastePanel() {
   const itemOptions = items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }));
   const areaOptions = areas.map((a) => ({ value: a.id, label: a.name }));
 
+  const itemIndex = useMemo(() => buildItemIndex(items), [items]);
+  const areaIndex = useMemo(() => buildNameIndex(areas), [areas]);
+
+  /**
+   * The importable columns. `Nama Barang` and `Area Penyimpanan` are the headers
+   * the export writes, so an exported file drops straight back in; `SKU` is the
+   * unambiguous alternative for when two items share a name.
+   */
+  const importColumns = [
+    { header: 'SKU', hint: 'opsional — pakai ini kalau ada dua barang dengan nama sama' },
+    {
+      header: 'Nama Barang',
+      hint: 'nama persis seperti di Data Master (wajib kalau SKU kosong)',
+      required: true,
+    },
+    { header: 'Area Penyimpanan', hint: 'nama area, mis. "Chiller"', required: true },
+    { header: 'Jumlah', hint: 'angka, mis. 2,5 atau 2.5', required: true },
+    {
+      header: 'Alasan',
+      hint: `salah satu: ${WASTE_REASONS.map((r) => t(`outlet.waste.reason.${r}`)).join(' / ')}`,
+      required: true,
+    },
+    { header: 'Catatan', hint: 'opsional' },
+  ];
+
+  function mapWasteRow(
+    row: CsvRecord,
+  ): { ok: true; line: WasteLineDraft } | { ok: false; error: string } {
+    const item = resolveItem(itemIndex, { sku: row.get('SKU'), name: row.get('Nama Barang') });
+    if (!item) {
+      const typed = row.get('SKU') || row.get('Nama Barang');
+      if (!typed) return { ok: false, error: t('lineImport.missingItem') };
+      return { ok: false, error: t('lineImport.unknownItem', { value: typed }) };
+    }
+
+    const areaText = row.get('Area Penyimpanan');
+    if (!areaText) return { ok: false, error: t('lineImport.missingArea') };
+    const area = resolveNamed(areaIndex, areaText);
+    if (!area) return { ok: false, error: t('lineImport.unknownArea', { value: areaText }) };
+
+    const qtyText = row.get('Jumlah');
+    if (!qtyText) return { ok: false, error: t('lineImport.missingQty') };
+    const qty = parseDecimal(qtyText);
+    if (qty === null) return { ok: false, error: t('lineImport.invalidQty', { value: qtyText }) };
+    // A negative write-off would ADD stock. The endpoint rejects it anyway, but
+    // saying so here names the offending line instead of failing the submit.
+    if (qty.startsWith('-')) return { ok: false, error: t('lineImport.negativeQty') };
+
+    const reasonText = row.get('Alasan');
+    if (!reasonText) return { ok: false, error: t('lineImport.missingReason') };
+    const reason = resolveEnum(reasonText, WASTE_REASONS, (r) => t(`outlet.waste.reason.${r}`));
+    if (!reason) return { ok: false, error: t('lineImport.unknownReason', { value: reasonText }) };
+
+    return {
+      ok: true,
+      line: {
+        storageAreaId: area.id,
+        itemId: item.id,
+        qty: qty as Qty,
+        reason,
+        reasonDetail: row.get('Catatan'),
+      },
+    };
+  }
+
+  /** Does the form hold anything a replace would destroy? A pristine blank line does not. */
+  const hasTypedLines = lines.some((l) => l.storageAreaId || l.itemId || l.qty);
+
   // Previously `return null` — worse than an empty state, per the standing
   // rule against errors masquerading as empty states: an account with no
   // `warehouse`-type location (e.g. Owner) saw literally nothing on this
@@ -165,7 +269,13 @@ export function WastePanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportButton
+          rows={rows}
+          columns={EXPORT_COLUMNS}
+          filenameBase="waste-gudang"
+          pdfTitle={t('warehouse.tabs.waste')}
+        />
         <PermissionGate permission="waste.create">
           <Button
             leftIcon={<Plus className="size-4" />}
@@ -250,20 +360,36 @@ export function WastePanel() {
               />
             </div>
           ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            leftIcon={<Plus className="size-4" />}
-            onClick={() =>
-              setLines((ls) => [
-                ...ls,
-                { storageAreaId: '', itemId: '', qty: null, reason: 'expired', reasonDetail: '' },
-              ])
-            }
-          >
-            {t('outlet.replenishment.addLine')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              leftIcon={<Plus className="size-4" />}
+              onClick={() =>
+                setLines((ls) => [
+                  ...ls,
+                  { storageAreaId: '', itemId: '', qty: null, reason: 'expired', reasonDetail: '' },
+                ])
+              }
+            >
+              {t('outlet.replenishment.addLine')}
+            </Button>
+            {/* Bulk fill sits beside "add line", not on the toolbar behind this
+                modal: writing off forty expiring items is a spreadsheet job, and
+                this is the moment the operator is holding that spreadsheet. The
+                mandatory photo is unaffected — the import only fills lines. */}
+            <LineImportButton<WasteLineDraft>
+              title={t('outlet.waste.new')}
+              templateBase="waste-gudang"
+              columns={importColumns}
+              mapRow={mapWasteRow}
+              hasExistingLines={hasTypedLines}
+              onLines={(imported, mode) =>
+                setLines((ls) => (mode === 'replace' ? imported : [...ls, ...imported]))
+              }
+            />
+          </div>
           <PhotoCapture
             label={t('outlet.waste.photoLabel')}
             value={photo ? URL.createObjectURL(photo) : null}

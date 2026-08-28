@@ -3,8 +3,8 @@ import { SETTINGS_KEY_LIST, type SettingsKey } from './constants';
 
 describe('SettingsKey — closed literal union, same discipline as PermissionKey/ErrorCode', () => {
   it('lists all 21 seeded settings keys with no duplicates', () => {
-    expect(SETTINGS_KEY_LIST).toHaveLength(21);
-    expect(new Set(SETTINGS_KEY_LIST).size).toBe(21);
+    expect(SETTINGS_KEY_LIST).toHaveLength(23);
+    expect(new Set(SETTINGS_KEY_LIST).size).toBe(23);
   });
 
   it('includes the D-18/D-19 amendment keys', () => {

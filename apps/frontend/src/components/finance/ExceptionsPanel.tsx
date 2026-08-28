@@ -15,7 +15,10 @@ import { Drawer } from '@/components/ui/Drawer';
 import { Textarea } from '@/components/ui/Textarea';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { ExportButton } from '@/components/common/ExportButton';
 import { useApiList } from '@/components/admin/useApiList';
+import type { Paginated } from '@/lib/api';
+import { exceptionIoColumns } from './lib/io-columns';
 import type { OfflineAuthCase } from './types';
 
 /**
@@ -44,6 +47,28 @@ export function ExceptionsPanel() {
     pageSize,
   });
   const [selected, setSelected] = useState<OfflineAuthCase | null>(null);
+
+  /**
+   * The queue is server-paginated (25/page by default), so "Ekspor" alone
+   * would silently ship just the visible page. `pageSize=200` (the server's
+   * `@Max(200)`) with a hard 200-page ceiling matches
+   * `SupplierPriceHistoryPanel`'s convention — bounded so a server that
+   * ignored `page` could not spin here forever, and short-circuits the moment
+   * a page comes back short or the running total reaches `res.total`.
+   */
+  async function fetchAllExceptions(): Promise<OfflineAuthCase[]> {
+    const all: OfflineAuthCase[] = [];
+    const size = 200;
+    for (let p = 1; p <= 200; p += 1) {
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(size) });
+      if (status) qs.set('status', status);
+      if (cls) qs.set('class', cls);
+      const res = await api.get<Paginated<OfflineAuthCase>>(`/accounting/exceptions?${qs}`);
+      all.push(...res.rows);
+      if (res.rows.length < size || all.length >= res.total) break;
+    }
+    return all;
+  }
 
   const columns: DataTableColumn<OfflineAuthCase>[] = [
     {
@@ -101,33 +126,41 @@ export function ExceptionsPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-2">
-        <Select
-          value={status}
-          onValueChange={(v) => {
-            setStatus(v);
-            setPage(1);
-          }}
-          placeholder={t('finance.exceptions.filterStatusAll')}
-          options={[
-            { value: 'open', label: t('finance.exceptions.statusOpen') },
-            { value: 'resolved', label: t('finance.exceptions.statusResolved') },
-            { value: 'dismissed', label: t('finance.exceptions.statusDismissed') },
-          ]}
-          wrapperClassName="w-40"
-        />
-        <Select
-          value={cls}
-          onValueChange={(v) => {
-            setCls(v);
-            setPage(1);
-          }}
-          placeholder={t('finance.exceptions.filterClassAll')}
-          options={[
-            { value: 'offline_auth_failed', label: t('finance.exceptions.classFailed') },
-            { value: 'offline_auth_unprovable', label: t('finance.exceptions.classUnprovable') },
-          ]}
-          wrapperClassName="w-52"
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <Select
+            value={status}
+            onValueChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
+            placeholder={t('finance.exceptions.filterStatusAll')}
+            options={[
+              { value: 'open', label: t('finance.exceptions.statusOpen') },
+              { value: 'resolved', label: t('finance.exceptions.statusResolved') },
+              { value: 'dismissed', label: t('finance.exceptions.statusDismissed') },
+            ]}
+            wrapperClassName="w-40"
+          />
+          <Select
+            value={cls}
+            onValueChange={(v) => {
+              setCls(v);
+              setPage(1);
+            }}
+            placeholder={t('finance.exceptions.filterClassAll')}
+            options={[
+              { value: 'offline_auth_failed', label: t('finance.exceptions.classFailed') },
+              { value: 'offline_auth_unprovable', label: t('finance.exceptions.classUnprovable') },
+            ]}
+            wrapperClassName="w-52"
+          />
+        </div>
+        <ExportButton
+          rows={data.rows}
+          columns={exceptionIoColumns(t)}
+          filenameBase="antrean-pengecualian"
+          fetchAll={fetchAllExceptions}
         />
       </div>
 

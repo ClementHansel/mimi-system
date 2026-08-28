@@ -21,7 +21,15 @@ import {
 import type { DataTableColumn } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
 import { usePermissions } from '@/lib/permissions';
-import { useOutletLocation } from './lib/use-outlet-location';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import { useOutletLocationContext } from './lib/outlet-location-context';
+import { REPLENISHMENT_EXPORT_COLUMNS } from './lib/outlet-export-columns';
+import {
+  REPLENISHMENT_IMPORT_COLUMNS,
+  makeReplenishmentMapper,
+  type ReplenishmentImportLine,
+} from './lib/outlet-line-import';
 import {
   getItems,
   listReplenishment,
@@ -46,7 +54,7 @@ interface DraftLine {
 export function ReplenishmentPanel() {
   const { t } = useI18n();
   const { can } = usePermissions();
-  const { locationId } = useOutletLocation();
+  const { locationId } = useOutletLocationContext();
   const [rows, setRows] = useState<Replenishment[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -57,7 +65,6 @@ export function ReplenishmentPanel() {
   const [saving, setSaving] = useState(false);
 
   function reload() {
-    if (!locationId) return;
     setLoading(true);
     listReplenishment(locationId)
       .then((res) => setRows(res.rows))
@@ -77,7 +84,6 @@ export function ReplenishmentPanel() {
   }
 
   async function submitCreate() {
-    if (!locationId) return;
     const valid = lines.filter((l) => l.itemId && l.qtyRequested);
     if (valid.length === 0) {
       toast({ title: t('validation.required'), variant: 'warning' });
@@ -135,7 +141,12 @@ export function ReplenishmentPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportButton
+          rows={rows}
+          columns={REPLENISHMENT_EXPORT_COLUMNS}
+          filenameBase="minta-barang"
+        />
         <PermissionGate permission="replenishment.create">
           <Button
             leftIcon={<Plus className="size-4" />}
@@ -194,15 +205,34 @@ export function ReplenishmentPanel() {
               />
             </div>
           ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            leftIcon={<Plus className="size-4" />}
-            onClick={() => setLines((ls) => [...ls, { itemId: '', qtyRequested: null }])}
-          >
-            {t('outlet.replenishment.addLine')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              leftIcon={<Plus className="size-4" />}
+              onClick={() => setLines((ls) => [...ls, { itemId: '', qtyRequested: null }])}
+            >
+              {t('outlet.replenishment.addLine')}
+            </Button>
+            <LineImportButton<ReplenishmentImportLine>
+              title={t('outlet.replenishment.new')}
+              columns={REPLENISHMENT_IMPORT_COLUMNS}
+              templateBase="minta-barang"
+              mapRow={makeReplenishmentMapper(items)}
+              hasExistingLines={lines.some((l) => l.itemId !== '' || l.qtyRequested !== null)}
+              onLines={(imported, mode) =>
+                setLines((prev) => [
+                  // Drops the blank placeholder row the form always starts with,
+                  // so an import does not leave an empty line to trip validation.
+                  ...(mode === 'replace'
+                    ? []
+                    : prev.filter((l) => l.itemId !== '' || l.qtyRequested !== null)),
+                  ...imported,
+                ])
+              }
+            />
+          </div>
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setCreateOpen(false)}>

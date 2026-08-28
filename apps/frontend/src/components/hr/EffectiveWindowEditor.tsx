@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState, type ReactNode } from 'react';
-import { CalendarClock } from 'lucide-react';
+import { usePermissions } from '@/lib/permissions';
+import { CalendarClock, Lock } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import {
   Button,
@@ -51,6 +52,8 @@ export interface EffectiveWindowEditorProps<T extends EffectiveDatedRow> {
   renderHistoryRow: (row: T) => ReactNode;
   /** The new-vintage form fields (inputs for the row-shape-specific columns). */
   formFields: ReactNode;
+  /** Extra header controls next to the add-vintage button — each caller's export button, so it sits by the title rather than the caller re-deriving this card's header layout. */
+  headerActions?: ReactNode;
   effectiveFrom: string;
   onEffectiveFromChange: (value: string) => void;
   onSubmit: () => void;
@@ -68,6 +71,7 @@ export function EffectiveWindowEditor<T extends EffectiveDatedRow>({
   historyColumns,
   renderHistoryRow,
   formFields,
+  headerActions,
   effectiveFrom,
   onEffectiveFromChange,
   onSubmit,
@@ -76,6 +80,8 @@ export function EffectiveWindowEditor<T extends EffectiveDatedRow>({
   error,
 }: EffectiveWindowEditorProps<T>) {
   const { t } = useI18n();
+  const { can } = usePermissions();
+  const canConfigure = can('payroll.statutory.config');
   const [showForm, setShowForm] = useState(false);
   const today = useMemo(() => isoToday(), []);
   const sorted = useMemo(() => sortByEffectiveFromDesc(rows), [rows]);
@@ -98,17 +104,36 @@ export function EffectiveWindowEditor<T extends EffectiveDatedRow>({
          * behind `payroll.statutory.config` same as the backend's PUT
          * routes (`StatutoryController`).
          */}
-        <PermissionGate permission="payroll.statutory.config">
-          <Button
-            size="sm"
-            variant={showForm ? 'outline' : 'primary'}
-            onClick={() => setShowForm((v) => !v)}
-          >
-            {showForm ? t('common.cancel') : t('hr.statutory.addVintage')}
-          </Button>
-        </PermissionGate>
+        <div className="flex items-center gap-2">
+          {headerActions}
+          <PermissionGate permission="payroll.statutory.config">
+            <Button
+              size="sm"
+              variant={showForm ? 'outline' : 'primary'}
+              onClick={() => setShowForm((v) => !v)}
+            >
+              {showForm ? t('common.cancel') : t('hr.statutory.addVintage')}
+            </Button>
+          </PermissionGate>
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {/*
+         * SAY WHY it is read-only. Without this the card is a table of rates and
+         * nothing else — indistinguishable from a screen where setting them was
+         * never built, which is exactly how it was reported ("this need to be
+         * setable in the ui"). The rates ARE settable; adding a vintage is a
+         * write, gated on `payroll.statutory.config` the same as the backend's
+         * PUT routes, so a `.read`-only holder needs to be told that rather than
+         * left to guess.
+         */}
+        {!canConfigure && (
+          <p className="flex items-start gap-2 rounded-md bg-surface-sunken p-3 text-sm text-text-secondary">
+            <Lock className="mt-0.5 size-4 flex-none" aria-hidden />
+            {t('hr.statutory.readOnlyHint')}
+          </p>
+        )}
+
         {showForm && (
           <div className="flex flex-col gap-3 rounded-md border border-border-strong bg-surface-sunken p-3">
             <div className="flex flex-wrap items-end gap-3">

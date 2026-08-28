@@ -1,11 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, GripVertical, Save } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
 import { Button, toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import type { CsvColumn } from '@/lib/export/csv';
+import type { CsvRecord } from '@/lib/import/csv-parse';
+import { buildNameIndex, resolveNamed } from '@/lib/import/resolve';
 import type { Drop } from '@/lib/shared-types';
 import { planRoute } from './lib/delivery-api';
 
@@ -17,6 +22,12 @@ interface Stop {
   dropId: string;
   locationName: string;
   city: string;
+}
+
+/** One row of an imported ordering: an existing stop, and where it should go. */
+interface SeqImportRow {
+  dropId: string;
+  seq: number;
 }
 
 /**
@@ -87,6 +98,95 @@ export function DropOrderEditor({
     reorder(index, index + delta);
   }
 
+  /**
+   * BULK ORDERING, for the route that is too long to click into shape.
+   *
+   * Up/down buttons and drag are fine for five stops and miserable for
+   * twenty-five — which is what a dry-goods run around Denpasar looks like, and
+   * it is usually already sequenced in the spreadsheet the loading plan was
+   * built in. So: export the stops, put the visit order in the `Urutan` column,
+   * import it back.
+   *
+   * IMPORT CANNOT ADD OR REMOVE A STOP, only order the ones already on this
+   * Surat Jalan. `PUT :id/route` reorders drops; a drop exists because a
+   * replenishment request put it there, and inventing one from a CSV row would
+   * mean a truck stopping at an outlet nothing was loaded for. A row naming an
+   * unknown outlet is therefore an error, not a new stop.
+   *
+   * A PARTIAL FILE IS HONOURED rather than rejected: the stops the file names
+   * take the order it gives, and any it does not mention keep their current
+   * relative order at the end. That makes "just pull these three to the front"
+   * a two-line file instead of a full retype, and it is always well defined —
+   * unlike rejecting the file, which would leave the operator with no way to
+   * express a partial change.
+   */
+  const stopIndex = useMemo(
+    () => buildNameIndex(stops.map((s) => ({ id: s.dropId, name: s.locationName }))),
+    [stops],
+  );
+
+  const orderImportColumns = [
+    { header: t('deliveryAssign.order.seq'), hint: t('deliveryAssign.order.importSeqHint'), required: true },
+    {
+      header: t('deliveryAssign.order.outlet'),
+      hint: t('deliveryAssign.order.importOutletHint'),
+      required: true,
+    },
+  ];
+
+  function mapOrderRow(
+    row: CsvRecord,
+  ): { ok: true; line: SeqImportRow } | { ok: false; error: string } {
+    const outletText = row.get(t('deliveryAssign.order.outlet'));
+    if (!outletText) return { ok: false, error: t('lineImport.missingItem') };
+    const stop = resolveNamed(stopIndex, outletText);
+    if (!stop) return { ok: false, error: t('lineImport.notInDocument') };
+
+    const seqText = row.get(t('deliveryAssign.order.seq'));
+    const seq = Number.parseInt(seqText, 10);
+    if (!Number.isFinite(seq)) return { ok: false, error: t('deliveryAssign.order.importMissingSeq') };
+
+    return { ok: true, line: { dropId: stop.id, seq } };
+  }
+
+  function applyOrder(imported: SeqImportRow[]) {
+    setStops((current) => {
+      // Sort by the sequence the file gave. A DUPLICATE number is not an error:
+      // two stops both marked "3" simply keep their current relative order
+      // between themselves, which is what a stable sort gives for free.
+      const named = [...imported].sort((a, b) => a.seq - b.seq);
+      const seen = new Set<string>();
+      const ordered: Stop[] = [];
+      for (const row of named) {
+        if (seen.has(row.dropId)) continue;
+        const stop = current.find((s) => s.dropId === row.dropId);
+        if (stop) {
+          ordered.push(stop);
+          seen.add(row.dropId);
+        }
+      }
+      for (const stop of current) if (!seen.has(stop.dropId)) ordered.push(stop);
+      return ordered;
+    });
+    // Dirty, NOT saved. The reorder still goes through the same "Simpan Urutan"
+    // button and the same `PUT :id/route`, so the locked-route and one-truck
+    // rejections apply identically to an imported order — and the dispatcher
+    // sees the new sequence before committing to it.
+    setDirty(true);
+    setError(null);
+  }
+
+  const exportColumns: CsvColumn<{ seq: number; locationName: string; city: string }>[] = [
+    { key: 'seq', header: t('deliveryAssign.order.seq') },
+    { key: 'locationName', header: t('deliveryAssign.order.outlet') },
+    { key: 'city', header: t('deliveryAssign.order.city') },
+  ];
+  const exportRows = stops.map((stop, index) => ({
+    seq: index + 1,
+    locationName: stop.locationName,
+    city: stop.city,
+  }));
+
   async function save() {
     setSaving(true);
     setError(null);
@@ -119,15 +219,33 @@ export function DropOrderEditor({
           <h3 className="font-medium text-text-primary">{t('deliveryAssign.order.title')}</h3>
           <p className="text-xs text-text-muted">{t('deliveryAssign.order.subtitle')}</p>
         </div>
-        <Button
-          size="sm"
-          onClick={save}
-          loading={saving}
-          disabled={!editable || !dirty}
-          leftIcon={<Save className="size-4" />}
-        >
-          {t('deliveryAssign.order.save')}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportButton
+            rows={exportRows}
+            columns={exportColumns}
+            filenameBase="urutan-drop"
+            pdfTitle={t('deliveryAssign.order.title')}
+          />
+          {editable && (
+            <LineImportButton<SeqImportRow>
+              title={t('deliveryAssign.order.title')}
+              templateBase="urutan-drop"
+              columns={orderImportColumns}
+              mapRow={mapOrderRow}
+              note={t('deliveryAssign.order.importNote')}
+              onLines={applyOrder}
+            />
+          )}
+          <Button
+            size="sm"
+            onClick={save}
+            loading={saving}
+            disabled={!editable || !dirty}
+            leftIcon={<Save className="size-4" />}
+          >
+            {t('deliveryAssign.order.save')}
+          </Button>
+        </div>
       </div>
 
       {!editable && <p className="text-xs text-warning-700">{t('deliveryAssign.order.locked')}</p>}

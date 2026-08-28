@@ -27,6 +27,16 @@ export interface BranchNodeRow {
   paired_by: UUID | null;
   unpaired_at: string | null;
   settings: Record<string, unknown>;
+  /** Non-secret desired/current network config (W3-10, migration 254) — see `network-config.validation.ts`
+   *  for the shape. NEVER includes `wifiPassphrase` — that lives only in `network_secret_enc`. */
+  network_config: Record<string, unknown>;
+  /** Encrypted WiFi passphrase (`network-config-crypto.ts`, AES-256-GCM) — write-only; this repository
+   *  never selects it back out through any method a controller could echo in a response. */
+  network_secret_enc: Buffer | null;
+  network_config_id: UUID | null;
+  network_config_status: 'none' | 'pending' | 'applied' | 'reverted' | 'failed';
+  network_config_result: Record<string, unknown>;
+  network_config_updated_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -179,6 +189,57 @@ export class BranchNodesRepository {
     const res = await client.query<BranchNodeRow>(
       `UPDATE branch_nodes SET settings = settings || $2::jsonb WHERE id = $1 RETURNING *`,
       [id, JSON.stringify(patch)],
+    );
+    return res.rows[0];
+  }
+
+  /**
+   * `PUT /api/nodes/:id/network-config` (W3-10): records the validated, non-secret config plus the
+   * encrypted passphrase (if any) and flips `network_config_status` to `'pending'` — called ONLY
+   * after `NodesController` has already confirmed the node is live-connected on `/bridge` (a config
+   * can't be "pending" against a node with no channel to ever report back).
+   */
+  async setNetworkConfigPending(
+    client: DbClient,
+    id: UUID,
+    params: { configId: UUID; config: Record<string, unknown>; secretEnc: Buffer | null },
+  ): Promise<BranchNodeRow | undefined> {
+    const res = await client.query<BranchNodeRow>(
+      `UPDATE branch_nodes
+          SET network_config = network_config || $2::jsonb,
+              network_secret_enc = COALESCE($3, network_secret_enc),
+              network_config_id = $4,
+              network_config_status = 'pending',
+              network_config_result = '{}'::jsonb,
+              network_config_updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [id, JSON.stringify(params.config), params.secretEnc, params.configId],
+    );
+    return res.rows[0];
+  }
+
+  /** The node's `network_config_ack` (`BridgeGateway.onNetworkConfigAck`) — the apply-then-confirm
+   *  outcome landing back cloud-side. Only accepted while `network_config_id` still matches (a stale
+   *  ack for a superseded push is a no-op, same "newer push owns the outcome" rule the node itself
+   *  enforces in `RelayEngine.confirmOrRevertNetworkConfig`). */
+  async recordNetworkConfigResult(
+    client: DbClient,
+    id: UUID,
+    params: {
+      configId: UUID;
+      status: 'applied' | 'reverted' | 'failed';
+      result: Record<string, unknown>;
+    },
+  ): Promise<BranchNodeRow | undefined> {
+    const res = await client.query<BranchNodeRow>(
+      `UPDATE branch_nodes
+          SET network_config_status = $3,
+              network_config_result = $4::jsonb,
+              network_config_updated_at = NOW()
+        WHERE id = $1 AND network_config_id = $2
+        RETURNING *`,
+      [id, params.configId, params.status, JSON.stringify(params.result)],
     );
     return res.rows[0];
   }

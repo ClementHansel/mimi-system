@@ -22,6 +22,8 @@ import {
 import type { DataTableColumn } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
 import { formatMoney } from '@/lib/formatters';
+import { MasterDataIo } from '@/components/admin/MasterDataIo';
+import { usePermissions } from '@/lib/permissions';
 import {
   getAssets,
   createAsset,
@@ -30,8 +32,11 @@ import {
   createSchedule,
   getAssetHistory,
   createJob,
+  listLocationCodesByName,
+  listEmployeeNumbersByName,
 } from './lib/assets-api';
 import { uploadAttachment } from './lib/attachments';
+import { assetIoColumns } from './lib/io-columns';
 import type { Asset, Schedule, ServiceHistoryRow } from './lib/types';
 import type { Money } from '@/lib/shared-types';
 
@@ -54,6 +59,7 @@ const STATUSES = ['active', 'in_maintenance', 'retired', 'lost'] as const;
  */
 export function AssetRegisterPanel() {
   const { t } = useI18n();
+  const { can } = usePermissions();
   const locations = useSessionStore((s) => s.user?.locations ?? []);
   const [rows, setRows] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +70,10 @@ export function AssetRegisterPanel() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [detailAsset, setDetailAsset] = useState<Asset | null>(null);
+
+  const [locationCodeByName, setLocationCodeByName] = useState<Map<string, string>>(new Map());
+  const [employeeNumberByName, setEmployeeNumberByName] = useState<Map<string, string>>(new Map());
+  const [exportRows, setExportRows] = useState<Asset[]>([]);
 
   function reload() {
     setLoading(true);
@@ -78,6 +88,37 @@ export function AssetRegisterPanel() {
       .finally(() => setLoading(false));
   }
   useEffect(reload, [locationId, category, status]);
+
+  useEffect(() => {
+    listLocationCodesByName().then(setLocationCodeByName);
+    listEmployeeNumbersByName().then(setEmployeeNumberByName);
+  }, []);
+
+  /**
+   * Every asset for import/export, independent of the on-screen filters —
+   * bulk-editing master data means the whole register, not today's search.
+   * `getAssets` caps a page at 100 (the number the on-screen table already
+   * reads as "everything", since it has no pagination controls) — walked
+   * here the same way `EmployeesPanel.loadExportSnapshot` walks past its own
+   * page cap, bounded so a server that ignores `page` cannot spin forever.
+   */
+  async function loadExportSnapshot() {
+    const all: Asset[] = [];
+    for (let page = 1; page <= 40; page += 1) {
+      const res = await getAssets({ page });
+      all.push(...res.rows);
+      if (res.rows.length === 0 || all.length >= res.total) break;
+    }
+    setExportRows(all);
+  }
+  useEffect(() => {
+    loadExportSnapshot();
+  }, []);
+
+  function refreshAfterWrite() {
+    reload();
+    loadExportSnapshot();
+  }
 
   const locationOptions = useMemo(
     () => locations.map((l) => ({ value: l.id, label: l.name })),
@@ -149,6 +190,18 @@ export function AssetRegisterPanel() {
           {t('common.filter')}
         </Button>
         <div className="flex-1" />
+        {/* `rows` is the full-register snapshot (see `loadExportSnapshot`
+            above), not the current filters — this is master data, and bulk
+            edit means the whole register, not today's search. */}
+        <MasterDataIo
+          entity="assets"
+          titleKey="assets.tabs.register"
+          rows={exportRows}
+          columns={assetIoColumns(locationCodeByName, employeeNumberByName)}
+          filenameBase="aset"
+          onImported={refreshAfterWrite}
+          canImport={can('asset.manage')}
+        />
         <PermissionGate permission="asset.manage">
           <Button leftIcon={<Plus className="size-4" />} onClick={() => setCreateOpen(true)}>
             {t('assets.register.createButton')}
@@ -170,7 +223,7 @@ export function AssetRegisterPanel() {
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
             setCreateOpen(false);
-            reload();
+            refreshAfterWrite();
           }}
         />
       )}
@@ -178,7 +231,7 @@ export function AssetRegisterPanel() {
         <AssetDetailModal
           asset={detailAsset}
           onClose={() => setDetailAsset(null)}
-          onChanged={reload}
+          onChanged={refreshAfterWrite}
         />
       )}
     </div>

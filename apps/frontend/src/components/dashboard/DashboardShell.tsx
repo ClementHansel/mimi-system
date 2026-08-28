@@ -21,6 +21,8 @@ import { OutletsPanel } from './OutletsPanel';
 import { TopProductsPanel } from './TopProductsPanel';
 import { StaffKpiPanel } from './StaffKpiPanel';
 import { OutletDrilldownContent } from './OutletDrilldownContent';
+import { SalesReportPanel } from './SalesReportPanel';
+import { MarketingReportPanel } from './MarketingReportPanel';
 import { dashboardApi } from './lib/dashboard-api';
 import { useOverview } from './lib/use-overview';
 
@@ -49,6 +51,15 @@ function addDays(base: Date, days: number): string {
  *
  * `ScopeBanner` is mounted unconditionally at the top of both branches so
  * the figures' scope is never ambiguous (the ticket's core requirement).
+ *
+ * BOTH branches carry the Penjualan (sales) and Pemasaran (marketing) report
+ * tabs, and they are the same two components either way — the difference is
+ * one prop. A central role gets them with no `lockedLocationId`, so the panels
+ * render their own "Semua Outlet / <outlet>" filter; a Supervisor gets them
+ * pinned to their own location with no picker at all. Those tabs read §4.19
+ * `report` routes, not §4.18 `dashboard` ones, so they are gated on
+ * `report.sales.read` independently of the two dashboard keys above — see
+ * `CompanyDashboard`/`OutletDashboard`.
  */
 export function DashboardShell() {
   const { t } = useI18n();
@@ -76,12 +87,90 @@ export function DashboardShell() {
     return (
       <div className="flex flex-col gap-4">
         <ScopeBanner scope="outlet" outletName={myLocation.name} outletCity={myLocation.city} />
-        <OutletDrilldownContent locationId={myLocation.id} />
+        <OutletDashboard location={myLocation} range={range} onRangeChange={setRange} />
       </div>
     );
   }
 
   return <EmptyState size="lg" title={t('permissionGate.noAccess')} />;
+}
+
+/**
+ * A Supervisor's whole dashboard — one outlet, and only that outlet.
+ *
+ * This used to be a bare `OutletDrilldownContent`. It is tabbed now because
+ * the same person who runs the outlet is the one asked "how did we do this
+ * week", and the drill-down answers only "how are we doing right now": it is
+ * a single-DAY tile plus an hourly curve, with no date range and no way to
+ * get the numbers off the screen.
+ *
+ * Every tab here is pinned to `location.id` via `lockedLocationId`, so the
+ * panels render no outlet picker at all. That pin is a UI convenience, NOT
+ * the security boundary — `SalesReportService.assertLocationInScope` rejects
+ * a locationId outside the caller's `user_locations` regardless of what this
+ * component sends, and omitting the param would return exactly this one
+ * outlet anyway. `ScopeBanner scope="outlet"` stays mounted above all of it
+ * (see `DashboardShell`'s own note) so a figure here is never mistaken for a
+ * company-wide one.
+ */
+function OutletDashboard({
+  location,
+  range,
+  onRangeChange,
+}: {
+  location: { id: string; name: string; city: string };
+  range: DateRangeValue;
+  onRangeChange: (v: DateRangeValue) => void;
+}) {
+  const { t } = useI18n();
+  const { can } = usePermissions();
+  const from = range.from ?? addDays(new Date(), -6);
+  const to = range.to ?? addDays(new Date(), 0);
+  // A Supervisor holds `report.sales.read` (CONTRACTS §3) — but gate on the
+  // key, not on the role, so this stays correct if the matrix moves.
+  const canSalesReport = can('report.sales.read');
+
+  if (!canSalesReport) {
+    return <OutletDrilldownContent locationId={location.id} />;
+  }
+
+  return (
+    <Tabs defaultValue="overview">
+      <TabsList>
+        <TabsTrigger value="overview">{t('dashboard.tabs.overview')}</TabsTrigger>
+        <TabsTrigger value="sales">{t('dashboard.tabs.sales')}</TabsTrigger>
+        <TabsTrigger value="marketing">{t('dashboard.tabs.marketing')}</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="overview">
+        <OutletDrilldownContent locationId={location.id} />
+      </TabsContent>
+
+      <TabsContent value="sales">
+        <div className="flex flex-col gap-4">
+          <DateRangePicker label={t('dateRange.label')} value={range} onChange={onRangeChange} />
+          <SalesReportPanel
+            from={from}
+            to={to}
+            lockedLocationId={location.id}
+            lockedLocationName={location.name}
+          />
+        </div>
+      </TabsContent>
+
+      <TabsContent value="marketing">
+        <div className="flex flex-col gap-4">
+          <DateRangePicker label={t('dateRange.label')} value={range} onChange={onRangeChange} />
+          <MarketingReportPanel
+            from={from}
+            to={to}
+            lockedLocationId={location.id}
+            lockedLocationName={location.name}
+          />
+        </div>
+      </TabsContent>
+    </Tabs>
+  );
 }
 
 function CompanyDashboard({
@@ -92,7 +181,14 @@ function CompanyDashboard({
   onRangeChange: (v: DateRangeValue) => void;
 }) {
   const { t } = useI18n();
+  const { can } = usePermissions();
   const [refreshing, setRefreshing] = useState(false);
+  // The Sales/Marketing tabs are §4.19 `report` reads, NOT §4.18 `dashboard`
+  // ones — a different permission key, so they are gated on their own rather
+  // than riding along on `dashboard.view`. Both central roles that reach this
+  // branch hold it today; the check is what keeps that a fact about the RBAC
+  // matrix instead of an assumption baked into the layout.
+  const canSalesReport = can('report.sales.read');
   const from = range.from ?? addDays(new Date(), -6);
   const to = range.to ?? addDays(new Date(), 0);
   const { data: overview, loading: overviewLoading, reload } = useOverview(from, to);
@@ -136,6 +232,10 @@ function CompanyDashboard({
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">{t('dashboard.tabs.overview')}</TabsTrigger>
+          {canSalesReport && <TabsTrigger value="sales">{t('dashboard.tabs.sales')}</TabsTrigger>}
+          {canSalesReport && (
+            <TabsTrigger value="marketing">{t('dashboard.tabs.marketing')}</TabsTrigger>
+          )}
           <TabsTrigger value="outlets">{t('dashboard.tabs.outlets')}</TabsTrigger>
           <TabsTrigger value="topProducts">{t('dashboard.tabs.topProducts')}</TabsTrigger>
           <TabsTrigger value="staffKpi">{t('dashboard.tabs.staffKpi')}</TabsTrigger>
@@ -159,6 +259,35 @@ function CompanyDashboard({
             </div>
           </div>
         </TabsContent>
+
+        {canSalesReport && (
+          <TabsContent value="sales">
+            <div className="flex flex-col gap-4">
+              <DateRangePicker
+                label={t('dateRange.label')}
+                value={range}
+                onChange={onRangeChange}
+              />
+              {/* No `lockedLocationId`: a central role's scope is every outlet,
+                  so the panel shows its own "Semua Outlet / <outlet>" filter and
+                  omitting the param means "everything I am entitled to". */}
+              <SalesReportPanel from={from} to={to} />
+            </div>
+          </TabsContent>
+        )}
+
+        {canSalesReport && (
+          <TabsContent value="marketing">
+            <div className="flex flex-col gap-4">
+              <DateRangePicker
+                label={t('dateRange.label')}
+                value={range}
+                onChange={onRangeChange}
+              />
+              <MarketingReportPanel from={from} to={to} />
+            </div>
+          </TabsContent>
+        )}
 
         <TabsContent value="outlets">
           <OutletsPanel />

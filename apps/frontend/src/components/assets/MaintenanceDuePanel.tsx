@@ -15,8 +15,10 @@ import {
 } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
 import { cn } from '@/lib/utils';
+import { ExportButton } from '@/components/common/ExportButton';
 import { getMaintenanceDue, startJob, createJob } from './lib/assets-api';
 import { CompleteJobModal } from './CompleteJobModal';
+import { MAINTENANCE_DUE_EXPORT_COLUMNS } from './lib/io-columns';
 import type { DueItem, Job } from './lib/types';
 
 const WINDOW_OPTIONS = [7, 14, 30, 60, 90];
@@ -82,6 +84,13 @@ export function MaintenanceDuePanel() {
           options={locations.map((l) => ({ value: l.id, label: l.name }))}
           placeholder={t('common.all')}
           wrapperClassName="w-44"
+        />
+        {/* No import: this list is scheduler-derived (FR-PMS-02/03), never
+            hand-typed, so there is nothing to round-trip. */}
+        <ExportButton
+          rows={rows}
+          columns={MAINTENANCE_DUE_EXPORT_COLUMNS}
+          filenameBase="jatuh-tempo-maintenance"
         />
       </div>
 

@@ -67,6 +67,26 @@ export interface OnlineOrderReportRow {
  * JSONB) are OPTIONAL per Appendix A-7 and carry no per-item price — there is
  * no defensible gross/discount to attribute to a product from them, so they
  * are omitted from the product breakdown rather than guessed at.
+ *
+ * `groupBy=channel` (added post-249/251): `sales.channel` (walk_in/gofood/
+ * shopeefood) and PAYMENT METHOD (`sale_payments.method` — cash/qris/
+ * bank_transfer) are genuinely different dimensions — a GoFood order still
+ * has a payment method. `groupBy=method`'s existing online arm predates
+ * `channel` and conflates the two by presenting `online_orders.platform` as
+ * if it were another "method" value; that conflation is NOT extended here
+ * (it would double-count: `sale_payments` already includes every channel
+ * sale's payment, so also adding a channel-keyed row to the SAME array would
+ * count that revenue twice if a caller sums the array). `groupBy=channel` is
+ * therefore its own grouping, reading `sales.channel` (continuous, all
+ * channels) UNIONed with the now-dormant `online_orders.platform` (pre-249
+ * history) — see `groupByChannel`'s own comment. `groupBy=method` is left
+ * exactly as it was: correct for payment-method totals (which were never
+ * wrong), and its online-platform rows now simply stop growing after the
+ * 249 cutover — an intentional consequence of `online_orders` being
+ * write-retired, not a bug this class re-introduces. Whether `method`
+ * should ALSO be taught about `channel` (and if so, in what shape) is an
+ * owner/API-contract decision flagged in this ticket's report, not made
+ * here.
  */
 @Injectable()
 export class SalesReportService {
@@ -87,6 +107,8 @@ export class SalesReportService {
       rows = await this.groupFromMatview(client, groupBy, from, to, scopeIds);
     } else if (groupBy === 'product') {
       rows = await this.groupByProduct(client, from, to, scopeIds);
+    } else if (groupBy === 'channel') {
+      rows = await this.groupByChannel(client, from, to, scopeIds);
     } else {
       rows = await this.groupByMethod(client, from, to, scopeIds);
     }
@@ -251,6 +273,41 @@ export class SalesReportService {
     }));
   }
 
+  /**
+   * `groupBy=method` — HOW the money arrived: cash, qris, bank_transfer, keyed
+   * by `sale_payments.method`.
+   *
+   * NARROWED 2026-08-27, and this was a deliberate contract change. It used to
+   * append one row per `online_orders.platform` to the payment-method rows, so
+   * a single flat array mixed two different dimensions under the same
+   * `groupKey`: "how it was paid" and "where the order came from". A consumer
+   * could not sum it and know what the number meant, and could not tell a
+   * payment method from a platform without a hardcoded list of both.
+   *
+   * Migration 249 made that untenable rather than merely untidy. GoFood and
+   * ShopeeFood are now ordinary `sales` rows carrying `sales.channel`, and they
+   * have real `sale_payments` rows like any other sale — so a channel sale
+   * already appears in the payment-method rows. Keeping the old online arm as
+   * well would have double-counted it; reading `sales.channel` into that arm
+   * would have double-counted it twice over. Leaving the arm on `online_orders`
+   * alone (the state this replaced) meant it silently FLATLINED after the
+   * cutover, which is the worst of the three because nothing errors.
+   *
+   * So the dimensions are now separate and each is clean:
+   *   `groupBy=method`  — cash / qris / bank_transfer, for EVERY sale
+   *                       including channel sales.
+   *   `groupBy=channel` — walk_in / gofood / shopeefood, continuous across the
+   *                       cutover (`sales.channel` UNION `online_orders`).
+   *
+   * WHAT THIS COSTS, stated plainly: pre-cutover `online_orders` rows have no
+   * `sale_payments` and therefore no payment method, so they no longer appear
+   * under `method` at all. That revenue has not gone anywhere — it is fully
+   * reachable via `groupBy=channel`, `groupBy=day`, and
+   * `/reports/online-orders` — but `method` must no longer be summed to get
+   * total revenue for a range that predates the cutover. `day`/`outlet`/
+   * `channel` are the dimensions that total correctly. Documented in
+   * CONTRACTS §4.19.
+   */
   private async groupByMethod(
     client: PoolClient,
     from: ISODate | null,
@@ -281,6 +338,72 @@ export class SalesReportService {
       params,
     );
 
+    // PAYMENT METHODS ONLY — see this method's doc comment for why the
+    // `online_orders.platform` rows that used to be appended here are gone.
+    return posRes.rows.map((r) => ({
+      groupKey: r.method,
+      groupLabel: r.method,
+      txCount: Number.parseInt(r.tx_count as unknown as string, 10),
+      gross: r.amount,
+      // A payment row records an amount, not a gross/discount/fee walk: the
+      // discount was applied to the SALE, and a platform fee belongs to a
+      // channel, not to "cash". Reporting them as zero here is honest — this
+      // dimension genuinely does not know them. `groupBy=channel` does.
+      discount: ZERO_MONEY,
+      platformFees: ZERO_MONEY,
+      net: r.amount,
+    }));
+  }
+
+  /**
+   * `groupBy=channel` — walk_in/gofood/shopeefood, continuous across the 249
+   * cutover: `sales.channel` (every sale, all three values, NOT just
+   * post-cutover ones — walk_in sales have always lived here) UNIONed with
+   * `online_orders.platform` (only ever gofood/shopeefood, pre-cutover
+   * history that will never exist as a `sales` row). No double count: an
+   * order lives in exactly one of the two source tables — 249 retired
+   * `online_orders`'s write path, it did not leave both live at once. Fees
+   * are only ever known for the `online_orders` contribution (platform
+   * commission is absorbed into `products.price_gofood`/`price_shopeefood`
+   * from 249 forward, per that migration's own header — there is no
+   * separate fee to report for a channel sale), so `platformFees` on a
+   * merged row is whatever `online_orders` contributed and nothing more.
+   */
+  private async groupByChannel(
+    client: PoolClient,
+    from: ISODate | null,
+    to: ISODate | null,
+    scopeIds: string[] | null,
+  ): Promise<SalesReportRow[]> {
+    const params: unknown[] = [];
+    let where = `s.status = 'completed'`;
+    if (from) {
+      params.push(businessDayBoundaries(from).startUtc);
+      where += ` AND s.occurred_at >= $${params.length}`;
+    }
+    if (to) {
+      params.push(businessDayBoundaries(to).endUtc);
+      where += ` AND s.occurred_at < $${params.length}`;
+    }
+    if (scopeIds) {
+      params.push(scopeIds);
+      where += ` AND s.location_id = ANY($${params.length}::uuid[])`;
+    }
+
+    const salesRes = await client.query<{
+      channel: string;
+      tx_count: string;
+      gross: Money;
+      discount: Money;
+    }>(
+      `SELECT s.channel, COUNT(*)::int AS tx_count,
+              COALESCE(SUM(s.total), '0.00') AS gross, COALESCE(SUM(s.discount), '0.00') AS discount
+         FROM sales s
+        WHERE ${where}
+        GROUP BY s.channel`,
+      params,
+    );
+
     const onlineParams: unknown[] = [];
     let onlineWhere = `status = 'completed'`;
     if (from) {
@@ -301,40 +424,59 @@ export class SalesReportService {
       gross: Money;
       discount: Money;
       fees: Money;
-      net: Money;
     }>(
       `SELECT platform, COUNT(*)::int AS tx_count, COALESCE(SUM(gross_amount), '0.00') AS gross,
               COALESCE(SUM(discount_amount), '0.00') AS discount,
-              COALESCE(SUM(platform_fee + other_fee), '0.00') AS fees,
-              COALESCE(SUM(net_received), '0.00') AS net
+              COALESCE(SUM(platform_fee + other_fee), '0.00') AS fees
          FROM online_orders
         WHERE ${onlineWhere}
         GROUP BY platform`,
       onlineParams,
     );
 
-    const rows: SalesReportRow[] = posRes.rows.map((r) => ({
-      groupKey: r.method,
-      groupLabel: r.method,
-      txCount: Number.parseInt(r.tx_count as unknown as string, 10),
-      gross: r.amount,
-      discount: ZERO_MONEY,
-      platformFees: ZERO_MONEY,
-      net: r.amount,
-    }));
+    const buckets = new Map<
+      string,
+      { txCount: number; gross: Money; discount: Money; platformFees: Money }
+    >();
+    const bucket = (key: string) => {
+      let b = buckets.get(key);
+      if (!b) {
+        b = { txCount: 0, gross: ZERO_MONEY, discount: ZERO_MONEY, platformFees: ZERO_MONEY };
+        buckets.set(key, b);
+      }
+      return b;
+    };
 
-    for (const r of onlineRes.rows) {
-      rows.push({
-        groupKey: r.platform,
-        groupLabel: r.platform,
-        txCount: Number.parseInt(r.tx_count as unknown as string, 10),
-        gross: r.gross,
-        discount: r.discount,
-        platformFees: r.fees,
-        net: r.net,
-      });
+    for (const r of salesRes.rows) {
+      const b = bucket(r.channel);
+      b.txCount += Number.parseInt(r.tx_count as unknown as string, 10);
+      b.gross = addMoney(b.gross, r.gross);
+      b.discount = addMoney(b.discount, r.discount);
     }
-    return rows;
+    for (const r of onlineRes.rows) {
+      const b = bucket(r.platform);
+      b.txCount += Number.parseInt(r.tx_count as unknown as string, 10);
+      b.gross = addMoney(b.gross, r.gross);
+      b.discount = addMoney(b.discount, r.discount);
+      b.platformFees = addMoney(b.platformFees, r.fees);
+    }
+
+    return [...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, b]) => ({
+        groupKey: key,
+        groupLabel: key,
+        txCount: b.txCount,
+        gross: b.gross,
+        discount: b.discount,
+        platformFees: b.platformFees,
+        // Same convention as `groupFromMatview`/`groupByMethod`: `sales.total`
+        // is already net of its own discount, and `online_orders.net_received`
+        // is already fee/discount-netted at the source — net therefore equals
+        // gross for this merged bucket, `discount`/`platformFees` stay
+        // informational fields only.
+        net: b.gross,
+      }));
   }
 
   // ── GET /online-orders — full gross->net walk per order ─────────────────

@@ -17,9 +17,27 @@ import {
 } from '@/components/ui';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDate } from '@/lib/dates';
+import { api } from '@/lib/api';
 import type { Paginated } from '@/lib/shared-types';
-import { createEmployee, listEmployees, updateEmployee } from './lib/hr-api';
+import { MasterDataIo } from '@/components/admin/MasterDataIo';
+import { createEmployee, getEmployee, listEmployees, updateEmployee } from './lib/hr-api';
+import { employeeIoColumns, type EmployeeExportRow } from './lib/io-columns';
 import type { Employee } from './lib/types';
+
+/**
+ * Every location's CODE, keyed by id — the importer's `location` column
+ * wants a code, but `Employee` only ever carries `locationId`/`locationName`
+ * on the wire (see `io-columns.ts`'s header comment). Fetched once, not
+ * scoped to the caller's own `user.locations` (RosterPanel's reason for that
+ * scoping doesn't apply here: an export needs every location's code, not
+ * just the ones this user is assigned to).
+ */
+function loadLocationCodes(): Promise<Map<string, string>> {
+  return api
+    .get<{ rows: { id: string; code: string }[] }>('/locations?active=true&pageSize=200')
+    .then((res) => new Map(res.rows.map((l) => [l.id, l.code])))
+    .catch(() => new Map<string, string>());
+}
 
 /** F08 `hr` — employee records (`hr.employee.read`/`.manage`, SCOPE-IN-03). */
 export function EmployeesPanel() {
@@ -35,6 +53,8 @@ export function EmployeesPanel() {
   const [q, setQ] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
+  const [locationCodeById, setLocationCodeById] = useState<Map<string, string>>(new Map());
+  const [exportRows, setExportRows] = useState<EmployeeExportRow[]>([]);
 
   function reload() {
     setLoading(true);
@@ -44,6 +64,60 @@ export function EmployeesPanel() {
   }
 
   useEffect(reload, [q, data.page]);
+  useEffect(() => {
+    loadLocationCodes().then(setLocationCodeById);
+  }, []);
+
+  /**
+   * The full roster for import/export, independent of the on-screen search
+   * and page — bulk-editing master data means editing the whole roster, not
+   * today's filtered view (same intent as `SuppliersPanel`'s single
+   * pageSize:200 fetch; employees can outgrow 200, hence the walk below,
+   * bounded the same way `SupplierPriceHistoryPanel.fetchAllHistory` bounds
+   * its page walk so a server that ignores `page` cannot spin here forever).
+   *
+   * `base_salary` (importer-required) is NOT on the list endpoint — it lives
+   * in `employments`, one join `employees.service.ts`'s list query doesn't
+   * make — so each employee needs its own detail fetch. Chunked eight at a
+   * time rather than one `Promise.all` over the whole roster, so an org with
+   * hundreds of employees doesn't fire hundreds of requests in one burst.
+   */
+  async function loadExportSnapshot() {
+    const all: Employee[] = [];
+    for (let page = 1; page <= 40; page += 1) {
+      const res = await listEmployees({ page });
+      all.push(...res.rows);
+      if (res.rows.length === 0 || all.length >= res.total) break;
+    }
+    const withSalary: EmployeeExportRow[] = [];
+    const CHUNK = 8;
+    for (let i = 0; i < all.length; i += CHUNK) {
+      const chunk = all.slice(i, i + CHUNK);
+      const salaries = await Promise.all(
+        chunk.map((e) =>
+          getEmployee(e.id)
+            .then(
+              (d) =>
+                (d.employments.find((em) => em.endDate === null) ?? d.employments[0])?.baseSalary ??
+                '',
+            )
+            .catch(() => ''),
+        ),
+      );
+      chunk.forEach((e, idx) => withSalary.push({ ...e, baseSalary: salaries[idx] ?? '' }));
+    }
+    setExportRows(withSalary);
+  }
+  // Only on mount: a create/update/import already calls this again via
+  // `refreshAfterWrite` below rather than re-running on every render.
+  useEffect(() => {
+    loadExportSnapshot();
+  }, []);
+
+  function refreshAfterWrite() {
+    reload();
+    loadExportSnapshot();
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,11 +129,28 @@ export function EmployeesPanel() {
             onChange={(e) => setQ(e.target.value)}
             wrapperClassName="w-64"
           />
-          <PermissionGate permission="hr.employee.manage">
-            <Button leftIcon={<UserPlus className="size-4" />} onClick={() => setCreateOpen(true)}>
-              {t('hr.employees.createButton')}
-            </Button>
-          </PermissionGate>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* `rows` is the full-roster snapshot (see `loadExportSnapshot`
+                above), not the current search/page — this is master data,
+                and bulk edit means the whole roster, not today's filter. */}
+            <MasterDataIo
+              entity="employees"
+              titleKey="hr.tabs.employees"
+              rows={exportRows}
+              columns={employeeIoColumns(locationCodeById)}
+              filenameBase="pegawai"
+              onImported={refreshAfterWrite}
+              canImport={can('hr.employee.manage')}
+            />
+            <PermissionGate permission="hr.employee.manage">
+              <Button
+                leftIcon={<UserPlus className="size-4" />}
+                onClick={() => setCreateOpen(true)}
+              >
+                {t('hr.employees.createButton')}
+              </Button>
+            </PermissionGate>
+          </div>
         </CardContent>
       </Card>
 
@@ -99,7 +190,7 @@ export function EmployeesPanel() {
           onSaved={() => {
             setCreateOpen(false);
             setEditing(null);
-            reload();
+            refreshAfterWrite();
           }}
         />
       )}

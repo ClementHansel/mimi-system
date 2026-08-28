@@ -590,8 +590,36 @@ export const GROUP_6_SCHEMAS = {
         proofAttachmentId: optional(uuid()),
       }),
     ),
+    /**
+     * The sale-level manual discount, EXCLUDING any voucher.
+     *
+     * That exclusion is a contract, not a description, and it is the reason
+     * `voucher` below carries its own `discount`. The server recomputes the
+     * voucher's worth from its own copy of the batch rules and ADDS it to this
+     * number (`PosSaleService.applySaleFact`), so a device that folded the
+     * coupon into `discount` as well would have it counted twice. See
+     * `CreateSaleDto.discount`'s doc for the same statement on the REST side.
+     */
     discount: optional(money()),
     receiptNumber: optional(string()),
+    /**
+     * `VoucherRedemptionDraft` — the coupon this sale was rung with, if any.
+     * Additive, so no `v` bump (§2.3): a build that predates vouchers simply
+     * omits it.
+     *
+     * `discount` here is what the DEVICE calculated. It is recorded and
+     * compared, never trusted — the server prices the coupon itself and raises
+     * a reconciliation exception when the two disagree. `offlineAccepted` says
+     * the till took it while it could not reach the cloud, which is the flag
+     * `pos.voucher_offline` is consulted about.
+     */
+    voucher: optional(
+      object({
+        code: string(),
+        discount: money(),
+        offlineAccepted: boolean(),
+      }),
+    ),
   }),
 
   'void_refunds.requested': object({

@@ -21,14 +21,15 @@ import {
   type Qty,
   type UUID,
 } from '@mimi/shared';
-import type {
-  DiscoveredDeviceRecord,
-  EventPage,
-  LanDeviceRecord,
-  NodeIdentity,
-  ProjectionRow,
-  Store,
-  StoredSyncEvent,
+import {
+  emptyNetworkState,
+  type DiscoveredDeviceRecord,
+  type EventPage,
+  type LanDeviceRecord,
+  type NodeIdentity,
+  type ProjectionRow,
+  type Store,
+  type StoredSyncEvent,
 } from './types';
 
 let discoveredIdSeq = 0;
@@ -41,6 +42,7 @@ export class MemoryStore implements Store {
     locationCode: null,
     locationName: null,
     lanCert: null,
+    networkState: emptyNetworkState(),
   };
 
   private events: StoredSyncEvent[] = [];

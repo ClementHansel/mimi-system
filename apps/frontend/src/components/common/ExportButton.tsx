@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/api';
 import { fmtDateTime } from '@/lib/dates';
 import { toCsv, downloadCsv, businessDateFilename, type CsvColumn } from '@/lib/export/csv';
 import { toPdf, downloadPdf, businessDatePdfFilename } from '@/lib/export/pdf';
+import { useBrand } from '@/lib/brand';
 
 export interface ExportButtonProps<T> {
   /** Rows already in memory — whatever the screen's current search/filter produced. */
@@ -49,6 +50,13 @@ export function ExportButton<T>({
   pdfTitle,
 }: ExportButtonProps<T>) {
   const { t } = useI18n();
+  // The exported PDF is branded from the SAME live identity the screens and
+  // the designed documents use, so a list export and an invoice printed a
+  // minute apart cannot disagree about the company's colour or its name.
+  // `useBrand` falls back to the shipped identity before the first fetch
+  // settles, so an export triggered on a cold page is still a valid document
+  // rather than an un-branded one.
+  const { palette, companyProfile } = useBrand();
   const [loadingAllCsv, setLoadingAllCsv] = useState(false);
   const [loadingAllPdf, setLoadingAllPdf] = useState(false);
 
@@ -67,6 +75,11 @@ export function ExportButton<T>({
       generatedLabel: t('exportData.pdfGeneratedAt', { date: fmtDateTime(now) }),
       pageLabel: (page, total) => t('exportData.pdfPageOf', { page, total }),
       emptyLabel: t('exportData.pdfEmpty'),
+      // `CompanyProfile` is deliberately `Record<string, unknown>` (it holds
+      // keys this feature does not own — see `brand-api.ts`), so `name` is
+      // narrowed here rather than assumed to be a string.
+      footerLabel: typeof companyProfile.name === 'string' ? companyProfile.name.trim() || undefined : undefined,
+      brand: { primary: palette.primary, muted: palette.muted },
     });
     downloadPdf(businessDatePdfFilename(filenameBase, now), bytes);
   }

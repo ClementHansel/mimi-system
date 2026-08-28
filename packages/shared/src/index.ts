@@ -53,3 +53,21 @@ export * from './offline/unlock-code';
 // D-27 — the recipe-explosion formula, shared so `modules/product` and
 // `modules/pos` cannot drift on it again (they already did once).
 export * from './recipe/explosion';
+
+// Document designers (invoice / receipt / voucher / Surat Jalan) — the template
+// model, per-kind capability catalogs, seeded defaults, the resolved-data shape
+// and the shared structural validator. Declared once here because the designer,
+// the backend store and the renderer must not drift (see documents/template.ts).
+export * from './documents/template';
+export * from './documents/catalog';
+export * from './documents/data';
+export * from './documents/defaults';
+export * from './documents/validate';
+export * from './documents/payload';
+
+// Brand identity (favicon + the four document colours).
+export * from './brand';
+
+// Vouchers — redemption rules and code formatting, shared so an offline till
+// and the server cannot disagree about what a coupon is worth.
+export * from './voucher';

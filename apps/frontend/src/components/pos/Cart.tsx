@@ -1,6 +1,6 @@
 'use client';
 
-import { Minus, Plus, Trash2, ShoppingCart } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingCart, Ticket } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { formatMoney } from '@/lib/formatters';
 import { MoneyInput, EmptyState } from '@/components/ui';
@@ -33,6 +33,11 @@ export function Cart({
   const { t } = useI18n();
   const setQty = usePosCartStore((s) => s.setQty);
   const removeLine = usePosCartStore((s) => s.removeLine);
+  // Read straight from the store rather than via a prop: `appliedVoucher` is
+  // applied/removed from `PaymentPanel` (inside the payment modal), and this
+  // component only ever displays it — the same "derive, don't thread" split
+  // `summary` already follows for the rest of the cart's numbers.
+  const appliedVoucher = usePosCartStore((s) => s.appliedVoucher);
 
   function step(productId: string, currentQty: string, delta: number) {
     const next = Math.max(0, parseFloat(currentQty) + delta);
@@ -115,6 +120,22 @@ export function Cart({
           disabled={disabled}
           size="sm"
         />
+        {/* The voucher's own line, visually distinct from the manual
+            `saleDiscount` field above it — a coupon is a server-decided,
+            code-attached figure, not something typed on this screen, and
+            keeping it out of the `MoneyInput` (rather than summing it in) is
+            exactly what makes "Hapus Voucher" in `VoucherEntry` able to
+            remove only its own amount. See `cart-store.ts`'s
+            `appliedVoucher` doc for why the two are never merged. */}
+        {appliedVoucher && (
+          <div className="flex items-center justify-between text-sm text-brand-700">
+            <span className="flex items-center gap-1">
+              <Ticket className="size-3.5" aria-hidden />
+              {appliedVoucher.code}
+            </span>
+            <span className="tabular-nums">-{formatMoney(appliedVoucher.discount)}</span>
+          </div>
+        )}
         <div className="flex items-center justify-between text-lg font-semibold text-text-primary">
           <span>{t('common.total')}</span>
           <span className="tabular-nums">{formatMoney(summary.total)}</span>

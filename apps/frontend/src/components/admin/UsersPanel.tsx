@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, UserPlus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, type Paginated } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDateTime } from '@/lib/dates';
 import { toast } from '@/components/ui/Toast';
@@ -15,9 +15,11 @@ import { Modal } from '@/components/ui/Modal';
 import { Drawer } from '@/components/ui/Drawer';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { PermissionGate } from '@/components/ui/PermissionGate';
+import { ExportButton } from '@/components/common/ExportButton';
 import { useApiList } from './useApiList';
 import { RoleKey } from '@/lib/shared-types';
 import { ROLE_SENIORITY, assignableRoles, roleLabel } from './roleRank';
+import { userIoColumns } from './lib/io-columns';
 import type { Location, UserRow } from './types';
 
 /**
@@ -74,6 +76,27 @@ export function UsersPanel() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selected, setSelected] = useState<UserRow | null>(null);
+
+  /**
+   * Server-paginated (25/page default), so "Ekspor" alone would silently
+   * ship one page. `pageSize=200` (the repository's `Math.min(pageSize,
+   * 200)`) with a 200-page ceiling matches
+   * `purchasing/SupplierPriceHistoryPanel`'s convention.
+   */
+  async function fetchAllUsers(): Promise<UserRow[]> {
+    const all: UserRow[] = [];
+    const size = 200;
+    for (let p = 1; p <= 200; p += 1) {
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(size) });
+      if (q) qs.set('q', q);
+      if (roleFilter) qs.set('roleKey', roleFilter);
+      if (statusFilter) qs.set('active', statusFilter);
+      const res = await api.get<Paginated<UserRow>>(`/users?${qs}`);
+      all.push(...res.rows);
+      if (res.rows.length < size || all.length >= res.total) break;
+    }
+    return all;
+  }
 
   const columns: DataTableColumn<UserRow>[] = [
     { key: 'username', header: t('admin.users.columnUsername'), sortable: true },
@@ -133,11 +156,25 @@ export function UsersPanel() {
             wrapperClassName="w-40"
           />
         </div>
-        <PermissionGate permission="user.create">
-          <Button leftIcon={<UserPlus className="size-4" />} onClick={() => setCreateOpen(true)}>
-            {t('admin.users.createButton')}
-          </Button>
-        </PermissionGate>
+        <div className="flex items-center gap-2">
+          {/* Export only, deliberately — no bulk import. `users` (the login
+              record) is not one of the backend importer's nine entities: a
+              natural-key upsert cannot safely carry a password, a
+              rank-checked role assignment, and a location grant in one CSV
+              row. `employees` (payroll/HR data) is a separate concept and
+              already has its own import via Data Master. */}
+          <ExportButton
+            rows={data.rows}
+            columns={userIoColumns()}
+            filenameBase="pengguna"
+            fetchAll={fetchAllUsers}
+          />
+          <PermissionGate permission="user.create">
+            <Button leftIcon={<UserPlus className="size-4" />} onClick={() => setCreateOpen(true)}>
+              {t('admin.users.createButton')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
 
       <DataTable

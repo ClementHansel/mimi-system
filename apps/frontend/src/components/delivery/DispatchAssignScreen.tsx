@@ -26,14 +26,19 @@ function isEditableStatus(status: string): boolean {
 }
 
 /**
- * `/delivery/assign` — the dispatcher's single-purpose screen for picking a
- * Surat Jalan, assigning its driver + truck, and reordering its drops.
+ * The dispatcher's screen for picking a Surat Jalan, assigning its driver +
+ * truck, and reordering its drops — the "Penugasan" tab of `DeliveryShell`
+ * (`/delivery`; also reachable directly at `/delivery/assign` for deep links,
+ * see `app/delivery/assign/page.tsx`).
  *
- * A dedicated page rather than another tab inside `SuratJalanDetailDrawer`
+ * A focused screen of its own rather than folded into `SuratJalanDetailDrawer`
  * (which already offers both, buried inside the full detail view) because
- * this ticket asked for a focused screen gudang staff go to specifically for
- * dispatch planning — same reasoning `DeliveryShell`'s own doc comment gives
- * for splitting the live board from the SJ list.
+ * gudang staff come here specifically for dispatch planning across many SJs,
+ * not to look at one — same reasoning `DeliveryShell`'s own doc comment gives
+ * for splitting the live board from the SJ list. It became a tab of that
+ * shell, rather than its own top-level nav entry, on the owner's ruling
+ * (2026-08-27) that it reads as part of the dispatcher surface, not a
+ * separate destination.
  */
 export function DispatchAssignScreen() {
   const { t } = useI18n();
@@ -105,13 +110,14 @@ export function DispatchAssignScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-text-primary">
-          {t('deliveryAssign.title')}
-        </h1>
-        <p className="text-sm text-text-muted">{t('deliveryAssign.subtitle')}</p>
-      </div>
+    <div className="flex flex-col gap-4">
+      {/* No `<h1>` here: this mounts as the "Penugasan" tab of `DeliveryShell`
+          (previously the standalone `/delivery/assign` page had its own),
+          which already renders the page-level "Pengiriman (Dispatcher)"
+          heading — repeating a title inside a tab panel is not this
+          codebase's pattern (see `components/admin/UsersPanel.tsx` etc.,
+          mounted under `AdminShell`'s tabs the same way). */}
+      <p className="text-sm text-text-muted">{t('deliveryAssign.subtitle')}</p>
 
       <Card>
         <CardContent className="flex flex-col gap-3">
@@ -135,7 +141,11 @@ export function DispatchAssignScreen() {
 
       {sjError && <p className="text-sm text-danger-600">{sjError}</p>}
 
-      {!selectedId && !sjLoading && (
+      {/* Only prompt "pick one to start" when there is something to pick —
+          when the picker is empty, the reason is already stated above the
+          Select, and repeating "pilih Surat Jalan" under it would read like
+          a contradiction (pick from a list that was just said to be empty). */}
+      {!selectedId && !sjLoading && options.length > 0 && (
         <EmptyState title={t('deliveryAssign.picker.noneSelected')} size="lg" />
       )}
 

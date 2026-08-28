@@ -10,6 +10,7 @@ import {
   CardTitle,
   Badge,
   Input,
+  Select,
   EmptyState,
   Modal,
   Button,
@@ -20,8 +21,8 @@ import { formatQty } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/dates';
 import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
-import { getBalances, getMovements } from './lib/warehouse-api';
-import type { Balance, Movement } from './lib/types';
+import { getAllBalances, getMovements, getStorageAreas } from './lib/warehouse-api';
+import type { Balance, Movement, StorageArea } from './lib/types';
 
 // Exported as a flat (non-grouped) row list — the on-screen table groups by
 // storage area, but a CSV is read in a spreadsheet where that grouping would
@@ -44,6 +45,9 @@ export function StockPanel() {
   const { t } = useI18n();
   const { locationId, loading: warehouseLoading } = useWarehouseLocation();
   const [balances, setBalances] = useState<Balance[]>([]);
+  const [truncated, setTruncated] = useState(false);
+  const [areas, setAreas] = useState<StorageArea[]>([]);
+  const [areaId, setAreaId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
   const [q, setQ] = useState('');
@@ -58,8 +62,12 @@ export function StockPanel() {
     let cancelled = false;
     setLoading(true);
     setError(undefined);
-    getBalances({ locationId })
-      .then((res) => !cancelled && setBalances(res.rows))
+    getAllBalances({ locationId, ...(areaId ? { storageAreaId: areaId } : {}) })
+      .then((res) => {
+        if (cancelled) return;
+        setBalances(res.rows);
+        setTruncated(res.truncated);
+      })
       .catch(
         (err: unknown) =>
           !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')),
@@ -68,18 +76,38 @@ export function StockPanel() {
     return () => {
       cancelled = true;
     };
-  }, [locationId, t, reloadToken]);
+  }, [locationId, areaId, t, reloadToken]);
+
+  // The storage-area dropdown's options. A separate, non-blocking fetch: a
+  // failure here costs the operator the area filter, not the stock list, so it
+  // deliberately does not set `error`.
+  useEffect(() => {
+    if (!locationId) return;
+    let cancelled = false;
+    getStorageAreas(locationId)
+      .then((res) => !cancelled && setAreas(res))
+      .catch(() => !cancelled && setAreas([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [locationId]);
 
   // Flat (non-grouped) list — shared by the on-screen table's grouping below
   // and by the CSV export, which wants one row per item, not a section per
   // storage area.
   const filteredBalances = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return term
-      ? balances.filter(
-          (b) => b.itemName.toLowerCase().includes(term) || b.sku.toLowerCase().includes(term),
-        )
-      : balances;
+    // Every whitespace-separated word must match SOMEWHERE in the row, in any
+    // order — "ayam fillet" finds "Ayam Fillet Berbumbu Original" and so does
+    // "fillet ayam", which a single `includes(term)` over the concatenated
+    // string does not. Area name is searchable too: the table's own section
+    // headings are the storage areas, so typing "chiller" reading a screen
+    // that says "Chiller" has to do something.
+    const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return balances;
+    return balances.filter((b) => {
+      const haystack = `${b.itemName} ${b.sku} ${b.storageAreaName} ${b.unitCode}`.toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
   }, [balances, q]);
 
   const byArea = useMemo(() => {
@@ -115,12 +143,33 @@ export function StockPanel() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Input
-          placeholder={t('common.filter')}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          wrapperClassName="max-w-sm"
-        />
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Input
+            placeholder={t('warehouse.stock.filterPlaceholder')}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            wrapperClassName="max-w-sm flex-1"
+          />
+          {/* Area is a SERVER-side filter (`storageAreaId`), not another pass
+              over the loaded rows: it narrows what is fetched, which is what
+              keeps the list inside the pager's bounds on a big warehouse. */}
+          {areas.length > 1 && (
+            <Select
+              value={areaId}
+              onValueChange={setAreaId}
+              wrapperClassName="max-w-[14rem]"
+              options={[
+                { value: '', label: t('warehouse.stock.filterAreaAll') },
+                ...areas.map((a) => ({ value: a.id, label: a.name })),
+              ]}
+            />
+          )}
+          {(q.trim() !== '' || areaId !== '') && (
+            <Button variant="ghost" size="sm" onClick={() => (setQ(''), setAreaId(''))}>
+              {t('common.reset')}
+            </Button>
+          )}
+        </div>
         <ExportButton
           rows={filteredBalances}
           columns={EXPORT_COLUMNS}
@@ -128,6 +177,26 @@ export function StockPanel() {
           pdfTitle="Stok Gudang"
         />
       </div>
+
+      {/* Say so when the filter is searching an incomplete copy of the data,
+          rather than reporting "no results" for something that is simply past
+          the pager's guard. */}
+      {!loading && !error && truncated && (
+        <p className="text-sm text-warning-700">
+          {t('warehouse.stock.truncated', { shown: balances.length })}
+        </p>
+      )}
+
+      {/* A filter with no visible effect on the count reads as a broken
+          filter, so the count is always on screen while one is active. */}
+      {!loading && !error && (q.trim() !== '' || areaId !== '') && (
+        <p className="text-sm text-text-muted">
+          {t('warehouse.stock.filterCount', {
+            shown: filteredBalances.length,
+            total: balances.length,
+          })}
+        </p>
+      )}
 
       {loading && <EmptyState title={t('table.loading')} size="lg" />}
       {!loading && error && (
@@ -142,7 +211,17 @@ export function StockPanel() {
         />
       )}
       {!loading && !error && byArea.length === 0 && (
-        <EmptyState title={t('table.empty')} size="lg" />
+        <EmptyState
+          title={q.trim() !== '' || areaId !== '' ? t('table.noMatches') : t('table.empty')}
+          size="lg"
+          action={
+            q.trim() !== '' || areaId !== '' ? (
+              <Button variant="outline" size="sm" onClick={() => (setQ(''), setAreaId(''))}>
+                {t('common.reset')}
+              </Button>
+            ) : undefined
+          }
+        />
       )}
 
       {!loading &&

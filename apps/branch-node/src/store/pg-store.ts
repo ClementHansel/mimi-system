@@ -10,15 +10,22 @@ import pg from 'pg';
 import type { MovementFact, ProjectedBalance, StockKey } from '@mimi/sync-protocol';
 import type { ISODateTime, Qty, UUID } from '@mimi/shared';
 import { runMigrations } from './migrate';
-import type {
-  DiscoveredDeviceRecord,
-  EventPage,
-  LanDeviceRecord,
-  NodeIdentity,
-  ProjectionRow,
-  Store,
-  StoredSyncEvent,
+import {
+  emptyNetworkState,
+  type DiscoveredDeviceRecord,
+  type EventPage,
+  type LanDeviceRecord,
+  type NodeIdentity,
+  type NodeNetworkState,
+  type ProjectionRow,
+  type Store,
+  type StoredSyncEvent,
 } from './types';
+
+function parseNetworkState(raw: unknown): NodeNetworkState {
+  if (!raw || typeof raw !== 'object' || Object.keys(raw).length === 0) return emptyNetworkState();
+  return raw as NodeNetworkState;
+}
 
 function toIso(v: unknown): ISODateTime {
   return v instanceof Date ? (v.toISOString() as ISODateTime) : (v as ISODateTime);
@@ -82,6 +89,7 @@ export class PgStore implements Store {
         locationCode: null,
         locationName: null,
         lanCert: null,
+        networkState: emptyNetworkState(),
       };
     }
     return {
@@ -98,20 +106,22 @@ export class PgStore implements Store {
             expiresAt: toIso(row.lan_cert_expires_at),
           }
         : null,
+      networkState: parseNetworkState(row.network_state),
     };
   }
 
   async saveIdentity(identity: NodeIdentity): Promise<void> {
     await this.q(
       `INSERT INTO node_identity (singleton, node_id, node_token, location_id, location_code, location_name,
-                                   lan_cert_dns_name, lan_cert_pem, lan_cert_key_pem, lan_cert_expires_at, updated_at)
-       VALUES (TRUE, $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                                   lan_cert_dns_name, lan_cert_pem, lan_cert_key_pem, lan_cert_expires_at,
+                                   network_state, updated_at)
+       VALUES (TRUE, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
        ON CONFLICT (singleton) DO UPDATE SET
          node_id = EXCLUDED.node_id, node_token = EXCLUDED.node_token, location_id = EXCLUDED.location_id,
          location_code = EXCLUDED.location_code, location_name = EXCLUDED.location_name,
          lan_cert_dns_name = EXCLUDED.lan_cert_dns_name, lan_cert_pem = EXCLUDED.lan_cert_pem,
          lan_cert_key_pem = EXCLUDED.lan_cert_key_pem, lan_cert_expires_at = EXCLUDED.lan_cert_expires_at,
-         updated_at = NOW()`,
+         network_state = EXCLUDED.network_state, updated_at = NOW()`,
       [
         identity.nodeId,
         identity.nodeToken,
@@ -122,6 +132,7 @@ export class PgStore implements Store {
         identity.lanCert?.pem ?? null,
         identity.lanCert?.keyPem ?? null,
         identity.lanCert?.expiresAt ?? null,
+        JSON.stringify(identity.networkState ?? emptyNetworkState()),
       ],
     );
   }

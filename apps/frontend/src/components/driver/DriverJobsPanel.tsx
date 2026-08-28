@@ -25,6 +25,9 @@ function fmtCachedAt(iso: string): string {
       });
 }
 
+/** A device cache read that has not answered in this long is treated as a miss — see `reload`. */
+const CACHE_READ_TIMEOUT_MS = 3_000;
+
 const OPEN_SJ_STATUSES = new Set(['ready', 'loading', 'in_transit']);
 const TERMINAL_DROP_STATUSES = new Set(['completed', 'completed_discrepancy', 'failed']);
 
@@ -67,6 +70,15 @@ export function DriverJobsPanel() {
   );
   const [fleet, setFleet] = useState<{ id: string; name: string }[]>([]);
   const [viewDriverId, setViewDriverId] = useState<string | null>(null);
+  /**
+   * True once the fleet request has SETTLED — resolved or failed. `reload`
+   * needs to tell "the picker has not answered yet" (keep the spinner) apart
+   * from "the picker answered and there is nobody to show" (stop the spinner).
+   * Without that distinction an owner whose fleet call fails, or whose
+   * `drivers` table is empty, sat on "Memuat data…" forever: `reload` returned
+   * early on every render and nothing ever set `loading` back to false.
+   */
+  const [fleetResolved, setFleetResolved] = useState(false);
   const [jobs, setJobs] = useState<SuratJalan[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -83,12 +95,18 @@ export function DriverJobsPanel() {
     void getDrivers()
       .then((rows) => {
         if (cancelled) return;
-        setFleet(rows);
-        setViewDriverId((current) => current ?? rows[0]?.id ?? null);
+        // Only rows we can actually select on: an id-less row would set the
+        // picker to null and strand the fetch below.
+        const selectable = rows.filter((r) => !!r.id);
+        setFleet(selectable);
+        setViewDriverId((current) => current ?? selectable[0]?.id ?? null);
       })
       .catch(() => {
         // A missing picker is survivable; the empty state below still explains
         // why the page has nothing on it.
+      })
+      .finally(() => {
+        if (!cancelled) setFleetResolved(true);
       });
     return () => {
       cancelled = true;
@@ -100,7 +118,13 @@ export function DriverJobsPanel() {
     // Nothing to fetch until the fleet has loaded: firing without a driverId
     // would return the owner's own (empty) run and flash the empty state before
     // the real route arrives.
-    if (canPickDriver && !viewDriverId) return;
+    if (canPickDriver && !viewDriverId) {
+      // Still waiting on the fleet: keep the spinner. Fleet already back and
+      // still nothing to select (empty `drivers` table, or the call failed):
+      // stop the spinner so the empty state below can say so.
+      if (fleetResolved) setLoading(false);
+      return;
+    }
     setLoading(true);
     setLoadError(false);
     getMyJobs(businessDate, canPickDriver ? (viewDriverId ?? undefined) : undefined)
@@ -114,7 +138,14 @@ export function DriverJobsPanel() {
       .catch(async () => {
         // The network is the expected failure here, not the exceptional one.
         // Fall back to the device's own copy before declaring the day lost.
-        const cached = await loadJobs(businessDate);
+        // Raced against a timeout: a blocked IndexedDB upgrade (another tab
+        // holding the old version) leaves `loadJobs` pending forever, and a
+        // promise that never settles here is what turns a failed fetch into a
+        // permanent "Memuat data…".
+        const cached = await Promise.race([
+          loadJobs(businessDate).catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), CACHE_READ_TIMEOUT_MS)),
+        ]);
         if (cached) {
           setJobs(cached.jobs);
           setServedFromCache(cached.cachedAt);
@@ -126,7 +157,7 @@ export function DriverJobsPanel() {
       .finally(() => setLoading(false));
     // `viewDriverId` belongs here: changing the picker must refetch, and
     // `useEffect(reload, [reload])` below is what turns that into a reload.
-  }, [t, canPickDriver, viewDriverId]);
+  }, [t, canPickDriver, viewDriverId, fleetResolved]);
 
   useEffect(reload, [reload]);
 
@@ -165,10 +196,6 @@ export function DriverJobsPanel() {
         </div>
       </div>
 
-      {loading && <EmptyState title={t('table.loading')} size="lg" />}
-      {!loading && loadError && jobs.length === 0 && (
-        <EmptyState title={t('table.error')} size="lg" />
-      )}
       {/* Two different empty states, because they mean opposite things.
           
           `/delivery/my-jobs` resolves the caller through the `drivers` table and
@@ -180,6 +207,10 @@ export function DriverJobsPanel() {
           
           Say who the screen is for and point at the one that answers their
           actual question. */}
+      {/* The picker sits ABOVE the route, not under it: it is the control that
+          decides what the rest of the screen is showing, and an owner should
+          never have to scroll past a spinner to find out whose day they are
+          looking at. */}
       {canPickDriver && fleet.length > 0 && (
         <div className="flex items-center gap-2">
           <Select
@@ -189,6 +220,17 @@ export function DriverJobsPanel() {
             options={fleet.map((d) => ({ value: d.id, label: d.name }))}
           />
         </div>
+      )}
+
+      {loading && <EmptyState title={t('table.loading')} size="lg" />}
+      {!loading && loadError && jobs.length === 0 && (
+        <EmptyState title={t('table.error')} size="lg" />
+      )}
+      {/* A supervisor with an empty `drivers` table would otherwise get the
+          driver's own "no Surat Jalan today" — which reads as "the warehouse
+          dispatched nothing" when the truth is that no driver is registered. */}
+      {!loading && canPickDriver && fleetResolved && fleet.length === 0 && (
+        <EmptyState title={t('driver.picker.noFleet')} size="lg" />
       )}
 
       {/* The "this screen is not for you" state now only applies when there is
@@ -206,9 +248,12 @@ export function DriverJobsPanel() {
           }
         />
       )}
-      {!loading && !loadError && openJobs.length === 0 && (isDriver || canPickDriver) && (
-        <EmptyState title={t('driver.empty')} size="lg" />
-      )}
+      {!loading &&
+        !loadError &&
+        openJobs.length === 0 &&
+        (isDriver || (canPickDriver && fleet.length > 0)) && (
+          <EmptyState title={t('driver.empty')} size="lg" />
+        )}
 
       {/* Stale data is shown, but never passed off as live: a driver who does
           not know the route is a cached copy cannot know to re-check it for a

@@ -940,6 +940,14 @@ function ProductFormModal({
   // user can only discover by pressing Save.
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? menuCategories[0]?.id ?? '');
   const [price, setPrice] = useState(product?.price ?? null);
+  // F-POS-3 — nullable channel prices (CONTRACTS: null = same as walk-in
+  // `price`, never `0`). Left `null` by default rather than pre-filled from
+  // `price` — pre-filling would silently turn every existing product into
+  // "channel price explicitly pinned to today's walk-in price", which then
+  // stops tracking future walk-in price changes. Empty stays empty unless a
+  // human types a different channel price on purpose.
+  const [priceGofood, setPriceGofood] = useState(product?.priceGofood ?? null);
+  const [priceShopeefood, setPriceShopeefood] = useState(product?.priceShopeefood ?? null);
   const [photo, setPhoto] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -969,6 +977,12 @@ function ProductFormModal({
         name,
         categoryId,
         price: price ?? '0.00',
+        // F-POS-3 — sent as `null`, not omitted, so clearing a previously-set
+        // channel price back to "same as walk-in" actually reaches the
+        // server instead of leaving the old value untouched by a partial
+        // PATCH.
+        priceGofood,
+        priceShopeefood,
         ...(photoAttachmentId ? { photoAttachmentId } : {}),
       };
       if (product) await api.patch(`/products/${product.id}`, body);
@@ -1034,6 +1048,24 @@ function ProductFormModal({
           value={price}
           onChange={setPrice}
         />
+        {/* F-POS-3 — one interface, three prices (owner). Grouped visually
+            under the walk-in price with an explicit "leave empty = same as
+            walk-in" hint on each — the nullable-fallback contract stated
+            as plainly in the form as it is in the type. */}
+        <div className="grid grid-cols-2 gap-3">
+          <MoneyInput
+            label={t('admin.masterData.products.priceGofood')}
+            hint={t('admin.masterData.products.priceChannelHint')}
+            value={priceGofood}
+            onChange={setPriceGofood}
+          />
+          <MoneyInput
+            label={t('admin.masterData.products.priceShopeefood')}
+            hint={t('admin.masterData.products.priceChannelHint')}
+            value={priceShopeefood}
+            onChange={setPriceShopeefood}
+          />
+        </div>
         {product?.photoUrl && photo.length === 0 && (
           <div className="flex items-center gap-3">
             {/* Plain <img> for the same reason as ProductThumb. */}
@@ -1685,14 +1717,77 @@ function MenuCategoriesSection({
 }
 
 // ── Locations & Storage Areas ────────────────────────────────────────────
+/**
+ * Outlets and warehouses — the full CRUD, in the Data Master tab that owns them.
+ *
+ * The C, R and U halves already existed (create button, row-click edit, storage
+ * areas drawer, geofence fields). What was missing was the rest of the lifecycle:
+ * an outlet could be created but never CLOSED from the UI, and a deactivated one
+ * could not be found, because this list always requested every location and
+ * showed `isActive` as text with no way to act on it. The backend had the
+ * endpoint the whole time (`DELETE /locations/:id`, a soft `is_active = false`)
+ * — the same shape of gap `lib/nav.ts` records for gudang's purchasing link: a
+ * capability that existed and was unreachable.
+ *
+ * DEACTIVATE, NEVER DELETE, and the copy says so. A location is referenced by
+ * every Surat Jalan, stock balance, opname and shift that ever touched it;
+ * removing the row would orphan all of it. Closing an outlet hides it from the
+ * pickers and leaves its history intact — which is why the confirm dialog talks
+ * about closing rather than deleting.
+ */
 function LocationsSection() {
   const { t } = useI18n();
   const { can } = usePermissions();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const { data, loading, error, reload } = useApiList<Location>('/locations', { page, pageSize });
+  /**
+   * '' = every location, 'true' = active only, 'false' = closed only. Sent as
+   * the endpoint's own `active` filter rather than filtered client-side, so a
+   * closed outlet is reachable even when the active ones fill several pages.
+   */
+  const [active, setActive] = useState('');
+  const { data, loading, error, reload } = useApiList<Location>('/locations', {
+    page,
+    pageSize,
+    ...(active ? { active } : {}),
+  });
   const [editing, setEditing] = useState<Location | null | 'new'>(null);
   const [areasFor, setAreasFor] = useState<Location | null>(null);
+  /** The location awaiting a close/reopen confirmation — never acted on directly from a row click. */
+  const [lifecycleFor, setLifecycleFor] = useState<Location | null>(null);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+
+  async function applyLifecycle() {
+    if (!lifecycleFor) return;
+    setLifecycleBusy(true);
+    try {
+      if (lifecycleFor.isActive) {
+        // The DELETE route, not a PATCH: it is the one that emits the
+        // `deactivated` sync op devices listen for.
+        await api.delete(`/locations/${lifecycleFor.id}`);
+      } else {
+        await api.patch(`/locations/${lifecycleFor.id}`, { isActive: true });
+      }
+      toast({
+        title: t(
+          lifecycleFor.isActive
+            ? 'admin.masterData.locations.deactivated'
+            : 'admin.masterData.locations.reactivated',
+        ),
+        variant: 'success',
+      });
+      setLifecycleFor(null);
+      reload();
+    } catch (err) {
+      toast({
+        title: t('table.error'),
+        description: err instanceof ApiError ? err.message : undefined,
+        variant: 'danger',
+      });
+    } finally {
+      setLifecycleBusy(false);
+    }
+  }
 
   const columns: DataTableColumn<Location>[] = [
     { key: 'code', header: t('admin.masterData.locations.columnCode'), sortable: true },
@@ -1716,29 +1811,63 @@ function LocationsSection() {
     {
       key: 'isActive',
       header: t('admin.masterData.locations.columnStatus'),
-      render: (r) => (r.isActive ? t('admin.users.statusActive') : t('admin.users.statusInactive')),
+      // A badge, not text: with the closed-only filter now reachable, "which of
+      // these is shut" has to be answerable at a glance down the column.
+      render: (r) => (
+        <Badge variant={r.isActive ? 'success' : 'neutral'} size="sm">
+          {r.isActive ? t('admin.users.statusActive') : t('admin.users.statusInactive')}
+        </Badge>
+      ),
     },
     {
       key: 'actions',
       header: t('common.actions'),
       render: (r) => (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={(e) => {
-            e.stopPropagation();
-            setAreasFor(r);
-          }}
-        >
-          {t('admin.masterData.locations.storageAreas')}
-        </Button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation();
+              setAreasFor(r);
+            }}
+          >
+            {t('admin.masterData.locations.storageAreas')}
+          </Button>
+          {can('location.manage') && (
+            <Button
+              size="sm"
+              variant={r.isActive ? 'ghost' : 'outline'}
+              onClick={(e) => {
+                e.stopPropagation();
+                setLifecycleFor(r);
+              }}
+            >
+              {t(r.isActive ? 'common.deactivate' : 'common.activate')}
+            </Button>
+          )}
+        </div>
       ),
     },
   ];
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <Select
+          label={t('admin.masterData.locations.columnStatus')}
+          value={active}
+          onValueChange={(v) => {
+            setActive(v);
+            setPage(1);
+          }}
+          options={[
+            { value: '', label: t('common.all') },
+            { value: 'true', label: t('admin.users.statusActive') },
+            { value: 'false', label: t('admin.users.statusInactive') },
+          ]}
+          wrapperClassName="w-48"
+        />
         <PermissionGate permission="location.manage">
           <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
             {t('admin.masterData.locations.createButton')}
@@ -1776,6 +1905,40 @@ function LocationsSection() {
             reload();
           }}
         />
+      )}
+      {lifecycleFor && (
+        <Modal
+          open
+          onClose={() => setLifecycleFor(null)}
+          title={t(
+            lifecycleFor.isActive
+              ? 'admin.masterData.locations.deactivateTitle'
+              : 'admin.masterData.locations.reactivateTitle',
+            { name: lifecycleFor.name },
+          )}
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setLifecycleFor(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant={lifecycleFor.isActive ? 'danger' : 'primary'}
+                loading={lifecycleBusy}
+                onClick={applyLifecycle}
+              >
+                {t(lifecycleFor.isActive ? 'common.deactivate' : 'common.activate')}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-text-secondary">
+            {t(
+              lifecycleFor.isActive
+                ? 'admin.masterData.locations.deactivateWarning'
+                : 'admin.masterData.locations.reactivateWarning',
+            )}
+          </p>
+        </Modal>
       )}
     </div>
   );

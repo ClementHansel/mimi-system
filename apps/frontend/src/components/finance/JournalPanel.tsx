@@ -18,9 +18,12 @@ import { Textarea } from '@/components/ui/Textarea';
 import { MoneyInput } from '@/components/ui/MoneyInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { PermissionGate } from '@/components/ui/PermissionGate';
+import { ExportButton } from '@/components/common/ExportButton';
 import { useApiList } from '@/components/admin/useApiList';
+import type { Paginated } from '@/lib/api';
 import { JournalDescription } from './JournalDescription';
 import { sumMoney, moneyEquals, isZeroMoney } from './lib/money';
+import { journalIoColumns } from './lib/io-columns';
 import type { Account, JournalEntry, Money } from './types';
 
 /**
@@ -64,6 +67,29 @@ export function JournalPanel() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [postOpen, setPostOpen] = useState(false);
+
+  /**
+   * The journal is server-paginated (25/page default), so "Ekspor" alone
+   * would silently ship one page of a ledger that can run to thousands of
+   * entries — the worst kind of wrong, since it still looks complete.
+   * `pageSize=200` (the server's `@Max(200)`) with a 200-page ceiling matches
+   * `SupplierPriceHistoryPanel`'s convention.
+   */
+  async function fetchAllEntries(): Promise<JournalEntry[]> {
+    const all: JournalEntry[] = [];
+    const size = 200;
+    for (let p = 1; p <= 200; p += 1) {
+      const qs = new URLSearchParams({ page: String(p), pageSize: String(size) });
+      if (from) qs.set('from', from);
+      if (to) qs.set('to', to);
+      if (source) qs.set('source', source);
+      if (accountCode) qs.set('accountCode', accountCode);
+      const res = await api.get<Paginated<JournalEntry>>(`/accounting/journal?${qs}`);
+      all.push(...res.rows);
+      if (res.rows.length < size || all.length >= res.total) break;
+    }
+    return all;
+  }
 
   const columns: DataTableColumn<JournalEntry>[] = [
     { key: 'entryNumber', header: t('finance.journal.columnNumber') },
@@ -144,11 +170,25 @@ export function JournalPanel() {
             wrapperClassName="w-36"
           />
         </div>
-        <PermissionGate permission="accounting.journal.post">
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setPostOpen(true)}>
-            {t('finance.journal.postButton')}
-          </Button>
-        </PermissionGate>
+        <div className="flex items-center gap-2">
+          {/* Export only, deliberately — no bulk import here. A CSV row could
+              not carry a balanced debit/credit pair through
+              `POST /accounting/journal`'s validation without bypassing the
+              exact "impossible to create an unbalanced entry" guarantee this
+              screen's manual-post form exists to enforce, plus the
+              fiscal-period lock every post already checks server-side. */}
+          <ExportButton
+            rows={data.rows}
+            columns={journalIoColumns(t)}
+            filenameBase="jurnal"
+            fetchAll={fetchAllEntries}
+          />
+          <PermissionGate permission="accounting.journal.post">
+            <Button leftIcon={<Plus className="size-4" />} onClick={() => setPostOpen(true)}>
+              {t('finance.journal.postButton')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
 
       <DataTable

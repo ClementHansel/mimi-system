@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { Modal, StatusBadge, EmptyState, Card, CardContent, toast } from '@/components/ui';
 import { fmtDateTime } from '@/lib/dates';
-import { useOutletLocation } from './lib/use-outlet-location';
+import { ExportButton } from '@/components/common/ExportButton';
+import { useOutletLocationContext } from './lib/outlet-location-context';
+import { RECEIVING_EXPORT_COLUMNS } from './lib/outlet-export-columns';
 import { listIncomingSuratJalan, getStorageAreas } from './lib/outlet-api';
 import { dataUrlToFile } from './lib/attachments';
 import { useActorMeta, getOutletRuntime, mintId } from './lib/outlet-runtime';
@@ -35,7 +37,7 @@ const OPEN_DROP_STATUSES = new Set(['pending', 'en_route', 'arrived']);
  */
 export function ReceivingPanel() {
   const { t } = useI18n();
-  const { locationId } = useOutletLocation();
+  const { locationId } = useOutletLocationContext();
   const actor = useActorMeta();
   const [sjList, setSjList] = useState<SuratJalan[]>([]);
   const [areas, setAreas] = useState<StorageArea[]>([]);
@@ -46,7 +48,6 @@ export function ReceivingPanel() {
   const [submitting, setSubmitting] = useState(false);
 
   function reload() {
-    if (!locationId) return;
     setLoading(true);
     listIncomingSuratJalan(locationId)
       .then((res) => setSjList(res.rows))
@@ -125,13 +126,22 @@ export function ReceivingPanel() {
     }
   }
 
-  if (!locationId) return <EmptyState title={t('table.error')} size="lg" />;
   if (loading) return <EmptyState title={t('table.loading')} size="lg" />;
   if (incomingDrops.length === 0)
     return <EmptyState title={t('outlet.receiving.empty')} size="lg" />;
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Exports the surat jalan, not the flattened drop cards on screen: the SJ
+          is the document a receiving discrepancy is actually argued over. */}
+      <div className="flex justify-end">
+        <ExportButton
+          rows={sjList}
+          columns={RECEIVING_EXPORT_COLUMNS}
+          filenameBase="terima-barang"
+        />
+      </div>
+
       {incomingDrops.map(({ sj, drop }) => (
         <Card
           key={drop.id}

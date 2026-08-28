@@ -6,6 +6,7 @@ import { SyncProjectorRegistry } from '../../kernel/sync/sync-projector-registry
 import { NotificationModule } from '../../kernel/notification/notification.module';
 import { EventsModule } from '../../kernel/events/events.module';
 import { AccountingModule } from '../accounting/accounting.module';
+import { VoucherModule } from '../voucher/voucher.module';
 import { PosController } from './pos.controller';
 import { PosCatalogService } from './services/pos-catalog.service';
 import { PosShiftService } from './services/pos-shift.service';
@@ -50,6 +51,13 @@ import { PosSyncProjector } from './services/pos-sync-projector.service';
     NotificationModule,
     EventsModule,
     AccountingModule,
+    /**
+     * For `VoucherRedemptionService` only. `PosSaleService.applySaleFact` is
+     * the ONE place a sale row is written on either path, so redeeming there
+     * means the online till and the offline sync projector share one
+     * implementation — see that service's constructor comment.
+     */
+    VoucherModule,
   ],
   controllers: [PosController],
   providers: [

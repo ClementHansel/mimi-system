@@ -32,6 +32,14 @@ export interface NodeConfig {
   /** This node software's own version string, reported at register/heartbeat (D-13). */
   version: string;
   hostname: string;
+  /**
+   * W3-10: how long, after applying a cloud-pushed network-config change, this node waits for proof
+   * it can still be reached before automatically reverting to its last-known-good config (the
+   * apply-then-confirm safety mechanism — see `relay.ts`'s `handleNetworkConfigUpdate`). Kept
+   * configurable (rather than a hardcoded constant) so tests can shrink it to milliseconds instead of
+   * waiting out a real 90s window.
+   */
+  networkConfigConfirmTimeoutMs: number;
 }
 
 function parseBool(value: string | undefined, fallback: boolean): boolean {
@@ -59,5 +67,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): NodeConfig {
     heartbeatIntervalMs: parseIntEnv(env.BRANCH_NODE_HEARTBEAT_INTERVAL_MS, 30_000),
     version: env.BRANCH_NODE_VERSION || process.env.npm_package_version || '0.1.0',
     hostname: env.BRANCH_NODE_HOSTNAME || os.hostname(),
+    networkConfigConfirmTimeoutMs: parseIntEnv(
+      env.BRANCH_NODE_NETWORK_CONFIG_CONFIRM_TIMEOUT_MS,
+      90_000,
+    ),
   };
 }

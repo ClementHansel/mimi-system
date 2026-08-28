@@ -55,6 +55,17 @@ import { SyncModule } from './modules/sync/sync.module';
 // rather than silently matching the letter of "no agent edits this file"
 // while missing its actual point (every module IS registered here).
 import { ImportModule } from './modules/import/import.module';
+// `document` + `voucher` (owner request 2026-08-27) — the document designers
+// (invoice / receipt / voucher / Surat Jalan layouts + the resolvers that fill
+// them) and printed discount coupons. Added after Gate G1 for the same reason
+// `ImportModule` above was, and recorded here rather than left to look like an
+// oversight: this file's header freezes it against the Wave 2-4 stubs it
+// already lists, and a genuinely new module still has to be registered
+// somewhere for Nest to route to it — this is the one place that happens for
+// every other module too. Following the precedent, not quietly breaking the
+// rule.
+import { DocumentModule } from './modules/document/document.module';
+import { VoucherModule } from './modules/voucher/voucher.module';
 
 /**
  * Root module — frozen after Gate G1 (BUILD-PLAN §6 rule 2). Every module
@@ -112,6 +123,8 @@ import { ImportModule } from './modules/import/import.module';
     NodeGatewayModule,
     SyncModule,
     ImportModule,
+    DocumentModule,
+    VoucherModule,
   ],
   controllers: [AppController],
   providers: [

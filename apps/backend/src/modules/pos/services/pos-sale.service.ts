@@ -3,8 +3,10 @@ import { BadRequestException, Inject, Injectable, NotFoundException } from '@nes
 import type { Pool, PoolClient } from 'pg';
 import { DATABASE_POOL } from '../../../common/database/database-pool.provider';
 import {
+  addMoney,
   calculateCartSummary,
   calculateChange,
+  clampMoneyToZero,
   compareMoney,
   ERR_NOT_FOUND,
   ERR_VALIDATION,
@@ -18,6 +20,7 @@ import {
   type Money,
   type Paginated,
   type Sale,
+  type SaleChannel,
   type SaleStatus,
   type UUID,
 } from '@mimi/shared';
@@ -28,6 +31,10 @@ import {
 } from '../../../kernel/stock-ledger/stock-ledger.types';
 import type { LedgerMode } from '@mimi/sync-protocol';
 import { PaymentVerificationsService } from '../../accounting/payment-verifications.service';
+import {
+  VoucherRedemptionService,
+  type VoucherEvaluation,
+} from '../../voucher/voucher-redemption.service';
 import { allocateReceiptNumber } from '../doc-numbering.util';
 import { explodeRecipeUsage, findKitchenLineAreaId } from '../recipe-usage.util';
 import { resolveUserNames } from '../notify-eligible-users.util';
@@ -48,6 +55,20 @@ export interface SalePaymentInput {
   proofAttachmentId?: UUID;
 }
 
+/**
+ * The coupon a sale was rung with, if any.
+ *
+ * `discount` is what the DEVICE calculated. It is recorded and compared but
+ * NEVER used as the discount: `applySaleFact` re-prices the coupon from the
+ * server's own subtotal and the server's own copy of the batch rules. A till
+ * is a tablet in a shop, and a number it sends is not money.
+ */
+export interface SaleVoucherInput {
+  code: string;
+  discount?: Money;
+  offlineAccepted?: boolean;
+}
+
 export interface CreateSaleInput {
   clientId: UUID;
   shiftId: UUID;
@@ -55,7 +76,11 @@ export interface CreateSaleInput {
   occurredAt: string;
   lines: SaleLineInput[];
   payments: SalePaymentInput[];
+  /** Sale-level MANUAL discount, EXCLUDING any voucher — see `CreateSaleDto.discount`. */
   discount?: Money;
+  /** Defaults to `'walk_in'` — see `CreateSaleDto.channel`'s doc. */
+  channel?: SaleChannel;
+  voucher?: SaleVoucherInput;
 }
 
 /**
@@ -77,8 +102,18 @@ export interface ApplySaleFactInput {
   occurredAt: string;
   lines: SaleLineInput[];
   payments: SalePaymentInput[];
+  /** Sale-level MANUAL discount, EXCLUDING any voucher — see `CreateSaleDto.discount`. */
   discount?: Money;
   receiptNumber?: string;
+  /** Defaults to `'walk_in'` — see `CreateSaleDto.channel`'s doc. */
+  channel?: SaleChannel;
+  voucher?: SaleVoucherInput;
+  /**
+   * The sync event this fact arrived on, when it arrived on one. Used ONLY to
+   * link a voucher reconciliation exception back to its originating event
+   * (`sync_conflicts.loser_event_id`); the REST path leaves it undefined.
+   */
+  eventId?: UUID;
   /**
    * The ACTING session's own role/location scope — needed only to restore it after the one
    * escalated `payment_verifications` INSERT a `bank_transfer` payment triggers (FR-ACCT-03; see
@@ -95,7 +130,8 @@ export interface ApplySaleFactInput {
 // whenever the caller isn't the sale's own kasir (e.g. a Supervisor listing the outlet's sales).
 const SALE_SELECT = `
   SELECT s.id, s.receipt_number, s.location_id, s.shift_id, s.kasir_id, s.status,
-         s.subtotal, s.discount, s.total, s.paid_amount, s.change_amount, s.offline_created, s.occurred_at
+         s.subtotal, s.discount, s.total, s.paid_amount, s.change_amount, s.offline_created, s.occurred_at,
+         s.channel
     FROM sales s
 `;
 
@@ -133,6 +169,15 @@ export class PosSaleService {
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     private readonly stockLedger: StockLedgerService,
     private readonly paymentVerifications: PaymentVerificationsService,
+    /**
+     * Injected from `VoucherModule` (exported there for exactly this reason):
+     * the online REST path and the offline sync projector both funnel through
+     * `applySaleFact`, so wiring redemption in here means ONE implementation
+     * covers both. A second redemption path that "happens to agree today" is
+     * what this service's own header already warns against for the sale — and
+     * the argument is stronger for money that leaves the drawer.
+     */
+    private readonly voucherRedemption: VoucherRedemptionService,
   ) {}
 
   async create(
@@ -202,14 +247,46 @@ export class PosSaleService {
     );
     if (existing.rows[0]) return this.mustGetById(client, existing.rows[0].id);
 
+    const cartLines = input.lines.map((l) => ({
+      productId: l.productId,
+      unitPrice: l.unitPrice,
+      qty: l.qty,
+      discount: l.discount ?? ZERO_MONEY,
+    }));
+    const manualDiscount = input.discount ?? ZERO_MONEY;
+
+    /**
+     * ── VOUCHER, PHASE 1: price the coupon ────────────────────────────────
+     *
+     * The basket subtotal a voucher is measured against is the total AFTER
+     * line and sale discounts — `VoucherCheckInput.subtotal`'s contract, and
+     * the same number the till showed the customer before they produced the
+     * coupon. So the cart is summarised once WITHOUT the voucher purely to get
+     * that figure, then re-summarised below with the voucher folded into the
+     * sale-level discount. Two cheap pure calls; the alternative (subtracting
+     * afterwards) would re-derive `total` in a second place and eventually
+     * disagree with `calculateCartSummary` about clamping.
+     *
+     * `input.discount` EXCLUDES the voucher by contract on both paths — see
+     * `CreateSaleDto.discount` and the `sales.completed` schema's own field
+     * comment. If a device also folded the coupon into `discount`, it would be
+     * counted twice; that is the one thing this contract exists to pin down.
+     */
+    const preVoucher = calculateCartSummary(cartLines, manualDiscount);
+    const voucher = await this.evaluateVoucher(client, input, preVoucher.total, mode);
+
     const summary = calculateCartSummary(
-      input.lines.map((l) => ({
-        productId: l.productId,
-        unitPrice: l.unitPrice,
-        qty: l.qty,
-        discount: l.discount ?? ZERO_MONEY,
-      })),
-      input.discount ?? ZERO_MONEY,
+      cartLines,
+      voucher.evaluation?.ok
+        ? addMoney(manualDiscount, voucher.evaluation.discount)
+        : // A refused coupon on the SYNC path: the customer already walked out
+          // with the discount the till gave them, so the sale records what was
+          // actually collected (`paid_amount == total`, no phantom cash
+          // variance) and the give-away is reported once, in the exception
+          // queue, by `recordRefusedRedemption` below. See
+          // `voucher-redemption.service.ts`'s "what happens to the money"
+          // section for why this beats the two alternatives.
+          addMoney(manualDiscount, voucher.uncoveredDiscount),
     );
     const paidAmount = sumMoney(input.payments.map((p) => p.amount));
     const changeAmount = calculateChange(paidAmount, summary.total);
@@ -218,10 +295,16 @@ export class PosSaleService {
     // the projector supplies `event.entityId`; the REST path mints a fresh one right here.
     const saleId = input.id ?? randomUUID();
 
+    // `unitPrice` on every line is taken verbatim from `input.lines` (the caller's cart, already
+    // priced for `channel` — see `CreateSaleDto.channel`'s doc) and stored as-is on `sale_lines`
+    // below; it is NEVER re-derived from `products.price` here, which would silently overwrite a
+    // GoFood/ShopeeFood sale's line prices with the walk-in price.
+    const channel = input.channel ?? 'walk_in';
+
     const insertOne = async (receiptNumber: string) => {
       const inserted = await client.query<{ id: UUID }>(
-        `INSERT INTO sales (id, receipt_number, client_id, location_id, shift_id, kasir_id, status, subtotal, discount, total, paid_amount, change_amount, offline_created, occurred_at)
-         VALUES ($1,$2,$3,$4,$5,$6,'completed',$7,$8,$9,$10,$11,$12,$13)
+        `INSERT INTO sales (id, receipt_number, client_id, location_id, shift_id, kasir_id, status, subtotal, discount, total, paid_amount, change_amount, offline_created, occurred_at, channel)
+         VALUES ($1,$2,$3,$4,$5,$6,'completed',$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT (id) DO NOTHING RETURNING id`,
         [
           saleId,
@@ -237,6 +320,7 @@ export class PosSaleService {
           changeAmount,
           !!input.id,
           input.occurredAt,
+          channel,
         ],
       );
       return !!inserted.rows[0];
@@ -263,6 +347,24 @@ export class PosSaleService {
       // apply of the SAME fact (the `existing` check above missed it by a hair). Idempotent no-op.
       return this.mustGetById(client, saleId);
     }
+
+    /**
+     * ── VOUCHER, PHASE 2: spend the coupon ────────────────────────────────
+     *
+     * Deliberately AFTER the `sales` INSERT and after the `!inserted`
+     * idempotent early-return above, for two independent reasons:
+     *
+     *  1. `voucher_redemptions.sale_id` is an FK — the sale row has to exist.
+     *  2. IDEMPOTENCY. Both early returns above (`existing`, and the
+     *     `ON CONFLICT (id) DO NOTHING` miss) fire when this same fact has
+     *     already been applied. Redeeming before them would let a replayed
+     *     outbox burn a second coupon for a sale that was already recorded —
+     *     and unlike the sale itself, that is not something the unique index
+     *     would catch, because it would be a DIFFERENT voucher each time.
+     *
+     * A sale that reaches this line is a sale that was genuinely just created.
+     */
+    await this.commitVoucher(client, input, voucher, saleId, mode);
 
     for (const [i, line] of summary.lines.entries()) {
       await client.query(
@@ -332,6 +434,123 @@ export class PosSaleService {
     );
 
     return this.mustGetById(client, saleId);
+  }
+
+  // ── voucher redemption (FR-POS, owner request 2026-08-27) ─────────────────
+  //
+  // Both halves delegate every RULE to `VoucherRedemptionService`, which
+  // delegates in turn to `@mimi/shared`'s `checkVoucher()`. Nothing about what
+  // a coupon is worth is decided in this file — the offline till runs the same
+  // shared calculator, and a receipt that says Rp 10.000 off against a ledger
+  // that says Rp 0 is a cash variance a supervisor gets blamed for.
+
+  /**
+   * Phase 1. Returns the priced evaluation, plus — for the sync path only —
+   * the discount the till gave away that no coupon will now cover.
+   *
+   * On `'strict'` a refusal THROWS, before anything has been written: the
+   * cashier is told no and the customer pays full price. On `'fact'` it
+   * returns the refusal, because an offline sale already happened and must be
+   * recorded regardless (D-17a).
+   */
+  private async evaluateVoucher(
+    client: PoolClient,
+    input: ApplySaleFactInput,
+    preVoucherTotal: Money,
+    mode: LedgerMode,
+  ): Promise<{ evaluation: VoucherEvaluation | null; uncoveredDiscount: Money }> {
+    if (!input.voucher) return { evaluation: null, uncoveredDiscount: ZERO_MONEY };
+
+    const evaluation = await this.voucherRedemption.evaluate(client, {
+      code: input.voucher.code,
+      subtotal: preVoucherTotal,
+      locationId: input.locationId,
+      occurredAt: input.occurredAt,
+      offlineAccepted: input.voucher.offlineAccepted ?? false,
+    });
+
+    if (!evaluation.ok && mode === 'strict') {
+      throw this.voucherRedemption.refusalException(evaluation.reason, evaluation.code);
+    }
+
+    return {
+      evaluation,
+      // Only meaningful when the coupon was refused on the `'fact'` path.
+      // Clamped at zero so a device that sent a negative "discount" cannot
+      // INFLATE a sale total through this field.
+      uncoveredDiscount:
+        evaluation.ok || !input.voucher.discount
+          ? ZERO_MONEY
+          : clampMoneyToZero(input.voucher.discount),
+    };
+  }
+
+  /**
+   * Phase 2. Writes the redemption row — the unique index on
+   * `voucher_redemptions.voucher_id` is what makes a double-spend impossible,
+   * including across two tills racing (migration 254's header).
+   *
+   * Every path that does NOT end in a redemption ends in a reconciliation
+   * exception instead. That is the point: money given away at the counter
+   * shows up in a queue with a rupiah figure and a reason, rather than
+   * evaporating between a device and a ledger.
+   */
+  private async commitVoucher(
+    client: PoolClient,
+    input: ApplySaleFactInput,
+    voucher: { evaluation: VoucherEvaluation | null; uncoveredDiscount: Money },
+    saleId: UUID,
+    mode: LedgerMode,
+  ): Promise<void> {
+    const { evaluation } = voucher;
+    if (!evaluation) return;
+
+    const offlineAccepted = input.voucher?.offlineAccepted ?? false;
+
+    if (!evaluation.ok) {
+      // `'strict'` already threw in phase 1; only the sync path reaches here.
+      await this.voucherRedemption.recordRefusedRedemption(client, {
+        saleId,
+        locationId: input.locationId,
+        code: evaluation.code,
+        reason: evaluation.reason,
+        discountGivenAway: voucher.uncoveredDiscount,
+        offlineAccepted,
+        eventId: input.eventId ?? null,
+      });
+      return;
+    }
+
+    const redeemed = await this.voucherRedemption.commit(
+      client,
+      evaluation,
+      {
+        saleId,
+        locationId: input.locationId,
+        redeemedBy: input.kasirId,
+        offlineAccepted,
+        eventId: input.eventId ?? null,
+        claimedDiscount: input.voucher?.discount ?? null,
+      },
+      mode,
+    );
+
+    if (!redeemed) {
+      // Lost the race on the `'fact'` path — two devices took the same paper
+      // coupon while offline. `commit` unwound its own savepoint, so the sale
+      // (already inserted) survives and this connection is still usable. The
+      // sale keeps the discount it was rung with; the exception carries the
+      // amount that nothing now covers.
+      await this.voucherRedemption.recordRefusedRedemption(client, {
+        saleId,
+        locationId: input.locationId,
+        code: evaluation.code,
+        reason: 'not_active',
+        discountGivenAway: evaluation.discount,
+        offlineAccepted,
+        eventId: input.eventId ?? null,
+      });
+    }
   }
 
   async list(

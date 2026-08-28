@@ -5,6 +5,7 @@ import type {
   PaymentMethod,
   PaymentStatus,
   Qty,
+  SaleChannel,
   SaleStatus,
   ShiftStatus,
   UUID,
@@ -79,6 +80,7 @@ export interface SaleRow {
   change_amount: Money;
   offline_created: boolean;
   occurred_at: Date | string;
+  channel: SaleChannel;
 }
 
 export function mapSale(r: SaleRow, lines: SaleLineRow[], payments: SalePaymentRow[]): Sale {
@@ -89,6 +91,7 @@ export function mapSale(r: SaleRow, lines: SaleLineRow[], payments: SalePaymentR
     shiftId: r.shift_id,
     kasirName: r.kasir_name,
     status: r.status,
+    channel: r.channel,
     subtotal: r.subtotal,
     discount: r.discount,
     total: r.total,

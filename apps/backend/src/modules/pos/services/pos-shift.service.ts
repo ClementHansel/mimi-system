@@ -353,9 +353,28 @@ export class PosShiftService {
       [shiftId],
     );
 
+    // Migration 249 retired `online_orders` as a write path — GoFood/ShopeeFood
+    // orders rung up after that cutover are ordinary `sales` rows with
+    // `channel` set (never written to `online_orders` again), so this UNIONs
+    // both sources rather than reading `online_orders` alone. Without this, a
+    // shift closed after the cutover would report an empty `onlineOrders` box
+    // even when it genuinely rang up GoFood/ShopeeFood sales — the exact
+    // silent-flatline bug migration 251 exists to fix (see that migration's
+    // header for the matview half of the same bug). The two sources cannot
+    // double-count: a GoFood order lives in `online_orders` (pre-cutover) OR
+    // as a `sales.channel` row (post-cutover), never both — 249 retired the
+    // write path, it did not leave both paths live.
     const onlineRes = await client.query<{ platform: OnlinePlatform; count: string; net: Money }>(
-      `SELECT platform, COUNT(*)::int AS count, COALESCE(SUM(net_received), '0.00') AS net
-         FROM online_orders WHERE shift_id = $1 AND status = 'completed'
+      `SELECT platform, COUNT(*)::int AS count, COALESCE(SUM(net), '0.00') AS net
+         FROM (
+           SELECT channel AS platform, total AS net
+             FROM sales
+            WHERE shift_id = $1 AND status = 'completed' AND channel <> 'walk_in'
+           UNION ALL
+           SELECT platform, net_received AS net
+             FROM online_orders
+            WHERE shift_id = $1 AND status = 'completed'
+         ) x
         GROUP BY platform`,
       [shiftId],
     );

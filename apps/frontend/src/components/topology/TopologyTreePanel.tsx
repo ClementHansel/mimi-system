@@ -1,14 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCcw, Waypoints } from 'lucide-react';
+import { Plus, RefreshCcw, Waypoints } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { usePermissions } from '@/lib/permissions';
 import { Button, Badge, EmptyState, toast } from '@/components/ui';
 import { fmtRelative } from '@/lib/dates';
 import { getTopologyTree } from './lib/topology-api';
-import { sortOutletsBySeverity } from './lib/rollup';
+import { sortOutletsBySeverity, flattenTopologyLocations } from './lib/rollup';
 import type { TopologyTree } from './lib/types';
 import { OutletCard } from './OutletCard';
+import { AddDevicePairingModal } from './AddDevicePairingModal';
 
 /**
  * The D-13 topology tree (Pusat -> Kota -> Outlet -> Node -> Device),
@@ -22,9 +24,11 @@ import { OutletCard } from './OutletCard';
  */
 export function TopologyTreePanel() {
   const { t } = useI18n();
+  const { can } = usePermissions();
   const [tree, setTree] = useState<TopologyTree | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addDeviceOpen, setAddDeviceOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -47,6 +51,8 @@ export function TopologyTreePanel() {
     return <EmptyState title={error} size="lg" />;
   }
   if (!tree) return null;
+
+  const locations = flattenTopologyLocations(tree);
 
   return (
     <div className="flex flex-col gap-6">
@@ -79,6 +85,12 @@ export function TopologyTreePanel() {
         </div>
         <div className="flex items-center gap-3 text-xs text-text-muted">
           <span>{t('topology.generatedAt', { when: fmtRelative(tree.generatedAt) })}</span>
+          {can('device.pair') && (
+            <Button size="sm" onClick={() => setAddDeviceOpen(true)}>
+              <Plus className="size-4" aria-hidden />
+              {t('topology.addDevice.button')}
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={load} disabled={loading}>
             <RefreshCcw className={loading ? 'size-4 animate-spin' : 'size-4'} aria-hidden />
             {t('topology.refresh')}
@@ -94,7 +106,7 @@ export function TopologyTreePanel() {
             <Waypoints className="size-5" aria-hidden />
             {t('topology.pusat')}
           </h2>
-          <OutletCard location={tree.pusat} />
+          <OutletCard location={tree.pusat} locations={locations} onChanged={load} />
         </section>
       )}
 
@@ -108,11 +120,20 @@ export function TopologyTreePanel() {
           </h2>
           <div className="flex flex-col gap-3">
             {sortOutletsBySeverity(cityGroup.outlets).map((loc) => (
-              <OutletCard key={loc.location.id} location={loc} />
+              <OutletCard
+                key={loc.location.id}
+                location={loc}
+                locations={locations}
+                onChanged={load}
+              />
             ))}
           </div>
         </section>
       ))}
+
+      {addDeviceOpen && (
+        <AddDevicePairingModal locations={locations} onClose={() => setAddDeviceOpen(false)} />
+      )}
     </div>
   );
 }

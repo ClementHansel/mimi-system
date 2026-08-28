@@ -225,6 +225,15 @@ export interface Product {
   categoryId: UUID;
   price: Money;
   /**
+   * GoFood price, IDR. `null` when the product has no channel override set —
+   * the till and the receipt then fall back to `price` for a GoFood sale.
+   * Set higher than `price` to absorb the platform's commission (owner
+   * decision, 2026-08-27) — there is deliberately no separate fee line.
+   */
+  priceGofood: Money | null;
+  /** ShopeeFood price, IDR — same fallback-to-`price` rule as `priceGofood`. */
+  priceShopeefood: Money | null;
+  /**
    * A PRESIGNED, EXPIRING url (10 min, `StorageService.getUrl`) — fine for a
    * back-office form the user is looking at right now, useless for the till.
    * `null` when the product has no photo, and always `null` on the POS catalog
@@ -645,6 +654,15 @@ export interface Shift {
   grossSales: Money;
 }
 
+/**
+ * Which counter a sale was rung up under (migration 249, owner decision
+ * 2026-08-27). `'walk_in'` is the till default; a cashier ringing up a
+ * phoned-in/app-relayed GoFood or ShopeeFood order picks the other two —
+ * there is no separate online-order flow any more (see `Sale.channel`'s
+ * doc). String values match `sales`'s CHECK constraint character-for-character.
+ */
+export type SaleChannel = 'walk_in' | 'gofood' | 'shopeefood';
+
 export interface Sale {
   id: UUID;
   receiptNumber: string;
@@ -652,6 +670,14 @@ export interface Sale {
   shiftId: UUID;
   kasirName: string;
   status: SaleStatus;
+  /**
+   * Which channel this sale was rung up under — drives which of a product's
+   * three prices `lines[].unitPrice` was taken from at the time of sale
+   * (never re-derived from `Product.price` after the fact). Replaces the
+   * separate GoFood/ShopeeFood online-order flow: retired 2026-08-27, see
+   * `OnlineOrder`'s doc.
+   */
+  channel: SaleChannel;
   subtotal: Money;
   discount: Money;
   total: Money;
@@ -675,6 +701,18 @@ export interface Sale {
   }[];
 }
 
+/**
+ * FR-POS-05/07's manual GoFood/ShopeeFood entry — RETIRED as the primary
+ * revenue path, 2026-08-27 owner decision. GoFood/ShopeeFood orders are now
+ * rung up as an ordinary POS `Sale` with `channel` set (three-tier channel
+ * pricing, migration 249), which — unlike this shape — actually explodes a
+ * recipe and consumes stock. This interface, the `online_orders` table and
+ * `GET /pos/online-orders` are left DORMANT, not dropped: 152+ historical
+ * rows are real reporting history, and the create path still exists for a
+ * pre-cutover offline device's queued sync backlog. No NEW GL journal entry
+ * is posted from this flow any more (see `pos-online-order.service.ts`'s
+ * header) — the channel `Sale` is the only revenue record going forward.
+ */
 export interface OnlineOrder {
   id: UUID;
   locationId: UUID;

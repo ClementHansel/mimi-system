@@ -7,26 +7,31 @@ import type { Money, UUID, ISODate, ISODateTime } from '@/lib/shared-types';
  * `components/approvals/lib/types.ts` set (import the canonical shape rather
  * than fork a local copy that drifts).
  *
- * `FiscalPeriodRow` is declared locally, snake_case, NOT camelCase — despite
- * CONTRACTS.md §4.17 documenting `{id; periodCode; startDate; endDate;
- * status}`, `PeriodsController`'s `list()`/`close()`/`reopen()` return
- * `FiscalPeriodsService`'s raw `pg` rows verbatim (`apps/backend/.../
- * fiscal-periods.service.ts` — no camelCase mapping step exists for this one
- * resource, unlike every other §4.17 endpoint). Typed to match the actual
- * live response, with the mismatch flagged in the build report rather than
- * silently coded around.
+ * `FiscalPeriod` is declared locally because it is not exported from
+ * `@mimi/shared`, but it is now CAMELCASE, matching CONTRACTS.md §4.17 and the
+ * live response.
+ *
+ * IT USED TO BE SNAKE_CASE, and that was correct at the time: this one resource
+ * returned `FiscalPeriodsService`'s raw `pg` rows with no mapping step, and the
+ * mismatch was flagged rather than coded around. The service has since grown
+ * that mapping (`toFiscalPeriod`) — but nothing updated this type, and TypeScript
+ * cannot catch a lie about the shape of a JSON response. So every field read
+ * came back `undefined` and the UI degraded exactly as an untyped read does:
+ * blank period codes and "— – —" date ranges on the Periode Fiskal tab, and an
+ * empty period dropdown on Laporan (which then had no period to request, so the
+ * reports underneath it never loaded either).
  */
 export type { Account, JournalEntry, PaymentVerification, OfflineAuthCase } from '@mimi/shared';
 export { AccountType, PaymentVerificationRefType, PayeeType } from '@mimi/shared';
 
-export interface FiscalPeriodRow {
+export interface FiscalPeriod {
   id: UUID;
-  period_code: string;
-  start_date: ISODate;
-  end_date: ISODate;
+  periodCode: string;
+  startDate: ISODate;
+  endDate: ISODate;
   status: 'open' | 'closed' | 'locked';
-  closed_by: UUID | null;
-  closed_at: ISODateTime | null;
+  closedBy: UUID | null;
+  closedAt: ISODateTime | null;
 }
 
 export interface PostingRule {

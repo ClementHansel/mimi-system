@@ -170,6 +170,7 @@ export class CreateLocationDto {
   @IsInt()
   @Min(0)
   geofenceRadiusM?: number | null;
+
 }
 
 /**
@@ -237,4 +238,21 @@ export class UpdateLocationDto {
   @IsInt()
   @Min(0)
   geofenceRadiusM?: number | null;
+
+  /**
+   * REACTIVATION. `DELETE /locations/:id` sets `is_active = false`, and until
+   * this field existed that was a ONE-WAY DOOR: nothing on the update path
+   * touched `is_active`, so an outlet closed for renovation — or deactivated by
+   * a mis-click — could only be brought back with a hand-written SQL statement.
+   * The list endpoint has always been able to FILTER on `active`, which made the
+   * gap easy to miss: a deactivated outlet was findable and unfixable.
+   *
+   * Deliberately usable in both directions rather than adding a separate
+   * `/reactivate` route: `is_active` is one column, and PATCHing it is the same
+   * act as PATCHing the name. The DELETE route stays as the primary "close this
+   * outlet" affordance because it is what carries the `deactivated` sync op.
+   */
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

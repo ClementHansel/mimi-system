@@ -15,6 +15,15 @@ export interface PosPackageLine {
   sortOrder: number;
 }
 
+/**
+ * F-POS-3 — one POS surface for walk-in, GoFood and ShopeeFood. `price` is
+ * always the walk-in price; the two channel prices are NULLABLE and, when
+ * null, the walk-in `price` applies (never zero) — see `priceForChannel` in
+ * `channel-pricing.ts`, the one place that fallback is implemented so it
+ * can't be re-derived differently in the grid vs. the cart vs. the receipt.
+ */
+export type PosChannel = 'walk_in' | 'gofood' | 'shopeefood';
+
 export interface PosProduct {
   id: UUID;
   code: string;
@@ -22,6 +31,10 @@ export interface PosProduct {
   category: string;
   categoryId: UUID;
   price: Money;
+  /** GoFood menu price — absorbs the platform commission. `null` = same as `price`. */
+  priceGofood: Money | null;
+  /** ShopeeFood menu price — absorbs the platform commission. `null` = same as `price`. */
+  priceShopeefood: Money | null;
   /** Always `null` on this payload — a presigned url would expire before an offline catalog does. Use `photoPath`. */
   photoUrl: string | null;
   /** Stable api-relative path to a cached thumbnail; resolved to a `blob:` url by `product-photo-cache`. */

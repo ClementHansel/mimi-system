@@ -5,16 +5,22 @@ import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { PosShellProvider, usePosShell } from '@/components/pos/PosShellContext';
 import { PosTopBar } from '@/components/pos/PosTopBar';
 import { PosStatusBar } from '@/components/pos/PosStatusBar';
+import { ChannelBanner } from '@/components/pos/ChannelBanner';
 
 /**
  * F-POS-2 — POS is its own application, not a page inside the admin shell.
  * `AppShell` (`components/layout/AppShell.tsx`) special-cases this route to
  * render neither the sidebar nor its `Header` — this layout supplies POS's
  * own chrome instead: `PosTopBar` (brand mark, branch, tab nav, session
- * controls) plus `PosStatusBar` as the secondary "operating branch and why"
- * line the owner asked for (mirrors AIRE's "Operating branch: X — from your
- * open shift", built from the same assigned-vs-chosen fact `PosStatusBar`
- * already tracked via `onChangeLocation`).
+ * controls, and — F-POS-3 — the walk-in/GoFood/ShopeeFood `ChannelToggle`)
+ * plus `PosStatusBar` as the secondary "operating branch and why" line the
+ * owner asked for (mirrors AIRE's "Operating branch: X — from your open
+ * shift", built from the same assigned-vs-chosen fact `PosStatusBar` already
+ * tracked via `onChangeLocation`). `ChannelBanner` sits right under the top
+ * bar, above every tab: silent for walk-in, a loud coloured strip for
+ * GoFood/ShopeeFood — a second, redundant cue on top of the toggle's own
+ * colouring, because the entire point of this feature is that this is the
+ * one state a cashier must never lose track of.
  *
  * `<Tabs>` is opened HERE, wrapping both `PosTopBar` (which renders
  * `<TabsList>`) and `{children}` (`app/pos/page.tsx`, which renders the
@@ -32,6 +38,7 @@ function PosChrome({ children }: { children: React.ReactNode }) {
     <Tabs defaultValue="kasir">
       <div className="flex h-dvh flex-col">
         <PosTopBar />
+        <ChannelBanner />
         <OfflineBanner />
         {locationName && (
           <div className="px-4 pt-3">

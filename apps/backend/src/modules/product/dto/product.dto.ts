@@ -68,6 +68,18 @@ export class CreateProductDto {
   @Matches(MONEY_RE)
   price!: string;
 
+  /** GoFood price (three-tier channel pricing, migration 249). Omit to fall back to `price`. */
+  @IsOptional()
+  @IsString()
+  @Matches(MONEY_RE)
+  priceGofood?: string;
+
+  /** ShopeeFood price. Omit to fall back to `price`. */
+  @IsOptional()
+  @IsString()
+  @Matches(MONEY_RE)
+  priceShopeefood?: string;
+
   @IsOptional()
   @IsUUID()
   photoAttachmentId?: string;
@@ -98,6 +110,22 @@ export class UpdateProductDto {
   @IsString()
   @Matches(MONEY_RE)
   price?: string;
+
+  /**
+   * GoFood price. `undefined` leaves it unchanged, `null` clears the
+   * override back to falling through to `price`, a money string sets it —
+   * same three-state convention as `photoAttachmentId` below.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(MONEY_RE)
+  priceGofood?: string | null;
+
+  /** ShopeeFood price — same three-state convention as `priceGofood`. */
+  @IsOptional()
+  @IsString()
+  @Matches(MONEY_RE)
+  priceShopeefood?: string | null;
 
   @IsOptional()
   @IsUUID()

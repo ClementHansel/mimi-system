@@ -130,7 +130,7 @@ describe('Employment contracts (integration, live Postgres)', () => {
     ).rejects.toThrow(/contract_term_matches_type/);
   });
 
-  it('creates a fixed-term contract, finds it in the expiry window, and terminates it with a reason', async () => {
+  it('creates a fixed-term contract as a draft, activates it once BOTH parties sign, finds it in the expiry window, and terminates it with a reason', async () => {
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
     const kasir = await employeeFor(RoleKey.KASIR);
     const session = { userId: hrAdmin.userId, roleKey: RoleKey.HR_ADMIN, locationIds: [] };
@@ -151,11 +151,68 @@ describe('Employment contracts (integration, live Postgres)', () => {
       }),
     );
     createdIds.push(created.id);
-    expect(created.status).toBe('active');
+    // Migration 252: a brand-new contract is born unsigned, and the trigger
+    // refuses `active` on INSERT unconditionally — `draft` is the only
+    // honest default now.
+    expect(created.status).toBe('draft');
+    expect(created.employeeSigned).toBe(false);
+    expect(created.companySignerCount).toBe(0);
+    expect(created.fullySigned).toBe(false);
     expect(created.endDate).toBe(in30Days);
+
+    // Trying to jump straight to `active` with nobody signed is refused by
+    // the DB trigger, not just the service — this is the "even if the
+    // service is bypassed" guarantee, proven the same way the type/term test
+    // above proves 230's CHECK.
+    await expect(
+      withRollbackAs(session, (client) => service.update(client, created.id, { status: 'active' })),
+    ).rejects.toThrow(/cannot go active/);
+
+    // Only the employee has signed — still not enough.
+    const afterEmployeeSigned = await withRollbackAs(session, (client) =>
+      service.sign(client, created.id, hrAdmin.userId, {
+        party: 'employee',
+        method: 'wet_ink_scan',
+      }),
+    );
+    expect(afterEmployeeSigned.employeeSigned).toBe(true);
+    expect(afterEmployeeSigned.fullySigned).toBe(false);
+    await expect(
+      withRollbackAs(session, (client) => service.update(client, created.id, { status: 'active' })),
+    ).rejects.toThrow(/cannot go active/);
+
+    // A second employee signature is a conflict, not a second row.
+    await expect(
+      withRollbackAs(session, (client) =>
+        service.sign(client, created.id, hrAdmin.userId, {
+          party: 'employee',
+          method: 'digital',
+        }),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ERR_CONFLICT' } });
+
+    // The company side signs too — now both required parties are in.
+    const afterCompanySigned = await withRollbackAs(session, (client) =>
+      service.sign(client, created.id, hrAdmin.userId, {
+        party: 'company',
+        method: 'wet_ink_scan',
+      }),
+    );
+    expect(afterCompanySigned.companySignerCount).toBe(1);
+    expect(afterCompanySigned.fullySigned).toBe(true);
+
+    const signatures = await withRollbackAs(session, (client) =>
+      service.listSignatures(client, created.id),
+    );
+    expect(signatures.map((s) => s.partyType).sort()).toEqual(['company', 'employee']);
+
+    const active = await withRollbackAs(session, (client) =>
+      service.update(client, created.id, { status: 'active' }),
+    );
+    expect(active.status).toBe('active');
     // Server-computed countdown — a day either way is fine, a timezone is not.
-    expect(created.daysUntilExpiry).toBeGreaterThanOrEqual(29);
-    expect(created.daysUntilExpiry).toBeLessThanOrEqual(31);
+    expect(active.daysUntilExpiry).toBeGreaterThanOrEqual(29);
+    expect(active.daysUntilExpiry).toBeLessThanOrEqual(31);
 
     const soon = await withRollbackAs(session, (client) =>
       service.list(client, { expiringWithinDays: 60, employeeId: kasir.employeeId }),
@@ -181,6 +238,95 @@ describe('Employment contracts (integration, live Postgres)', () => {
         service.terminate(client, created.id, { reason: 'again' }),
       ),
     ).rejects.toMatchObject({ response: { code: 'ERR_CONFLICT' } });
+  });
+
+  it('a draft with no signatures can be deleted; a signed/active/terminated one cannot', async () => {
+    const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+    const kasir = await employeeFor(RoleKey.KASIR);
+    const session = { userId: hrAdmin.userId, roleKey: RoleKey.HR_ADMIN, locationIds: [] };
+
+    const draft = await withRollbackAs(session, (client) =>
+      service.create(client, hrAdmin.userId, {
+        employeeId: kasir.employeeId,
+        contractType: 'pkwtt',
+        position: 'Kasir (percobaan penghapusan)',
+        startDate: new Date().toISOString().slice(0, 10),
+      }),
+    );
+    // An unsigned draft is exactly the "created by mistake" case this
+    // ticket's CRUD audit found defensible to actually remove.
+    await withRollbackAs(session, (client) => service.remove(client, draft.id));
+    await expect(
+      withRollbackAs(session, (client) => service.getById(client, draft.id)),
+    ).rejects.toMatchObject({ response: { code: 'ERR_NOT_FOUND' } });
+
+    const signedDraft = await withRollbackAs(session, (client) =>
+      service.create(client, hrAdmin.userId, {
+        employeeId: kasir.employeeId,
+        contractType: 'pkwtt',
+        position: 'Kasir (percobaan penghapusan 2)',
+        startDate: new Date().toISOString().slice(0, 10),
+      }),
+    );
+    createdIds.push(signedDraft.id);
+    await withRollbackAs(session, (client) =>
+      service.sign(client, signedDraft.id, hrAdmin.userId, {
+        party: 'employee',
+        method: 'wet_ink_scan',
+      }),
+    );
+    // A signature is evidence something happened — a hard delete would erase
+    // that, so a draft that already carries one is no longer removable.
+    await expect(
+      withRollbackAs(session, (client) => service.remove(client, signedDraft.id)),
+    ).rejects.toMatchObject({ response: { code: 'ERR_CONFLICT' } });
+  });
+
+  it('a Kasir sees their own contract signatures via RLS and nobody else’s', async () => {
+    const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+    const hrSession = { userId: hrAdmin.userId, roleKey: RoleKey.HR_ADMIN, locationIds: [] };
+    const kasir = await employeeFor(RoleKey.KASIR);
+
+    const contract = await withRollbackAs(hrSession, (client) =>
+      service.create(client, hrAdmin.userId, {
+        employeeId: kasir.employeeId,
+        contractType: 'pkwtt',
+        position: 'Kasir (RLS signature test)',
+        startDate: new Date().toISOString().slice(0, 10),
+      }),
+    );
+    createdIds.push(contract.id);
+    await withRollbackAs(hrSession, (client) =>
+      service.sign(client, contract.id, hrAdmin.userId, { party: 'employee', method: 'digital' }),
+    );
+    await withRollbackAs(hrSession, (client) =>
+      service.sign(client, contract.id, hrAdmin.userId, { party: 'company', method: 'digital' }),
+    );
+
+    const kasirSession = {
+      userId: kasir.userId,
+      roleKey: RoleKey.KASIR,
+      locationIds: [fixtures.usersByRole[RoleKey.KASIR]!.locationId],
+    };
+    const own = await withRollbackAs(kasirSession, (client) =>
+      service.listSignatures(client, contract.id),
+    );
+    expect(own.map((s) => s.partyType).sort()).toEqual(['company', 'employee']);
+
+    // A raw SELECT through the same self-scoped session must see only
+    // signatures on contracts BELONGING TO THIS EMPLOYEE (the seed/earlier
+    // tests may have left this Kasir with more than one contract of their
+    // own) and never another employee's — the guarantee is RLS's, not the
+    // service's own WHERE clause.
+    await withRollbackAs(kasirSession, async (client) => {
+      const all = await client.query<{ employee_id: string }>(
+        `SELECT c.employee_id
+           FROM contract_signatures s
+           JOIN employment_contracts c ON c.id = s.contract_id`,
+      );
+      expect(all.rows.length).toBeGreaterThan(0);
+      for (const row of all.rows) expect(row.employee_id).toBe(kasir.employeeId);
+    });
   });
 
   it('a Kasir cannot write a contract — reading their own is not authoring one', async () => {

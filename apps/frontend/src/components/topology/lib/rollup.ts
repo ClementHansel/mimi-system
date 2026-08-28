@@ -10,7 +10,7 @@
  * rule) — this file does not recompute it, only interprets it and the
  * node/outlet shape for display.
  */
-import type { TopologyLocation } from './types';
+import type { TopologyLocation, TopologyTree } from './types';
 
 /**
  * D-26: `node: null` alone is ambiguous — it means either "this outlet was
@@ -67,4 +67,21 @@ export function sortOutletsBySeverity(outlets: TopologyLocation[]): TopologyLoca
     if (bySeverity !== 0) return bySeverity;
     return a.location.name.localeCompare(b.location.name);
   });
+}
+
+/**
+ * Every location in the tree (Pusat + every outlet across every city), for
+ * the "add device"/"move device" pickers — reusing the tree the panel
+ * already fetched rather than a second `GET /locations` call, and staying
+ * consistent with exactly what this monitoring surface can already see (an
+ * outlet a Supervisor's `topology.read` scope excludes never appears here
+ * either, matching the tree it came from).
+ */
+export function flattenTopologyLocations(tree: TopologyTree): { id: string; name: string }[] {
+  const outlets = tree.cities.flatMap((city) =>
+    city.outlets.map((o) => ({ id: o.location.id, name: o.location.name })),
+  );
+  return tree.pusat
+    ? [{ id: tree.pusat.location.id, name: tree.pusat.location.name }, ...outlets]
+    : outlets;
 }

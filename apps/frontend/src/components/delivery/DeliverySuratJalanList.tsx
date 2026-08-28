@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { ApiError } from '@/lib/api';
@@ -14,6 +14,8 @@ import {
   PermissionGate,
   type DataTableColumn,
 } from '@/components/ui';
+import { ExportButton } from '@/components/common/ExportButton';
+import type { CsvColumn } from '@/lib/export/csv';
 import { fmtDate } from '@/lib/dates';
 import { listSuratJalan } from './lib/delivery-api';
 import { routeCompletion } from './lib/drop-progress';
@@ -23,6 +25,39 @@ import { SuratJalanDetailDrawer } from './SuratJalanDetailDrawer';
 
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
+}
+
+/**
+ * EXPORT ONLY on this list, deliberately.
+ *
+ * A Surat Jalan is not a row — it is a document that assigns a driver and a
+ * truck, reserves stock, prints in three copies and then gets sealed. Creating
+ * one from a spreadsheet row would skip the reservation and the truck-capacity
+ * check that `CreateSuratJalanModal` exists to enforce, and "bulk create forty
+ * shipments" is not a real dispatcher action anyway — the day's shipments come
+ * from the day's approved replenishment requests, which is what the create modal
+ * builds them from. The importable bulk work in this module is the DROP ORDER,
+ * which lives on the Penugasan tab (`DispatchAssignScreen`).
+ *
+ * ONE ROW PER DROP, not per Surat Jalan. "Destinations" on screen is a joined
+ * string, which is fine to read and useless in a spreadsheet — the question this
+ * export answers is "which outlet got what, when", and that is per stop. A
+ * dropless SJ still contributes one row so it cannot vanish from the file.
+ */
+interface SjExportRow {
+  sjNumber: string;
+  plannedDate: string;
+  shipmentType: string;
+  driverName: string;
+  plateNumber: string;
+  status: string;
+  dropSeq: string;
+  destination: string;
+  city: string;
+  dropStatus: string;
+  receivedBy: string;
+  receivedAt: string;
+  discrepancyNotes: string;
 }
 
 /**
@@ -56,6 +91,61 @@ export function DeliverySuratJalanList() {
   useEffect(reload, [status, date]);
 
   const hasFilters = status !== '' || date !== '';
+
+  const exportColumns: CsvColumn<SjExportRow>[] = [
+    { key: 'sjNumber', header: t('delivery.columnNumber') },
+    { key: 'plannedDate', header: t('delivery.columnPlannedDate') },
+    { key: 'shipmentType', header: t('delivery.columnTruckType') },
+    { key: 'driverName', header: t('delivery.columnDriver') },
+    { key: 'plateNumber', header: t('delivery.columnVehicle') },
+    { key: 'status', header: t('delivery.columnStatus') },
+    { key: 'dropSeq', header: t('delivery.exportSeq') },
+    { key: 'destination', header: t('delivery.columnDestinations') },
+    { key: 'city', header: t('delivery.exportCity') },
+    { key: 'dropStatus', header: t('delivery.exportDropStatus') },
+    { key: 'receivedBy', header: t('delivery.exportReceivedBy') },
+    { key: 'receivedAt', header: t('delivery.exportReceivedAt') },
+    { key: 'discrepancyNotes', header: t('delivery.exportDiscrepancy') },
+  ];
+
+  const exportRows = useMemo<SjExportRow[]>(
+    () =>
+      rows.flatMap((sj) => {
+        const head = {
+          sjNumber: sj.sjNumber,
+          plannedDate: fmtDate(sj.plannedDate),
+          shipmentType: sj.shipmentType,
+          driverName: sj.driver.name,
+          plateNumber: sj.vehicle.plateNumber,
+          status: sj.status,
+        };
+        if (sj.drops.length === 0) {
+          return [
+            {
+              ...head,
+              dropSeq: '',
+              destination: '',
+              city: '',
+              dropStatus: '',
+              receivedBy: '',
+              receivedAt: '',
+              discrepancyNotes: '',
+            },
+          ];
+        }
+        return sj.drops.map((drop) => ({
+          ...head,
+          dropSeq: String(drop.dropSeq),
+          destination: drop.locationName,
+          city: drop.city,
+          dropStatus: drop.status,
+          receivedBy: drop.receivedBy ?? '',
+          receivedAt: drop.receivedAt ? fmtDate(drop.receivedAt) : '',
+          discrepancyNotes: drop.discrepancyNotes ?? '',
+        }));
+      }),
+    [rows],
+  );
 
   const columns: DataTableColumn<SuratJalan>[] = [
     { key: 'sjNumber', header: t('delivery.columnNumber') },
@@ -128,15 +218,26 @@ export function DeliverySuratJalanList() {
             </Button>
           )}
         </div>
-        <PermissionGate permission="delivery.sj.create">
-          <Button
-            leftIcon={<Plus className="size-4" />}
-            size="touch"
-            onClick={() => setCreateOpen(true)}
-          >
-            {t('delivery.new')}
-          </Button>
-        </PermissionGate>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* `rows` is already whatever the status/date filters produced, so
+              there is no separate "export all" fetcher to offer — the filters
+              ARE the selection. */}
+          <ExportButton
+            rows={exportRows}
+            columns={exportColumns}
+            filenameBase="surat-jalan"
+            pdfTitle={t('delivery.title')}
+          />
+          <PermissionGate permission="delivery.sj.create">
+            <Button
+              leftIcon={<Plus className="size-4" />}
+              size="touch"
+              onClick={() => setCreateOpen(true)}
+            >
+              {t('delivery.new')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
 
       <DataTable

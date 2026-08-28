@@ -9,6 +9,20 @@ import { withWrite } from '../db-tx';
 export interface ShiftDto {
   id: UUID;
   name: string;
+  /**
+   * The outlet this shift belongs to, or `null` for a company-wide shift.
+   *
+   * ADDED 2026-08-27, and the omission mattered. `work_shifts.location_id` has
+   * always existed and both `CreateShiftDto` and `UpdateShiftDto` accept it,
+   * but this read shape dropped it — so a client could FILTER by location and
+   * never see which location a shift it got back actually belonged to. A
+   * company-wide shift and an outlet's own shift were indistinguishable on the
+   * wire, which blocked bulk import of `work_shifts` outright: the importer's
+   * natural key is (name, location), and a round trip through a sheet that
+   * could not carry the location would have to guess — silently rescoping a
+   * global shift to one outlet, or the reverse, on re-import.
+   */
+  locationId: UUID | null;
   startTime: string;
   endTime: string;
   breakMinutes: number;
@@ -262,6 +276,9 @@ export class ShiftsService {
   private mapShift = (r: Record<string, any>): ShiftDto => ({
     id: r.id,
     name: r.name,
+    // `?? null` rather than passing through: the column is nullable and a
+    // company-wide shift must read as an explicit `null`, not `undefined`.
+    locationId: r.location_id ?? null,
     startTime: typeof r.start_time === 'string' ? r.start_time.slice(0, 5) : r.start_time,
     endTime: typeof r.end_time === 'string' ? r.end_time.slice(0, 5) : r.end_time,
     breakMinutes: r.break_minutes,

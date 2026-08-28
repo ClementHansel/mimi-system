@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { LogOut, Store, ShoppingBag, LockKeyhole, MessageCircle } from 'lucide-react';
+import { LogOut, Store, LockKeyhole, MessageCircle, Mail } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Button, TabsList, TabsTrigger } from '@/components/ui';
 import { SyncStatusPill } from '@/components/ui/SyncStatusPill';
@@ -9,6 +9,7 @@ import { logout } from '@/lib/auth';
 import { useSessionStore } from '@/stores/session-store';
 import { usePosShiftStore } from './shift-store';
 import { usePosShell } from './PosShellContext';
+import { ChannelToggle } from './ChannelToggle';
 
 /**
  * F-POS-2 — POS's own top bar, replacing the app sidebar/header for this
@@ -31,14 +32,21 @@ import { usePosShell } from './PosShellContext';
  *
  * The centre tab row only appears once there is something real to switch
  * between — before an outlet is resolved and a shift is open, `<TabsList>`
- * would just be three dead links over a picker/shift-open screen. Gating on
- * the exact same `posLocation`/`currentShift` state `PosPage` gates its own
+ * would just be dead links over a picker/shift-open screen. Gating on the
+ * exact same `posLocation`/`currentShift` state `PosPage` gates its own
  * content on keeps the two from ever disagreeing about "are we operational
  * yet".
+ *
+ * F-POS-3: GoFood/ShopeeFood used to be their own tab (`OnlineOrderForm`).
+ * They're retired — same POS surface, priced per channel — so the tab row
+ * is down to "Kasir"/"Shift", and the freed-up space is exactly where the
+ * `ChannelToggle` now sits: the walk-in/GoFood/ShopeeFood picker, in the
+ * cashier's direct line of sight next to the tabs, not buried inside the
+ * page content below the fold.
  */
 export function PosTopBar() {
   const { t } = useI18n();
-  const { posLocation } = usePosShell();
+  const { posLocation, catalog } = usePosShell();
   const user = useSessionStore((s) => s.user);
   const currentShift = usePosShiftStore((s) => s.current);
 
@@ -63,42 +71,50 @@ export function PosTopBar() {
       </div>
 
       {operational && (
-        <TabsList className="border-b-0">
-          <TabsTrigger value="kasir">
-            <span className="flex items-center gap-1.5">
-              <Store className="size-4" aria-hidden />
-              {t('pos.tabKasir')}
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="online">
-            <span className="flex items-center gap-1.5">
-              <ShoppingBag className="size-4" aria-hidden />
-              {t('pos.tabOnlineOrder')}
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="shift">
-            <span className="flex items-center gap-1.5">
-              <LockKeyhole className="size-4" aria-hidden />
-              {t('pos.tabShift')}
-            </span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex flex-wrap items-center gap-3">
+          <TabsList className="border-b-0">
+            <TabsTrigger value="kasir">
+              <span className="flex items-center gap-1.5">
+                <Store className="size-4" aria-hidden />
+                {t('pos.tabKasir')}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="shift">
+              <span className="flex items-center gap-1.5">
+                <LockKeyhole className="size-4" aria-hidden />
+                {t('pos.tabShift')}
+              </span>
+            </TabsTrigger>
+          </TabsList>
+          <ChannelToggle products={catalog?.products ?? []} />
+        </div>
       )}
 
       <div className="flex items-center gap-3">
         <SyncStatusPill className="hidden sm:inline-flex" />
         <span className="hidden text-sm font-medium text-text-primary sm:inline">{user?.name}</span>
-        {/* WhatsApp belongs in every interface (owner, 2026-08-21). POS is
-            chromeless — there is no sidebar to carry `nav.myChat` — so the
-            cashier's thread is reached from here. A plain link, not a nested
-            surface: the message thread is a page, and a till mid-transaction
-            should navigate away deliberately. */}
+        {/* Chats and Mail belong in every interface (owner, 2026-08-27). POS
+            is chromeless — there is no sidebar to carry them — so the cashier
+            reaches both from here. WhatsApp is deliberately absent: that one
+            is the dashboard's alone. Plain links, not nested surfaces: each is
+            a page, and a till mid-transaction should navigate away
+            deliberately. Opening either keeps the cashier in the POS interface
+            (`SHARED_ROUTES` in `lib/nav.ts`), so the sidebar they land on
+            links straight back to the till. */}
+        <Link
+          href="/chat/internal"
+          title={t('chatInternal.title')}
+          className="flex min-h-touch items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary hover:bg-surface-sunken hover:text-text-primary"
+        >
+          <MessageCircle className="size-4" aria-hidden />
+          <span className="hidden sm:inline">{t('chatInternal.title')}</span>
+        </Link>
         <Link
           href="/me/chat"
           title={t('nav.myChat')}
           className="flex min-h-touch items-center gap-1.5 rounded-md px-3 text-sm font-medium text-text-secondary hover:bg-surface-sunken hover:text-text-primary"
         >
-          <MessageCircle className="size-4" aria-hidden />
+          <Mail className="size-4" aria-hidden />
           <span className="hidden sm:inline">{t('nav.myChat')}</span>
         </Link>
         <Button

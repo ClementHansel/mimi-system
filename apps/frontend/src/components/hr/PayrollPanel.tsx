@@ -18,6 +18,7 @@ import {
 } from '@/components/ui';
 import { usePermissions } from '@/lib/permissions';
 import { formatMoney } from '@/lib/formatters';
+import { ExportButton } from '@/components/common/ExportButton';
 import {
   approvePayrollRun,
   calculatePayrollRun,
@@ -28,6 +29,7 @@ import {
   sendPayrollSlips,
   submitPayrollRun,
 } from './lib/hr-api';
+import { PAYROLL_PERIOD_EXPORT_COLUMNS, PAYSLIP_EXPORT_COLUMNS } from './lib/io-columns';
 import type { PayrollPeriod, PayrollRunDetail } from './lib/types';
 
 /**
@@ -143,54 +145,74 @@ export function PayrollPanel() {
       ) : periods.length === 0 ? (
         <EmptyState title={t('hr.payroll.noPeriods')} size="sm" />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface-sunken text-left text-text-secondary">
-                <th className="px-3 py-2">{t('hr.payroll.columnPeriod')}</th>
-                <th className="px-3 py-2">{t('hr.payroll.columnRuns')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {periods.map((p) => (
-                <tr key={p.id} className="border-b border-border last:border-0 align-top">
-                  <td className="px-3 py-2.5 font-medium text-text-primary">{p.periodCode}</td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex flex-wrap gap-2">
-                      {p.runs.map((r) => (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => setSelectedRunId(r.id)}
-                          className="rounded-md border border-border-strong px-2 py-1 hover:bg-surface-sunken"
-                        >
-                          <span className="mr-1.5">{r.runNumber}</span>
-                          <StatusBadge domain="payrollRun" status={r.status} size="sm" />
-                        </button>
-                      ))}
-                      {p.runs.length === 0 && can('payroll.run.calculate') && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => calculateForPeriod(p)}
-                          loading={busy}
-                        >
-                          {t('hr.payroll.calculateButton')}
-                        </Button>
-                      )}
-                    </div>
-                  </td>
+        <div className="flex flex-col gap-2">
+          {/* System-derived, no import counterpart — see `io-columns.ts`. */}
+          <div className="flex justify-end">
+            <ExportButton
+              rows={periods}
+              columns={PAYROLL_PERIOD_EXPORT_COLUMNS}
+              filenameBase="periode-payroll"
+            />
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface-sunken text-left text-text-secondary">
+                  <th className="px-3 py-2">{t('hr.payroll.columnPeriod')}</th>
+                  <th className="px-3 py-2">{t('hr.payroll.columnRuns')}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {periods.map((p) => (
+                  <tr key={p.id} className="border-b border-border last:border-0 align-top">
+                    <td className="px-3 py-2.5 font-medium text-text-primary">{p.periodCode}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-wrap gap-2">
+                        {p.runs.map((r) => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => setSelectedRunId(r.id)}
+                            className="rounded-md border border-border-strong px-2 py-1 hover:bg-surface-sunken"
+                          >
+                            <span className="mr-1.5">{r.runNumber}</span>
+                            <StatusBadge domain="payrollRun" status={r.status} size="sm" />
+                          </button>
+                        ))}
+                        {p.runs.length === 0 && can('payroll.run.calculate') && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => calculateForPeriod(p)}
+                            loading={busy}
+                          >
+                            {t('hr.payroll.calculateButton')}
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {selectedRunId && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between gap-4">
             <CardTitle>{t('hr.payroll.runDetailTitle')}</CardTitle>
+            {run && (
+              // Money stays a verbatim decimal string (CONTRACTS §0) — see
+              // `PAYSLIP_EXPORT_COLUMNS`. No import: payslips are calculated,
+              // never hand-typed.
+              <ExportButton
+                rows={run.employees}
+                columns={PAYSLIP_EXPORT_COLUMNS}
+                filenameBase={`payroll-${run.runNumber}`}
+              />
+            )}
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {runLoading || !run ? (

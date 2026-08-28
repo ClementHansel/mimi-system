@@ -2,7 +2,6 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import type { PoolClient } from 'pg';
 import { UUID, Money, ISODate, Paginated } from '@mimi/shared';
 import { formatDateOnly } from '../../common/date-only.util';
-import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { withWrite } from './db-tx';
 
 export interface CreateSupplierDto {
@@ -101,7 +100,36 @@ export interface TransactionEntry {
  */
 @Injectable()
 export class SupplierService {
-  constructor(private readonly syncEmit: SyncEmitService) {}
+  /**
+   * NO SYNC EMISSION, and no `SyncEmitService` (fixed 2026-08-27).
+   *
+   * This service used to publish `suppliers.created/updated/deactivated` and
+   * `supplier_items.updated/deleted` after every write. Both entities are class
+   * `X` in `@mimi/sync-protocol`'s authority matrix — `ops: []`, `direction:
+   * 'none'`, "never on the wire in either direction", because FR-SUP-06 locks
+   * supplier pricing away from devices. `SyncEmitService.emit` checks exactly
+   * that via `canOriginate` and THROWS for a class-X entity, so every one of
+   * those five calls raised, inside the write transaction, after the row had
+   * already been written but before the commit.
+   *
+   * The effect in production was that adding, editing or deactivating a
+   * supplier, and setting or removing a supplier price, all failed outright —
+   * the whole supplier surface. It survived review because every test in
+   * `supplier.integration.spec.ts` constructed the service with
+   * `{ emit: async () => {} }`, a no-op stub, so the suite proved the SQL was
+   * right and never once exercised the guard that actually fires in production.
+   *
+   * Why that cannot recur: the dependency is GONE, not stubbed better. There is
+   * no longer a collaborator here for a test to replace with something more
+   * permissive than the real thing, which is a stronger guarantee than any test
+   * asserting the real one behaves.
+   *
+   * The emits were the error, not the matrix: a class-X event has no consumer
+   * (`pullScope: 'none'` — no device ever pulls it), so there is nothing to
+   * publish. Audit is a separate concern and goes through the audit
+   * interceptor, which is untouched by this.
+   */
+  constructor() {}
 
   /**
    * List all suppliers (full shape including pricing/termin/bank).
@@ -211,7 +239,18 @@ export class SupplierService {
   /**
    * Create a new supplier.
    */
-  async create(client: PoolClient, dto: CreateSupplierDto, userId: UUID): Promise<Supplier> {
+  async create(
+    client: PoolClient,
+    dto: CreateSupplierDto,
+    /**
+     * Kept on the signature (every caller threads the actor) but unused here:
+     * `suppliers`/`supplier_items` carry no `created_by`/`updated_by` column,
+     * and actor recording is the audit interceptor's job. It was previously
+     * read only by a `syncEmit.emit` call that always threw — see the
+     * constructor.
+     */
+    _userId: UUID,
+  ): Promise<Supplier> {
     if (!dto.code?.trim()) throw new BadRequestException('code is required');
     if (!dto.name?.trim()) throw new BadRequestException('name is required');
 
@@ -239,14 +278,6 @@ export class SupplierService {
       if (res.rows.length === 0) throw new Error('Failed to create supplier');
       const supplier = this.mapSupplier(res.rows[0]!);
 
-      await this.syncEmit.emit(undefined, {
-        entity: 'suppliers',
-        op: 'created',
-        entityId: supplier.id,
-        locationId: null,
-        actorUserId: userId,
-        data: { code: supplier.code, name: supplier.name },
-      });
       return supplier;
     });
   }
@@ -258,7 +289,14 @@ export class SupplierService {
     client: PoolClient,
     id: UUID,
     dto: UpdateSupplierDto,
-    userId: UUID,
+    /**
+     * Kept on the signature (every caller threads the actor) but unused here:
+     * `suppliers`/`supplier_items` carry no `created_by`/`updated_by` column,
+     * and actor recording is the audit interceptor's job. It was previously
+     * read only by a `syncEmit.emit` call that always threw — see the
+     * constructor.
+     */
+    _userId: UUID,
   ): Promise<Supplier> {
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -297,14 +335,6 @@ export class SupplierService {
 
       const supplier = this.mapSupplier(res.rows[0]!);
 
-      await this.syncEmit.emit(undefined, {
-        entity: 'suppliers',
-        op: 'updated',
-        entityId: id,
-        locationId: null,
-        actorUserId: userId,
-        data: { code: supplier.code, name: supplier.name },
-      });
       return supplier;
     });
   }
@@ -315,7 +345,14 @@ export class SupplierService {
   async deactivate(
     client: PoolClient,
     id: UUID,
-    userId: UUID,
+    /**
+     * Kept on the signature (every caller threads the actor) but unused here:
+     * `suppliers`/`supplier_items` carry no `created_by`/`updated_by` column,
+     * and actor recording is the audit interceptor's job. It was previously
+     * read only by a `syncEmit.emit` call that always threw — see the
+     * constructor.
+     */
+    _userId: UUID,
   ): Promise<{ id: UUID; deactivated: true }> {
     return withWrite(client, async () => {
       const res = await client.query<{ id: UUID }>(
@@ -326,14 +363,6 @@ export class SupplierService {
         throw new NotFoundException('Supplier not found');
       }
 
-      await this.syncEmit.emit(undefined, {
-        entity: 'suppliers',
-        op: 'deactivated',
-        entityId: id,
-        locationId: null,
-        actorUserId: userId,
-        data: { id },
-      });
       return { id, deactivated: true };
     });
   }
@@ -391,22 +420,12 @@ export class SupplierService {
       );
 
       if (res.rows.length === 0) throw new Error('Failed to upsert supplier item');
-      const itemRow = res.rows[0]!;
 
       await client.query(
         `INSERT INTO supplier_price_history (supplier_id, item_id, price, effective_date, source, recorded_by)
          VALUES ($1, $2, $3, CURRENT_DATE, 'manual', $4)`,
         [supplierId, itemId, dto.currentPrice, userId],
       );
-
-      await this.syncEmit.emit(undefined, {
-        entity: 'supplier_items',
-        op: 'updated',
-        entityId: itemRow.id,
-        locationId: null,
-        actorUserId: userId,
-        data: { supplierId, itemId, currentPrice: dto.currentPrice },
-      });
 
       return this.getItems(client, supplierId).then((items) =>
         items.find((i) => i.itemId === itemId)!,
@@ -421,7 +440,14 @@ export class SupplierService {
     client: PoolClient,
     supplierId: UUID,
     itemId: UUID,
-    userId: UUID,
+    /**
+     * Kept on the signature (every caller threads the actor) but unused here:
+     * `suppliers`/`supplier_items` carry no `created_by`/`updated_by` column,
+     * and actor recording is the audit interceptor's job. It was previously
+     * read only by a `syncEmit.emit` call that always threw — see the
+     * constructor.
+     */
+    _userId: UUID,
   ): Promise<{ ok: true }> {
     return withWrite(client, async () => {
       const res = await client.query<{ id: UUID }>(
@@ -431,16 +457,7 @@ export class SupplierService {
       if (res.rows.length === 0) {
         throw new NotFoundException('Supplier item not found');
       }
-      const itemRow = res.rows[0]!;
 
-      await this.syncEmit.emit(undefined, {
-        entity: 'supplier_items',
-        op: 'deleted',
-        entityId: itemRow.id,
-        locationId: null,
-        actorUserId: userId,
-        data: { supplierId, itemId },
-      });
       return { ok: true };
     });
   }

@@ -4,7 +4,16 @@ import { ERR_NOT_FOUND, type Paginated, type UUID } from '@mimi/shared';
 import { WhatsAppChannelService } from '../../kernel/notification/channels/whatsapp-channel.service';
 
 /**
- * Two-way chat over WhatsApp (W7).
+ * Two-way chat over WhatsApp (W7) — plus the internal "Mail" thread that
+ * borrows the same tables.
+ *
+ * TWO KINDS OF THREAD LIVE HERE, and only one of them talks to the gateway.
+ * A thread with a `user_id` is a staff member's own thread with head office
+ * ("Mail", in every interface); everything else is a real WhatsApp contact —
+ * a supplier or a customer, reachable only through the gateway, and only from
+ * the dashboard's inbox. `sendMessage` skips delivery entirely for the former
+ * (owner, 2026-08-27: "feature whatsapp only for dashboard"). The paragraphs
+ * below are about the WhatsApp half.
  *
  * DELIVERY IS BORROWED, NOT REBUILT. Outbound messages go through the existing
  * `WhatsAppChannelService`, which already records every attempt in
@@ -270,10 +279,31 @@ export class ChatService {
 
     await this.touchConversation(client, conversationId, body, { incrementUnread: false });
 
-    // A `user:`-keyed thread has no real number: it is an in-app thread for
-    // staff without a phone on file, and attempting a WA send would be a
-    // guaranteed failure recorded against a number that does not exist.
-    if (!conversation.contactPhone.startsWith('user:')) {
+    // MAIL NEVER LEAVES THE BUILDING. A thread with a `user_id` is a staff
+    // member's own thread with head office — the "Mail" surface every
+    // interface carries (owner, 2026-08-27: "feature whatsapp only for
+    // dashboard"). Both directions of it are read in-app, by the staffer in
+    // `/me/chat` and by head office in the inbox, so there is nothing for the
+    // gateway to do; sending anyway would push an internal note to the
+    // staffer's personal WhatsApp, which is not what a Mail thread promises.
+    //
+    // `user:`-keyed rows are the same threads for staff with no phone on file
+    // (see `getOwnConversation`) — kept in the condition so a legacy row
+    // predating `user_id` is still recognised as internal.
+    //
+    // Status is written `sent` rather than left `pending`: for an internal
+    // thread the message HAS arrived at its destination, and `pending` renders
+    // as "Belum terkirim" in `MessageThread` — a warning about a delivery that
+    // was never supposed to happen. WhatsApp threads keep the honest
+    // pending/failed/sent distinction below.
+    const isInternalThread =
+      conversation.userId !== null || conversation.contactPhone.startsWith('user:');
+
+    if (isInternalThread) {
+      await client.query(`UPDATE chat_messages SET delivery_status = 'sent' WHERE id = $1`, [
+        messageId,
+      ]);
+    } else {
       try {
         const result = await this.whatsapp.send(
           conversation.contactPhone,

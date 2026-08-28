@@ -10,15 +10,17 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { Inject } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
 import {
   PairingTargetType,
@@ -26,6 +28,8 @@ import {
   ERR_VALIDATION,
   ERR_AUTH_TOKEN_INVALID,
   ERR_CONFLICT,
+  ERR_NODE_UNREACHABLE,
+  ERR_NODE_SHIFT_OPEN,
 } from '@mimi/shared';
 import type { UUID } from '@mimi/shared';
 import { Public } from '../../common/decorators/public.decorator';
@@ -44,6 +48,8 @@ import { DeviceRegistryRepository } from '../device-registry/device-registry.rep
 import { BridgeGateway } from './bridge.gateway';
 import { OutletNodeSettingRepository } from './outlet-node-setting.repository';
 import { withWrite } from './db-tx';
+import { validateNetworkConfig, type NetworkConfigInput } from './network-config.validation';
+import { encryptWifiPassphrase, networkSecretEncKeyFromConfig } from './network-config-crypto';
 
 function toNodeSummary(row: BranchNodeWithLocation, relayQueueDepth = 0, deviceCount = 0) {
   return {
@@ -57,6 +63,11 @@ function toNodeSummary(row: BranchNodeWithLocation, relayQueueDepth = 0, deviceC
     lastSeenAt: row.last_seen_at,
     deviceCount,
     relayQueueDepth,
+    // W3-10: the node's own network-config apply-then-confirm state (never the secret — `network_config`
+    // itself never contains `wifiPassphrase`, only `wifiPassphraseSet`; see `network-config-crypto.ts`).
+    networkConfig: row.network_config ?? {},
+    networkConfigStatus: row.network_config_status,
+    networkConfigResult: row.network_config_result ?? {},
   };
 }
 
@@ -70,6 +81,7 @@ export class NodesController {
     private readonly bridge: BridgeGateway,
     private readonly syncEmit: SyncEmitService,
     private readonly outletNodeSetting: OutletNodeSettingRepository,
+    private readonly configService: ConfigService,
     @Inject(DATABASE_POOL) private readonly pool: Pool,
   ) {}
 
@@ -257,7 +269,14 @@ export class NodesController {
     });
   }
 
-  /** `type:'discovery_scan'` is the one command `apps/branch-node/src/relay.ts`'s skeleton actually executes today; `restart`/`update`/`log_pull` ack `'done'` as a no-op (W5-07 hardening territory) — this endpoint's job is only to deliver the command over `/bridge`, not to know what the node does with it. */
+  /**
+   * `discovery_scan` and `log_pull` are real, non-destructive actions the node performs
+   * (`apps/branch-node/src/relay.ts`'s `handleCommand`). `restart` is real but destructive to a live
+   * outlet — gated below on an open POS shift (W3-10 hardening) unless `params.override === true`.
+   * `update` is delivered like any other command, but the node itself now honestly acks `'failed'`
+   * for it (no fleet software-distribution mechanism exists on this build, W5-07 follow-up) rather
+   * than the blanket 'done' no-op this endpoint used to enable.
+   */
   @RequirePermission('node.manage')
   @Audited({ entityType: 'branch_nodes', action: 'node.manage' })
   @Post(':id/command')
@@ -267,7 +286,7 @@ export class NodesController {
     @Body()
     body: {
       type: 'restart' | 'update' | 'log_pull' | 'discovery_scan';
-      params?: Record<string, unknown>;
+      params?: { override?: boolean; lines?: number };
     },
   ) {
     if (!body?.type)
@@ -275,6 +294,19 @@ export class NodesController {
     const client = req.dbClient ?? this.pool;
     const node = await this.branchNodes.findById(client, id);
     if (!node) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Node not found' });
+
+    if ((body.type === 'restart' || body.type === 'update') && body.params?.override !== true) {
+      const openShift = await client.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM pos_shifts WHERE location_id = $1 AND status = 'open'`,
+        [node.location_id],
+      );
+      if (Number(openShift.rows[0]?.n ?? '0') > 0) {
+        throw new BadRequestException({
+          code: ERR_NODE_SHIFT_OPEN,
+          message: `This outlet has an open POS shift — '${body.type}' would disrupt it. Pass params.override:true to fire anyway.`,
+        });
+      }
+    }
 
     const commandId = randomUUID() as UUID;
     const delivered = this.bridge.sendCommand(id, {
@@ -289,6 +321,98 @@ export class NodesController {
       });
     }
     return { commandId, status: 'sent' as const };
+  }
+
+  /**
+   * The real remote write path a previous agent correctly found missing (W3-10): validates BEFORE
+   * anything reaches the outlet (`validateNetworkConfig`), refuses against a disconnected node (a
+   * config pushed into the void can never be confirmed or reverted — same "no live channel, no write"
+   * stance `OutletNodeSettingController`'s drain-before-off already takes), encrypts the WiFi
+   * passphrase at rest, and delivers the DECRYPTED full config to the node's own authenticated
+   * `/bridge` socket only — never the sync event, never the REST response.
+   *
+   * Only `healthPort`/`scanSubnet` are genuinely applied by every node build today; the rest are
+   * accepted, validated, and stored (a future OS-network-integration build has real data the moment
+   * it exists) but the node's own ack reports them `applied: false` — see
+   * `apps/branch-node/src/network/applier.ts`'s doc comment. This endpoint returns the node's
+   * eventual ack outcome via `GET /api/nodes/:id`'s `networkConfigStatus`/`networkConfigResult`
+   * fields, not synchronously — apply-then-confirm is not instantaneous by design.
+   */
+  @RequirePermission('node.manage')
+  @Audited({ entityType: 'branch_nodes', action: 'node.manage' })
+  @Put(':id/network-config')
+  async setNetworkConfig(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: UUID,
+    @Body() body: NetworkConfigInput,
+  ) {
+    const client = (req.dbClient ?? this.pool) as PoolClient;
+    const node = await this.branchNodes.findById(client, id);
+    if (!node) throw new BadRequestException({ code: ERR_NOT_FOUND, message: 'Node not found' });
+
+    const existingConfig = (node.network_config ?? {}) as { wifiSsid?: string };
+    const errors = validateNetworkConfig(body, {
+      hasExistingWifiSsid: typeof existingConfig.wifiSsid === 'string',
+    });
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `Invalid network config: ${errors.map((e) => `${e.field}: ${e.message}`).join('; ')}`,
+        details: { errors },
+      });
+    }
+
+    if (!this.bridge.isConnected(id)) {
+      throw new BadRequestException({
+        code: ERR_NODE_UNREACHABLE,
+        message:
+          'Node is not currently connected to /bridge — a network config pushed to an unreachable node could never be confirmed or reverted, so it is refused rather than queued silently.',
+      });
+    }
+
+    const configId = randomUUID() as UUID;
+    // Non-secret projection: everything except `wifiPassphrase`, which never lands in `branch_nodes
+    // .network_config`, the `branch_nodes.config_updated` sync event below, an audit-log payload, or
+    // this endpoint's own response — only `network_secret_enc` (encrypted) and the one authenticated
+    // `/bridge` push to this exact node ever see the plaintext.
+    const { wifiPassphrase, ...nonSecretPatch } = body;
+    const nonSecretConfig: Record<string, unknown> = { ...nonSecretPatch };
+    if (wifiPassphrase !== undefined) nonSecretConfig.wifiPassphraseSet = true;
+
+    const secretEnc = wifiPassphrase
+      ? encryptWifiPassphrase(wifiPassphrase, networkSecretEncKeyFromConfig(this.configService))
+      : null;
+
+    return withWrite(client, async () => {
+      await this.branchNodes.setNetworkConfigPending(client, id, {
+        configId,
+        config: nonSecretConfig,
+        secretEnc,
+      });
+
+      await this.syncEmit.emit(client, {
+        entity: 'branch_nodes',
+        op: 'config_updated',
+        entityId: id,
+        locationId: node.location_id,
+        actorUserId: req.user!.sub,
+        data: { configId, config: nonSecretConfig },
+      });
+
+      // The DECRYPTED full config (including the plaintext passphrase, if any) rides the node's own
+      // authenticated `/bridge` socket ONLY — the same "sensitive material never touches the durable
+      // event log" precedent `cert_rotated`'s private key already set.
+      const wireConfig: Record<string, unknown> = { ...nonSecretPatch };
+      if (wifiPassphrase !== undefined) wireConfig.wifiPassphrase = wifiPassphrase;
+      this.bridge.sendNetworkConfig(id, { configId, config: wireConfig });
+
+      const updated = await this.branchNodes.findById(client, id);
+      return {
+        configId,
+        networkConfig: updated!.network_config,
+        networkConfigStatus: updated!.network_config_status,
+      };
+    });
   }
 
   @RequirePermission('node.manage')

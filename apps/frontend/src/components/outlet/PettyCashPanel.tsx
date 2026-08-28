@@ -17,7 +17,15 @@ import {
 } from '@/components/ui';
 import type { DataTableColumn, SelectOption } from '@/components/ui';
 import { formatMoney } from '@/lib/formatters';
-import { useOutletLocation } from './lib/use-outlet-location';
+import { ExportButton } from '@/components/common/ExportButton';
+import { LineImportButton } from '@/components/common/LineImportButton';
+import { useOutletLocationContext } from './lib/outlet-location-context';
+import { PETTY_CASH_EXPORT_COLUMNS } from './lib/outlet-export-columns';
+import {
+  PETTY_CASH_IMPORT_COLUMNS,
+  makePettyCashMapper,
+  type PettyCashImportLine,
+} from './lib/outlet-line-import';
 import { getItems, listPettyCash, createPettyCash, getSupplierDirectory } from './lib/outlet-api';
 import { uploadAttachment } from './lib/attachments';
 import type { PettyCash, Item } from './lib/types';
@@ -41,7 +49,7 @@ const EXPENSE_CATEGORIES = ['bahan_baku', 'kebersihan', 'operasional_lain'] as c
  */
 export function PettyCashPanel() {
   const { t } = useI18n();
-  const { locationId } = useOutletLocation();
+  const { locationId } = useOutletLocationContext();
   const [rows, setRows] = useState<PettyCash[]>([]);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<Item[]>([]);
@@ -58,7 +66,6 @@ export function PettyCashPanel() {
   const [saving, setSaving] = useState(false);
 
   function reload() {
-    if (!locationId) return;
     setLoading(true);
     listPettyCash(locationId)
       .then((r) => setRows(r.rows))
@@ -145,7 +152,8 @@ export function PettyCashPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <ExportButton rows={rows} columns={PETTY_CASH_EXPORT_COLUMNS} filenameBase="kas-kecil" />
         <PermissionGate permission="pettycash.create">
           <Button leftIcon={<Plus className="size-4" />} size="touch" onClick={() => setOpen(true)}>
             {t('outlet.pettyCash.new')}
@@ -233,26 +241,47 @@ export function PettyCashPanel() {
               />
             </div>
           ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            leftIcon={<Plus className="size-4" />}
-            onClick={() =>
-              setLines((ls) => [
-                ...ls,
-                {
-                  description: '',
-                  itemId: '',
-                  qty: null,
-                  amount: null,
-                  expenseCategory: 'bahan_baku',
-                },
-              ])
-            }
-          >
-            {t('outlet.replenishment.addLine')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              leftIcon={<Plus className="size-4" />}
+              onClick={() =>
+                setLines((ls) => [
+                  ...ls,
+                  {
+                    description: '',
+                    itemId: '',
+                    qty: null,
+                    amount: null,
+                    expenseCategory: 'bahan_baku',
+                  },
+                ])
+              }
+            >
+              {t('outlet.replenishment.addLine')}
+            </Button>
+            {/* A day of market receipts is often already in a spreadsheet. The
+                claim still needs its payment proof and goods photo below — the
+                import fills lines, it does not shortcut the evidence. */}
+            <LineImportButton<PettyCashImportLine>
+              title={t('outlet.pettyCash.new')}
+              note={t('outlet.pettyCash.importNote')}
+              columns={PETTY_CASH_IMPORT_COLUMNS}
+              templateBase="kas-kecil"
+              mapRow={makePettyCashMapper(items)}
+              hasExistingLines={lines.some((l) => l.description !== '' || l.amount !== null)}
+              onLines={(imported, mode) =>
+                setLines((prev) => [
+                  ...(mode === 'replace'
+                    ? []
+                    : prev.filter((l) => l.description !== '' || l.amount !== null)),
+                  ...imported,
+                ])
+              }
+            />
+          </div>
 
           <p className="text-right text-sm font-medium text-text-primary">
             {t('common.total')}: {formatMoney(String(totalAmount) as Money)}

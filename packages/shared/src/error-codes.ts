@@ -82,6 +82,28 @@ const ERROR_CODES = {
   /** Online order net ≠ gross − discount − fees. */
   ERR_NET_MISMATCH: 'ERR_NET_MISMATCH',
 
+  // ── Vouchers (discount coupons, FR-POS-04 amendment) ─────────────────────
+  // One code per refusal reason, because "tidak berlaku" with no reason is
+  // what makes a queue argue. `VoucherRejection` in `voucher/index.ts` is the
+  // closed list these mirror, and the mapping between them is asserted by
+  // `voucher.spec.ts` so a new reason cannot ship without a code.
+  ERR_VOUCHER_NOT_FOUND: 'ERR_VOUCHER_NOT_FOUND',
+  /** Already redeemed, or voided. */
+  ERR_VOUCHER_NOT_ACTIVE: 'ERR_VOUCHER_NOT_ACTIVE',
+  /** Its validity window has not opened yet. */
+  ERR_VOUCHER_NOT_STARTED: 'ERR_VOUCHER_NOT_STARTED',
+  ERR_VOUCHER_EXPIRED: 'ERR_VOUCHER_EXPIRED',
+  /** The basket has not reached the batch's minimum subtotal. */
+  ERR_VOUCHER_BELOW_MINIMUM: 'ERR_VOUCHER_BELOW_MINIMUM',
+  /** Issued for other outlets. */
+  ERR_VOUCHER_WRONG_LOCATION: 'ERR_VOUCHER_WRONG_LOCATION',
+  /** The till is offline and `pos.voucher_offline` is `reject`. */
+  ERR_VOUCHER_OFFLINE_BLOCKED: 'ERR_VOUCHER_OFFLINE_BLOCKED',
+
+  // ── Document templates (invoice / receipt / voucher / Surat Jalan designers) ──
+  /** The requested document exists but has no printable source row. */
+  ERR_DOC_SOURCE_NOT_FOUND: 'ERR_DOC_SOURCE_NOT_FOUND',
+
   // ── Accounting / GL (D-04) ────────────────────────────────────────────────
   ERR_UNBALANCED_ENTRY: 'ERR_UNBALANCED_ENTRY',
   ERR_PERIOD_CLOSED: 'ERR_PERIOD_CLOSED',
@@ -104,6 +126,10 @@ const ERROR_CODES = {
    *  `/bridge` connection, or its last self-reported reading is stale) — an unreachable node with a
    *  possible backlog must never be silently switched off (D-26). */
   ERR_NODE_UNREACHABLE: 'ERR_NODE_UNREACHABLE',
+  /** `POST /api/nodes/:id/command {type:'restart'|'update'}` refused: the outlet has an open POS
+   *  shift and the caller did not pass `params.override: true` — these two command types are
+   *  destructive to a live outlet (W3-10 remote-command hardening). */
+  ERR_NODE_SHIFT_OPEN: 'ERR_NODE_SHIFT_OPEN',
 
   // ── Generic ───────────────────────────────────────────────────────────────
   ERR_NOT_FOUND: 'ERR_NOT_FOUND',
@@ -180,10 +206,19 @@ export const {
   ERR_RESOLVE_IN_DOMAIN,
   ERR_NODE_QUEUE_PENDING,
   ERR_NODE_UNREACHABLE,
+  ERR_NODE_SHIFT_OPEN,
   ERR_SYNC_AUTHORITY_VIOLATION,
   ERR_SYNC_MALFORMED,
   ERR_SYNC_SEQ_CONFLICT,
   ERR_SYNC_PAYLOAD_VERSION_UNSUPPORTED,
+  ERR_VOUCHER_NOT_FOUND,
+  ERR_VOUCHER_NOT_ACTIVE,
+  ERR_VOUCHER_NOT_STARTED,
+  ERR_VOUCHER_EXPIRED,
+  ERR_VOUCHER_BELOW_MINIMUM,
+  ERR_VOUCHER_WRONG_LOCATION,
+  ERR_VOUCHER_OFFLINE_BLOCKED,
+  ERR_DOC_SOURCE_NOT_FOUND,
   ERR_NOT_FOUND,
   ERR_VALIDATION,
   ERR_CONFLICT,

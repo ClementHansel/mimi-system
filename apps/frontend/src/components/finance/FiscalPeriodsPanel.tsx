@@ -12,15 +12,18 @@ import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Textarea';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
-import type { FiscalPeriodRow } from './types';
+import { ExportButton } from '@/components/common/ExportButton';
+import { fiscalPeriodIoColumns } from './lib/io-columns';
+import type { FiscalPeriod } from './types';
 
 /**
- * F07 finance — fiscal periods (CONTRACTS §4.17, D-04). NOTE: unlike every
- * other §4.17 resource, `GET/POST /accounting/periods*` returns the raw
- * snake_case `pg` row (`period_code`, `start_date`, …), not the camelCase
- * shape CONTRACTS.md documents — `FiscalPeriodsService` has no mapping step.
- * Coded against the actual live response (see `types.ts`'s `FiscalPeriodRow`
- * doc comment); flagged for the coordinator rather than silently patched.
+ * F07 finance — fiscal periods (CONTRACTS §4.17, D-04).
+ *
+ * Reads the CAMELCASE shape `GET /accounting/periods` returns. It previously
+ * read snake_case, which had been right when `FiscalPeriodsService` returned raw
+ * `pg` rows; once that service grew a `toFiscalPeriod` mapper, every field here
+ * silently became `undefined` — the table rendered blank period codes and
+ * "— – —" for every date range. See `types.ts` for why nothing caught it.
  */
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -29,17 +32,17 @@ function errMsg(err: unknown, fallback: string): string {
 export function FiscalPeriodsPanel() {
   const { t } = useI18n();
   const { can } = usePermissions();
-  const [periods, setPeriods] = useState<FiscalPeriodRow[]>([]);
+  const [periods, setPeriods] = useState<FiscalPeriod[]>([]);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<{
     kind: 'close' | 'reopen';
-    period: FiscalPeriodRow;
+    period: FiscalPeriod;
   } | null>(null);
 
   function reload() {
     setLoading(true);
     api
-      .get<FiscalPeriodRow[]>('/accounting/periods')
+      .get<FiscalPeriod[]>('/accounting/periods')
       .then(setPeriods)
       .finally(() => setLoading(false));
   }
@@ -50,6 +53,19 @@ export function FiscalPeriodsPanel() {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Export only, deliberately — no `MasterDataIo` here. Opening/closing/
+          reopening a period is a guarded state transition
+          (`POST /accounting/periods/:id/close|reopen`) that walks every
+          journal entry in range; a CSV importer would let a spreadsheet row
+          silently reopen a locked period, which is exactly what CONTRACTS
+          §4.17's period lock exists to prevent. */}
+      <div className="flex justify-end">
+        <ExportButton
+          rows={periods}
+          columns={fiscalPeriodIoColumns(t)}
+          filenameBase="periode-fiskal"
+        />
+      </div>
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full border-collapse text-sm">
           <thead>
@@ -74,15 +90,15 @@ export function FiscalPeriodsPanel() {
           <tbody>
             {periods.map((p) => (
               <tr key={p.id} className="border-b border-border last:border-0">
-                <td className="px-3 py-2.5 font-medium text-text-primary">{p.period_code}</td>
+                <td className="px-3 py-2.5 font-medium text-text-primary">{p.periodCode}</td>
                 <td className="px-3 py-2.5 text-text-secondary">
-                  {fmtDate(p.start_date)} – {fmtDate(p.end_date)}
+                  {fmtDate(p.startDate)} – {fmtDate(p.endDate)}
                 </td>
                 <td className="px-3 py-2.5">
                   <StatusBadge domain="fiscalPeriod" status={p.status} />
                 </td>
                 <td className="px-3 py-2.5 text-text-secondary">
-                  {p.closed_at ? fmtDateTime(p.closed_at) : '—'}
+                  {p.closedAt ? fmtDateTime(p.closedAt) : '—'}
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   {can('accounting.period.close') && p.status === 'open' && (
@@ -134,7 +150,7 @@ function PeriodActionModal({
   onDone,
 }: {
   kind: 'close' | 'reopen';
-  period: FiscalPeriodRow;
+  period: FiscalPeriod;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -169,7 +185,7 @@ function PeriodActionModal({
       open
       onClose={onClose}
       title={t(kind === 'close' ? 'finance.periods.closeTitle' : 'finance.periods.reopenTitle', {
-        period: period.period_code,
+        period: period.periodCode,
       })}
       footer={
         <>

@@ -39,7 +39,7 @@ import { OfflineCredentialsRepository } from '../../src/kernel/sync/offline-cred
 import { assertSystemContext } from '../../src/kernel/sync/system-rls-context';
 import type { JwtAccessPayload } from '../../src/common/jwt/jwt-payload.interface';
 
-const hasDb = Boolean(process.env.DATABASE_URL);
+
 
 const OWNER_URL =
   process.env.DATABASE_MIGRATION_URL ??
@@ -54,6 +54,36 @@ const APP_URL =
 
 const ownerPool = new Pool({ connectionString: OWNER_URL, max: 5 });
 const appPool = new Pool({ connectionString: APP_URL, max: 5 });
+
+/**
+ * WHETHER TO RUN AT ALL — and why this is no longer
+ * `Boolean(process.env.DATABASE_URL)` (fixed 2026-08-28).
+ *
+ * It used to be exactly that, and the consequence was that this whole sweep —
+ * 23 assertions, every one a cross-tenant IDOR check — SILENTLY SKIPPED on any
+ * machine that had not exported `DATABASE_URL`. That is the default here:
+ * `APP_URL`/`OWNER_URL` above build perfectly good connection strings from the
+ * `POSTGRES_*` defaults, and every other integration spec in this repo connects
+ * that way. So the run said "23 skipped" next to a green suite, and the fixture
+ * bug fixed below sat undetected underneath it. A security test that does not
+ * run is worse than one that fails, because a failure is visible.
+ *
+ * A real connection probe instead, against the same pool the sweep uses. It is
+ * a TOP-LEVEL await on purpose: `describe.skipIf(...)` is evaluated at
+ * collection time, before any `beforeAll` could have set a flag, so probing in
+ * `beforeAll` would leave every `describe` permanently un-skipped and the
+ * no-database case would fail instead of skip.
+ *
+ * Same intent as the `dbAvailable` convention in
+ * `modules/report/report.integration.spec.ts`; only the timing differs, because
+ * that file gates per-`it` and this one gates per-`describe`.
+ */
+let hasDb = false;
+try {
+  hasDb = (await ownerPool.query('SELECT 1')).rowCount === 1;
+} catch {
+  hasDb = false;
+}
 
 function userFor(sub: string, roleKey: string, locationIds: string[] = []): JwtAccessPayload {
   return { sub, username: `test-${sub.slice(0, 8)}`, roleKey, locationIds };
@@ -117,38 +147,47 @@ const throwawayPairingTokenIds: string[] = []; // fixture rows this suite create
 beforeAll(async () => {
   if (!hasDb) return;
 
-  // Two distinct outlets, each with at least one sale and one storage_area/stock_balance row —
-  // queried live rather than hardcoded so the sweep survives a reseed with different names/ids.
-  const outlets = await ownerPool.query<{ location_id: string }>(
-    `SELECT s.location_id
+  /*
+   * Two distinct outlets, each with a sale that HAS AT LEAST ONE LINE and a
+   * storage area.
+   *
+   * The line clause is the fix (2026-08-28). This used to take the first two
+   * outlets with any `sales` row, then separately fetch "a sale" and "a line of
+   * that sale" — asserting a relationship the data does not guarantee. The seed
+   * contains an outlet (BJM01: 12 sales, 0 sale_lines) whose id sorts early
+   * enough to be picked, so `lineB.rows[0]` came back `undefined` and the suite
+   * died in `beforeAll` with "Cannot read properties of undefined (reading
+   * 'id')". Combined with the skip gate above, that is why it went unnoticed:
+   * the sweep never ran, so the crash never happened.
+   *
+   * Selecting for exactly what the fixture needs, in one query, is what stops
+   * that recurring on the next reseed. `DISTINCT ON` yields one
+   * (location, sale, line) triple per outlet.
+   */
+  const pairs = await ownerPool.query<{ location_id: string; sale_id: string; line_id: string }>(
+    `SELECT DISTINCT ON (s.location_id)
+            s.location_id, s.id AS sale_id, sl.id AS line_id
        FROM sales s
        JOIN locations l ON l.id = s.location_id AND l.type = 'outlet'
-      GROUP BY s.location_id
-     HAVING COUNT(*) > 0
-      ORDER BY s.location_id
+       JOIN sale_lines sl ON sl.sale_id = s.id
+      WHERE EXISTS (SELECT 1 FROM storage_areas sa WHERE sa.location_id = s.location_id)
+      ORDER BY s.location_id, s.id
       LIMIT 2`,
   );
-  if (outlets.rows.length < 2) {
-    throw new Error('idor sweep: fewer than 2 outlets have sales in the seed');
+  if (pairs.rows.length < 2) {
+    throw new Error(
+      'idor sweep: fewer than 2 outlets have a sale WITH a line and a storage area in the seed',
+    );
   }
-  const [outletA, outletB] = [outlets.rows[0]!.location_id, outlets.rows[1]!.location_id];
+  const [rowA, rowB] = [pairs.rows[0]!, pairs.rows[1]!];
+  const [outletA, outletB] = [rowA.location_id, rowB.location_id];
 
-  const saleA = await ownerPool.query<{ id: string }>(
-    `SELECT id FROM sales WHERE location_id = $1 LIMIT 1`,
-    [outletA],
-  );
-  const saleB = await ownerPool.query<{ id: string }>(
-    `SELECT id FROM sales WHERE location_id = $1 LIMIT 1`,
-    [outletB],
-  );
-  const lineA = await ownerPool.query<{ id: string }>(
-    `SELECT id FROM sale_lines WHERE sale_id = $1 LIMIT 1`,
-    [saleA.rows[0]!.id],
-  );
-  const lineB = await ownerPool.query<{ id: string }>(
-    `SELECT id FROM sale_lines WHERE sale_id = $1 LIMIT 1`,
-    [saleB.rows[0]!.id],
-  );
+  // Same shapes the rest of `beforeAll` and `fx` already expect, so this change
+  // stays confined to how they are CHOSEN.
+  const saleA = { rows: [{ id: rowA.sale_id }] };
+  const saleB = { rows: [{ id: rowB.sale_id }] };
+  const lineA = { rows: [{ id: rowA.line_id }] };
+  const lineB = { rows: [{ id: rowB.line_id }] };
 
   const storageAreaA = await ownerPool.query<{ id: string }>(
     `SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`,

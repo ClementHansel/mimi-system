@@ -38,7 +38,7 @@ export type { ApprovalDetail, ApprovalStepDetail } from '@mimi/shared';
 export { PaymentStatus } from '@mimi/shared';
 
 // Device / topology (CONTRACTS §2.9, D-13) — used by OfflineBanner / SyncStatusPill / F12
-export { DeviceStatus } from '@mimi/shared';
+export { DeviceStatus, DeviceCategory } from '@mimi/shared';
 
 // Purchasing (CONTRACTS §2.3/§4.11, W5-04) — PR/PO status ladders, used by
 // `components/purchasing/**` for status-driven action gating.
@@ -70,3 +70,83 @@ export type { Opname, OpnameLine } from '@mimi/shared';
 // in `lib/api.ts`/`lib/auth.ts`. The rest of the ~60-code vocabulary lives in
 // `@mimi/shared`'s `error-codes.ts` for Wave 3–5 modules to import directly.
 export { ERR_AUTH_INVALID_CREDENTIALS, ERR_AUTH_TOKEN_EXPIRED } from '@mimi/shared';
+
+// F-DOC (2026-08-27) — the document designers (invoice / receipt / voucher /
+// Surat Jalan) and the brand identity every printed document is coloured from.
+//
+// These come through this seam rather than being deep-imported by
+// `components/documents/**` because they are the widest shared surface added
+// since the delivery types: the designer, the renderer, four print routes, the
+// POS receipt path and the Brand panel all name them. `DOC_CATALOGS`,
+// `defaultDocTemplate`, `validateDocTemplate` and `resolveDocColor` are VALUE
+// exports (runtime functions/data), so they are re-exported as values, not
+// types — `isolatedModules` makes that distinction load-bearing.
+export type {
+  DocKind,
+  DocPaper,
+  DocAlign,
+  DocElement,
+  DocElementType,
+  DocTableColumn,
+  DocTemplate,
+  DocColor,
+  BrandColorToken,
+  BrandPalette,
+  DocCatalog,
+  DocData,
+  DocItemRow,
+  DocTotalRow,
+  DocPayload,
+  DocPayloadTotalRow,
+  DocCopySet,
+  InvoiceSource,
+} from '@mimi/shared';
+export {
+  DOC_KINDS,
+  DOC_PAPERS,
+  DOC_PAPER_SIZES,
+  DOC_ELEMENT_TYPES,
+  DOC_CATALOGS,
+  DOC_TOTALS_ROWS,
+  DOC_TEMPLATE_LIMITS,
+  DOC_TEMPLATE_VERSION,
+  BRAND_COLOR_TOKENS,
+  INVOICE_SOURCES,
+  isDocKind,
+  isInvoiceSource,
+  isValidDocColor,
+  resolveDocColor,
+  emptyDocData,
+  defaultDocTemplate,
+  validateDocTemplate,
+} from '@mimi/shared';
+
+// Brand identity — the favicon + the four document colours. The LOGO is not
+// here: it stays on `company.profile.logoAttachmentId` (see the header of
+// `packages/shared/src/brand.ts` for why duplicating it would guarantee one
+// screen prints a blank letterhead).
+export type { BrandIdentity } from '@mimi/shared';
+export { DEFAULT_BRAND_IDENTITY, DEFAULT_BRAND_PALETTE, brandPalette } from '@mimi/shared';
+
+// Vouchers — the redemption rules the till previews with and the server
+// decides with. `checkVoucher` is shared precisely so an offline till and the
+// server cannot disagree about what a coupon is worth (see
+// `packages/shared/src/voucher/index.ts`).
+export { VoucherType, VoucherStatus, VoucherBatchStatus } from '@mimi/shared';
+export type {
+  VoucherRules,
+  VoucherRejection,
+  VoucherCheckInput,
+  VoucherCheckResult,
+  VoucherRedemptionDraft,
+  VoucherOfflinePolicy,
+} from '@mimi/shared';
+export {
+  checkVoucher,
+  normalizeVoucherCode,
+  isVoucherCode,
+  formatVoucherCode,
+  VOUCHER_CODE_PREFIX,
+  VOUCHER_CODE_ALPHABET,
+  DEFAULT_VOUCHER_OFFLINE_POLICY,
+} from '@mimi/shared';

@@ -13,6 +13,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { getItems, getSuppliers, getSupplierPriceHistory } from './lib/api';
 import type { Item, PriceHistoryEntry } from './lib/types';
 import type { Paginated } from '@/lib/shared-types';
+import { ExportButton } from '@/components/common/ExportButton';
+import { PRICE_HISTORY_EXPORT_COLUMNS } from './lib/io-columns';
 
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -122,6 +124,30 @@ export function SupplierPriceHistoryPanel() {
     },
   ];
 
+  /**
+   * Every page for the current filters. Walks with an explicit page cursor
+   * rather than one huge `pageSize`: the server caps page size, and a request
+   * for "all" that silently comes back truncated is exactly the failure this
+   * exists to avoid. The loop stops on a short page or when it has `total`,
+   * and hard-stops after 200 pages so a server that ignores `page` cannot
+   * spin here forever.
+   */
+  async function fetchAllHistory(): Promise<PriceHistoryEntry[]> {
+    if (!supplierId) return [];
+    const all: PriceHistoryEntry[] = [];
+    const size = 200;
+    for (let p = 1; p <= 200; p += 1) {
+      const res = await getSupplierPriceHistory(supplierId, {
+        itemId: itemId || undefined,
+        page: p,
+        pageSize: size,
+      });
+      all.push(...res.rows);
+      if (res.rows.length < size || all.length >= res.total) break;
+    }
+    return all;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-2">
@@ -146,6 +172,19 @@ export function SupplierPriceHistoryPanel() {
           options={items.map((i) => ({ value: i.id, label: i.name }))}
           placeholder={t('purchasing.priceHistory.filterItemAll')}
           wrapperClassName="w-56"
+        />
+        {/* `fetchAll` is NOT optional here, unlike on the client-side lists:
+            this panel is server-paginated, so `rows` is one page of 25. An
+            export that quietly contained only the visible page would be the
+            worst kind of wrong — it looks complete. So "Ekspor" gives the page
+            on screen and "Ekspor semua" walks every page for the selected
+            supplier (and item filter, if set). */}
+        <ExportButton
+          rows={data.rows}
+          columns={PRICE_HISTORY_EXPORT_COLUMNS}
+          filenameBase="riwayat-harga-supplier"
+          disabled={!supplierId}
+          fetchAll={fetchAllHistory}
         />
       </div>
 

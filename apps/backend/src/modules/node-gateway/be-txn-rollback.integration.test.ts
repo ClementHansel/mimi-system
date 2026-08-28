@@ -23,6 +23,7 @@
  * (touches no database row) are NOT retested here.
  */
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import { withSystemContext } from '../../kernel/sync/system-rls-context';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
@@ -118,6 +119,7 @@ describe('node-gateway — BE-TXN-ROLLBACK write-then-read-back (live database, 
       new FakeBridge() as never,
       syncEmit,
       outletSetting,
+      new ConfigService(),
       pool,
     );
   }

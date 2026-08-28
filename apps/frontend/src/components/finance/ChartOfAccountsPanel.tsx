@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { PermissionGate } from '@/components/ui/PermissionGate';
+import { MasterDataIo } from '@/components/admin/MasterDataIo';
+import { accountIoColumns } from './lib/io-columns';
 import { AccountType } from './types';
 import type { Account } from './types';
 
@@ -115,11 +117,22 @@ export function ChartOfAccountsPanel() {
             wrapperClassName="w-40"
           />
         </div>
-        <PermissionGate permission="accounting.coa.manage">
-          <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
-            {t('finance.coa.createButton')}
-          </Button>
-        </PermissionGate>
+        <div className="flex items-center gap-2">
+          <MasterDataIo
+            entity="chart_of_accounts"
+            titleKey="importData.entity.chartOfAccounts"
+            rows={accounts}
+            columns={accountIoColumns(accounts)}
+            filenameBase="bagan-akun"
+            onImported={reload}
+            canImport={can('accounting.coa.manage')}
+          />
+          <PermissionGate permission="accounting.coa.manage">
+            <Button leftIcon={<Plus className="size-4" />} onClick={() => setEditing('new')}>
+              {t('finance.coa.createButton')}
+            </Button>
+          </PermissionGate>
+        </div>
       </div>
 
       <DataTable

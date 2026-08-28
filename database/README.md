@@ -245,6 +245,47 @@ in for the sync path, which isn't any one human role) — returns the full
 13-column row correctly; (5) `EXECUTE` on the function is granted to
 `app_user` and not to `PUBLIC`.
 
+## Running tests in parallel: per-agent databases (D-01)
+
+Every integration suite talks to one database. That is fine for one developer
+and actively misleading for several agents working at once: the suites share
+seeded rows and a good number of them mutate shared state — closing shifts,
+adjusting balances, flipping settings. When two runs overlap, tests fail in
+files neither run touched, and those failures read as real regressions in
+whatever the reader happens to be working on. Establishing otherwise once cost
+a full stash/restore bisect over 19 failures that turned out to belong to
+someone else's session.
+
+```bash
+pnpm db:test:template            # once, and after new migrations (~1 min)
+pnpm db:test:clone my-agent      # ~3s, prints the four env vars to export
+pnpm db:test:list                # what exists
+pnpm db:test:drop my-agent       # tear down
+```
+
+**Databases, not schemas** (the debt register proposed schemas). RLS policies,
+roles and the `SECURITY DEFINER` helpers are all written unqualified, so
+per-schema isolation would mean every connection setting `search_path`
+correctly, forever, across ~15 test-support files — and one missed call
+silently reads the shared schema, which is the exact failure being fixed.
+`CREATE DATABASE ... TEMPLATE` is also a file copy: about **3 seconds** per
+agent, against minutes to replay every migration and the seed.
+
+**No test code changes.** Every connection already resolves through
+`POSTGRES_DB` / `DATABASE_URL` / `TEST_DATABASE_URL` /
+`DATABASE_MIGRATION_URL`, so isolation is environment rather than code. Export
+**all four** — the suites are not consistent about which they read, and one
+missed variable points that connection back at the shared database, which is
+worse than not isolating at all because it still looks isolated.
+
+**Why the separate template.** `CREATE DATABASE ... TEMPLATE x` fails while
+anything is connected to `x`, and a dev box normally has the app holding a pool
+open against the working database. `mimi_test_template` exists so that nothing
+but `db:test:template` ever connects to it.
+
+Verified end to end: the full 672-test `integration-live-db` suite passes
+against a clone, and the shared database's row counts are unchanged by that run.
+
 ## Known deviations from `docs/CONTRACTS.md` §1 (and why)
 
 - **`sync_events` is not monthly-partitioned.** The contract's comment says

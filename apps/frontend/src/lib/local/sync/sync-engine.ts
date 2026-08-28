@@ -89,6 +89,37 @@ export interface SyncEngineOptions {
 }
 
 /**
+ * D-08 — the real device storage figures, or `undefined` when the platform
+ * cannot answer.
+ *
+ * This used to be a hardcoded `{usedMb: 0, quotaMb: 0}`. The cloud derives
+ * `storage_free_mb = quotaMb - usedMb` and stored **0 MB free for every device
+ * in the fleet**, forever — which does not read as "no data", it reads as a
+ * full disk. Any threshold that ever gets wired to it (`storage_warning` /
+ * `storage_full` are already declared ops) would have fired on everything at
+ * once, and a fleet-wide alert that is always on is one nobody looks at.
+ *
+ * `navigator.storage.estimate()` is the standard answer and is supported on
+ * both PWA targets. It is deliberately NOT filled in with a guess where it is
+ * missing: omitting the field records "unknown", which is true, and the
+ * heartbeat schema now allows that. The numbers are approximate by design —
+ * browsers pad the quota and round the usage to resist fingerprinting — so
+ * this is a capacity signal, never an accounting figure.
+ */
+export async function estimateStorage(): Promise<{ usedMb: number; quotaMb: number } | undefined> {
+  try {
+    if (typeof navigator === 'undefined' || !navigator.storage?.estimate) return undefined;
+    const { usage, quota } = await navigator.storage.estimate();
+    if (usage === undefined || quota === undefined) return undefined;
+    const MB = 1024 * 1024;
+    return { usedMb: Math.round(usage / MB), quotaMb: Math.round(quota / MB) };
+  } catch {
+    // Some privacy modes throw rather than returning empty. Unknown, not zero.
+    return undefined;
+  }
+}
+
+/**
  * Stateful runtime object: owns the upstream selector's timer and drives
  * push/pull cycles whenever an upstream is available. Not itself unit-tested
  * in isolation (it is thin glue over already-tested pieces); the scenario
@@ -273,7 +304,7 @@ export class SyncEngine {
         quarantineDepth: await this.db.store('outbox_quarantine').count(),
         pullLag: 0,
         lastSyncAt: null,
-        storage: { usedMb: 0, quotaMb: 0 },
+        storage: await estimateStorage(),
         clockOffsetMs: (await this.db.store<ClockState>('clock_state').get('self'))?.offsetMs ?? 0,
       });
     } catch {

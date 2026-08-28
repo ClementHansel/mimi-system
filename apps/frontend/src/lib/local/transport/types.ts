@@ -33,7 +33,14 @@ export interface HeartbeatPayload {
   quarantineDepth: number;
   pullLag: number;
   lastSyncAt: string | null;
-  storage: { usedMb: number; quotaMb: number };
+  /**
+   * D-08 — OPTIONAL, so "unknown" is expressible. It used to be required, and
+   * the engine satisfied it with a `{usedMb: 0, quotaMb: 0}` stub. The cloud
+   * derives `storage_free_mb = quotaMb - usedMb`, so every device in the fleet
+   * reported **0 MB free** — indistinguishable from a full disk, and the exact
+   * opposite of no data. Omit the field when the platform cannot answer.
+   */
+  storage?: { usedMb: number; quotaMb: number };
   clockOffsetMs: number;
   batteryPct?: number;
   networkType?: 'wifi' | 'cellular' | 'ethernet' | 'unknown';

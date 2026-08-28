@@ -3,10 +3,12 @@ import {
   DEFAULT_DEDUCTION_RATES,
   DEFAULT_OVERTIME_SETTINGS,
   DEFAULT_SO_SHORTFALL_SETTINGS,
+  DEFAULT_TENURE_TIERS,
   ANNUAL_LEAVE_QUOTA_DAYS,
   MARRIAGE_LEAVE_QUOTA_DAYS,
   type Money,
   type SettingsKey,
+  type TenureTier,
 } from '@mimi/shared';
 
 /**
@@ -38,6 +40,19 @@ export async function getStatutoryGate(client: PoolClient): Promise<StatutoryGat
     enabledAt: null,
     enabledBy: null,
   });
+}
+
+/**
+ * PIN-05 tenure tiers (D-16). Falls back to `DEFAULT_TENURE_TIERS` like every
+ * other reader here, so a missing row never removes a long-service allowance
+ * from a payslip — it just keeps paying the shipped policy.
+ */
+export async function getTenureTiers(client: PoolClient): Promise<readonly TenureTier[]> {
+  return readSetting<readonly TenureTier[]>(
+    client,
+    'hr.tenure_tiers',
+    DEFAULT_TENURE_TIERS as readonly TenureTier[],
+  );
 }
 
 export async function getOvertimeSettings(

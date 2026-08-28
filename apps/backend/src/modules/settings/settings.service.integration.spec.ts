@@ -108,6 +108,71 @@ describe('SettingsService — generic get/set', () => {
     });
   });
 
+  it('D-16 hr.tenure_tiers — the first ARRAY-valued setting: shape-checked per element, and never emptied', async () => {
+    await withRollback(async (client) => {
+      const service = buildService();
+
+      const updated = await service.putOne(
+        'hr.tenure_tiers',
+        {
+          value: [
+            { minYears: 10, amount: '900000.00' },
+            { minYears: 2, amount: '150000.00' },
+          ],
+        },
+        CALLER,
+        client,
+      );
+      expect(updated.value).toEqual([
+        { minYears: 10, amount: '900000.00' },
+        { minYears: 2, amount: '150000.00' },
+      ]);
+
+      // Not an array at all — the shape every other key in this map has.
+      await expect(
+        service.putOne('hr.tenure_tiers', { value: { minYears: 1 } }, CALLER, client),
+      ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+
+      // `amount` as a JSON number. Money is a decimal string everywhere in
+      // this system; accepting 500000 here would put a float into gross pay
+      // and lose the two fixed decimals on the way back out.
+      await expect(
+        service.putOne(
+          'hr.tenure_tiers',
+          { value: [{ minYears: 1, amount: 500000 }] },
+          CALLER,
+          client,
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+
+      // A per-element check, not just a check of the first entry — a bad tier
+      // buried at index 2 is exactly the one a reviewer skims past.
+      await expect(
+        service.putOne(
+          'hr.tenure_tiers',
+          {
+            value: [
+              { minYears: 5, amount: '500000.00' },
+              { minYears: 3, amount: '300000.00' },
+              { minYears: 'one', amount: '100000.00' },
+            ],
+          },
+          CALLER,
+          client,
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+
+      // THE EMPTY ARRAY. `[]` is valid JSON and a valid array, and it silently
+      // removes every long-service allowance from the next payroll run —
+      // `tenureAllowance()` returns zero when no tier matches, so nothing
+      // errors and nobody is told. Refused outright; clearing the policy has
+      // to be a deliberate act, not a save with a deleted row.
+      await expect(
+        service.putOne('hr.tenure_tiers', { value: [] }, CALLER, client),
+      ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+    });
+  });
+
   it('THE D-18 GATE: raw PUT on payroll.statutory is always ERR_USE_WIZARD, regardless of value shape', async () => {
     await withRollback(async (client) => {
       const service = buildService();

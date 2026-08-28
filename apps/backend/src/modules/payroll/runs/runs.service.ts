@@ -26,7 +26,6 @@ import {
   type BasePayrollInputs,
   type Money,
   type StatutoryCalculationInputs,
-  type TenureTier,
   type UUID,
 } from '@mimi/shared';
 import { ApprovalService } from '../../../kernel/approvals';
@@ -41,25 +40,10 @@ import {
   getOvertimeSettings,
   getSoShortfallSettings,
   getStatutoryGate,
+  getTenureTiers,
 } from '../payroll-settings.util';
 import type { OverrideLineDto } from '../dto/payroll.dto';
 import { withWrite } from '../db-tx';
-
-/**
- * PIN-05 tenure tiers: CONTRACTS.md §1.7/§2.6 describe the FORMULA
- * (`tenureAllowance()`, `@mimi/shared`) but no schema column carries tier
- * boundaries/amounts — `salary_components.default_amount` is a single flat
- * value, not a tier table. This is a genuine contract gap (flagged in this
- * agent's final report for settings/senior-db to formalize, e.g. a
- * `hr.tenure_tiers` settings key), NOT a schema change made unilaterally
- * here. These defaults are an application-level placeholder so the PIN-05
- * component computes something principled rather than silently zero.
- */
-const DEFAULT_TENURE_TIERS: readonly TenureTier[] = [
-  { minYears: 5, amount: '500000.00' },
-  { minYears: 3, amount: '300000.00' },
-  { minYears: 1, amount: '100000.00' },
-];
 
 export interface PayslipLineApi {
   componentCode: string;
@@ -629,6 +613,7 @@ export class RunsService {
     const overtime = await getOvertimeSettings(client);
     const deductionRates = await getDeductionRates(client);
     const quotas = await getLeaveQuotas(client);
+    const tenureTiers = await getTenureTiers(client);
 
     const year = period.startDate.slice(0, 4);
     // POUT-04 — grouped BY TYPE, never summed together. Annual and marriage are
@@ -693,7 +678,7 @@ export class RunsService {
           quotaDays: quotas.marriage,
         },
       },
-      tenureTiers: DEFAULT_TENURE_TIERS,
+      tenureTiers,
       performanceIncentiveAmount:
         componentAmounts.get(PayrollComponentCode.PERFORMANCE_INCENTIVE) ?? null,
       positionAllowanceAmount:

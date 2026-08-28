@@ -285,6 +285,97 @@ describe('Payroll module (integration, live Postgres)', () => {
     }
   });
 
+  it('FR-HR-PIN-05 (D-16) — the tenure allowance comes from the hr.tenure_tiers SETTING, so HR can change it without a deploy', async () => {
+    if (!dbAvailable) return;
+    // PIN-05's formula was already implemented and unit-tested. What was not
+    // true until D-16 is that the TIERS were configurable: they lived as a
+    // private constant in `runs.service.ts`, so changing a long-service
+    // allowance meant a code change and a deploy, and the amounts a real
+    // payslip depended on were invisible to the HR staff who set them.
+    //
+    // This test is therefore about the wiring, not the arithmetic. It changes
+    // the setting and asserts the PAYSLIP changes — which is the only thing
+    // that distinguishes "configurable" from "happens to compute the same
+    // default".
+    const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+    const actor = { userId: hrAdmin, roleKey: RoleKey.HR_ADMIN };
+
+    const savedStatutory = await readSettingValue('payroll.statutory');
+    const savedTiers = await readSettingValue('hr.tenure_tiers');
+    let employeeId: string | undefined;
+    const periodIds: string[] = [];
+    try {
+      await setSettingValueCommitted('payroll.statutory', {
+        enabled: false,
+        enabledAt: null,
+        enabledBy: null,
+      });
+
+      // Joined 2020-03-01; both periods below fall in 2024, so exactly 4 full
+      // years of service. 4 sits BETWEEN the tier boundaries used here (3 and
+      // 5), which is the case that proves "highest tier reached", not "first
+      // tier in the list" and not "exact match only".
+      employeeId = await insertEmployeeFixture(actor, 'Tenure Case Employee', {
+        joinDate: '2020-03-01',
+        baseSalary: '6000000.00',
+      });
+
+      const runFor = async (periodCode: string) => {
+        const period = await asRequest({ ...actor, locationIds: [] }, (client) =>
+          periods.create(client, periodCode),
+        );
+        periodIds.push(period.id);
+        const run = await asRequest({ ...actor, locationIds: [] }, (client) =>
+          runs.calculateForPeriod(client, hrAdmin, period.id, [employeeId!]),
+        );
+        const slip = (run as any).employees.find((e: any) => e.employee.id === employeeId)!;
+        return {
+          run,
+          line: slip.lines.find((l: any) => l.componentCode === 'tenure_allowance') as
+            { amount: string } | undefined,
+        };
+      };
+
+      await setSettingValueCommitted('hr.tenure_tiers', [
+        { minYears: 5, amount: '500000.00' },
+        { minYears: 3, amount: '300000.00' },
+        { minYears: 1, amount: '100000.00' },
+      ]);
+      const first = await runFor('2024-06');
+      // 4 years -> the 3-year tier, not the 5-year one and not the 1-year one.
+      expect(first.line?.amount).toBe('300000.00');
+      expect(first.run.totalGross).toBe('6300000.00');
+
+      // Now HR raises the mid tier. Nothing else changes: same employee, same
+      // join date, same salary, same tenure.
+      await setSettingValueCommitted('hr.tenure_tiers', [
+        { minYears: 5, amount: '500000.00' },
+        { minYears: 3, amount: '450000.00' },
+        { minYears: 1, amount: '100000.00' },
+      ]);
+      const second = await runFor('2024-07');
+      expect(second.line?.amount).toBe('450000.00');
+      expect(second.run.totalGross).toBe('6450000.00');
+
+      // And a tier list this employee has not reached removes the line
+      // entirely rather than paying zero — a '0.00' earning line on a payslip
+      // reads as "you qualified for nothing", which is a different statement
+      // from "this allowance does not apply to you".
+      await setSettingValueCommitted('hr.tenure_tiers', [{ minYears: 20, amount: '900000.00' }]);
+      const third = await runFor('2024-08');
+      expect(third.line).toBeUndefined();
+      expect(third.run.totalGross).toBe('6000000.00');
+    } finally {
+      if (employeeId) await cleanupCommittedRows({ employeeIds: [employeeId] });
+      for (const id of periodIds) await cleanupCommittedRows({ periodIds: [id] });
+      await setSettingValueCommitted('hr.tenure_tiers', savedTiers);
+      await setSettingValueCommitted(
+        'payroll.statutory',
+        savedStatutory ?? { enabled: false, enabledAt: null, enabledBy: null },
+      );
+    }
+  });
+
   it('statutory OFF produces exactly the PRD base set — no bpjs_*/pph21 lines regardless of what statutory config exists', async () => {
     if (!dbAvailable) return;
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;

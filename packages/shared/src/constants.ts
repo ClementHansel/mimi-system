@@ -123,6 +123,27 @@ export const DEFAULT_DEDUCTION_RATES = {
 export const ANNUAL_LEAVE_QUOTA_DAYS = 12;
 export const MARRIAGE_LEAVE_QUOTA_DAYS = 3;
 
+/**
+ * PIN-05 tenure-allowance tiers — the amount added to gross pay once an
+ * employee passes a service-length boundary.
+ *
+ * Highest matching `minYears` wins (`tenureAllowance()` sorts descending), so
+ * these are read as "5+ years -> 500k", not cumulatively.
+ *
+ * D-16: these lived as a private `DEFAULT_TENURE_TIERS` inside
+ * `runs.service.ts` with a comment saying the tiers had no schema home, which
+ * meant PIN-05 was implemented but not configurable — HR could not change a
+ * long-service allowance without a code deploy, and the numbers a real payslip
+ * depended on were invisible to the people who set them. They are now the
+ * fallback for the `hr.tenure_tiers` setting (migration 260), matching how
+ * `DEFAULT_OVERTIME_SETTINGS` backs `hr.overtime`.
+ */
+export const DEFAULT_TENURE_TIERS = [
+  { minYears: 5, amount: '500000.00' as Money },
+  { minYears: 3, amount: '300000.00' as Money },
+  { minYears: 1, amount: '100000.00' as Money },
+] as const;
+
 /** POUT-05 stock-shortfall deduction policy. */
 export const DEFAULT_SO_SHORTFALL_SETTINGS = {
   mode: 'attributable_only' as const,
@@ -175,6 +196,9 @@ const SETTINGS_KEYS = [
   'hr.late_grace_minutes',
   'hr.overtime',
   'hr.deduction_rates',
+  // PIN-05 long-service allowance tiers (D-16). An ARRAY value, unlike every
+  // other key here — see `settings-value-validator.ts`.
+  'hr.tenure_tiers',
   'leave.quotas',
   'payroll.so_shortfall',
   'payroll.statutory',

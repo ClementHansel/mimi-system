@@ -14,6 +14,13 @@ type FieldType = 'string' | 'number' | 'boolean' | 'string|null';
 
 type Schema =
   | { kind: 'object'; fields: Record<string, FieldType> }
+  // A list of uniform objects. Added for `hr.tenure_tiers` (D-16), the first
+  // settings value that is a JSON array rather than a scalar or a flat object.
+  // `minItems` exists because an EMPTY tier list is a valid JSON array and a
+  // silent policy change: `tenureAllowance()` returns zero when no tier
+  // matches, so saving `[]` would remove every long-service allowance from the
+  // next payroll run with no error anywhere.
+  | { kind: 'array'; minItems: number; elementFields: Record<string, FieldType> }
   | { kind: 'string' }
   | { kind: 'number' }
   | { kind: 'boolean' };
@@ -38,6 +45,16 @@ const SCHEMAS: Partial<Record<SettingsKey, Schema>> = {
       sickPaid: 'boolean',
       permissionPaid: 'boolean',
     },
+  },
+  /**
+   * PIN-05 tenure tiers (D-16). `amount` is a `'string'` because Money is a
+   * decimal string everywhere in this system — a JSON number would lose the
+   * two fixed decimals and reintroduce float rounding into gross pay.
+   */
+  'hr.tenure_tiers': {
+    kind: 'array',
+    minItems: 1,
+    elementFields: { minYears: 'number', amount: 'string' },
   },
   'leave.quotas': { kind: 'object', fields: { annual: 'number', marriage: 'number' } },
   'payroll.so_shortfall': { kind: 'object', fields: { mode: 'string', splitRule: 'string' } },
@@ -113,6 +130,26 @@ export function validateSettingValue(key: SettingsKey, value: unknown): string[]
     return typeof value === 'number' ? [] : [`'${key}' must be a number`];
   if (schema.kind === 'boolean')
     return typeof value === 'boolean' ? [] : [`'${key}' must be a boolean`];
+
+  if (schema.kind === 'array') {
+    if (!Array.isArray(value)) return [`'${key}' must be an array`];
+    if (value.length < schema.minItems)
+      return [
+        `'${key}' must have at least ${schema.minItems} entr${schema.minItems === 1 ? 'y' : 'ies'}`,
+      ];
+    const errors: string[] = [];
+    value.forEach((element, i) => {
+      if (typeof element !== 'object' || element === null || Array.isArray(element)) {
+        errors.push(`'${key}'[${i}] must be an object`);
+        return;
+      }
+      const el = element as Record<string, unknown>;
+      for (const [field, type] of Object.entries(schema.elementFields)) {
+        if (!typeMatches(el[field], type)) errors.push(`'${key}'[${i}].${field} must be a ${type}`);
+      }
+    });
+    return errors;
+  }
 
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return [`'${key}' must be an object with fields: ${Object.keys(schema.fields).join(', ')}`];

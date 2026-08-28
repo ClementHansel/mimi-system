@@ -2,9 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { SETTINGS_KEY_LIST, type SettingsKey } from './constants';
 
 describe('SettingsKey — closed literal union, same discipline as PermissionKey/ErrorCode', () => {
-  it('lists all 21 seeded settings keys with no duplicates', () => {
-    expect(SETTINGS_KEY_LIST).toHaveLength(23);
-    expect(new Set(SETTINGS_KEY_LIST).size).toBe(23);
+  // The count is deliberately hardcoded: adding a key means adding a seeded
+  // row and a validator schema too, and this failing is the reminder. Keep the
+  // number and the sentence in step — the title said "21" while the assertion
+  // said 23, which is exactly the drift that makes a pinning test stop being
+  // read.
+  it('lists all 24 seeded settings keys with no duplicates', () => {
+    expect(SETTINGS_KEY_LIST).toHaveLength(24);
+    expect(new Set(SETTINGS_KEY_LIST).size).toBe(24);
+  });
+
+  it('includes the D-16 tenure-tier key', () => {
+    expect(SETTINGS_KEY_LIST).toContain('hr.tenure_tiers');
   });
 
   it('includes the D-18/D-19 amendment keys', () => {

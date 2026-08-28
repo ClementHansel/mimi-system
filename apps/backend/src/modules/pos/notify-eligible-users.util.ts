@@ -82,18 +82,58 @@ export async function findUsersByRoleAtLocation(
   });
 }
 
-/** Resolves `{id -> name}` for a set of user ids — display enrichment only, never an authorization input. Missing/duplicate ids are simply absent from the returned map. */
+/**
+ * Resolves `{id -> name}` for a set of user ids — display enrichment only,
+ * never an authorization input. Missing/duplicate ids are simply absent from
+ * the returned map.
+ *
+ * D-03 (2026-08-29): goes through `app_user_display()` (migration 212), the
+ * one display-name mechanism in this codebase, rather than reading `users`
+ * under a borrowed central role. Three solutions to "print a name next to an
+ * id" had grown independently — `kernel/approvals` on the helper,
+ * `stock-opname` on its own join, and this module on an `app.role = 'owner'`
+ * escalation — which is how the `users_select` gap the helper exists to close
+ * kept being rediscovered module by module.
+ *
+ * The escalation is what actually mattered here. Reading `users` directly
+ * requires a session RLS lets through, so this claimed to BE the owner for the
+ * duration of the query — over a connection that could then read `email`,
+ * `phone`, `password_hash`, `pin_hash` and `last_login_at` for every user in
+ * the system, to print a display name. `app_user_display()` is `SECURITY
+ * DEFINER` and returns `id`, `name`, `role_key` and nothing else, so no role
+ * has to be borrowed and the blast radius is the three columns actually
+ * needed. `SET LOCAL ROLE app_user` remains, purely because `DATABASE_POOL`
+ * connects as `mimi_app`, which is `NOINHERIT` and holds no EXECUTE grant of
+ * its own (migrations 203/205).
+ *
+ * `findUsersByRoleAtLocation` above still needs `withCentralContext`: it is a
+ * fan-out across `roles` and `user_locations` to discover recipients, which is
+ * a different question from "what is this id's name" and not something
+ * `app_user_display()` answers.
+ */
 export async function resolveUserNames(
   pool: Pool,
   userIds: readonly (UUID | null | undefined)[],
 ): Promise<Map<UUID, string>> {
   const ids = [...new Set(userIds.filter((id): id is UUID => Boolean(id)))];
   if (ids.length === 0) return new Map();
-  return withCentralContext(pool, async (client) => {
+  const client = await pool.connect();
+  try {
+    // Wrapped in a transaction because `SET LOCAL` is scoped to one — outside
+    // a transaction block Postgres warns and the role change does not stick,
+    // which would fail on the EXECUTE grant (`mimi_app` is NOINHERIT).
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
     const res = await client.query<{ id: UUID; name: string }>(
-      `SELECT id, name FROM users WHERE id = ANY($1::uuid[])`,
+      `SELECT id, name FROM app_user_display($1::uuid[])`,
       [ids],
     );
+    await client.query('COMMIT');
     return new Map(res.rows.map((r) => [r.id, r.name]));
-  });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }

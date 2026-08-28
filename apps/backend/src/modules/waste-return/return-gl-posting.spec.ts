@@ -27,7 +27,7 @@
  * `amount` already carried on the event payload.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ReturnDirection, RoleKey } from '@mimi/shared';
+import { JournalEventType, ReturnDirection, RoleKey } from '@mimi/shared';
 import { Pool } from 'pg';
 
 vi.setConfig({ testTimeout: 20_000 });
@@ -291,6 +291,139 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await eventBus.publish('journal.action', journalEvents[0]!.payload);
       const replay = await cleanupPool.query<{ count: string }>(
         `SELECT COUNT(*) AS count FROM journal_entries WHERE ref_type = 'return' AND ref_id = $1`,
+        [created.id],
+      );
+      expect(replay.rows[0]!.count).toBe('1');
+    });
+
+    it('JGUD-02: warehouse receipt of an outlet return posts Dr 1100 Persediaan Gudang / Cr 1120 Dalam Perjalanan, clearing the in-transit leg', async () => {
+      // The CLEARING half of JOUT-05 above. That test proves value leaves the
+      // outlet into 1120; nothing proved it ever leaves 1120 again. If this
+      // publish went missing, every returned rupiah would sit in Persediaan
+      // Dalam Perjalanan forever while the physical stock sat on a warehouse
+      // shelf — the balance sheet slowly accumulating goods that arrived
+      // months ago, with no failing test anywhere. Stock still moves
+      // (RETURN_IN posts through StockLedgerService), the return still reaches
+      // 'received', and only the ledger is wrong.
+      const ldr = actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]);
+      const spv = actorFor(fx, RoleKey.SUPERVISOR, [fx.outletId]);
+      const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+
+      const eventBus = new EventBus();
+      buildEngine(appPoolForDi(), eventBus);
+      const journalEvents: DomainEvent<'journal.action'>[] = [];
+      eventBus.subscribe('journal.action', (e) => {
+        journalEvents.push(e);
+      });
+
+      const creationPhoto = await createAttachment(fx.leaderOutletUserId, 'defect_photo');
+      attachmentIds.push(creationPhoto);
+
+      const created = await withRollbackAs(
+        { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+        (client) => {
+          const { returnService } = buildKit(eventBus);
+          return returnService.create(client, ldr, {
+            direction: ReturnDirection.OUTLET_TO_WAREHOUSE,
+            fromLocationId: fx.outletId,
+            toLocationId: fx.warehouseId,
+            lines: [
+              {
+                itemId: fx.itemId,
+                storageAreaId: fx.storageAreaOutlet,
+                qty: '2.000',
+                condition: 'damaged' as never,
+                reason: 'Kemasan rusak',
+              },
+            ],
+            photoAttachmentIds: [creationPhoto],
+          });
+        },
+      );
+      returnIds.push(created.id);
+      const lineId = created.lines[0]!.lineId;
+
+      await withRollbackAs(
+        { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+        (client) => {
+          const { returnService } = buildKit(eventBus);
+          return returnService.submit(client, ldr, created.id);
+        },
+      );
+      await withRollbackAs(
+        { role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] },
+        (client) => {
+          const { returnService } = buildKit(eventBus);
+          return returnService.approve(client, spv, created.id, undefined);
+        },
+      );
+
+      const proofShip = await createAttachment(fx.leaderOutletUserId, 'return_proof');
+      attachmentIds.push(proofShip);
+      await withRollbackAs(
+        { role: 'leader_outlet', userId: ldr.userId, locationIds: [fx.outletId] },
+        (client) => {
+          const { returnService } = buildKit(eventBus);
+          return returnService.ship(client, ldr, created.id, { proofAttachmentIds: [proofShip] });
+        },
+      );
+
+      const proofReceive = await createAttachment(fx.kepalaGudangUserId, 'receiving_photo');
+      attachmentIds.push(proofReceive);
+      const received = await withRollbackAs(
+        { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+        (client) => {
+          const { returnService } = buildKit(eventBus);
+          return returnService.receive(client, kgd, created.id, {
+            lines: [{ lineId, qtyReceived: '2.000', storageAreaId: fx.storageAreaWarehouse }],
+            proofAttachmentIds: [proofReceive],
+          });
+        },
+      );
+      expect(received.status).toBe('received');
+
+      // Two events on this return now: the ship leg (JOUT-05) and this one.
+      // Asserted by type rather than by index so a future third publish on the
+      // same document fails loudly instead of shifting an index.
+      const goodsIn = journalEvents.filter(
+        (e) =>
+          e.payload.eventType === JournalEventType.GUDANG_GOODS_IN &&
+          e.payload.documentId === created.id,
+      );
+      expect(goodsIn).toHaveLength(1);
+      expect(goodsIn[0]!.payload.documentType).toBe('return');
+      expect(goodsIn[0]!.payload.locationId).toBe(fx.warehouseId);
+
+      const entryRows = await cleanupPool.query<{ id: string; event_type: string }>(
+        `SELECT id, event_type FROM journal_entries WHERE ref_type = 'return' AND ref_id = $1 AND event_type = 'gudang_goods_in'`,
+        [created.id],
+      );
+      expect(entryRows.rows).toHaveLength(1);
+
+      const legs = await journalLegsFor(entryRows.rows[0]!.id);
+      expect(legs).toHaveLength(2);
+      const debit = legs.find((r) => Number.parseFloat(r.debit) > 0);
+      const credit = legs.find((r) => Number.parseFloat(r.credit) > 0);
+      expect(debit?.code).toBe('1100'); // Persediaan Gudang
+      expect(credit?.code).toBe('1120'); // Persediaan Dalam Perjalanan
+
+      // Valued from the SAME qty x unit_cost the ledger moved. This is the
+      // property that makes 1120 actually clear: if the receive leg were
+      // valued independently of the ship leg, the two would drift and the
+      // in-transit account would keep a residue nobody could explain.
+      const line = await cleanupPool.query<{ unit_cost: string }>(
+        `SELECT unit_cost FROM return_lines WHERE id = $1`,
+        [lineId],
+      );
+      const expectedAmount = (2 * Number(line.rows[0]!.unit_cost)).toFixed(2);
+      expect(debit?.debit).toBe(expectedAmount);
+      expect(credit?.credit).toBe(expectedAmount);
+
+      // Same idempotency guarantee the ship leg has: redelivery must not
+      // double-post (journal_entries' own UNIQUE, not application logic).
+      await eventBus.publish('journal.action', goodsIn[0]!.payload);
+      const replay = await cleanupPool.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM journal_entries WHERE ref_type = 'return' AND ref_id = $1 AND event_type = 'gudang_goods_in'`,
         [created.id],
       );
       expect(replay.rows[0]!.count).toBe('1');

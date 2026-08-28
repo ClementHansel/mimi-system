@@ -408,6 +408,45 @@ describe('M17 accounting — live DB integration', () => {
     const rereadVerified = await asRequest(finance, (client) => payments.getDetail(client, pv.id));
     expect(rereadVerified.status).toBe('verified');
 
+    // FR-ACCT-02 — "sistem mencatat siapa yang melakukan verifikasi dan waktu
+    // verifikasi". The status transition above is not that requirement: a PV
+    // that reads 'verified' with a null `verified_by` satisfies every
+    // assertion before this point while destroying the audit trail the
+    // requirement exists for. Payment verification is a fraud control, and a
+    // control nobody can be attributed to is not one.
+    //
+    // Asserted on the RE-READ, not on `verify()`'s return value, so this
+    // covers what is on disk rather than what the method happened to build.
+    expect(rereadVerified.verifiedBy).toBe(fixtures.usersByRole[RoleKey.FINANCE]);
+    expect(rereadVerified.verifiedAt).toBeTruthy();
+    // A real instant, not a placeholder or an epoch-zero default, and not in
+    // the future.
+    // Normalised through `new Date(...)` rather than `Date.parse(String(...))`:
+    // `verifiedAt` is declared a string on the DTO but node-postgres hands back
+    // a `Date` for `timestamptz`, and `String(date)` renders the human form
+    // that has no milliseconds — which silently compares two instants at
+    // second precision. Both sides are compared as real instants here.
+    const verifiedAtMs = new Date(rereadVerified.verifiedAt as unknown as string).getTime();
+    expect(Number.isNaN(verifiedAtMs)).toBe(false);
+    expect(verifiedAtMs).toBeGreaterThan(Date.parse('2020-01-01T00:00:00Z'));
+    expect(verifiedAtMs).toBeLessThanOrEqual(Date.now() + 60_000);
+
+    // The same pair has to survive the offline path: a branch node replaying
+    // this row must be able to say who verified it and when, so the sync
+    // payload carries both rather than only the status change.
+    const verifyEvent = await asRequest(finance, (client) =>
+      // `payload` is SYNC-PROTOCOL's versioned envelope `{v, data, meta}`
+      // (migration 120), so the business fields live under `payload->'data'`.
+      client.query<{ data: { verifiedBy?: string; verifiedAt?: string } }>(
+        `SELECT payload->'data' AS data FROM sync_events
+          WHERE entity = 'payment_verifications' AND entity_id = $1 AND op = 'verified'
+          ORDER BY server_seq DESC LIMIT 1`,
+        [pv.id],
+      ),
+    );
+    expect(verifyEvent.rows[0]!.data.verifiedBy).toBe(fixtures.usersByRole[RoleKey.FINANCE]);
+    expect(Date.parse(verifyEvent.rows[0]!.data.verifiedAt!)).toBe(verifiedAtMs);
+
     let publishedEventType: string | undefined;
     const unsubscribe = eventBus.subscribe('journal.action', (e) => {
       publishedEventType = e.payload.eventType;

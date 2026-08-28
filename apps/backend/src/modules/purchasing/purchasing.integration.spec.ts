@@ -26,7 +26,13 @@
  * scoped-role RLS bugs.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ERR_CONFLICT, ERR_FORBIDDEN, ERR_PHOTO_REQUIRED, RoleKey } from '@mimi/shared';
+import {
+  ERR_CONFLICT,
+  ERR_FORBIDDEN,
+  ERR_PHOTO_REQUIRED,
+  ERR_VARIANCE_REASON_REQUIRED,
+  RoleKey,
+} from '@mimi/shared';
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -587,6 +593,137 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     );
     expect(pv.rows[0]?.status).toBe('pending');
     expect(pv.rows[0]?.ref_type).toBe('purchase_order');
+  });
+
+  it('FR-PO-03 — a short receipt is refused without a reason, then records the ordered-vs-received difference', async () => {
+    // The happy path above receives exactly what was ordered and asserts
+    // `qtyDifference === '0.000'`. That is the case where the requirement is
+    // trivially satisfiable — a field hardcoded to '0.000' would pass it.
+    // FR-PO-03 is about the case where the numbers DISAGREE: the supplier
+    // short-delivers, and the system has to record by how much and why.
+    // Nothing exercised that, in either direction.
+    const mgr = actorFor(fx, RoleKey.MANAGER, null);
+    const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+
+    const created = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.create(client, mgr, {
+          supplierId: fx.supplierId,
+          locationId: fx.warehouseId,
+          orderDate: '2026-06-30',
+          expectedDate: '2026-07-15',
+          lines: [
+            { itemId: fx.itemId, qtyOrdered: '20.000', unitId: fx.unitId, unitPrice: '8000.00' },
+          ],
+        });
+      },
+    );
+    poIds.push(created.id);
+
+    await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
+      const { poService } = buildKit();
+      return poService.submit(client, mgr, created.id);
+    });
+    await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) => {
+      const { poService } = buildKit();
+      return poService.approve(client, mgr, created.id, undefined);
+    });
+    const issued = await withRollbackAs(
+      { role: 'manager', userId: mgr.userId, locationIds: [] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.issue(client, created.id);
+      },
+    );
+
+    const photoId = await createAttachment(fx.kepalaGudangUserId);
+    attachmentIds.push(photoId);
+
+    // 15 of 20 arrived, with no explanation. Recording a variance nobody has
+    // to account for is how shrinkage becomes invisible, so the receipt is
+    // refused outright rather than stored with a blank reason.
+    await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      async (client) => {
+        const { poService } = buildKit();
+        await expect(
+          poService.receive(client, kgd, created.id, {
+            lines: [
+              {
+                poLineId: issued.lines[0]!.id,
+                qtyReceived: '15.000',
+                storageAreaId: fx.storageAreaWarehouse,
+              },
+            ],
+            photoAttachmentIds: [photoId],
+          }),
+        ).rejects.toMatchObject({ response: { code: ERR_VARIANCE_REASON_REQUIRED } });
+      },
+    );
+
+    // Whitespace is not a reason. Without this the guard above is one
+    // `.trim()` away from being decorative.
+    await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      async (client) => {
+        const { poService } = buildKit();
+        await expect(
+          poService.receive(client, kgd, created.id, {
+            lines: [
+              {
+                poLineId: issued.lines[0]!.id,
+                qtyReceived: '15.000',
+                storageAreaId: fx.storageAreaWarehouse,
+                conditionNotes: '   ',
+              },
+            ],
+            photoAttachmentIds: [photoId],
+          }),
+        ).rejects.toMatchObject({ response: { code: ERR_VARIANCE_REASON_REQUIRED } });
+      },
+    );
+
+    const received = await withRollbackAs(
+      { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },
+      (client) => {
+        const { poService } = buildKit();
+        return poService.receive(client, kgd, created.id, {
+          lines: [
+            {
+              poLineId: issued.lines[0]!.id,
+              qtyReceived: '15.000',
+              storageAreaId: fx.storageAreaWarehouse,
+              conditionNotes: 'Supplier kirim kurang 5 kg, sisa menyusul',
+            },
+          ],
+          photoAttachmentIds: [photoId],
+        });
+      },
+    );
+
+    // The difference itself — the number FR-PO-03 exists to produce.
+    expect(received.lines[0]!.qtyReceived).toBe('15.000');
+    expect(received.lines[0]!.qtyDifference).toBe('5.000');
+    // Still open, because 5 are outstanding. A PO that closed here would
+    // strand the shortfall with nothing tracking it.
+    expect(received.status).not.toBe('received');
+
+    // Stock moved for what actually arrived, not for what was ordered — the
+    // variance must not be paid for twice, once on paper and once in stock.
+    const movement = await withRollbackAs(
+      { role: 'owner', userId: fx.usersByRole[RoleKey.OWNER], locationIds: [] },
+      (client) =>
+        client.query<{ qty: string }>(
+          `SELECT m.qty FROM stock_movements m
+             JOIN po_receipts r ON r.id = m.ref_id
+            WHERE m.ref_type = 'po_receipt' AND r.po_id = $1 AND m.item_id = $2`,
+          [created.id, fx.itemId],
+        ),
+    );
+    expect(movement.rows).toHaveLength(1);
+    expect(Number(movement.rows[0]!.qty)).toBeCloseTo(15, 3);
   });
 
   it('PO receiving without a photo is rejected (wajib foto, FR-PO-04)', async () => {

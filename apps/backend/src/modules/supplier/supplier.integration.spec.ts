@@ -433,7 +433,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
       }
     });
 
-    it('Kepala Gudang: getItems returns supplier_items with prices', async () => {
+    it('FR-SUP-03 — Kepala Gudang: getItems returns supplier_items with prices', async () => {
       const owner = getOwnerPool();
 
       const suppRes = await owner.query(
@@ -538,7 +538,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
       }
     });
 
-    it('getTransactions runs (previously threw — wrong table/column names) and round-trips orderDate + paymentStatus exactly', async () => {
+    it('FR-SUP-02 / FR-SUP-05 — getTransactions runs (previously threw — wrong table/column names) and round-trips orderDate + paymentStatus exactly', async () => {
       const owner = getOwnerPool();
       const orderDate = '2026-06-30';
 

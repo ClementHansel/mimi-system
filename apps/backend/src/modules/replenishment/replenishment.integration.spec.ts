@@ -504,7 +504,7 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
     );
   });
 
-  it('draft lifecycle: update replaces lines, delete only works pre-submission', async () => {
+  it('FR-LOG-09 — draft lifecycle: update replaces lines, delete only works pre-submission', async () => {
     const { service } = buildServices();
     const ldr = callerFor(fx.outletA.leaderUserId, RoleKey.LEADER_OUTLET, [fx.outletA.locationId]);
 
@@ -638,7 +638,7 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
     }
   });
 
-  it('RBAC matrix wiring: every replenishment permission key matches CONTRACTS.md §3 for both directions (allowed and denied)', () => {
+  it('FR-LOG-05 — RBAC matrix wiring: every replenishment permission key matches CONTRACTS.md §3 for both directions (allowed and denied)', () => {
     const ALLOW: Record<string, RoleKey[]> = {
       'replenishment.read': [
         RoleKey.OWNER,

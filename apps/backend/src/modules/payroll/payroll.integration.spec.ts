@@ -344,7 +344,7 @@ describe('Payroll module (integration, live Postgres)', () => {
 
   // ── Layer 3: full lifecycle through the real approval chain ──────────────
 
-  it('calculate -> submit -> Finance approves (mid-chain) -> Owner approves (final) posts the GL seam and loan payment', async () => {
+  it('FR-HR-04 — calculate -> submit -> Finance approves (mid-chain) -> Owner approves (final) posts the GL seam and loan payment', async () => {
     if (!dbAvailable) return;
     const hrAdmin = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
     const finance = fixtures.usersByRole[RoleKey.FINANCE];
@@ -988,9 +988,14 @@ describe('Payroll module (integration, live Postgres)', () => {
             expect(loanRow.rows[0]!.status).toBe('active');
             expect(loanRow.rows[0]!.outstanding).toBe('500000.00');
 
+            // D-17: this used to assert `'other'`, because migration 094's CHECK
+            // did not accept `'employee_loan'` and the service booked the loan as
+            // a miscellaneous payment. Migration 259 widened the constraint, so a
+            // disbursement is now classified as what it is — and the queue can
+            // tell a kasbon from an unrelated payment.
             const pvRow = await client.query(
               'SELECT id FROM payment_verifications WHERE ref_type = $1 AND ref_id = $2',
-              ['other', loanId],
+              ['employee_loan', loanId],
             );
             expect(pvRow.rows.length).toBe(1);
           },

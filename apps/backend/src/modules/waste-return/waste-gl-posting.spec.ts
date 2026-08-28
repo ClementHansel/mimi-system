@@ -186,7 +186,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await closePool();
     });
 
-    it('control: a COLD_CHAIN_BREACH waste report, once approved, DOES post a real waste_out stock movement and decrement the warehouse balance', async () => {
+    it('FR-WST-04 — control: a COLD_CHAIN_BREACH waste report, once approved, DOES post a real waste_out stock movement and decrement the warehouse balance', async () => {
       const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
 
       const photoId = await createAttachment(fx.kepalaGudangUserId, 'cold_chain_breach_photo');

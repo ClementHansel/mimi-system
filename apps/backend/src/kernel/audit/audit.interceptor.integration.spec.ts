@@ -102,7 +102,7 @@ describe('AuditInterceptor (integration, live Postgres)', () => {
     await pool?.end();
   });
 
-  it('captures a real before/after JSON diff and writes it to audit_log', async () => {
+  it('FR-AUDIT-01 — captures a real before/after JSON diff and writes it to audit_log', async () => {
     if (!dbAvailable) {
       console.warn('Skipping: live Postgres not reachable at ' + DATABASE_URL);
       return;

@@ -147,7 +147,7 @@ describe('InventoryService — GET /api/inventory/balances', () => {
     });
   }, 20_000);
 
-  it('belowMin filter + pagination against a freshly crafted below-threshold key', async () => {
+  it('FR-LOG-20 — belowMin filter + pagination against a freshly crafted below-threshold key', async () => {
     // `pickUnusedItemInLocation`, not `pickUnusedStockKey`: `belowMin` is
     // computed from the balance SUMMED ACROSS EVERY AREA of the location for
     // this item — the fixture must guarantee zero balance anywhere in the
@@ -261,7 +261,7 @@ describe('InventoryService — GET /api/inventory/summary', () => {
 });
 
 describe('InventoryService — GET /api/inventory/movements', () => {
-  it('lists a just-posted movement, filterable by movementType/date range', async () => {
+  it('FR-LOG-21 — lists a just-posted movement, filterable by movementType/date range', async () => {
     const key = await withRollback((client) =>
       pickUnusedStockKey(client, { locationId: fx.outletId }),
     );
@@ -319,7 +319,7 @@ describe('InventoryService — GET /api/inventory/movements', () => {
 });
 
 describe('InventoryService — GET/PUT /api/inventory/min-stock', () => {
-  it('GET lists rules for a location, paginated', async () => {
+  it('FR-LOG-06/FR-LOG-17 — GET lists rules for a location, paginated', async () => {
     await withRollback(async (client) => {
       const page = await service().getMinStock(client, CENTRAL, fx.warehouseId, 1, 5);
       expect(page.rows.length).toBeGreaterThan(0);
@@ -327,7 +327,7 @@ describe('InventoryService — GET/PUT /api/inventory/min-stock', () => {
     });
   }, 20_000);
 
-  it('PUT bulk-upserts and the REAL commit path lands a durable row + emits a min_stock_rules.updated sync event', async () => {
+  it('FR-LOG-06/FR-LOG-17 — PUT bulk-upserts and the REAL commit path lands a durable row + emits a min_stock_rules.updated sync event', async () => {
     const key = await withRollback((client) =>
       pickUnusedStockKey(client, { locationId: fx.outletId }),
     );
@@ -407,7 +407,7 @@ describe('InventoryService — GET/PUT /api/inventory/min-stock', () => {
 });
 
 describe('InventoryService — GET /api/inventory/low-stock', () => {
-  it('a fresh key below its rule appears; the same key above its rule does not', async () => {
+  it('FR-LOG-07/FR-LOG-18 — a fresh key below its rule appears; the same key above its rule does not', async () => {
     // Low-stock detection sums the balance across every area of the
     // location for this item — `pickUnusedItemInLocation` guarantees zero
     // balance anywhere in the location, not just at one area, so the
@@ -464,7 +464,7 @@ describe('InventoryService — GET /api/inventory/low-stock', () => {
 });
 
 describe('InventoryService — GET /api/inventory/suggestions', () => {
-  it('falls back to reorder_qty basis when there is no recent usage history', async () => {
+  it('FR-LOG-08/FR-LOG-19 — falls back to reorder_qty basis when there is no recent usage history', async () => {
     const key = await withRollback((client) =>
       pickUnusedStockKey(client, { locationId: fx.outletId }),
     );
@@ -483,7 +483,7 @@ describe('InventoryService — GET /api/inventory/suggestions', () => {
     }
   }, 20_000);
 
-  it('switches to usage_pattern basis once mv_item_usage_daily has recent usage_out for the key', async () => {
+  it('FR-LOG-08/FR-LOG-19 — switches to usage_pattern basis once mv_item_usage_daily has recent usage_out for the key', async () => {
     const key = await withRollback((client) =>
       pickUnusedStockKey(client, { locationId: fx.outletId }),
     );
@@ -674,7 +674,7 @@ describe('InventoryService — POST /api/inventory/area-transfer', () => {
 });
 
 describe('InventoryService — GET /api/inventory/history/:itemId', () => {
-  it('reconstructs a 7-day series that ends at the live balance, with correct in/out on the seeded day', async () => {
+  it('FR-LOG-21 — reconstructs a 7-day series that ends at the live balance, with correct in/out on the seeded day', async () => {
     // `getHistory`'s anchor is `getLocationItemTotal` — summed across every
     // area of the location for this item — so the fixture needs zero
     // balance anywhere in the location for this item, not just one area, or

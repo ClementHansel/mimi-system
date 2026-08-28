@@ -234,7 +234,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       await closePool();
     });
 
-    it('outlet OVERAGE (counted higher than system) posts Dr 1110 Persediaan Outlet / Cr 4100 Pendapatan Lainnya', async () => {
+    it('FR-SO-03/FR-SO-04 — outlet OVERAGE (counted higher than system) posts Dr 1110 Persediaan Outlet / Cr 4100 Pendapatan Lainnya', async () => {
       const leader = actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]);
       const supervisor = actorFor(fx, RoleKey.SUPERVISOR, [fx.outletId]);
       const itemId = await pickUnusedStockKey(fx.outletId, fx.storageAreaOutlet);

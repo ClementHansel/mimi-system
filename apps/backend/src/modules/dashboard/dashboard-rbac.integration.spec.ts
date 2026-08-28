@@ -73,7 +73,7 @@ describe('Dashboard RBAC + RLS (integration, live Postgres)', () => {
 
   // ── Layer 2: RLS + explicit scoping, live Postgres, BOTH directions ───────
 
-  it('an Owner (central role) sees the FULL company-wide revenue aggregate, matching a manual SUM across all outlets', async () => {
+  it('FR-DASH-01/FR-DASH-02 — an Owner (central role) sees the FULL company-wide revenue aggregate, matching a manual SUM across all outlets', async () => {
     if (!dbAvailable) return;
     const expected = await rawRevenueForRange(FROM, TO);
 
@@ -157,7 +157,7 @@ describe('Dashboard RBAC + RLS (integration, live Postgres)', () => {
     );
   });
 
-  it('ops-status counters are scoped (Supervisor never sees a LARGER count than Owner for the same counter type)', async () => {
+  it('FR-DASH-04 — ops-status counters are scoped (Supervisor never sees a LARGER count than Owner for the same counter type)', async () => {
     if (!dbAvailable) return;
     await withRollbackAs(
       { role: RoleKey.OWNER, userId: fixtures.ownerUserId, locationIds: [] },

@@ -68,7 +68,7 @@ describe('PIN-05 tenure allowance', () => {
   });
 });
 
-describe('POUT-01/02 sick & permission (paid-flag gating)', () => {
+describe('POUT-01 / POUT-02 sick & permission (paid-flag gating)', () => {
   it('sick is free when sickPaid is true', () => {
     expect(deductionSick(3, '100000.00', true)).toBe('0.00');
     expect(deductionSick(3, '100000.00', false)).toBe('300000.00');

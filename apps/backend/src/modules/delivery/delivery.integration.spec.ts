@@ -410,7 +410,7 @@ describe('M10 delivery — live DB integration', () => {
       await resetStockKey(fixtures.outletId, fixtures.freezerAreaOutlet, fixtures.frozenItemId);
     });
 
-    it('warehouse issues a numbered, multi-drop, frozen Surat Jalan linked to the replenishment request', async () => {
+    it('FR-LOG-01 — warehouse issues a numbered, multi-drop, frozen Surat Jalan linked to the replenishment request', async () => {
       const start = Date.now();
       const sj = await withCommit((client) =>
         sjService.create(
@@ -489,7 +489,7 @@ describe('M10 delivery — live DB integration', () => {
       expect(notifySpy).not.toHaveBeenCalled(); // in-range reading raises nothing
     });
 
-    it('dispatch(): posts transfer_out from the warehouse freezer (strict mode) and marks the request shipped', async () => {
+    it('FR-LOG-10 — dispatch(): posts transfer_out from the warehouse freezer (strict mode) and marks the request shipped', async () => {
       const before = await getOwnerPool().query<{ qty_on_hand: string } | undefined>(
         `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
         [fixtures.warehouseId, fixtures.freezerAreaWarehouse, fixtures.frozenItemId],
@@ -550,7 +550,7 @@ describe('M10 delivery — live DB integration', () => {
       expect(sealAfter.rows[0]!.status).toBe('verified_intact');
     });
 
-    it('receive(): wajib foto + signature enforced, discrepancy captured, stock lands in the outlet freezer via StockLedgerService, request+SJ complete', async () => {
+    it('FR-LOG-16 — receive(): wajib foto + signature enforced, discrepancy captured, stock lands in the outlet freezer via StockLedgerService, request+SJ complete', async () => {
       photoAttachmentId = await createConfirmedAttachment('receiving_photo', 'sj_drop', dropId);
       signatureAttachmentId = await createConfirmedAttachment('signature', 'sj_drop', dropId);
 

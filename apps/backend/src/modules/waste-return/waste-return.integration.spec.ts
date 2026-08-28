@@ -215,7 +215,7 @@ describe('Waste & Return — live database', () => {
     await closePool();
   });
 
-  it('waste create (Leader Outlet) -> approve (Supervisor, outlet step) posts waste_out (FR-WST-01/02/04)', async () => {
+  it('waste create (Leader Outlet) -> approve (Supervisor, outlet step) posts waste_out (FR-WST-01 / FR-WST-02/04)', async () => {
     const ldr = actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]);
     const spv = actorFor(fx, RoleKey.SUPERVISOR, [fx.outletId]);
 
@@ -302,7 +302,7 @@ describe('Waste & Return — live database', () => {
     ).rejects.toMatchObject({ response: { code: ERR_PHOTO_REQUIRED } });
   });
 
-  it('return outlet -> warehouse: create -> submit -> approve (Supervisor) -> ship -> receive (Kepala Gudang) -> complete (FR-WST-01..04, §5.5)', async () => {
+  it('FR-WST-03 — return outlet -> warehouse: create -> submit -> approve (Supervisor) -> ship -> receive (Kepala Gudang) -> complete (FR-WST-01..04, §5.5)', async () => {
     const ldr = actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]);
     const spv = actorFor(fx, RoleKey.SUPERVISOR, [fx.outletId]);
     const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);

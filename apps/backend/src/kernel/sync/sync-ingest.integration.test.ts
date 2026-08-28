@@ -224,6 +224,40 @@ describe('SyncIngestService — live database', () => {
     expect(rows.every((r) => r.apply_status === 'applied')).toBe(true);
   });
 
+  it('D-10: a freshly-ingested envelope is stamped with the DURABLE relay_received_at', async () => {
+    await ensureFixtures();
+    const origin = freshOrigin();
+
+    // The wire envelope carries NO relayReceivedAt — the normal case for a
+    // device pushing straight to the cloud. `insertEvent` computes the §2.1
+    // value ("the first non-origin tier to durably store the event") and
+    // stores it; nothing used to copy it back, so every consumer downstream of
+    // the insert re-derived `new Date().toISOString()` instead of reading the
+    // record. `OfflineAuthService` is one of those consumers, and it uses the
+    // value for the §7.4 expiry decision.
+    const fresh = mkEvent(origin, 1);
+    expect(fresh.relayReceivedAt).toBeUndefined();
+
+    await ingest.ingestBatch(batchOf([fresh]), resolveLocation);
+
+    const stored = await assertPool.query<{ relay_received_at: Date | null }>(
+      `SELECT relay_received_at FROM sync_events WHERE event_id = $1`,
+      [fresh.eventId],
+    );
+    expect(stored.rows[0]!.relay_received_at).not.toBeNull();
+    expect(fresh.relayReceivedAt).toBeDefined();
+    // Equality against the ROW, not a clock: the failure mode is a value that
+    // looks perfectly plausible and is a different instant.
+    expect(new Date(fresh.relayReceivedAt!).getTime()).toBe(
+      stored.rows[0]!.relay_received_at!.getTime(),
+    );
+
+    // The promoted-out-of-`pending_dependency` path is covered in
+    // `sync-projector-registry.integration.test.ts`, where a recording
+    // projector can observe the envelope the sweep rebuilds from the row —
+    // this one reuses the caller's object and so cannot see it.
+  });
+
   it('T-05: authority violations are rejected with the exact §4.4 code — a class-M push, and a location spoof', async () => {
     await ensureFixtures();
     const origin = freshOrigin();

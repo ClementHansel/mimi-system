@@ -120,6 +120,62 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
     expect(fake.projectedEventIds).toEqual([event.eventId]); // still exactly once
   });
 
+  it('D-10: a PROMOTED event reaches its projector carrying the relay_received_at it was stamped with on ARRIVAL, not the promotion time', async () => {
+    if (!locationId) locationId = await fetchOneLocationId();
+    if (!actorUserId) actorUserId = randomUUID();
+
+    // The projector is the observation point: `sweepPendingDependency`
+    // reconstructs the envelope from the stored row rather than reusing the
+    // caller's object, so the only way to see what the promoted envelope
+    // carries is to be handed it. `OfflineAuthService` is handed the same
+    // object on the same hook, and reads `relayReceivedAt` for its §7.4
+    // expiry check.
+    // `relayReceivedAt` is `string | null | undefined` on the envelope: absent
+    // on the wire, null for a relay whose node stamp is still pending.
+    const seen = new Map<string, string | null | undefined>();
+    const recorder: SyncProjector = {
+      handles: ['attendance.checked_in'],
+      async project(_client: PoolClient, event: SyncEventEnvelope): Promise<void> {
+        seen.set(event.eventId, event.relayReceivedAt);
+      },
+    };
+    const { ingest } = buildIngestKit(pool, { projectors: [recorder], config: fakeConfig });
+
+    const origin = freshOrigin();
+
+    // Park seq 2 behind a missing seq 1.
+    const parked = mkEvent(origin, 2);
+    await ingest.ingestBatch(batchOf([parked]), resolveLocation);
+
+    const arrival = await assertPool.query<{
+      apply_status: string;
+      relay_received_at: Date | null;
+    }>(`SELECT apply_status, relay_received_at FROM sync_events WHERE event_id = $1`, [
+      parked.eventId,
+    ]);
+    expect(arrival.rows[0]!.apply_status).toBe('pending_dependency');
+    const stampedOnArrival = arrival.rows[0]!.relay_received_at!;
+    expect(seen.has(parked.eventId)).toBe(false); // parked events have not projected yet
+
+    // Fill the gap, which promotes the parked row through the sweep.
+    await ingest.ingestBatch(batchOf([mkEvent(origin, 1)]), resolveLocation);
+
+    // The promoted envelope carries the ARRIVAL stamp. Compared against the
+    // row rather than a clock, so this asserts the invariant ("these agree")
+    // instead of "recent enough" — the whole failure mode here is a value that
+    // looks perfectly plausible and is the wrong instant.
+    expect(seen.get(parked.eventId)).toBeDefined();
+    expect(new Date(seen.get(parked.eventId)!).getTime()).toBe(stampedOnArrival.getTime());
+
+    // Promotion must not restamp the row either: when it was RECEIVED is not
+    // when it was APPLIED, and §7.4 expiry is judged against the former.
+    const after = await assertPool.query<{ relay_received_at: Date | null }>(
+      `SELECT relay_received_at FROM sync_events WHERE event_id = $1`,
+      [parked.eventId],
+    );
+    expect(after.rows[0]!.relay_received_at!.getTime()).toBe(stampedOnArrival.getTime());
+  });
+
   it('a projector that throws does not lose the fact — sync_events stays applied, and it surfaces as a projection_failed exception', async () => {
     if (!locationId) locationId = await fetchOneLocationId();
     if (!actorUserId) actorUserId = randomUUID(); // fresh per test-process run — see sync-ingest.integration.test.ts's ensureFixtures() note on cross-file C4 pollution

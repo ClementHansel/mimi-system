@@ -1,4 +1,25 @@
 /**
+ * Writes the durable `relay_received_at` back onto the in-memory envelope
+ * (D-10).
+ *
+ * Mutation is deliberate and safe: the envelope is this batch's own decoded
+ * object, not shared state, and every consumer downstream of the insert wants
+ * the stored value rather than whatever the device happened to send. Without
+ * it, `OfflineAuthService` falls back to `new Date().toISOString()`, so §7.4's
+ * expiry check compares a credential against the moment the cloud got round to
+ * the event instead of the moment it was received — the two diverge by however
+ * long a node was offline before relaying, which is exactly the window offline
+ * authorization exists for.
+ *
+ * A `null` stamp is left alone: that is a legitimately un-stamped relay
+ * (`relayed_via_node_id` set, node stamp pending), and overwriting it with a
+ * cloud time would assert something untrue.
+ */
+function stampRelayReceivedAt(event: SyncEventEnvelope, stored: string | null): void {
+  if (stored !== null) event.relayReceivedAt = stored;
+}
+
+/**
  * The push-ingest pipeline (SYNC-PROTOCOL §4.3/§4.4, §3.4). The single
  * entry point every batch — device-direct today, node-relayed once M22
  * lands — flows through. Implements, in order (§3.4):
@@ -57,6 +78,17 @@ export interface AuthorityVerdict {
   detail?: string;
 }
 
+/**
+ * Rebuilds the wire envelope for a row being promoted out of
+ * `pending_dependency`.
+ *
+ * D-10 — `relayReceivedAt`/`relayedViaNodeId` are carried across. They used to
+ * be dropped here, and this is the promotion path: a parked event is stamped
+ * when it FIRST arrives and applied only once its gap fills, which may be much
+ * later. Without them the reconstructed envelope looked like an event that had
+ * never been relayed. The row already held the right value; nothing read it
+ * back.
+ */
 function envelopeFromRow(row: SyncEventRow): SyncEventEnvelope {
   return {
     eventId: row.event_id,
@@ -69,6 +101,8 @@ function envelopeFromRow(row: SyncEventRow): SyncEventEnvelope {
     payload: row.payload as SyncEventEnvelope['payload'],
     clientSeq: BigInt(row.client_seq),
     occurredAt: row.occurred_at,
+    relayReceivedAt: row.relay_received_at ?? undefined,
+    relayedViaNodeId: row.relayed_via_node_id ?? undefined,
     actorUserId: row.actor_user_id,
     schemaV: row.schema_v,
   };
@@ -266,6 +300,10 @@ export class SyncIngestService {
         };
       }
       await this.events.markApplied(client, event.eventId);
+      // D-10 — the durable stamp, for the case where a client RE-SENDS a
+      // parked event in a later batch: that envelope comes off the wire, not
+      // from `envelopeFromRow`, so it carries no arrival time of its own.
+      stampRelayReceivedAt(event, existing.relay_received_at);
       await this.runApplyHooks(client, event);
       return { eventId: event.eventId };
     }
@@ -283,12 +321,17 @@ export class SyncIngestService {
       return { eventId: event.eventId, rejected: { code: verdict.code!, detail: verdict.detail! } };
     }
 
-    await this.events.insertEvent(client, {
+    const inserted = await this.events.insertEvent(client, {
       event,
       applyStatus: 'applied',
       batchId,
       appliedAt: new Date().toISOString(),
     });
+    // D-10 — `insertEvent` computes the effective `relay_received_at` (§2.1)
+    // and returns the stored row. Read it back rather than letting the hooks
+    // re-derive it: the row is the record, and a node-relayed event's stamp is
+    // the NODE's arrival time, which can be hours before the cloud sees it.
+    stampRelayReceivedAt(event, inserted.relay_received_at);
     await this.runApplyHooks(client, event);
     return { eventId: event.eventId };
   }

@@ -282,6 +282,84 @@ describe('POS — full shift, live database', () => {
         });
         expect(order.netReceived).toBe(netReceived);
 
+        // FR-POS-07 — the requirement enumerates NINE fields the platform
+        // reconciliation needs: order id, platform, order value, discount,
+        // platform fee, other fees, payment received, order status and
+        // transaction date. `netReceived` alone does not cover it: the whole
+        // point of recording the breakdown is that when the platform's
+        // month-end statement disagrees, someone can see WHICH component
+        // disagrees. Asserted against the stored row rather than the returned
+        // object, so this is about what persisted.
+        const stored = await client.query<{
+          platform: string;
+          order_ref: string;
+          order_date: Date;
+          gross_amount: string;
+          discount_amount: string;
+          platform_fee: string;
+          other_fee: string;
+          net_received: string;
+          status: string;
+        }>(
+          `SELECT platform, order_ref, order_date, gross_amount, discount_amount,
+                  platform_fee, other_fee, net_received, status
+             FROM online_orders WHERE id = $1`,
+          [order.id],
+        );
+        expect(stored.rows).toHaveLength(1);
+        const row = stored.rows[0]!;
+        expect(row.platform).toBe('gofood');
+        expect(row.order_ref).toBe(order.orderRef);
+        expect(row.gross_amount).toBe(gross);
+        expect(row.discount_amount).toBe(discount);
+        expect(row.platform_fee).toBe(platformFee);
+        expect(row.other_fee).toBe(otherFee);
+        expect(row.net_received).toBe(netReceived);
+        expect(row.status).toBe('completed');
+        // The fee components must be stored SEPARATELY, not folded into one
+        // total — 5000 platform fee and 1000 other fee are different lines in
+        // a platform statement and are disputed separately.
+        expect(row.platform_fee).not.toBe(row.other_fee);
+
+        // Re-submitting the same platform order id is refused. Without this,
+        // a retried entry double-counts revenue that the platform only paid
+        // once.
+        await expect(
+          svc.onlineOrders.create(client, fx.kasirId, {
+            clientId: randomUUID(),
+            locationId: fx.locationId,
+            platform: OnlinePlatform.GOFOOD,
+            orderRef: order.orderRef,
+            orderDate: businessDateOf(new Date().toISOString()),
+            grossAmount: gross,
+            discountAmount: discount,
+            platformFee,
+            otherFee,
+            netReceived,
+            status: OnlineOrderStatus.COMPLETED,
+          }),
+        ).rejects.toMatchObject({ response: { code: 'ERR_CONFLICT' } });
+
+        // ...but the SAME reference on the OTHER platform is a different
+        // order. The two platforms mint their own ids and will collide sooner
+        // or later, so uniqueness is per (platform, order_ref) — a plain
+        // unique index on order_ref would start rejecting real ShopeeFood
+        // orders for looking like GoFood ones.
+        const twin = await svc.onlineOrders.create(client, fx.kasirId, {
+          clientId: randomUUID(),
+          locationId: fx.locationId,
+          platform: OnlinePlatform.SHOPEEFOOD,
+          orderRef: order.orderRef,
+          orderDate: businessDateOf(new Date().toISOString()),
+          grossAmount: gross,
+          discountAmount: discount,
+          platformFee,
+          otherFee,
+          netReceived,
+          status: OnlineOrderStatus.COMPLETED,
+        });
+        expect(twin.id).not.toBe(order.id);
+
         await expect(
           svc.onlineOrders.create(client, fx.kasirId, {
             clientId: randomUUID(),

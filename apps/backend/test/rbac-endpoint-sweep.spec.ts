@@ -72,6 +72,23 @@ const ALLOWED_PUBLIC_MUTATIONS: Record<string, string> = {
     'when `N8N_WEBHOOK_SECRET` is unset (fails closed, never open)',
 };
 
+/**
+ * Public routes that READ. Each entry names why serving it without a session
+ * is safe — in practice, because it returns no business data.
+ */
+const ALLOWED_PUBLIC_READS: Record<string, string> = {
+  'AppController.health': 'liveness probe — returns a status literal, no business data',
+  'SyncHttpController.health': 'protocol-version handshake (SYNC-PROTOCOL §4.1), no business data',
+  // The one entry here that DOES serve business data, and therefore the one
+  // worth stating carefully. `@Public` on this handler means "no USER
+  // session"; it is not unauthenticated. `DeviceAuthGuard` runs on it, and the
+  // handler builds its pull scope from `req.device.locationId` — a device can
+  // only ever pull its own outlet's events, never another's, and a request
+  // without a valid device credential never reaches the handler.
+  'SyncHttpController.pullEvents':
+    '`DeviceAuthGuard` — device credential, not a user session; scoped to `req.device.locationId`',
+};
+
 const ALLOWED_UNGUARDED: Record<string, string> = {
   // Authentication itself cannot require a permission — there is no session yet.
   'AuthController.login': '@Public — issues the session',
@@ -237,5 +254,35 @@ describe.skipIf(!hasDb)('W6-03 — every registered route is permission-gated', 
       .sort();
 
     expect(unjustified, 'PUBLIC endpoints that WRITE, with no recorded justification').toEqual([]);
+  });
+
+  /**
+   * NFR-03 — "autentikasi wajib untuk semua user".
+   *
+   * The two assertions above leave a gap between them, and it is the shape
+   * this requirement is actually about. A route with no permission must be in
+   * `ALLOWED_UNGUARDED` — unless it is `@Public`, which exempts it. A public
+   * route must be in `ALLOWED_PUBLIC_MUTATIONS` — unless it only READS.
+   *
+   * So a public GET falls through both. `@Public() @Get('payroll')` would have
+   * passed this entire sweep in silence: no session required, no permission
+   * required, nothing recorded. Reads are where the data is; an unauthenticated
+   * read is a disclosure, which is the failure the requirement names.
+   *
+   * Listed separately from the mutations rather than merged into one map,
+   * because the question being answered differs: a public write needs "what
+   * authenticates the caller", a public read needs "why is this safe to serve
+   * to nobody in particular" — usually because it carries no business data at
+   * all.
+   */
+  it('every PUBLIC read is explicitly justified', () => {
+    const unjustified = routes
+      .filter((r) => !['POST', 'PUT', 'PATCH', 'DELETE'].includes(r.method))
+      .filter((r) => r.isPublic)
+      .filter((r) => !(`${r.controller}.${r.handler}` in ALLOWED_PUBLIC_READS))
+      .map((r) => `${r.method} ${r.path}  (${r.controller}.${r.handler})`)
+      .sort();
+
+    expect(unjustified, 'PUBLIC endpoints that READ, with no recorded justification').toEqual([]);
   });
 });

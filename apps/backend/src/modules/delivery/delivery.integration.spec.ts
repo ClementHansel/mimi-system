@@ -61,6 +61,7 @@ import { SuratJalanService } from './services/surat-jalan.service';
 import { DropService } from './services/drop.service';
 import { GoodsReceiptService } from './services/goods-receipt.service';
 import { DeliverySyncProjector } from './services/delivery-sync-projector.service';
+import { RecapService } from './services/recap.service';
 import { RouteService } from './services/route.service';
 
 import {
@@ -346,6 +347,90 @@ describe('M10 delivery — live DB integration', () => {
         expect(fetched.plannedDate).toBe(plannedDate);
       } finally {
         await deleteSuratJalan(sj.id);
+      }
+    });
+
+    it('FR-LOG-04 — the daily recap reports the destinations and quantities for a date, and only that date', async () => {
+      // The recap is what the logistics team loads each morning to know where
+      // the trucks are going and roughly how much is on them. `RecapService`
+      // had no behavioural test at all — only an RBAC spec proving the route
+      // is permission-gated, which says nothing about whether the numbers on
+      // it are right.
+      //
+      // A date far outside the seed's range, so the counts are EXACT rather
+      // than "at least". A recap asserted with `toBeGreaterThan` would pass
+      // just as happily while double-counting, and double-counting is the
+      // failure mode that matters: the recap aggregates sj_lines -> sj_drops
+      // -> surat_jalan -> locations, and a fan-out in any of those joins
+      // inflates the quantity a driver loads the van from.
+      //
+      // TWO Surat Jalan to the SAME outlet on the SAME day, carrying the same
+      // item. That is deliberate: it is the shape that separates a correct
+      // recap from a plausible one. `outlets` must stay 1 (it counts DISTINCT
+      // destinations, not drops), while the item quantity must ADD UP across
+      // both shipments. Getting one right and the other wrong is easy; the
+      // pairing is what pins it.
+      const plannedDate = '2027-03-11';
+      const recapService = new RecapService();
+
+      const makeSj = (qty: string) =>
+        withCommit((client) =>
+          sjService.create(
+            client,
+            {
+              shipmentType: 'frozen' as never,
+              driverId: fixtures.driverId,
+              vehicleId: fixtures.frozenVehicleId,
+              plannedDate,
+              drops: [
+                {
+                  locationId: fixtures.outletId,
+                  lines: [
+                    { itemId: fixtures.frozenItemId, qty, unitId: fixtures.frozenItemUnitId },
+                  ],
+                },
+              ],
+            },
+            fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+          ),
+        );
+
+      const sjA = await makeSj('3.000');
+      const sjB = await makeSj('4.500');
+      try {
+        const recap = await withRollback((client) => recapService.dailyRecap(client, plannedDate));
+
+        expect(recap.date).toBe(plannedDate);
+        expect(recap.sjCount).toBe(2);
+        expect(recap.dropCount).toBe(2);
+        // The shipment-type split cold-chain planning depends on: a frozen run
+        // needs a freezer vehicle and a temperature log, a dry one does not,
+        // so a combined count would not be actionable.
+        expect(recap.frozenSjCount).toBe(2);
+        expect(recap.drySjCount).toBe(0);
+
+        expect(recap.byCity).toHaveLength(1);
+        // DISTINCT destinations — two shipments to one outlet is still one
+        // stop, and a plain COUNT here would report two.
+        expect(recap.byCity[0]!.outlets).toBe(1);
+
+        // ...while the quantities DO add up across the two shipments: one row
+        // for the item, at the summed 7.500.
+        expect(recap.byCity[0]!.items).toHaveLength(1);
+        expect(recap.byCity[0]!.items[0]!.itemId).toBe(fixtures.frozenItemId);
+        expect(Number(recap.byCity[0]!.items[0]!.qty)).toBeCloseTo(7.5, 3);
+
+        // The date filter is the other half of the requirement. Without it the
+        // team would be handed every shipment ever planned, every morning.
+        const dayBefore = await withRollback((client) =>
+          recapService.dailyRecap(client, '2027-03-10'),
+        );
+        expect(dayBefore.sjCount).toBe(0);
+        expect(dayBefore.dropCount).toBe(0);
+        expect(dayBefore.byCity).toHaveLength(0);
+      } finally {
+        await deleteSuratJalan(sjA.id);
+        await deleteSuratJalan(sjB.id);
       }
     });
 

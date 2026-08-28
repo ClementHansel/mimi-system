@@ -97,6 +97,24 @@ export class PosCatalogService {
     // a round trip; see `Product.recipeLines`'s doc). Minimal projection only:
     // item id, qty, unit id — no item name/unit code (payload-size discipline
     // for a payload that is precached on every tablet).
+    //
+    // D-29 (accepted) — `unit_conversions` is deliberately NOT shipped in this
+    // payload, and that has a consequence worth stating at the source rather
+    // than only in the debt register: where `rl.unit_id` differs from the
+    // ingredient's base unit, the device cannot convert, so its local stock
+    // estimate DRIFTS from the server's. A recipe line in grams against an
+    // item stocked in kilograms is off by 1000x on the tablet's own counter.
+    //
+    // Accepted because FR-POS-06 specifies an ESTIMATE — the tablet's number
+    // exists to warn a cashier that something is running low, and the
+    // authoritative figure is the server's, recomputed from the same recipe on
+    // sync via `RecipeService.explodeForSale()`, which DOES convert. Nothing
+    // financial or inventory-of-record depends on the device number.
+    //
+    // The fix, if the drift ever becomes visible in practice, is to ship the
+    // conversion factors for the units actually referenced by active recipes —
+    // a small set, not the whole `unit_conversions` table — rather than to
+    // make the device authoritative.
     const recipeLinesRes = await client.query<RecipeLineRow>(
       `SELECT r.product_id, r.yield_qty, rl.item_id, rl.qty, rl.unit_id
          FROM recipes r

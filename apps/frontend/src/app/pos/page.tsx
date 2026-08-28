@@ -62,6 +62,18 @@ export default function PosPage() {
   const [runtimeAttempt, setRuntimeAttempt] = useState(0);
   const [voidOpen, setVoidOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  /**
+   * D-26 (accepted for v1) — the ONLY sale this till can void is the last one
+   * rung on this device, and only while the tab is alive: this is component
+   * state, so a refresh clears it and the void button goes dead.
+   *
+   * There is no searchable sales history in v1, so a customer returning an
+   * hour later, or after the browser reloaded, cannot be handled at the till
+   * at all — that is a supervisor/finance correction, not a POS action.
+   * Recorded here because the constraint lives in this one `useState` and is
+   * invisible from anywhere else; the backend's void endpoint imposes no such
+   * limit.
+   */
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
 
   useEffect(() => {

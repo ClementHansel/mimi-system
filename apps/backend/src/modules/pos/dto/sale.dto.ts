@@ -98,6 +98,19 @@ export class CreateSaleDto {
   @Type(() => SaleLineDto)
   lines!: SaleLineDto[];
 
+  /**
+   * D-26 (accepted for v1) — `payments` is an ARRAY on the wire, but v1 sends
+   * exactly one entry: there is no split tender. A customer paying part cash
+   * and part QRIS is not expressible, and the cashier has to ring it as two
+   * sales.
+   *
+   * Recorded here rather than only in the debt register because the array
+   * shape reads as though split tender already works. It is the shape a
+   * future version needs — the posting rules already branch per method
+   * (JOUT-03, one rule per `method`), so the ledger side would cope — but no
+   * UI mints more than one entry and nothing has been tested against it.
+   * Treat a multi-entry array as untested, not supported.
+   */
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

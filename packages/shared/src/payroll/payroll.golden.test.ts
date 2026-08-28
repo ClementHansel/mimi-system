@@ -62,7 +62,9 @@ function goldenBaseInputs(): BasePayrollInputs {
     permissionPaid: false,
     perLateMinuteRate: '2000.00',
     attendanceAllowanceAmount: '200000.00', // irrelevant here (hasPerfectAttendance: false), kept nonzero to prove it's correctly gated to 0
-    leave: { daysTakenThisYear: 15, quotaDays: 12 }, // 3 days excess
+    // 3 days excess on ANNUAL alone. Under the old merged quota (12+3=15) this
+    // produced no deduction at all — the marriage allowance silently covered it.
+    leave: { annual: { daysTaken: 15, quotaDays: 12 }, marriage: { daysTaken: 0, quotaDays: 3 } },
     tenureTiers: [
       { minYears: 3, amount: '100000.00' },
       { minYears: 5, amount: '150000.00' },
@@ -80,11 +82,11 @@ function goldenBaseInputs(): BasePayrollInputs {
 describe('golden case #1 — base payslip (statutory OFF), hand-verified in cents', () => {
   const result = calculateBasePayslip(goldenBaseInputs());
 
-  it('gross = 5,750,000.00 (base 5,000,000 + OT 50,000 + incentive 200,000 + tenure 150,000 + position 300,000 + other-earning 50,000; attendance allowance correctly gated to 0)', () => {
+  it('PIN-01/PIN-04/PIN-06/PIN-07 — gross = 5,750,000.00 (base 5,000,000 + OT 50,000 + incentive 200,000 + tenure 150,000 + position 300,000 + other-earning 50,000; attendance allowance correctly gated to 0)', () => {
     expect(result.gross).toBe('5750000.00');
   });
 
-  it('deductions = 1,751,666.69 (dailyRate ceil(5,000,000/30)=166,666.67 driving sick×2/permission×1/absence×1/leave-excess×3, plus stock-shortfall 25,000 + loan 500,000 + late 30,000 + other-deduction 10,000 + cash-variance 20,000)', () => {
+  it('POUT-08/POUT-09 — deductions = 1,751,666.69 (dailyRate ceil(5,000,000/30)=166,666.67 driving sick×2/permission×1/absence×1/leave-excess×3, plus stock-shortfall 25,000 + loan 500,000 + late 30,000 + other-deduction 10,000 + cash-variance 20,000)', () => {
     expect(result.deductions).toBe('1751666.69');
   });
 
@@ -451,3 +453,59 @@ describe('cross-cutting: net is always gross minus deductions (clamped at zero) 
     }
   });
 });
+
+// ── POUT-04 regression: the two entitlements are INDEPENDENT ────────────────
+//
+// D-19 (Linear MA-50 / MA-151): payroll used to build one merged bucket —
+// `daysTakenThisYear` summed annual+marriage days and compared them against
+// `quotas.annual + quotas.marriage` (12 + 3 = 15). The PRD grants two separate
+// entitlements, so merging silently lent the marriage allowance to annual
+// leave: an employee who never married could take 15 annual days and be
+// treated as within quota.
+//
+// These cases fail against the merged implementation and pass against the
+// per-type one, which is the only reason they are worth having.
+describe('POUT-04 — annual and marriage leave are separate quotas (D-19 regression)', () => {
+  const dailyRate = '166666.67'; // ceil(5,000,000 / 30), same as golden case #1
+
+  function leaveExcessOf(annualTaken: number, marriageTaken: number): string {
+    const result = calculateBasePayslip({
+      ...goldenBaseInputs(),
+      leave: {
+        annual: { daysTaken: annualTaken, quotaDays: 12 },
+        marriage: { daysTaken: marriageTaken, quotaDays: 3 },
+      },
+    });
+    const line = result.lines.find(
+      (l) => l.componentCode === PayrollComponentCode.DEDUCTION_LEAVE_EXCESS,
+    );
+    return line?.amount ?? '0.00';
+  }
+
+  it('15 annual days with NO marriage leave is 3 days excess — the merged quota used to forgive all of it', () => {
+    // Merged: 15 taken vs 15 quota -> 0.00. Per-type: 15 vs 12 -> 3 days.
+    expect(leaveExcessOf(15, 0)).toBe(mulDays(dailyRate, 3));
+  });
+
+  it('taking the full marriage allowance does not consume annual quota', () => {
+    // 12 annual (exactly at quota) + 3 marriage (exactly at quota) = nothing owed,
+    // even though the naive total (15 days) equals the old merged ceiling.
+    expect(leaveExcessOf(12, 3)).toBe('0.00');
+  });
+
+  it('excess on BOTH types is charged for both, not netted against each other', () => {
+    // 13 annual (1 over) + 5 marriage (2 over) = 3 days, not 18-vs-15 = 3 by luck.
+    // Proven distinct by the next case, where the merged arithmetic disagrees.
+    expect(leaveExcessOf(13, 5)).toBe(mulDays(dailyRate, 3));
+  });
+
+  it('unused marriage allowance cannot offset annual excess', () => {
+    // Merged: 14 total vs 15 quota -> 0.00. Per-type: 14 annual vs 12 -> 2 days.
+    expect(leaveExcessOf(14, 0)).toBe(mulDays(dailyRate, 2));
+  });
+});
+
+/** Sum `dailyRate` `days` times, the same way the engine accumulates it. */
+function mulDays(dailyRate: string, days: number): string {
+  return sumMoney(Array.from({ length: days }, () => dailyRate));
+}

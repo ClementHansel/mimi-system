@@ -65,7 +65,17 @@ export interface BasePayrollInputs {
   perLateMinuteRate: Money;
   attendanceAllowanceAmount: Money;
 
-  leave: { daysTakenThisYear: number; quotaDays: number };
+  /**
+   * POUT-04 — one entry PER LEAVE TYPE, never merged. The PRD grants two
+   * distinct entitlements (12 days annual, 3 days marriage); summing them into
+   * one bucket silently lends the marriage allowance to annual leave, so an
+   * employee who never marries takes 15 annual days with no excess deduction.
+   * Excess is computed per type and then summed.
+   */
+  leave: {
+    annual: { daysTaken: number; quotaDays: number };
+    marriage: { daysTaken: number; quotaDays: number };
+  };
 
   tenureTiers: readonly TenureTier[];
   performanceIncentiveAmount: Money | null;
@@ -206,13 +216,29 @@ export function calculateBasePayslip(inputs: BasePayrollInputs): {
       }),
     );
 
-  const leaveExcess = deductionLeaveExcess(
-    inputs.leave.daysTakenThisYear,
-    inputs.leave.quotaDays,
+  // POUT-04 — per type, then summed. Deliberately NOT one merged quota: the two
+  // entitlements are independent, so overusing annual leave must be deducted even
+  // when the marriage allowance is untouched.
+  const annualExcess = deductionLeaveExcess(
+    inputs.leave.annual.daysTaken,
+    inputs.leave.annual.quotaDays,
     dailyRate,
   );
+  const marriageExcess = deductionLeaveExcess(
+    inputs.leave.marriage.daysTaken,
+    inputs.leave.marriage.quotaDays,
+    dailyRate,
+  );
+  const leaveExcess = sumMoney([annualExcess, marriageExcess]);
   if (!isZero(leaveExcess))
-    lines.push(deductionLine(PayrollComponentCode.DEDUCTION_LEAVE_EXCESS, leaveExcess));
+    lines.push(
+      deductionLine(PayrollComponentCode.DEDUCTION_LEAVE_EXCESS, leaveExcess, {
+        qty: String(
+          Math.max(0, inputs.leave.annual.daysTaken - inputs.leave.annual.quotaDays) +
+            Math.max(0, inputs.leave.marriage.daysTaken - inputs.leave.marriage.quotaDays),
+        ),
+      }),
+    );
 
   const shortfall = deductionStockShortfall(sumMoney([...inputs.stockShortfallShares]));
   if (!isZero(shortfall))

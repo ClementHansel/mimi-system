@@ -416,9 +416,12 @@ export class RunsService {
         message: 'Payment verification not found for this run',
       });
     if (pvRes.rows[0]!.status !== 'paid') {
-      // M17 `accounting` (the payment-verification queue's verify/pay endpoints) is still a stub at
-      // the time this module was built — there is currently no way to legitimately drive a PV to
-      // 'paid' through the real flow. Documented as a seam in this agent's report, not papered over.
+      // This guard is now reachable in both directions. When it was written, M17 `accounting` was a
+      // stub and nothing could legitimately drive a PV to 'paid' (recorded as D-18) — that seam is
+      // closed: `PaymentVerificationsService.verify()` moves pending -> verified (proof required)
+      // and `.pay()` moves verified -> paid, proven end to end across five separate connections by
+      // `accounting.integration.spec.ts`'s "Pending -> Verified -> Paid ladder" (FR-ACCT-03).
+      // So this rejection now means what it says: the PV really has not been paid yet.
       throw new BadRequestException({
         code: ERR_VALIDATION,
         message: 'The referenced payment verification is not yet paid',
@@ -628,10 +631,17 @@ export class RunsService {
     const quotas = await getLeaveQuotas(client);
 
     const year = period.startDate.slice(0, 4);
-    const leaveRes = await client.query<{ total: string }>(
-      `SELECT COALESCE(SUM(days), 0) AS total FROM leave_requests
-        WHERE employee_id = $1 AND status = 'approved' AND type IN ('annual','marriage') AND EXTRACT(YEAR FROM start_date) = $2`,
+    // POUT-04 — grouped BY TYPE, never summed together. Annual and marriage are
+    // separate entitlements; one `SUM(days)` against a combined quota lets an
+    // employee spend the marriage allowance on annual leave (D-19).
+    const leaveRes = await client.query<{ type: string; total: string }>(
+      `SELECT type, COALESCE(SUM(days), 0) AS total FROM leave_requests
+        WHERE employee_id = $1 AND status = 'approved' AND type IN ('annual','marriage') AND EXTRACT(YEAR FROM start_date) = $2
+        GROUP BY type`,
       [employee.id, year],
+    );
+    const leaveDaysByType = new Map(
+      leaveRes.rows.map((r) => [r.type, Number(r.total ?? 0)] as const),
     );
 
     const componentAmounts = await this.loadEmployeeComponentAmounts(
@@ -674,8 +684,14 @@ export class RunsService {
       attendanceAllowanceAmount:
         componentAmounts.get(PayrollComponentCode.ATTENDANCE_ALLOWANCE) ?? ZERO_MONEY,
       leave: {
-        daysTakenThisYear: Number(leaveRes.rows[0]?.total ?? 0),
-        quotaDays: quotas.annual + quotas.marriage,
+        annual: {
+          daysTaken: leaveDaysByType.get('annual') ?? 0,
+          quotaDays: quotas.annual,
+        },
+        marriage: {
+          daysTaken: leaveDaysByType.get('marriage') ?? 0,
+          quotaDays: quotas.marriage,
+        },
       },
       tenureTiers: DEFAULT_TENURE_TIERS,
       performanceIncentiveAmount:

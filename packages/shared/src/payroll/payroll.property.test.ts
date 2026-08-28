@@ -41,7 +41,10 @@ function inputsArb() {
       permissionPaid: r.permissionPaid,
       perLateMinuteRate: '500.00',
       attendanceAllowanceAmount: '200000.00',
-      leave: { daysTakenThisYear: r.daysTakenThisYear, quotaDays: 12 },
+      leave: {
+        annual: { daysTaken: r.daysTakenThisYear, quotaDays: 12 },
+        marriage: { daysTaken: 0, quotaDays: 3 },
+      },
       tenureTiers: [{ minYears: 3, amount: '100000.00' }],
       performanceIncentiveAmount: null,
       positionAllowanceAmount: null,
@@ -99,7 +102,10 @@ describe('property: never a negative net without an explicit deduction', () => {
             permissionPaid: true,
             perLateMinuteRate: '500.00',
             attendanceAllowanceAmount: '0.00', // no perfect-attendance bonus either, to isolate the claim
-            leave: { daysTakenThisYear: 0, quotaDays: 12 },
+            leave: {
+              annual: { daysTaken: 0, quotaDays: 12 },
+              marriage: { daysTaken: 0, quotaDays: 3 },
+            },
             tenureTiers: [],
             performanceIncentiveAmount: null,
             positionAllowanceAmount: null,

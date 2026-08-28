@@ -21,7 +21,7 @@ function baseInputs(overrides: Partial<BasePayrollInputs> = {}): BasePayrollInpu
     permissionPaid: false,
     perLateMinuteRate: '500.00',
     attendanceAllowanceAmount: '200000.00',
-    leave: { daysTakenThisYear: 0, quotaDays: 12 },
+    leave: { annual: { daysTaken: 0, quotaDays: 12 }, marriage: { daysTaken: 0, quotaDays: 3 } },
     tenureTiers: [],
     performanceIncentiveAmount: null,
     positionAllowanceAmount: null,

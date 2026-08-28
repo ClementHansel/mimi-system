@@ -64,7 +64,7 @@ types, settings defaults) — demo _business_ data lives only in `seed.ts`.
 | `070–079` | assets, maintenance schedules/jobs, service history                                                                                                                                                                                                                                                                                              | `070`–`074` |
 | `080–089` | waste records, returns (both directions)                                                                                                                                                                                                                                                                                                         | `080`–`082` |
 | `090–099` | chart of accounts (incl. Amendment 1 BPJS/PPh21 accounts), fiscal periods, journal, posting rules (seeded), payment verifications                                                                                                                                                                                                                | `090`–`095` |
-| `100–109` | 4 materialized views: `mv_sales_daily`, `mv_item_usage_daily`, `mv_employee_kpi_daily`, `mv_delivery_recap_daily`                                                                                                                                                                                                                                | `100`       |
+| `100–109` | 3 materialized views: `mv_sales_daily`, `mv_item_usage_daily`, `mv_employee_kpi_daily` (`mv_delivery_recap_daily` was dropped by `261`, D-21)                                                                                                                                                                                                    | `100`       |
 | `110–119` | branch nodes, devices, heartbeats, device events, pairing tokens, discovered devices                                                                                                                                                                                                                                                             | `110`–`116` |
 | `120–129` | sync events/batches/cursors/conflicts, offline credentials/authorizations                                                                                                                                                                                                                                                                        | `120`–`126` |
 | `2xx`     | post-authoring fixes. Per BUILD-PLAN §6 rule 3, any agent may file its own `2NN_<agent-id>_<slug>.sql` for a defect it finds — `210_w2d_*`, `211_w3_09_*`, and `212_w1c_*` (this agent's own, see below) are examples already in the tree alongside this agent's other fixes.                                                                    | `200`–`214` |
@@ -254,11 +254,19 @@ in for the sync path, which isn't any one human role) — returns the full
   once volume warrants it is a straightforward `2xx` migration (create
   partitioned parent, attach existing data as the first partition); flagging
   here so it isn't forgotten before go-live traffic arrives.
-- **`mv_delivery_recap_daily` and `mv_employee_kpi_daily` SELECT bodies** are
-  this agent's own design — the contract explicitly leaves the exact query
-  bodies to W1-C ("grains and column names... are contract"). Grain: `(planned_date,
-city, shipment_type, item_id)` for the delivery recap; `(employee_id, kpi_date)`
-  for employee KPIs. See `100_reporting_matviews.sql` for the reasoning.
+- **`mv_employee_kpi_daily`'s SELECT body** is this agent's own design — the
+  contract explicitly leaves the exact query bodies to W1-C ("grains and column
+  names... are contract"). Grain: `(employee_id, kpi_date)`. See
+  `100_reporting_matviews.sql` for the reasoning.
+- **`mv_delivery_recap_daily` was dropped by migration `261`** (D-21). Its
+  grain `(planned_date, city, shipment_type, item_id)` mixed per-item
+  quantities with per-day counts, so its `sj_count`/`drop_count` were correct
+  within a row and over-counted the moment anyone summed across items. Both
+  would-be consumers had independently written themselves notes to avoid it,
+  leaving a view that was refreshed every five minutes and never read.
+  FR-LOG-04 is served by `RecapService.dailyRecap()` off the base tables. If a
+  future workload wants the precomputation back, add TWO views at their own
+  grains rather than one at both.
 - **`posting_rules` seed data for multi-leg events** (`payroll_accrual`,
   `outlet_sales`, `sale_void_reversal`) is a best-effort declarative
   approximation. The contract describes these in prose as needing more than

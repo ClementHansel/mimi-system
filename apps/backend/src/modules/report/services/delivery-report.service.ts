@@ -31,14 +31,16 @@ export interface DeliveryRecapReport {
  * invent a new shape"), but this module cannot import that service (`delivery`
  * exports nothing to other modules) so the query logic is reproduced here.
  *
- * Reads `surat_jalan`/`sj_drops`/`sj_lines` DIRECTLY rather than
- * `mv_delivery_recap_daily`, despite the ticket's data-source note pointing at
- * that matview: the matview's grain is `(planned_date, city, shipment_type,
- * item_id)` with `COUNT(DISTINCT sj.id)` computed PER ITEM ROW. A single SJ
- * carrying several line items appears in several of those item-grain rows, so
- * summing `sj_count`/`drop_count` across items to get a city- or date-level
- * total would OVER-COUNT the very same SJ once per distinct item on it —
- * silently wrong output, not a shortcut. The base-table join below computes
+ * Reads `surat_jalan`/`sj_drops`/`sj_lines` DIRECTLY. The ticket's
+ * data-source note pointed at `mv_delivery_recap_daily`, but that view's grain
+ * was `(planned_date, city, shipment_type, item_id)` with `COUNT(DISTINCT
+ * sj.id)` computed PER ITEM ROW: a single SJ carrying several line items
+ * appears in several of those rows, so summing `sj_count`/`drop_count` across
+ * items to get a city- or date-level total OVER-COUNTS the same SJ once per
+ * distinct item on it — silently wrong output, not a shortcut. This reasoning,
+ * reached here and independently in `dashboard/services/ops-status.service.ts`,
+ * is why the view was eventually dropped (migration 261, D-21) rather than
+ * left as a trap. The base-table join below computes
  * `COUNT(DISTINCT ...)` at the actual city/date grain this report needs,
  * exactly like `RecapService.dailyRecap` does. `planned_date` is already a
  * plain `DATE` column (not a timestamp) — no WITA bucketing is needed to key
@@ -119,7 +121,7 @@ export class DeliveryReportService {
     }
 
     // `?locationId=` has no meaning for this endpoint (CONTRACTS.md §4.19 only lists `?date=` —
-    // grain is destination CITY, per `mv_delivery_recap_daily`'s own doc comment, not location).
+    // grain is destination CITY, per FR-LOG-04's own recap shape, not location).
     // Scope enforcement is applied above via `d.location_id` directly (every query's `scopeWhere`),
     // which is why there is no single `locationId` param to run `assertLocationInScope` against here.
     return {

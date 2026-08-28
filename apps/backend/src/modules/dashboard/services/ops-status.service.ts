@@ -73,9 +73,11 @@ export class OpsStatusService {
   }
 
   /**
-   * Surat Jalan actually in transit (live `surat_jalan` table, per the ticket's
-   * instruction that this counter must NOT come from `mv_delivery_recap_daily`
-   * — that matview has no `location_id` grain at all). Scoped by EITHER the
+   * Surat Jalan actually in transit, from the live `surat_jalan` table. The
+   * ticket instructed that this counter must not come from
+   * `mv_delivery_recap_daily`, which had no `location_id` grain at all; that
+   * view has since been dropped outright (migration 261, D-21) for the related
+   * reason that its counts could not be aggregated. Scoped by EITHER the
    * SJ's origin warehouse OR any of its drop outlets being in the caller's
    * scope, matching `ScopeService`'s own kepala-gudang/driver "origin UNION
    * destinations" scoping shape.

@@ -11,12 +11,13 @@ import { DashboardGateway } from './dashboard.gateway';
 
 export const REFRESH_INTERVAL_MS = 5 * 60_000; // "every 5 min" per migration 100's own header comment.
 
-const MATVIEWS = [
-  'mv_sales_daily',
-  'mv_item_usage_daily',
-  'mv_employee_kpi_daily',
-  'mv_delivery_recap_daily',
-] as const;
+// `mv_delivery_recap_daily` was dropped by migration 261 (D-21): its grain
+// mixed per-item quantities with per-day counts, so summing it double-counted,
+// and both would-be consumers had already written themselves notes to avoid
+// it. Refreshing a view nobody reads is write amplification on a five-minute
+// timer. FR-LOG-04 is served by `RecapService.dailyRecap()` off the base
+// tables.
+const MATVIEWS = ['mv_sales_daily', 'mv_item_usage_daily', 'mv_employee_kpi_daily'] as const;
 
 /**
  * The scheduler `database/migrations/100_reporting_matviews.sql`'s header

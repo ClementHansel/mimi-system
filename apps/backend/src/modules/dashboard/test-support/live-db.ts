@@ -199,12 +199,7 @@ export async function rawRevenueForRange(
  */
 export async function refreshMatviewsAsOwner(): Promise<void> {
   const pool = getOwnerPool();
-  for (const view of [
-    'mv_sales_daily',
-    'mv_item_usage_daily',
-    'mv_employee_kpi_daily',
-    'mv_delivery_recap_daily',
-  ]) {
+  for (const view of ['mv_sales_daily', 'mv_item_usage_daily', 'mv_employee_kpi_daily']) {
     await pool.query(`REFRESH MATERIALIZED VIEW CONCURRENTLY ${view}`);
   }
 }

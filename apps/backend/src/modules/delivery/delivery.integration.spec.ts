@@ -20,7 +20,6 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { ConfigService } from '@nestjs/config';
 import { ERR_VALIDATION, MovementType, RoleKey, SyncOriginType } from '@mimi/shared';
 import { formatUuidV7, type SyncPushBatch } from '@mimi/sync-protocol';
 
@@ -42,14 +41,9 @@ import { JournalEventType } from '@mimi/shared';
 import { StockMovedEventEmitter } from '../../kernel/stock-ledger/stock-ledger-events';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
+import { buildIngestKit } from '../../kernel/sync/test-support/ingest-factory';
 import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
-import { OfflineCredentialsRepository } from '../../kernel/sync/offline-credentials.repository';
-import { RegistryRepository } from '../../kernel/sync/registry.repository';
 import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.service';
-import { OfflineAuthService } from '../../kernel/sync/offline-auth.service';
-import { ReconciliationService } from '../../kernel/sync/reconciliation.service';
-import { SyncIngestService } from '../../kernel/sync/sync-ingest.service';
-import { SyncProjectorRegistry } from '../../kernel/sync/sync-projector-registry.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import type { NotificationService } from '../../kernel/notification/notification.service';
 
@@ -1143,29 +1137,12 @@ describe('M10 delivery — live DB integration', () => {
     let photoId: string;
     let sigId: string;
 
-    const projectorRegistry = new SyncProjectorRegistry();
+    // D-14 — the ingest graph comes from `buildIngestKit`, not seven
+    // hand-written constructions. The delivery projector IS passed: an
+    // unregistered (entity, op) is a silent no-op, so a suite that forgot it
+    // would prove nothing while staying green.
     const projector = new DeliverySyncProjector(eventsRepo, stockLedger, coldChain, dropService);
-    projectorRegistry.register(projector);
-    const offlineCredsRepo = new OfflineCredentialsRepository();
-    const registryRepo = new RegistryRepository(getAppPool());
-    const offlineAuth = new OfflineAuthService(
-      offlineCredsRepo,
-      conflictsRepo,
-      new ConfigService(),
-    );
-    const reconciliation = new ReconciliationService(
-      getAppPool(),
-      eventsRepo,
-      conflictsRepo,
-      registryRepo,
-    );
-    const ingest = new SyncIngestService(
-      eventsRepo,
-      conflictDetector,
-      offlineAuth,
-      reconciliation,
-      projectorRegistry,
-    );
+    const { ingest } = buildIngestKit(getAppPool(), { projectors: [projector] });
 
     /**
      * A far-future, fixed planned date — NOT `new Date()`, for the reason

@@ -11,15 +11,7 @@ import {
   VoidRefundType,
 } from '@mimi/shared';
 import { formatUuidV7, type SyncEventEnvelope, type SyncPushBatch } from '@mimi/sync-protocol';
-import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
-import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
-import { OfflineCredentialsRepository } from '../../kernel/sync/offline-credentials.repository';
-import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.service';
-import { OfflineAuthService } from '../../kernel/sync/offline-auth.service';
-import { ReconciliationService } from '../../kernel/sync/reconciliation.service';
-import { RegistryRepository } from '../../kernel/sync/registry.repository';
-import { SyncIngestService } from '../../kernel/sync/sync-ingest.service';
-import { SyncProjectorRegistry } from '../../kernel/sync/sync-projector-registry.service';
+import { buildIngestKit } from '../../kernel/sync/test-support/ingest-factory';
 import { PosShiftService } from './services/pos-shift.service';
 import { PosSaleService } from './services/pos-sale.service';
 import { PosVoidRefundService } from './services/pos-void-refund.service';
@@ -70,11 +62,11 @@ function services(pool: Pool) {
   const syncEmit = buildSyncEmitService(pool);
   const shifts = new PosShiftService(pool, approvals, notifications);
   const sales = new PosSaleService(
-      pool,
-      stockLedger,
-      buildPaymentVerificationsService(pool),
-      buildVoucherRedemptionService(),
-    );
+    pool,
+    stockLedger,
+    buildPaymentVerificationsService(pool),
+    buildVoucherRedemptionService(),
+  );
   // All SEVEN constructor params, in order. This call used to pass six —
   // `approvalCodes` was missing — which silently shifted every later argument by
   // one: `stockLedger` landed in `approvalCodes`, `notifications` received the
@@ -192,30 +184,11 @@ describe('PosSyncProjector — the domain-projection hook, real ingest, live dat
     const ownerPool = getOwnerPool();
     const svc = services(pool);
 
-    const eventsRepo = new SyncEventsRepository(pool);
-    const conflictsRepo = new SyncConflictsRepository();
-    const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-    const fakeConfig = { get: (_k: string, def?: string) => def } as never;
-    const offlineAuth = new OfflineAuthService(
-      new OfflineCredentialsRepository(),
-      conflictsRepo,
-      fakeConfig,
-    );
-    const reconciliation = new ReconciliationService(
-      pool,
-      eventsRepo,
-      conflictsRepo,
-      new RegistryRepository(pool),
-    );
-    const projectors = new SyncProjectorRegistry();
-    projectors.register(svc.projector);
-    const ingest = new SyncIngestService(
-      eventsRepo,
-      conflictDetector,
-      offlineAuth,
-      reconciliation,
-      projectors,
-    );
+    // D-14 — one factory builds the ingest graph. This suite is the second
+    // one B-02 touched: `PosVoidRefundService` was being constructed with six
+    // arguments against a seven-parameter signature here, silently misaligning
+    // its collaborators while the test stayed green.
+    const { ingest } = buildIngestKit(pool, { projectors: [svc.projector] });
 
     const originDeviceId = randomUUID();
     const shiftId = randomUUID();

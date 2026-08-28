@@ -19,15 +19,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { SyncOriginType } from '@mimi/shared';
 import { formatUuidV7, type SyncEventEnvelope, type SyncPushBatch } from '@mimi/sync-protocol';
-import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
-import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
-import { OfflineCredentialsRepository } from '../../kernel/sync/offline-credentials.repository';
-import { RegistryRepository } from '../../kernel/sync/registry.repository';
-import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.service';
-import { OfflineAuthService } from '../../kernel/sync/offline-auth.service';
-import { ReconciliationService } from '../../kernel/sync/reconciliation.service';
-import { SyncIngestService } from '../../kernel/sync/sync-ingest.service';
-import { SyncProjectorRegistry } from '../../kernel/sync/sync-projector-registry.service';
+import { buildIngestKit } from '../../kernel/sync/test-support/ingest-factory';
 import {
   cleanupOrigins,
   cleanupNodesAndDevices,
@@ -51,24 +43,14 @@ const pool = getAppPool();
 // membership in `app_user` is `NOINHERIT`, so a bare app-pool query fails "permission denied" unless
 // it is inside the engine's own `SET LOCAL ROLE app_user` transaction — which a test assertion isn't.
 const assertPool = getOwnerPool();
-const eventsRepo = new SyncEventsRepository(pool);
-const conflictsRepo = new SyncConflictsRepository();
-const registryRepo = new RegistryRepository(pool);
-const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-const offlineAuth = new OfflineAuthService(
-  new OfflineCredentialsRepository(),
-  conflictsRepo,
-  fakeConfig,
-);
-const reconciliation = new ReconciliationService(pool, eventsRepo, conflictsRepo, registryRepo);
-const projectors = new SyncProjectorRegistry(); // empty registry — no Wave 3+ projector registered in this test process (matches kernel/sync's own sync-ingest.integration.test.ts)
-const ingest = new SyncIngestService(
-  eventsRepo,
-  conflictDetector,
-  offlineAuth,
-  reconciliation,
-  projectors,
-);
+// D-14 — built by `buildIngestKit`, not by hand. This suite is the one that
+// PROVED why: B-02 regressed the multi-origin relay when a constructor
+// signature moved and every hand-assembled copy silently went stale.
+//
+// No projectors passed, deliberately: nothing in this process registers one,
+// and the relay behaviour under test here is about origin/location resolution,
+// not projection.
+const { ingest, registryRepo } = buildIngestKit(pool, { config: fakeConfig });
 
 function validAttendanceData(loc: string) {
   return {

@@ -5,14 +5,10 @@ import type { ConfigService } from '@nestjs/config';
 import { LeaveType, RoleKey, SyncOriginType } from '@mimi/shared';
 import { formatUuidV7, type SyncEventEnvelope, type SyncPushBatch } from '@mimi/sync-protocol';
 import { SyncEventsRepository } from '../../../kernel/sync/sync-events.repository';
+import { buildIngestKit } from '../../../kernel/sync/test-support/ingest-factory';
 import { SyncConflictsRepository } from '../../../kernel/sync/sync-conflicts.repository';
-import { OfflineCredentialsRepository } from '../../../kernel/sync/offline-credentials.repository';
 import { ConflictDetectorService } from '../../../kernel/sync/conflict-detector.service';
-import { OfflineAuthService } from '../../../kernel/sync/offline-auth.service';
-import { ReconciliationService } from '../../../kernel/sync/reconciliation.service';
-import { RegistryRepository } from '../../../kernel/sync/registry.repository';
 import { SyncIngestService } from '../../../kernel/sync/sync-ingest.service';
-import { SyncProjectorRegistry } from '../../../kernel/sync/sync-projector-registry.service';
 import { StorageService } from '../../../kernel/storage/storage.service';
 import { AttendanceService } from '../attendance/attendance.service';
 import { LeavesService } from '../leaves/leaves.service';
@@ -100,41 +96,27 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
           `postgres://${process.env.POSTGRES_USER ?? 'mimi'}:${process.env.POSTGRES_PASSWORD ?? 'mimi_secret'}@localhost:${process.env.POSTGRES_PORT ?? '55433'}/${process.env.POSTGRES_DB ?? 'mimi'}`,
       });
 
+      // D-14 — the ingest graph is `buildIngestKit`'s job. Only the two HR
+      // projectors under test are assembled here, since those are what this
+      // suite is actually about.
       const eventsRepo = new SyncEventsRepository(appPool);
       const conflictsRepo = new SyncConflictsRepository();
       const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-      const offlineAuth = new OfflineAuthService(
-        new OfflineCredentialsRepository(),
-        conflictsRepo,
-        fakeConfig,
-      );
-      const reconciliation = new ReconciliationService(
-        appPool,
-        eventsRepo,
-        conflictsRepo,
-        new RegistryRepository(appPool),
-      );
-      const projectors = new SyncProjectorRegistry();
 
-      const attendanceService = new AttendanceService(new StorageService(fakeStorageConfig()));
-      const attendanceProjector = new AttendanceSyncProjector(attendanceService);
-      projectors.register(attendanceProjector);
-
-      const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
-      const leavesService = new LeavesService(
-        new ApprovalService(new ApprovalsRepository()),
-        syncEmit,
+      const attendanceProjector = new AttendanceSyncProjector(
+        new AttendanceService(new StorageService(fakeStorageConfig())),
       );
-      const leaveProjector = new LeaveSyncProjector(leavesService);
-      projectors.register(leaveProjector);
-
-      ingest = new SyncIngestService(
-        eventsRepo,
-        conflictDetector,
-        offlineAuth,
-        reconciliation,
-        projectors,
+      const leaveProjector = new LeaveSyncProjector(
+        new LeavesService(
+          new ApprovalService(new ApprovalsRepository()),
+          new SyncEmitService(eventsRepo, conflictDetector),
+        ),
       );
+
+      ingest = buildIngestKit(appPool, {
+        projectors: [attendanceProjector, leaveProjector],
+        config: fakeConfig,
+      }).ingest;
     } catch {
       dbAvailable = false;
     }

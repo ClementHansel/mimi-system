@@ -15,15 +15,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { PoolClient } from 'pg';
 import { SyncOriginType } from '@mimi/shared';
 import { formatUuidV7, type SyncEventEnvelope, type SyncPushBatch } from '@mimi/sync-protocol';
-import { SyncEventsRepository } from './sync-events.repository';
-import { SyncConflictsRepository } from './sync-conflicts.repository';
-import { OfflineCredentialsRepository } from './offline-credentials.repository';
-import { ConflictDetectorService } from './conflict-detector.service';
-import { OfflineAuthService } from './offline-auth.service';
-import { ReconciliationService } from './reconciliation.service';
-import { RegistryRepository } from './registry.repository';
-import { SyncIngestService } from './sync-ingest.service';
-import { SyncProjectorRegistry } from './sync-projector-registry.service';
+import { buildIngestKit } from './test-support/ingest-factory';
 import type { ProjectionContext, SyncProjector } from './sync-projector.types';
 import {
   cleanupOrigins,
@@ -113,30 +105,8 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
     if (!locationId) locationId = await fetchOneLocationId();
     if (!actorUserId) actorUserId = randomUUID(); // fresh per test-process run — see sync-ingest.integration.test.ts's ensureFixtures() note on cross-file C4 pollution
 
-    const eventsRepo = new SyncEventsRepository(pool);
-    const conflictsRepo = new SyncConflictsRepository();
-    const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-    const offlineAuth = new OfflineAuthService(
-      new OfflineCredentialsRepository(),
-      conflictsRepo,
-      fakeConfig,
-    );
-    const reconciliation = new ReconciliationService(
-      pool,
-      eventsRepo,
-      conflictsRepo,
-      new RegistryRepository(pool),
-    );
-    const projectors = new SyncProjectorRegistry();
     const fake = new FakeAttendanceProjector();
-    projectors.register(fake);
-    const ingest = new SyncIngestService(
-      eventsRepo,
-      conflictDetector,
-      offlineAuth,
-      reconciliation,
-      projectors,
-    );
+    const { ingest } = buildIngestKit(pool, { projectors: [fake], config: fakeConfig });
 
     const origin = freshOrigin();
     const event = mkEvent(origin, 1);
@@ -154,31 +124,9 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
     if (!locationId) locationId = await fetchOneLocationId();
     if (!actorUserId) actorUserId = randomUUID(); // fresh per test-process run — see sync-ingest.integration.test.ts's ensureFixtures() note on cross-file C4 pollution
 
-    const eventsRepo = new SyncEventsRepository(pool);
-    const conflictsRepo = new SyncConflictsRepository();
-    const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-    const offlineAuth = new OfflineAuthService(
-      new OfflineCredentialsRepository(),
-      conflictsRepo,
-      fakeConfig,
-    );
-    const reconciliation = new ReconciliationService(
-      pool,
-      eventsRepo,
-      conflictsRepo,
-      new RegistryRepository(pool),
-    );
-    const projectors = new SyncProjectorRegistry();
     const fake = new FakeAttendanceProjector();
     fake.shouldFail = true;
-    projectors.register(fake);
-    const ingest = new SyncIngestService(
-      eventsRepo,
-      conflictDetector,
-      offlineAuth,
-      reconciliation,
-      projectors,
-    );
+    const { ingest } = buildIngestKit(pool, { projectors: [fake], config: fakeConfig });
 
     const origin = freshOrigin();
     const event = mkEvent(origin, 1);
@@ -205,28 +153,10 @@ describe('SyncProjectorRegistry — the domain-projection hook, live database', 
     if (!locationId) locationId = await fetchOneLocationId();
     if (!actorUserId) actorUserId = randomUUID(); // fresh per test-process run — see sync-ingest.integration.test.ts's ensureFixtures() note on cross-file C4 pollution
 
-    const eventsRepo = new SyncEventsRepository(pool);
-    const conflictsRepo = new SyncConflictsRepository();
-    const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
-    const offlineAuth = new OfflineAuthService(
-      new OfflineCredentialsRepository(),
-      conflictsRepo,
-      fakeConfig,
-    );
-    const reconciliation = new ReconciliationService(
-      pool,
-      eventsRepo,
-      conflictsRepo,
-      new RegistryRepository(pool),
-    );
-    const projectors = new SyncProjectorRegistry(); // nothing registered
-    const ingest = new SyncIngestService(
-      eventsRepo,
-      conflictDetector,
-      offlineAuth,
-      reconciliation,
-      projectors,
-    );
+    // Nothing registered — this test is about an unmatched (entity, op) being
+    // a silent no-op, so the empty default is the point rather than an
+    // omission.
+    const { ingest } = buildIngestKit(pool, { config: fakeConfig });
 
     const origin = freshOrigin();
     const event = mkEvent(origin, 1);

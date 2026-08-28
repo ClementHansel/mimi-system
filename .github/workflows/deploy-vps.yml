@@ -247,7 +247,25 @@ jobs:
         # terrible week, not like a broken one.
         run: |
           ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
-            for v in mv_sales_daily mv_item_usage_daily mv_employee_kpi_daily mv_delivery_recap_daily; do
+            # The list is DERIVED, not hardcoded. It used to name the four
+            # views literally, and when migration 261 dropped
+            # mv_delivery_recap_daily this step failed the whole deploy on
+            # "relation does not exist" — after the app was already live. A
+            # deploy step that must be edited in lockstep with a migration
+            # will eventually not be.
+            #
+            # Every matview in this database is a reporting rollup, so
+            # refreshing all of them is right by construction: adding one is
+            # picked up automatically, dropping one stops being referenced
+            # automatically. CONCURRENTLY needs a unique index, which every
+            # rollup has (migration 100).
+            views=$(docker exec mimi-postgres psql -U mimi -d mimi -v ON_ERROR_STOP=1 \
+              -tAc "SELECT matviewname FROM pg_matviews WHERE schemaname = 'public' ORDER BY matviewname")
+            if [ -z "$views" ]; then
+              echo "::error::no materialized views found — expected the reporting rollups from migration 100"
+              exit 1
+            fi
+            for v in $views; do
               docker exec mimi-postgres psql -U mimi -d mimi -v ON_ERROR_STOP=1 \
                 -tAc "REFRESH MATERIALIZED VIEW CONCURRENTLY ${v}" >/dev/null
               echo "refreshed ${v}"

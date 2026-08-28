@@ -190,7 +190,20 @@ export class BridgeGateway implements OnGatewayConnection, OnGatewayDisconnect {
             actorUserId: CLOUD_ORIGIN_ACTOR,
             data: {},
           })
-          .catch(() => undefined);
+          // D-15 — LOGGED, not swallowed. This emit is best-effort (a failed
+          // telemetry mirror must never fail a node's recovery), but silence
+          // is how the original D-15 defect survived: `outlet_offline` /
+          // `outlet_online` were emitted without being declared in
+          // `AUTHORITY[DEVICE_EVENTS].ops`, so every firing failed schema
+          // validation and vanished — deterministically, forever, until a
+          // soak spec happened to look. `staleness-sweep.service.ts` warns on
+          // its four equivalents; these two did not, and they are the
+          // highest-traffic of the six (every heartbeat recovery).
+          .catch((err: Error) =>
+            this.logger.warn(
+              `sync-emit device_events/went_online for node ${nodeId} failed (non-fatal): ${err.message}`,
+            ),
+          );
         this.topologyGateway.emitUpdate({ locationId, nodeId, status: 'online' });
       }
 

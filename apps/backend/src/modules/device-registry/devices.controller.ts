@@ -23,7 +23,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
-import { Inject } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
 import {
   DeviceCategory,
   PairingTargetType,
@@ -89,6 +89,8 @@ interface DeviceHeartbeatBody {
 
 @Controller('devices')
 export class DevicesController {
+  private readonly logger = new Logger(DevicesController.name);
+
   constructor(
     private readonly devices: DeviceRegistryRepository,
     private readonly pairingTokens: PairingTokensService,
@@ -291,7 +293,20 @@ export class DevicesController {
             actorUserId: CLOUD_ORIGIN_ACTOR,
             data: {},
           })
-          .catch(() => undefined); // best-effort telemetry — never fail the heartbeat ack over it
+          // D-15 — best-effort, but LOGGED. A failed telemetry mirror must
+          // never fail the heartbeat ack, and that is why it is caught; but
+          // silence is how the original D-15 defect survived. `outlet_offline`
+          // / `outlet_online` were emitted without being declared in
+          // `AUTHORITY[DEVICE_EVENTS].ops`, so every firing failed schema
+          // validation and vanished — deterministically, forever, until a soak
+          // spec happened to look. `staleness-sweep.service.ts` warns on its
+          // four equivalents; this one and `BridgeGateway`'s did not, and they
+          // are the highest-traffic of the six (every heartbeat recovery).
+          .catch((err: Error) =>
+            this.logger.warn(
+              `sync-emit device_events/went_online for device ${device.id} failed (non-fatal): ${err.message}`,
+            ),
+          );
         this.topologyGateway.emitUpdate({
           locationId: device.locationId,
           deviceId: device.id,

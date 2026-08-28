@@ -80,7 +80,7 @@ describe('AttendanceService (integration, live Postgres)', () => {
           `postgres://${process.env.POSTGRES_USER ?? 'mimi'}:${process.env.POSTGRES_PASSWORD ?? 'mimi_secret'}@localhost:${process.env.POSTGRES_PORT ?? '55433'}/${process.env.POSTGRES_DB ?? 'mimi'}`,
       });
       await pool.query('SELECT 1');
-      service = new AttendanceService(new StorageService(fakeConfigService(), pool));
+      service = new AttendanceService(new StorageService(fakeConfigService()));
     } catch {
       dbAvailable = false;
     }

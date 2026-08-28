@@ -7,7 +7,6 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { ConfigService } from '@nestjs/config';
-import type { Pool } from 'pg';
 import { can, RoleKey } from '@mimi/shared';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
@@ -20,6 +19,7 @@ import { ProductService } from './product.service';
 import { RecipeService } from './recipe.service';
 import { PackageService } from './package.service';
 import {
+  getAppPool,
   getOwnerPool,
   loadFixtures,
   nextCode,
@@ -27,20 +27,16 @@ import {
   type Fixtures,
 } from '../location/test-support/live-db';
 
-const eventsRepo = new SyncEventsRepository();
+// Constructed the way production wires them. `ConflictDetectorService` takes
+// (events, conflicts) — passing only `conflictsRepo` used to land it in the
+// `events` slot and leave `conflicts` undefined, so these suites exercised a
+// mis-wired detector while still going green (Linear MA-184).
+const eventsRepo = new SyncEventsRepository(getAppPool());
 const conflictsRepo = new SyncConflictsRepository();
-const conflictDetector = new ConflictDetectorService(conflictsRepo);
+const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
 const sync = new SyncEmitService(eventsRepo, conflictDetector);
 const eventBus = new EventBus();
-// No attachment is ever created in this suite (photoAttachmentId stays
-// unset), so `resolvePhotoUrl` returns null before ever touching this pool —
-// a dummy is safe here without standing up a real MinIO-backed StorageService.
-const dummyPool = {
-  query: () => {
-    throw new Error('StorageService.pool should not be queried in this suite');
-  },
-} as unknown as Pool;
-const storage = new StorageService(new ConfigService(), dummyPool);
+const storage = new StorageService(new ConfigService());
 const packageService = new PackageService(sync);
 const productService = new ProductService(sync, eventBus, storage, packageService);
 const recipeService = new RecipeService(sync);

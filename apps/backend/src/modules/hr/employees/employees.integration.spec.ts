@@ -46,7 +46,7 @@ describe('EmployeesService (integration, live Postgres)', () => {
       const eventsRepo = new SyncEventsRepository(pool);
       const conflictDetector = new ConflictDetectorService(
         eventsRepo,
-        new SyncConflictsRepository(pool),
+        new SyncConflictsRepository(),
       );
       service = new EmployeesService(new SyncEmitService(eventsRepo, conflictDetector));
     } catch {

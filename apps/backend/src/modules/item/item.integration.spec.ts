@@ -14,6 +14,7 @@ import { ItemService } from './item.service';
 import { ItemCategoryService } from './item-category.service';
 import { UnitService } from './unit.service';
 import {
+  getAppPool,
   getOwnerPool,
   loadFixtures,
   nextCode,
@@ -21,9 +22,13 @@ import {
   type Fixtures,
 } from '../location/test-support/live-db';
 
-const eventsRepo = new SyncEventsRepository();
+// Constructed the way production wires them. `ConflictDetectorService` takes
+// (events, conflicts) — passing only `conflictsRepo` used to land it in the
+// `events` slot and leave `conflicts` undefined, so these suites exercised a
+// mis-wired detector while still going green (Linear MA-184).
+const eventsRepo = new SyncEventsRepository(getAppPool());
 const conflictsRepo = new SyncConflictsRepository();
-const conflictDetector = new ConflictDetectorService(conflictsRepo);
+const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
 const sync = new SyncEmitService(eventsRepo, conflictDetector);
 const itemService = new ItemService(sync);
 const categoryService = new ItemCategoryService(sync);

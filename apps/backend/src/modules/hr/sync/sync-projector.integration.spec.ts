@@ -116,9 +116,7 @@ describe('AttendanceSyncProjector / LeaveSyncProjector (integration, real ingest
       );
       const projectors = new SyncProjectorRegistry();
 
-      const attendanceService = new AttendanceService(
-        new StorageService(fakeStorageConfig(), ownerPool),
-      );
+      const attendanceService = new AttendanceService(new StorageService(fakeStorageConfig()));
       const attendanceProjector = new AttendanceSyncProjector(attendanceService);
       projectors.register(attendanceProjector);
 

@@ -64,9 +64,11 @@ describe('M17 accounting — live DB integration', () => {
   const journal = new JournalService(coa, periods);
   const eventBus = new EventBus();
   const postingEngine = new PostingEngineService(appPoolForDi(), eventBus, journal);
-  const syncEvents = new SyncEventsRepository();
+  const syncEvents = new SyncEventsRepository(appPoolForDi());
   const syncConflicts = new SyncConflictsRepository();
-  const conflictDetector = new ConflictDetectorService(syncConflicts);
+  // (events, conflicts) — see MA-184. Passing only the conflicts repo used to
+  // land it in the `events` slot and leave `conflicts` undefined.
+  const conflictDetector = new ConflictDetectorService(syncEvents, syncConflicts);
   const syncEmit = new SyncEmitService(syncEvents, conflictDetector);
   const payments = new PaymentVerificationsService(syncEmit, eventBus);
   const exceptions = new ExceptionsService(eventBus);
@@ -358,7 +360,7 @@ describe('M17 accounting — live DB integration', () => {
   // mutating call in that chain now self-commits, so each step below opens its OWN connection —
   // the "money" path this ticket's brief flags as needing the write-then-read-back proof most.
 
-  it('Pending -> Verified -> Paid ladder: verify without proof is ERR_PROOF_REQUIRED; the happy path completes end to end across separate requests, dispatching the right journal.action', async () => {
+  it('FR-ACCT-03 — Pending -> Verified -> Paid ladder: verify without proof is ERR_PROOF_REQUIRED; the happy path completes end to end across separate requests, dispatching the right journal.action', async () => {
     const finance = {
       role: RoleKey.FINANCE,
       userId: fixtures.usersByRole[RoleKey.FINANCE],

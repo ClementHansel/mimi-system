@@ -51,7 +51,7 @@ describe('ShiftsService (integration, live Postgres)', () => {
       const eventsRepo = new SyncEventsRepository(pool);
       const conflictDetector = new ConflictDetectorService(
         eventsRepo,
-        new SyncConflictsRepository(pool),
+        new SyncConflictsRepository(),
       );
       service = new ShiftsService(new SyncEmitService(eventsRepo, conflictDetector));
     } catch {

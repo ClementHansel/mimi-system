@@ -26,6 +26,7 @@ import { LocationService } from './location.service';
 import { StorageAreaService } from './storage-area.service';
 import { CreateLocationDto } from './dto/location.dto';
 import {
+  getAppPool,
   cleanupLocations,
   closePool,
   loadFixtures,
@@ -34,9 +35,13 @@ import {
   type Fixtures,
 } from './test-support/live-db';
 
-const eventsRepo = new SyncEventsRepository();
+// Constructed the way production wires them. `ConflictDetectorService` takes
+// (events, conflicts) — passing only `conflictsRepo` used to land it in the
+// `events` slot and leave `conflicts` undefined, so these suites exercised a
+// mis-wired detector while still going green (Linear MA-184).
+const eventsRepo = new SyncEventsRepository(getAppPool());
 const conflictsRepo = new SyncConflictsRepository();
-const conflictDetector = new ConflictDetectorService(conflictsRepo);
+const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
 const sync = new SyncEmitService(eventsRepo, conflictDetector);
 const locationService = new LocationService(sync);
 const storageAreaService = new StorageAreaService(sync);

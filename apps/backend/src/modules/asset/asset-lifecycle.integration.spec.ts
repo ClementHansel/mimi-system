@@ -88,7 +88,7 @@ describe('asset lifecycle (integration, live Postgres)', () => {
       const eventsRepo = new SyncEventsRepository(pool);
       const conflictDetector = new ConflictDetectorService(
         eventsRepo,
-        new SyncConflictsRepository(pool),
+        new SyncConflictsRepository(),
       );
       const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
 
@@ -123,7 +123,7 @@ describe('asset lifecycle (integration, live Postgres)', () => {
     await closePool();
   });
 
-  it('runs the full asset -> schedule -> due job -> complete -> verify chain', async () => {
+  it('FR-PMS-01/FR-PMS-02/FR-PMS-03 — runs the full asset -> schedule -> due job -> complete -> verify chain', async () => {
     if (!dbAvailable || !assetId) return;
     const supervisor = fixtures.usersByRole[RoleKey.SUPERVISOR]!;
     const owner = fixtures.usersByRole[RoleKey.OWNER]!;

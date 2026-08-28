@@ -77,7 +77,7 @@ describe('LeavesService (integration, live Postgres)', () => {
       const eventsRepo = new SyncEventsRepository(pool);
       const conflictDetector = new ConflictDetectorService(
         eventsRepo,
-        new SyncConflictsRepository(pool),
+        new SyncConflictsRepository(),
       );
       const syncEmit = new SyncEmitService(eventsRepo, conflictDetector);
       approvals = new ApprovalService(new ApprovalsRepository());

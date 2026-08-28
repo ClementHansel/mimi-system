@@ -17,7 +17,6 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { ConfigService } from '@nestjs/config';
-import type { Pool } from 'pg';
 import { BadRequestException } from '@nestjs/common';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
@@ -34,10 +33,12 @@ import { ChartOfAccountsService } from '../accounting/chart-of-accounts.service'
 import { EmployeesService } from '../hr/employees/employees.service';
 import { ShiftsService } from '../hr/shifts/shifts.service';
 import { AssetsService } from '../asset/assets.service';
+import { ContractsService } from '../hr/contracts/contracts.service';
 import { ComponentsService } from '../payroll/components/components.service';
 import { SupplierService } from '../supplier/supplier.service';
 import { ImportService } from './import.service';
 import {
+  getAppPool,
   getOwnerPool,
   loadFixtures,
   nextCode,
@@ -45,22 +46,18 @@ import {
   type Fixtures,
 } from '../location/test-support/live-db';
 
-const eventsRepo = new SyncEventsRepository();
+// Constructed the way production wires them. `ConflictDetectorService` takes
+// (events, conflicts) — passing only `conflictsRepo` used to land it in the
+// `events` slot and leave `conflicts` undefined, so these suites exercised a
+// mis-wired detector while still going green (Linear MA-184).
+const eventsRepo = new SyncEventsRepository(getAppPool());
 const conflictsRepo = new SyncConflictsRepository();
-const conflictDetector = new ConflictDetectorService(conflictsRepo);
+const conflictDetector = new ConflictDetectorService(eventsRepo, conflictsRepo);
 const sync = new SyncEmitService(eventsRepo, conflictDetector);
 const itemService = new ItemService(sync);
 const itemCategoryService = new ItemCategoryService(sync);
 const eventBus = new EventBus();
-// Same reasoning as `product.integration.spec.ts`: no fixture in this suite
-// ever sets a photo, so `resolvePhotoUrl` returns null before this pool is
-// ever touched.
-const dummyPool = {
-  query: () => {
-    throw new Error('StorageService.pool should not be queried in this suite');
-  },
-} as unknown as Pool;
-const storage = new StorageService(new ConfigService(), dummyPool);
+const storage = new StorageService(new ConfigService());
 const packageService = new PackageService(sync);
 const productService = new ProductService(sync, eventBus, storage, packageService);
 const chartOfAccountsService = new ChartOfAccountsService();
@@ -71,6 +68,7 @@ const componentsService = new ComponentsService();
 // The REAL service, no sync stub — which is the point of the `suppliers` block
 // below: this construction is exactly what used to make every supplier write throw.
 const supplierService = new SupplierService();
+const contractsService = new ContractsService();
 const importService = new ImportService(
   itemService,
   itemCategoryService,
@@ -81,6 +79,7 @@ const importService = new ImportService(
   assetsService,
   componentsService,
   supplierService,
+  contractsService,
 );
 
 const ACTOR = '00000000-0000-0000-0000-0000000000aa';

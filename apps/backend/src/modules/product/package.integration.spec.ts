@@ -23,11 +23,13 @@ import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.reposi
 import { PackageService } from './package.service';
 import { ProductCategoryService } from './product-category.service';
 import { explodeRecipeUsage } from '../pos/recipe-usage.util';
-import { getOwnerPool, nextCode, withRollback } from '../location/test-support/live-db';
+import { getAppPool, getOwnerPool, nextCode, withRollback } from '../location/test-support/live-db';
 
+// `ConflictDetectorService` takes (events, conflicts) — see MA-184.
+const packageEvents = new SyncEventsRepository(getAppPool());
 const sync = new SyncEmitService(
-  new SyncEventsRepository(),
-  new ConflictDetectorService(new SyncConflictsRepository()),
+  packageEvents,
+  new ConflictDetectorService(packageEvents, new SyncConflictsRepository()),
 );
 const packages = new PackageService(sync);
 const categories = new ProductCategoryService(sync);

@@ -237,13 +237,16 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
       const mostRecentSeenAt = Math.max(...lastSeenTimes);
       const darkForMs = now.getTime() - mostRecentSeenAt;
 
-      const lastEdgeRes = await client.query<{ type: string }>(
-        `SELECT type FROM device_events
+      // `created_at` too (D-09): the recovery notification reports how long the
+      // outlet was dark, and this row is when it went dark.
+      const lastEdgeRes = await client.query<{ type: string; created_at: Date }>(
+        `SELECT type, created_at FROM device_events
           WHERE location_id = $1 AND device_id IS NULL AND node_id IS NULL AND type IN ('outlet_offline','outlet_online')
           ORDER BY created_at DESC LIMIT 1`,
         [outlet.id],
       );
       const currentlyMarkedOffline = lastEdgeRes.rows[0]?.type === 'outlet_offline';
+      const offlineSince = currentlyMarkedOffline ? lastEdgeRes.rows[0]!.created_at : null;
 
       if (allOffline && darkForMs > OUTLET_OFFLINE_AFTER_MS && !currentlyMarkedOffline) {
         await this.devices.insertDeviceEvent(client, {
@@ -287,9 +290,42 @@ export class StalenessSweepService implements OnApplicationBootstrap, OnApplicat
             ),
           );
         this.topologyGateway.emitUpdate({ locationId: outlet.id, status: 'online' });
-        // No `outlet_online` notification template exists (see file header) — device_events + topology:update only.
+        await this.notifyOutletOnline(client, outlet, offlineSince);
       }
     }
+  }
+
+  /**
+   * D-09 — the all-clear for `notifyOutletOffline`.
+   *
+   * Recipients are resolved the same way, and that is the point: a recovery
+   * that lands on a different audience from the alarm does not close the loop
+   * for whoever got the alarm.
+   *
+   * `downForMinutes` comes from the `outlet_offline` `device_events` row, so
+   * it measures dark-to-recovered rather than sweep-to-sweep. It reads `0`
+   * when the edge row is somehow missing, which is honest — the outlet is back
+   * either way, and inventing a duration would be worse than admitting the
+   * start time is unknown.
+   */
+  private async notifyOutletOnline(
+    client: PoolClient,
+    outlet: { id: UUID; name: string },
+    offlineSince: Date | null,
+  ): Promise<void> {
+    const recipients = await client.query<{ id: UUID }>(
+      `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.key IN ('owner','manager') AND u.is_active`,
+    );
+    if (recipients.rows.length === 0) return;
+    const downForMinutes = offlineSince
+      ? Math.max(0, Math.round((Date.now() - offlineSince.getTime()) / 60_000))
+      : 0;
+    await this.notifications.notify({
+      templateKey: 'outlet_online',
+      userIds: recipients.rows.map((r) => r.id),
+      params: { locationName: outlet.name, downForMinutes: String(downForMinutes) },
+      locationId: outlet.id,
+    });
   }
 
   private async notifyOutletOffline(

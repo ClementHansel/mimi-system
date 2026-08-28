@@ -30,6 +30,7 @@ import {
   closeTestPool,
   deleteLocation,
   deviceEventsFor,
+  markSeenNow,
   getAppPool,
   insertIsolatedOutletLocation,
   insertTestDeviceForNode,
@@ -226,6 +227,83 @@ describe('StalenessSweepService — live database (Wave 3 gate item)', () => {
       }
     },
   );
+
+  it('D-09: an outlet coming back raises outlet_online AND notifies the same people the outage alert went to', async () => {
+    // The offline alert shipped without an all-clear. An outlet dropping
+    // emailed the owner and manager; it coming back emailed nobody, so the
+    // only way to learn it had recovered was to go and look. Every alert
+    // therefore stayed live in the reader's head until someone checked, and an
+    // alert that never resolves itself is one people stop reading.
+    const locationId = await insertIsolatedOutletLocation();
+    const node = await insertTestNode(locationId);
+    const device = await insertTestDeviceForNode(
+      locationId,
+      node.id,
+      randomBytes(16).toString('hex'),
+    );
+
+    try {
+      // Go dark past every threshold, and sweep — the outage edge.
+      await backdateNodeLastSeen(node.id, 650);
+      await backdateDeviceLastSeen(device, 700);
+      await sweep.runSweep();
+
+      const offlineEvents = await deviceEventsFor({ locationId });
+      expect(offlineEvents.some((e) => e.type === 'outlet_offline')).toBe(true);
+      const offlineNotifications = notifyCalls.filter(
+        (c) => (c as { templateKey: string }).templateKey === 'outlet_offline',
+      );
+      expect(offlineNotifications).toHaveLength(1);
+      const offlineAudience = (offlineNotifications[0] as { userIds: string[] }).userIds;
+      expect(offlineAudience.length).toBeGreaterThan(0);
+
+      // Now the outlet comes back. NOT just a fresh `last_seen_at`: the sweep
+      // only ever moves rows toward worse states (see the "never moves a row
+      // back online" test below), and the outlet rule reads `status`. Recovery
+      // in production is the heartbeat handler flipping status AND sighting,
+      // which is what `markSeenNow` reproduces.
+      await markSeenNow({ deviceIds: [device], nodeIds: [node.id] });
+      await sweep.runSweep();
+
+      const recoveryEvents = await deviceEventsFor({ locationId });
+      expect(recoveryEvents.some((e) => e.type === 'outlet_online')).toBe(true);
+
+      const recoveries = notifyCalls.filter(
+        (c) => (c as { templateKey: string }).templateKey === 'outlet_online',
+      );
+      expect(recoveries).toHaveLength(1);
+      const recovery = recoveries[0] as {
+        userIds: string[];
+        params: Record<string, string>;
+        locationId: string;
+      };
+
+      // THE SAME AUDIENCE. A recovery delivered to a different set of people
+      // than the alarm does not close the loop for whoever got the alarm.
+      expect([...recovery.userIds].sort()).toEqual([...offlineAudience].sort());
+      expect(recovery.locationId).toBe(locationId);
+      expect(recovery.params.locationName).toBeTruthy();
+      // Present and numeric — measured from the outage edge row, so it is
+      // dark-to-recovered rather than sweep-to-sweep.
+      expect(recovery.params.downForMinutes).toMatch(/^\d+$/);
+
+      // Edges only, never repeats (§7.3): a further sweep with the outlet
+      // still up must not re-notify.
+      await sweep.runSweep();
+      expect(
+        notifyCalls.filter((c) => (c as { templateKey: string }).templateKey === 'outlet_online'),
+      ).toHaveLength(1);
+    } finally {
+      await cleanupNodesAndDevices({
+        nodeIds: [node.id],
+        deviceIds: [device],
+        locationIds: [locationId],
+      });
+      createdNodeIds.length = 0;
+      createdDeviceIds.length = 0;
+      await deleteLocation(locationId);
+    }
+  });
 
   it('recovery: a device heartbeat arriving after it was marked offline is detected as a distinct concern from the sweep (sweep never moves a row back online)', async () => {
     const locationId = await insertIsolatedOutletLocation();

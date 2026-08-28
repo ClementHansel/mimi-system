@@ -114,6 +114,24 @@ export const NOTIFICATION_TEMPLATES = {
     channels: ['in_app', 'email'],
     requiredParams: ['locationName', 'lastSeenAt'],
   },
+  /**
+   * D-09 — the all-clear for `outlet_offline`.
+   *
+   * The offline alert existed without one, so an outlet dropping raised an
+   * email and coming back raised nothing. That is worse than it sounds: the
+   * only way to learn an outlet had recovered was to go and look, so every
+   * alert stayed live in the reader's head until someone checked, and an alert
+   * that never resolves itself is one people learn to ignore.
+   *
+   * Same channels as the alert on purpose. A recovery delivered somewhere
+   * quieter than the alarm does not close the loop for whoever received the
+   * alarm.
+   */
+  outlet_online: {
+    key: 'outlet_online',
+    channels: ['in_app', 'email'],
+    requiredParams: ['locationName', 'downForMinutes'],
+  },
 } as const satisfies Record<string, NotificationTemplate>;
 
 export type NotificationTemplateKey = keyof typeof NOTIFICATION_TEMPLATES;

@@ -129,6 +129,34 @@ export async function backdateNodeLastSeen(nodeId: string, secondsAgo: number): 
   );
 }
 
+/**
+ * Puts a device and its node back online, the way a real heartbeat does.
+ *
+ * The sweep only ever moves rows toward WORSE states — see the "sweep never
+ * moves a row back online" test — so backdating `last_seen_at` alone cannot
+ * express a recovery: `status` is what the outlet rule reads. Recovery in
+ * production is `DevicesController`'s heartbeat handler flipping the status
+ * and refreshing the sighting, which is exactly what this does.
+ */
+export async function markSeenNow(params: {
+  deviceIds?: string[];
+  nodeIds?: string[];
+}): Promise<void> {
+  const pool = getOwnerPool();
+  if (params.deviceIds?.length) {
+    await pool.query(
+      `UPDATE devices SET status = 'online', last_seen_at = NOW() WHERE id = ANY($1::uuid[])`,
+      [params.deviceIds],
+    );
+  }
+  if (params.nodeIds?.length) {
+    await pool.query(
+      `UPDATE branch_nodes SET status = 'online', last_seen_at = NOW() WHERE id = ANY($1::uuid[])`,
+      [params.nodeIds],
+    );
+  }
+}
+
 export async function readDeviceStatus(deviceId: string): Promise<string> {
   const res = await getOwnerPool().query<{ status: string }>(
     `SELECT status FROM devices WHERE id = $1`,

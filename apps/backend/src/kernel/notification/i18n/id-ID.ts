@@ -62,6 +62,10 @@ export const ID_ID_NOTIFICATION_TEXT: Record<string, NotificationText> = {
     title: 'Outlet offline: {{locationName}}',
     body: '{{locationName}} terputus dari server sejak {{lastSeenAt}}. Mohon segera diperiksa.',
   },
+  outlet_online: {
+    title: 'Outlet kembali online: {{locationName}}',
+    body: '{{locationName}} sudah terhubung kembali ke server setelah {{downForMinutes}} menit terputus. Tidak ada tindakan yang diperlukan.',
+  },
 };
 
 /**

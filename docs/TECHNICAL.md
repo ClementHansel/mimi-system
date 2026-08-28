@@ -10,7 +10,8 @@ Three companion documents carry detail this one deliberately does not duplicate:
 | ----------------------- | ----------------------------------------------------------------------- |
 | `docs/CONTRACTS.md`     | Every endpoint, table, permission key, approval chain and posting rule  |
 | `docs/SYNC-PROTOCOL.md` | The offline/sync wire format, conflict rules and the degradation matrix |
-| `docs/PROGRESS.md`      | What is done, what is not, every blocker and the reasoning behind each  |
+| `docs/LINEAR.md`        | How progress is tracked — Linear team `MA`, branch naming, the QA flow |
+| `docs/PROGRESS.md`      | **Frozen 2026-08-24.** Historical record of the build and its blockers |
 
 If this document and `CONTRACTS.md` ever disagree, **CONTRACTS.md is the contract** and this one is stale.
 
@@ -270,4 +271,6 @@ Conventions worth keeping:
 - **The seed has no batch recipe** (`yield_qty` is 1 everywhere), so the yield-division path is unexercised
   by shared fixtures. That gap once hid a real bug for waves (D-28).
 
-`docs/PROGRESS.md` §5 carries the full technical-debt register, and §1a the current owed list.
+The technical-debt register (`D-01`…`D-30`) and the owed list now live in Linear team `MA` —
+filter by the `debt` label. `docs/PROGRESS.md` §5 and §1a hold the frozen 2026-08-24 snapshot
+they were migrated from.

@@ -2586,6 +2586,7 @@ Rules of use:
 - Approval keys authorize _acting on the step whose `approver_role` matches_; the engine enforces step order (§5).
 - Device-token endpoints (register/heartbeat/sync push/pull) authenticate with the device JWT, not user permission keys.
 - ✓ = allowed, `·` = denied (403).
+- **OWN is ✓ on every row as of 2026-08-27** (owner ruling: "owner and superadmin can do all"). Twenty-four rows flipped in that amendment — the four POS shift/sale keys, the three `return.*` operational keys, `opname.submit`, `replenishment.submit`, `inventory.area_transfer.create`, `asset.job.execute`, `pettycash.verify`, `payment.verify`/`.reject`, both `accounting.journal.*` write keys, `hr.attendance.correct`, `hr.shift.manage`, `payroll.run.calculate`/`.submit`, `payroll.slip.send`, `payroll.loan.manage` and `payroll.statutory.config`. Those rows had been the segregation of duties for this role: an owner may now raise a document and verify, post or pay it in the same session. `audit_log` and the approval engine's `requested_by`/`approver` rows remain the record. Enforcement is `packages/shared/src/rbac.ts`; migration 250 syncs the `role_permissions` offline-display cache. No other column changed, and no RLS policy was touched (owner is already central in `app_is_central()`).
 
 | Permission key                     | OWN | MGR | FIN | KGD | SPV | LDR | KSR | HRA | DRV |
 | ---------------------------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -2624,17 +2625,17 @@ Rules of use:
 | `inventory.balance.read`           | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   |
 | `inventory.movement.read`          | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `inventory.minstock.manage`        | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
-| `inventory.area_transfer.create`   | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `inventory.area_transfer.create`   | ✓   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `inventory.suggestion.read`        | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | **stock opname**                   |     |     |     |     |     |     |     |     |     |
 | `opname.read`                      | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `opname.create`                    | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
-| `opname.submit`                    | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `opname.submit`                    | ✓   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `opname.approve`                   | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
 | **replenishment**                  |     |     |     |     |     |     |     |     |     |
 | `replenishment.read`               | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `replenishment.create`             | ·   | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   |
-| `replenishment.submit`             | ·   | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   |
+| `replenishment.submit`             | ✓   | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   |
 | `replenishment.approve.supervisor` | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
 | `replenishment.approve.warehouse`  | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
 | `replenishment.amend`              | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
@@ -2656,25 +2657,25 @@ Rules of use:
 | `purchasing.po.close`              | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `pettycash.read`                   | ✓   | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   |
 | `pettycash.create`                 | ·   | ·   | ·   | ·   | ✓   | ✓   | ·   | ·   | ·   |
-| `pettycash.verify`                 | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `pettycash.verify`                 | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | **waste / returns**                |     |     |     |     |     |     |     |     |     |
 | `waste.read`                       | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `waste.create`                     | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `waste.approve`                    | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
 | `return.read`                      | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
-| `return.create`                    | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `return.create`                    | ✓   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `return.approve`                   | ✓   | ✓   | ·   | ✓   | ✓   | ·   | ·   | ·   | ·   |
-| `return.ship`                      | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
-| `return.receive`                   | ·   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
+| `return.ship`                      | ✓   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `return.receive`                   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
 | **POS**                            |     |     |     |     |     |     |     |     |     |
 | `pos.catalog.read`                 | ✓   | ✓   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
-| `pos.shift.open`                   | ·   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
-| `pos.shift.close`                  | ·   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
-| `pos.sale.create`                  | ·   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
+| `pos.shift.open`                   | ✓   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
+| `pos.shift.close`                  | ✓   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
+| `pos.sale.create`                  | ✓   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
 | `pos.sale.read`                    | ✓   | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
-| `pos.void.request`                 | ·   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
+| `pos.void.request`                 | ✓   | ·   | ·   | ·   | ✓   | ·   | ✓   | ·   | ·   |
 | `pos.void.approve`                 | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
-| `pos.online_order.record`          | ·   | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
+| `pos.online_order.record`          | ✓   | ·   | ·   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
 | `pos.online_order.read`            | ✓   | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   |
 | `pos.daily_stock.read`             | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ✓   | ·   | ·   |
 | `pos.cash_variance.read`           | ✓   | ✓   | ✓   | ·   | ✓   | ·   | ·   | ✓   | ·   |
@@ -2682,9 +2683,9 @@ Rules of use:
 | **HR**                             |     |     |     |     |     |     |     |     |     |
 | `hr.attendance.check`              | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
 | `hr.attendance.read`               | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ✓   | ·   |
-| `hr.attendance.correct`            | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `hr.attendance.correct`            | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
 | `hr.shift.read`                    | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
-| `hr.shift.manage`                  | ·   | ✓   | ·   | ·   | ✓   | ·   | ·   | ✓   | ·   |
+| `hr.shift.manage`                  | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ✓   | ·   |
 | `hr.employee.read`                 | ✓   | ✓   | ✓   | ·   | ✓   | ·   | ·   | ✓   | ·   |
 | `hr.employee.manage`               | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
 | `hr.leave.request`                 | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
@@ -2693,43 +2694,43 @@ Rules of use:
 | **payroll**                        |     |     |     |     |     |     |     |     |     |
 | `payroll.read`                     | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
 | `payroll.component.manage`         | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
-| `payroll.run.calculate`            | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
-| `payroll.run.submit`               | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.run.calculate`            | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.run.submit`               | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
 | `payroll.run.approve`              | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `payroll.run.pay`                  | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
-| `payroll.slip.send`                | ·   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.slip.send`                | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
 | `payroll.slip.read.own`            | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   |
-| `payroll.loan.manage`              | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.loan.manage`              | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
 | `payroll.loan.approve`             | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `payroll.statutory.read`           | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
-| `payroll.statutory.config`         | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
+| `payroll.statutory.config`         | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ✓   | ·   |
 | `payroll.statutory.enable`         | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
 | **assets (PMS)**                   |     |     |     |     |     |     |     |     |     |
 | `asset.read`                       | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `asset.manage`                     | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `asset.schedule.manage`            | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
-| `asset.job.execute`                | ·   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
+| `asset.job.execute`                | ✓   | ✓   | ·   | ✓   | ✓   | ✓   | ·   | ·   | ·   |
 | `asset.job.verify`                 | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
 | **accounting / payments**          |     |     |     |     |     |     |     |     |     |
 | `accounting.coa.read`              | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `accounting.coa.manage`            | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `accounting.journal.read`          | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
-| `accounting.journal.post`          | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
-| `accounting.journal.reverse`       | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `accounting.journal.post`          | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `accounting.journal.reverse`       | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `accounting.period.close`          | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `accounting.report.read`           | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `payment.read`                     | ✓   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `payment.proof.upload`             | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ✓   | ·   |
-| `payment.verify`                   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payment.verify`                   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `payment.pay`                      | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
-| `payment.reject`                   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
+| `payment.reject`                   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   |
 | **dashboard / reports**            |     |     |     |     |     |     |     |     |     |
 | `dashboard.view`                   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ·   | ·   |
 | `dashboard.outlet.view`            | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
 | `report.sales.read`                | ✓   | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   |
 | `report.logistics.read`            | ✓   | ✓   | ·   | ✓   | ·   | ·   | ·   | ·   | ·   |
 | `report.hr.read`                   | ✓   | ✓   | ·   | ·   | ·   | ·   | ·   | ✓   | ·   |
-| `report.export`                    | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ·   | ✓   | ·   |
+| `report.export`                    | ✓   | ✓   | ✓   | ✓   | ✓   | ·   | ·   | ✓   | ·   |
 | **devices / topology / sync**      |     |     |     |     |     |     |     |     |     |
 | `device.read`                      | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
 | `device.pair`                      | ✓   | ✓   | ·   | ·   | ✓   | ·   | ·   | ·   | ·   |
@@ -3749,6 +3750,15 @@ interface PaymentVerification {
 
 All read-only, sourced from `mv_*` views + live counters; realtime tiles push over socket.io channel `dashboard:<scope>`.
 
+F03's **Penjualan** and **Pemasaran** tabs are NOT in this section — they read §4.19 `report`
+routes (`/api/reports/sales` for both, plus `/api/reports/online-orders` for the marketing
+platform reconciliation) and are gated on `report.sales.read`, not `dashboard.view`. They are
+mounted here because that is where an Owner/Manager/Supervisor looks for them; the permission
+boundary is §4.19's. Their CSV/PDF files are generated **client-side** from the `format=json`
+response (`apps/frontend/src/lib/export/{csv,pdf}.ts`) — the `?format=csv|xlsx` server arm is
+unused by these tabs, since there is no server-side PDF writer. `report.export` still gates the
+download affordance in the UI.
+
 | Method | Path                                | Permission              | Request                                                                      | Response                                                                                                                                                                                                             | FR               |
 | ------ | ----------------------------------- | ----------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | GET    | `/api/dashboard/overview`           | `dashboard.view`        | `?from=&to=`                                                                 | `{revenue:Money; revenueOnline:Money; profitEstimate:Money; txCount:number; avgTicket:Money; activeOutlets:number; vs:{revenuePct:string; txPct:string} /* vs previous period */}`                                   | FR-DASH-01       |
@@ -3763,18 +3773,36 @@ All read-only, sourced from `mv_*` views + live counters; realtime tiles push ov
 
 All exports honor `?format=json|csv|xlsx` (xlsx via server-side generation; response = file stream or `{url}` to a stored attachment). `format=json` needs only the row's read permission; `format=csv|xlsx` additionally requires `report.export`.
 
-| Method | Path                            | Permission              | Request                                                               | Response                                                                                       | FR                    |
-| ------ | ------------------------------- | ----------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------- |
-| GET    | `/api/reports/sales`            | `report.sales.read`     | `?from=&to=&locationId=&groupBy=day\|outlet\|product\|method&format=` | grouped sales report incl. online orders (gross, discount, platform fees, net)                 | FR-POS-07, FR-DASH-03 |
-| GET    | `/api/reports/shift/:shiftId`   | `report.sales.read`     | `?format=`                                                            | `ShiftReport` (see M13) + sales list — laporan shift                                           | F-POS-01              |
-| GET    | `/api/reports/delivery-daily`   | `report.logistics.read` | `?date=&format=`                                                      | the M10 recap shape, printable — rekap harian tim logistik                                     | FR-LOG-04/08          |
-| GET    | `/api/reports/stock-usage`      | `report.logistics.read` | `?locationId=&from=&to=&format=`                                      | `{itemId; itemName; opening:Qty; in:Qty; usage:Qty; waste:Qty; adjustment:Qty; closing:Qty}[]` | FR-POS-06, FR-LOG-21  |
-| GET    | `/api/reports/stock-movements`  | `report.logistics.read` | `?locationId=&from=&to=&movementType=&format=`                        | movement export                                                                                | FR-LOG-21, FR-SO-04   |
-| GET    | `/api/reports/waste`            | `report.sales.read`     | `?from=&to=&locationId=&format=`                                      | waste by reason/location with values                                                           | FR-WST-04             |
-| GET    | `/api/reports/attendance`       | `report.hr.read`        | `?periodCode=&locationId=&format=`                                    | attendance matrix per employee per day                                                         | FR-HR-03              |
-| GET    | `/api/reports/payroll/:runId`   | `report.hr.read`        | `?format=`                                                            | payroll register (all employees × components)                                                  | FR-HR-04              |
-| GET    | `/api/reports/opname/:opnameId` | `report.logistics.read` | `?format=`                                                            | opname variance report                                                                         | FR-SO-02              |
-| GET    | `/api/reports/online-orders`    | `report.sales.read`     | `?from=&to=&platform=&locationId=&format=`                            | platform reconciliation report (gross→net walk)                                                | FR-POS-05/07          |
+| Method | Path                            | Permission              | Request                                                                        | Response                                                                                       | FR                    |
+| ------ | ------------------------------- | ----------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- | --------------------- |
+| GET    | `/api/reports/sales`            | `report.sales.read`     | `?from=&to=&locationId=&groupBy=day\|outlet\|product\|method\|channel&format=` | grouped sales report (gross, discount, platform fees, net). See the dimension note below       | FR-POS-07, FR-DASH-03 |
+| GET    | `/api/reports/shift/:shiftId`   | `report.sales.read`     | `?format=`                                                                     | `ShiftReport` (see M13) + sales list — laporan shift                                           | F-POS-01              |
+| GET    | `/api/reports/delivery-daily`   | `report.logistics.read` | `?date=&format=`                                                               | the M10 recap shape, printable — rekap harian tim logistik                                     | FR-LOG-04/08          |
+| GET    | `/api/reports/stock-usage`      | `report.logistics.read` | `?locationId=&from=&to=&format=`                                               | `{itemId; itemName; opening:Qty; in:Qty; usage:Qty; waste:Qty; adjustment:Qty; closing:Qty}[]` | FR-POS-06, FR-LOG-21  |
+| GET    | `/api/reports/stock-movements`  | `report.logistics.read` | `?locationId=&from=&to=&movementType=&format=`                                 | movement export                                                                                | FR-LOG-21, FR-SO-04   |
+| GET    | `/api/reports/waste`            | `report.sales.read`     | `?from=&to=&locationId=&format=`                                               | waste by reason/location with values                                                           | FR-WST-04             |
+| GET    | `/api/reports/attendance`       | `report.hr.read`        | `?periodCode=&locationId=&format=`                                             | attendance matrix per employee per day                                                         | FR-HR-03              |
+| GET    | `/api/reports/payroll/:runId`   | `report.hr.read`        | `?format=`                                                                     | payroll register (all employees × components)                                                  | FR-HR-04              |
+| GET    | `/api/reports/opname/:opnameId` | `report.logistics.read` | `?format=`                                                                     | opname variance report                                                                         | FR-SO-02              |
+| GET    | `/api/reports/online-orders`    | `report.sales.read`     | `?from=&to=&platform=&locationId=&format=`                                     | platform reconciliation report (gross→net walk)                                                | FR-POS-05/07          |
+
+**`groupBy` dimensions — `method` and `channel` are NOT interchangeable (changed 2026-08-27).**
+
+| `groupBy` | Answers                       | `groupKey` values                 | Safe to sum for total revenue? |
+| --------- | ----------------------------- | --------------------------------- | ------------------------------ |
+| `day`     | when                          | `YYYY-MM-DD`                      | yes                            |
+| `outlet`  | where                         | location id                       | yes                            |
+| `product` | what                          | product id                        | yes (line revenue)             |
+| `method`  | **how the money arrived**     | `cash`, `qris`, `bank_transfer`   | **no** — see below             |
+| `channel` | **where the order came from** | `walk_in`, `gofood`, `shopeefood` | yes                            |
+
+`channel` was added with migration 251. Migration 249 made GoFood/ShopeeFood ordinary `sales` rows carrying `sales.channel`, retiring the `online_orders` write path.
+
+`method` used to append one row per `online_orders.platform` alongside the payment-method rows, so a single response mixed both dimensions under the same `groupKey`. Once channel sales became real `sales` rows with real `sale_payments`, that arm either double-counted them or — as shipped — silently **flatlined** after the cutover. So `method` is now payment methods only, for every sale including channel sales.
+
+The cost, stated plainly: pre-cutover `online_orders` rows have no `sale_payments`, so they no longer appear under `method` at all. That revenue is unchanged and fully reachable via `groupBy=channel`, `groupBy=day`, and `/api/reports/online-orders` — but **do not sum `method` to get total revenue** for a range that predates the cutover. `day`, `outlet` and `channel` total correctly.
+
+`platformFees`/`discount` are `0.00` on every `method` row by construction: a payment row records an amount, not a gross-to-net walk. A platform fee belongs to a channel, not to "cash".
 
 Reporting date rule (shared with SYNC-PROTOCOL §6.4): business date = `occurred_at` in `Asia/Makassar`; a shift spanning midnight belongs to its **opening** date; `time_suspect` rows use `defensible_at`.
 
@@ -3854,20 +3882,35 @@ Status sweep (M21 owns): every 30 s, recompute device/node status from `last_see
 
 ### 4.22 M22 `node-gateway` (D-12/D-13)
 
-Socket namespace `/bridge` (node ↔ cloud; AIRE pattern: node connects outbound, authenticates with its node token). Events: `node:register`, `node:heartbeat` (30 s), `discovery:report`, `command:ack`, `logs:chunk`. The `/sync` namespace (M23) is separate — a node holds both.
+Socket namespace `/bridge` (node ↔ cloud; AIRE pattern: node connects outbound, authenticates with its node token). Events: `node:register`, `node:heartbeat` (30 s), `discovery:report`, `command:ack`, `logs:chunk`, `network_config` (cloud→node push), `network_config_ack` (node→cloud outcome). The `/sync` namespace (M23) is separate — a node holds both.
 
-| Method | Path                                | Permission               | Request                                                                                                                         | Response                                                                                                                                  | FR          |
-| ------ | ----------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| POST   | `/api/nodes/pairing-tokens`         | `node.manage`            | `{locationId:UUID}`                                                                                                             | same shape as device pairing token (`targetType:'node'`)                                                                                  | D-12        |
-| POST   | `/api/nodes/register`               | (public + pairing token) | `{token:string; hostname:string; version:string; osInfo?:object}`                                                               | `{nodeId:UUID; nodeToken:string; lanCert:{dnsName:string; pem:string; keyPem:string; expiresAt} /* SYNC-PROTOCOL §1.3 */; config:object}` | D-12        |
-| GET    | `/api/nodes`                        | `node.read`              | `?locationId=&status=`                                                                                                          | `{id; locationId; locationName; name; status:DeviceStatus; version; ipAddress; lastSeenAt; deviceCount:number; relayQueueDepth:number}[]` | D-13        |
-| GET    | `/api/nodes/:id`                    | `node.read`              | –                                                                                                                               | node detail + recent heartbeats + discovered device counts                                                                                | D-13        |
-| PATCH  | `/api/nodes/:id`                    | `node.manage`            | `{name?}`                                                                                                                       | node                                                                                                                                      | –           |
-| POST   | `/api/nodes/:id/command`            | `node.manage`            | `{type:'restart'\|'update'\|'log_pull'\|'discovery_scan'; params?:object}`                                                      | `{commandId:UUID; status:'sent'}` (ack via socket → `device_events`)                                                                      | D-13, W5-07 |
-| POST   | `/api/nodes/:id/unpair`             | `node.manage`            | `{reason?}` — revokes token; location devices fall back to cloud-direct                                                         | node (unpaired)                                                                                                                           | D-12        |
-| GET    | `/api/nodes/:id/discovered-devices` | `node.read`              | `?status=new\|confirmed\|ignored`                                                                                               | `{id; source:DiscoverySource; ipAddress; macAddress; vendor; model; suggestedCategory; suggestedName; firstSeenAt; lastSeenAt; status}[]` | D-13        |
-| POST   | `/api/nodes/discovered/:id/confirm` | `device.pair`            | `{category:DeviceCategory; name:string}` — creates a `devices` row (status from node reachability), links `confirmed_device_id` | `Device`                                                                                                                                  | D-13        |
-| POST   | `/api/nodes/discovered/:id/ignore`  | `device.pair`            | –                                                                                                                               | `{ok:true}`                                                                                                                               | D-13        |
+**The WiFi passphrase travels on this socket and nowhere else.** It is stored encrypted (`branch_nodes.network_secret_enc`, AES-256-GCM) and is never in a REST response, never in the `branch_nodes.config_updated` sync event, and never logged — the `/bridge` connection is already node-token authenticated, so it is the only channel that both needs the plaintext and is entitled to it.
+
+| Method | Path                                | Permission               | Request                                                                                                                                                          | Response                                                                                                                                  | FR          |
+| ------ | ----------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| POST   | `/api/nodes/pairing-tokens`         | `node.manage`            | `{locationId:UUID}`                                                                                                                                              | same shape as device pairing token (`targetType:'node'`)                                                                                  | D-12        |
+| POST   | `/api/nodes/register`               | (public + pairing token) | `{token:string; hostname:string; version:string; osInfo?:object}`                                                                                                | `{nodeId:UUID; nodeToken:string; lanCert:{dnsName:string; pem:string; keyPem:string; expiresAt} /* SYNC-PROTOCOL §1.3 */; config:object}` | D-12        |
+| GET    | `/api/nodes`                        | `node.read`              | `?locationId=&status=`                                                                                                                                           | `{id; locationId; locationName; name; status:DeviceStatus; version; ipAddress; lastSeenAt; deviceCount:number; relayQueueDepth:number}[]` | D-13        |
+| GET    | `/api/nodes/:id`                    | `node.read`              | –                                                                                                                                                                | node detail + recent heartbeats + discovered device counts                                                                                | D-13        |
+| PATCH  | `/api/nodes/:id`                    | `node.manage`            | `{name?}`                                                                                                                                                        | node                                                                                                                                      | –           |
+| POST   | `/api/nodes/:id/command`            | `node.manage`            | `{type:'restart'\|'update'\|'log_pull'\|'discovery_scan'; params?:object}`                                                                                       | `{commandId:UUID; status:'sent'}` (ack via socket → `device_events`)                                                                      | D-13, W5-07 |
+| PUT    | `/api/nodes/:id/network-config`     | `node.manage`            | `{healthPort?:number; scanSubnet?:string\|null; wifiSsid?:string; wifiPassphrase?:string; staticIp?:string; subnetMask?:string; gateway?:string; dns?:string[]}` | `{configId:UUID; status:'sent'}` — outcome is ASYNC, read `networkConfigStatus`/`networkConfigResult` from `GET /api/nodes/:id`           | W3-10       |
+| POST   | `/api/nodes/:id/unpair`             | `node.manage`            | `{reason?}` — revokes token; location devices fall back to cloud-direct                                                                                          | node (unpaired)                                                                                                                           | D-12        |
+| GET    | `/api/nodes/:id/discovered-devices` | `node.read`              | `?status=new\|confirmed\|ignored`                                                                                                                                | `{id; source:DiscoverySource; ipAddress; macAddress; vendor; model; suggestedCategory; suggestedName; firstSeenAt; lastSeenAt; status}[]` | D-13        |
+| POST   | `/api/nodes/discovered/:id/confirm` | `device.pair`            | `{category:DeviceCategory; name:string}` — creates a `devices` row (status from node reachability), links `confirmed_device_id`                                  | `Device`                                                                                                                                  | D-13        |
+| POST   | `/api/nodes/discovered/:id/ignore`  | `device.pair`            | –                                                                                                                                                                | `{ok:true}`                                                                                                                               | D-13        |
+
+**Network config is apply-then-confirm, and the node decides the revert (W3-10).**
+
+A bad network config can make an outlet unreachable, and once it is unreachable the cloud has no channel left to fix it. So the sequence is: the API validates fully server-side first (port range and collision against this platform's own ports, CIDR syntax, contiguous subnet mask, gateway inside the subnet, WPA2 passphrase bounds) and **refuses against a disconnected node**; the node persists its current config as last-known-good locally (surviving its own `restart`), applies, then either fails fast on a bind error or waits a confirm window and checks its own `/bridge` reachability. If it cannot reach the cloud, **the node reverts itself** — that decision cannot live in the cloud, because the failure being guarded against is precisely the loss of the cloud's channel to the node.
+
+`PUT` therefore returns `status:'sent'`, never `'applied'`. The real outcome arrives asynchronously as `networkConfigStatus` (`pending` → `applied` \| `reverted` \| `failed`) with per-field detail in `networkConfigResult`.
+
+**Only `healthPort` and `scanSubnet` are actually applied today.** WiFi SSID/passphrase and static IP/mask/gateway/DNS are validated and stored, but a Node.js process cannot change host networking without OS-level privileges, so the node's ack reports those fields `applied:false` with `reason:'unsupported_no_os_network_manager'` rather than claiming success. Storing them keeps real data for a future OS-integration build; reporting them honestly is what stops the UI lying about the state of an outlet.
+
+**Command reality check.** `discovery_scan`, `restart` and `log_pull` are implemented. `update` acks `'failed'` with a stated reason — there is no fleet software-distribution mechanism yet (W5-07), and acking `'done'` for work not performed is worse than refusing. `restart`/`update` are refused while a POS shift is open (`ERR_NODE_SHIFT_OPEN`) unless `params.override:true`.
+
+Production requires `NODE_NETWORK_SECRET_ENC_KEY`; the dev default is a zero key, the same posture as `OFFLINE_CREDENTIAL_ENC_KEY`.
 
 ### 4.23 M23 `sync` (D-12; wire contract = SYNC-PROTOCOL §4 — paths verbatim)
 

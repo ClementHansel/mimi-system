@@ -326,6 +326,9 @@ importers:
 
   database:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1111.0
+        version: 3.1111.0
       '@mimi/shared':
         specifier: workspace:*
         version: link:../packages/shared

@@ -29,6 +29,7 @@ import { createHash } from 'node:crypto';
 import { businessDateOf } from '@mimi/shared';
 import { seedExtended } from './seed-extended.js';
 import { seedGaps } from './seed-gaps.js';
+import { seedPhotos } from './seed-photos.js';
 import { applyOrgModel } from './org-model.js';
 import { migrationConnectionString } from './db-connection';
 
@@ -2466,6 +2467,8 @@ async function main(): Promise<void> {
     // what it deliberately does NOT seed (audit_log, sessions, sync_events —
     // runtime evidence, not demo data).
     await seedGaps(client);
+    // Last: it links photo_attachment_id on rows the passes above create.
+    await seedPhotos(client);
 
     console.log('\n✓ Seed completed successfully.\n');
     console.log(

@@ -26,7 +26,6 @@ import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.reposi
 import { VoucherRedemptionService, type VoucherEvaluation } from './voucher-redemption.service';
 import { UNIQUE_VIOLATION, VoucherRepository } from './voucher.repository';
 import {
-
   closePools,
   getOwnerPool,
   withRollback,
@@ -97,9 +96,20 @@ afterAll(async () => {
   const owner = getOwnerPool();
   // Order matters: redemptions reference vouchers (RESTRICT), vouchers
   // reference the batch (RESTRICT).
-  await owner.query(`DELETE FROM voucher_redemptions WHERE voucher_id IN (SELECT id FROM vouchers WHERE batch_id = $1)`, [batchId]);
+  await owner.query(
+    `DELETE FROM voucher_redemptions WHERE voucher_id IN (SELECT id FROM vouchers WHERE batch_id = $1)`,
+    [batchId],
+  );
   await owner.query(`DELETE FROM vouchers WHERE batch_id = $1`, [batchId]);
   await owner.query(`DELETE FROM voucher_batches WHERE id = $1`, [batchId]);
+  // ...and the throwaway sales this suite minted. They were being LEFT BEHIND,
+  // four per run, and a thrown-away sale is malformed by construction: it has
+  // no `sale_lines` and no `sale_payments` (the point of it is only to satisfy
+  // `voucher_redemptions.sale_id`'s FK). A dev database therefore accumulated
+  // rows that look exactly like the bug class this data exists to reveal --
+  // twelve "completed" Rp40.000 sales with nothing in them, sitting in the
+  // sales list. Deleted last: `voucher_redemptions.sale_id` points at them.
+  await owner.query(`DELETE FROM sales WHERE receipt_number LIKE 'ITEST-VCH-%'`);
   await closePools();
 });
 
@@ -268,9 +278,10 @@ async function insertThrowawaySale(tag: string): Promise<string> {
   const owner = getOwnerPool();
   saleSeq += 1;
   const shiftId = (
-    await owner.query(`SELECT id FROM pos_shifts WHERE location_id = $1 ORDER BY opened_at LIMIT 1`, [
-      locationId,
-    ])
+    await owner.query(
+      `SELECT id FROM pos_shifts WHERE location_id = $1 ORDER BY opened_at LIMIT 1`,
+      [locationId],
+    )
   ).rows[0]?.id;
   const res = await owner.query(
     `INSERT INTO sales (receipt_number, client_id, location_id, shift_id, kasir_id, subtotal, discount, total, paid_amount, occurred_at)

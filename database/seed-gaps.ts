@@ -46,7 +46,13 @@
  * seed neither duplicates nor throws.
  */
 import { createHash, randomInt } from 'node:crypto';
-import { VOUCHER_CODE_ALPHABET, VOUCHER_CODE_BODY_LENGTH, formatVoucherCode } from '@mimi/shared';
+import {
+  DOC_KINDS,
+  VOUCHER_CODE_ALPHABET,
+  VOUCHER_CODE_BODY_LENGTH,
+  defaultDocTemplate,
+  formatVoucherCode,
+} from '@mimi/shared';
 import type pg from 'pg';
 
 interface Row {
@@ -394,7 +400,7 @@ export async function seedGaps(client: pg.Client): Promise<void> {
       },
     ];
 
-    for (const [i, def] of defs.entries()) {
+    for (const def of defs) {
       if (!item) break;
       const existing = await one(client, `SELECT id FROM returns WHERE notes = $1`, [def.marker]);
       if (existing) continue;
@@ -872,6 +878,444 @@ export async function seedGaps(client: pg.Client): Promise<void> {
   }
   console.log(
     `  - internal chat: ${internalThreads} staff thread(s) with participants and messages`,
+  );
+
+  // -- 8. The "runtime artifact" tables, seeded on purpose ------------------
+  //
+  // The original version of this file left these empty and said so, on the
+  // grounds that fabricating a login or an audit row puts fiction in the
+  // evidence trail. That reasoning is right for a PRODUCTION box and wrong for
+  // this one: the owner's brief for the dev database is that every screen must
+  // render with realistic data so that BROKEN LINKS show up. An empty
+  // notification bell, an empty audit viewer and an empty sync monitor are
+  // indistinguishable from three features that are broken.
+  //
+  // So they are filled here, deliberately and visibly:
+  //   - every row is tied to a REAL user/location/document, never a loose id,
+  //     because the whole point is to expose joins that do not resolve;
+  //   - `audit_log` rows describe things that genuinely happened in this seed
+  //     (an approval, a price change), so the viewer does not contradict the
+  //     documents it sits next to.
+  // This block is the one place in the seed that writes evidence tables, and
+  // it must never run against production data.
+
+  // 8a. A COMPLETED opname, and the `stock_adjustments` it posted.
+  //
+  // Section 3 above seeds one count in `submitted` — the "waiting for a
+  // decision" state. Nothing seeded the state AFTER that, so `stock_adjustments`
+  // was empty and the Penyesuaian screen had nothing in it at all.
+  //
+  // A note on how this gap was found, because the first diagnosis was wrong:
+  // an audit of the dev database showed 12 opname counts in status `adjusted`
+  // with zero adjustment rows, which looked like a serious linkage bug. It was
+  // not — those 12 were RESIDUE from repeatedly running the live-DB
+  // integration suites, not seed output. On a freshly reset database there was
+  // exactly one opname, and the real gap was simply that the seed never
+  // produced a finished one. Worth recording: an audit run against a polluted
+  // dev database will invent bugs that do not exist.
+  //
+  // The stock LEDGER is deliberately not re-posted here. `stock_movements` and
+  // `stock_balances` are already internally consistent with each other, and
+  // adding a second movement for this variance would corrupt the very balances
+  // every inventory screen reads. These rows are the adjustment RECORD that
+  // an approved count leaves behind, not a second stock effect.
+  const adjustedArea = await one(
+    client,
+    `SELECT sa.id, sa.location_id
+       FROM storage_areas sa
+       JOIN locations l ON l.id = sa.location_id
+      WHERE l.type = 'warehouse'
+        AND EXISTS (SELECT 1 FROM stock_balances b WHERE b.storage_area_id = sa.id AND b.qty_on_hand > 0)
+        AND NOT EXISTS (
+              SELECT 1 FROM stock_opname o
+               WHERE o.storage_area_id = sa.id AND o.notes = 'seed:opname-adjusted'
+            )
+      ORDER BY sa.sort_order
+      LIMIT 1`,
+  );
+
+  let adjustmentsMade = 0;
+  if (adjustedArea) {
+    const kepalaGudangUser = userByRole.get('kepala_gudang') ?? owner;
+    const countedBalances = await rows(
+      client,
+      `SELECT b.item_id, b.qty_on_hand, i.avg_cost
+         FROM stock_balances b
+         JOIN items i ON i.id = b.item_id
+        WHERE b.storage_area_id = $1 AND b.qty_on_hand > 0
+        ORDER BY i.sku
+        LIMIT 4`,
+      [adjustedArea.id],
+    );
+    const finished = await one(
+      client,
+      `INSERT INTO stock_opname
+         (opname_number, location_id, storage_area_id, status, counted_by, started_at,
+          submitted_at, approved_by, approved_at, notes)
+       VALUES ($1,$2,$3,'adjusted',$4,$5,$6,$7,$8,'seed:opname-adjusted')
+       RETURNING id`,
+      [
+        await nextDocNumber(client, 'OPN'),
+        adjustedArea.location_id,
+        adjustedArea.id,
+        kepalaGudangUser,
+        daysAgo(6),
+        daysAgo(6),
+        owner,
+        daysAgo(5),
+      ],
+    );
+
+    for (const [i, balance] of countedBalances.entries()) {
+      const system = Number(balance.qty_on_hand);
+      // Two lines with a real variance (one short, one over) and the rest
+      // exact — a finished count where nothing moved would show an empty
+      // adjustment list, which is the state this block exists to escape.
+      const counted = i === 0 ? system - 3 : i === 1 ? system + 2 : system;
+      const diff = counted - system;
+      const reason = i === 0 ? 'Susut penyimpanan beku' : i === 1 ? 'Koreksi hitung ulang' : null;
+      await client.query(
+        `INSERT INTO stock_opname_lines
+           (opname_id, storage_area_id, item_id, system_qty, counted_qty, diff_qty, variance_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          finished!.id,
+          adjustedArea.id,
+          balance.item_id,
+          system.toFixed(3),
+          counted.toFixed(3),
+          diff.toFixed(3),
+          reason,
+        ],
+      );
+      if (diff === 0) continue;
+      await client.query(
+        `INSERT INTO stock_adjustments
+           (adjustment_number, location_id, storage_area_id, item_id, qty_delta, unit_cost,
+            reason, source, opname_id, created_by, approved_by, applied_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'opname',$8,$9,$10,$11)`,
+        [
+          await nextDocNumber(client, 'ADJ'),
+          adjustedArea.location_id,
+          adjustedArea.id,
+          balance.item_id,
+          diff.toFixed(3),
+          balance.avg_cost,
+          reason ?? 'Penyesuaian hasil stock opname',
+          finished!.id,
+          kepalaGudangUser,
+          owner,
+          daysAgo(5),
+        ],
+      );
+      adjustmentsMade++;
+    }
+  }
+  console.log(
+    `  - stock adjustments: ${adjustmentsMade} posted by a completed (adjusted) opname count`,
+  );
+
+  // 8b. Notifications -- the bell, per user, mixed read/unread.
+  const notifyTargets = await rows(
+    client,
+    `SELECT u.id, u.name, r.key AS role, ul.location_id
+       FROM users u
+       JOIN roles r ON r.id = u.role_id
+       LEFT JOIN LATERAL (
+         SELECT location_id FROM user_locations WHERE user_id = u.id LIMIT 1
+       ) ul ON true
+      WHERE r.key IN ('owner','manager','kepala_gudang','supervisor','finance')
+      LIMIT 8`,
+  );
+  const notifySpecs: { type: string; title: string; body: string; readAfter: boolean }[] = [
+    {
+      type: 'approval.pending',
+      title: 'Menunggu persetujuan Anda',
+      body: 'Ada dokumen yang menunggu keputusan Anda.',
+      readAfter: false,
+    },
+    {
+      type: 'stock.low',
+      title: 'Stok menipis',
+      body: 'Beberapa item berada di bawah stok minimum.',
+      readAfter: false,
+    },
+    {
+      type: 'coldchain.breach',
+      title: 'Peringatan suhu rantai dingin',
+      body: 'Pembacaan suhu di luar rentang beku pada satu pengiriman.',
+      readAfter: true,
+    },
+  ];
+  let notificationsMade = 0;
+  for (const u of notifyTargets) {
+    for (const [idx, spec] of notifySpecs.entries()) {
+      const exists = await one(
+        client,
+        `SELECT id FROM notifications WHERE user_id = $1 AND type = $2`,
+        [u.id, spec.type],
+      );
+      if (exists) continue;
+      await client.query(
+        `INSERT INTO notifications (user_id, type, title, body, payload, location_id, read_at, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7, NOW() - ($8 || ' hours')::interval)`,
+        [
+          u.id,
+          spec.type,
+          spec.title,
+          spec.body,
+          JSON.stringify({ seeded: true }),
+          u.location_id,
+          spec.readAfter ? new Date() : null,
+          String((idx + 1) * 5),
+        ],
+      );
+      notificationsMade++;
+    }
+  }
+
+  // 8c. Notification outbox -- what the WhatsApp/email channels queued.
+  let outboxMade = 0;
+  const outboxSpecs: [string, string, string, string][] = [
+    ['whatsapp', '628111000111', 'approval.pending', 'sent'],
+    ['whatsapp', '628111000222', 'stock.low', 'pending'],
+    ['email', 'manager1@mimichicken.local', 'coldchain.breach', 'sent'],
+    ['email', 'finance1@mimichicken.local', 'payment.verified', 'failed'],
+  ];
+  for (const [channel, recipient, templateKey, status] of outboxSpecs) {
+    const exists = await one(
+      client,
+      `SELECT id FROM notification_outbox WHERE recipient = $1 AND template_key = $2`,
+      [recipient, templateKey],
+    );
+    if (exists) continue;
+    await client.query(
+      `INSERT INTO notification_outbox (channel, recipient, template_key, payload, status, attempts, last_error, sent_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        channel,
+        recipient,
+        templateKey,
+        JSON.stringify({ seeded: true }),
+        status,
+        status === 'failed' ? 3 : 1,
+        status === 'failed' ? 'SMTP host unreachable' : null,
+        status === 'sent' ? new Date() : null,
+      ],
+    );
+    outboxMade++;
+  }
+  console.log(
+    `  - notifications: ${notificationsMade} in-app, ${outboxMade} outbox rows (sent / pending / failed)`,
+  );
+
+  // 8d. `audit_log` -- describing things this seed ACTUALLY did, so the viewer
+  // agrees with the documents beside it rather than inventing history.
+  const auditSources = await rows(
+    client,
+    `SELECT a.id, a.document_type, a.document_id, a.requested_by, d.location_id
+       FROM approvals a
+       LEFT JOIN LATERAL (SELECT NULL::uuid AS location_id) d ON true
+      ORDER BY a.created_at DESC
+      LIMIT 8`,
+  );
+  let auditMade = 0;
+  for (const a of auditSources) {
+    const exists = await one(
+      client,
+      `SELECT id FROM audit_log WHERE entity_type = 'approvals' AND entity_id = $1`,
+      [a.id],
+    );
+    if (exists) continue;
+    await client.query(
+      `INSERT INTO audit_log (user_id, role_key, module, action, entity_type, entity_id, after_value, reason, occurred_at)
+       VALUES ($1,'owner','approvals','approval.decide','approvals',$2,$3,$4, NOW() - INTERVAL '6 hours')`,
+      [
+        a.requested_by ?? owner,
+        a.id,
+        JSON.stringify({ documentType: a.document_type, documentId: a.document_id }),
+        'Disetujui sesuai kewenangan',
+      ],
+    );
+    auditMade++;
+  }
+  console.log(`  - audit log: ${auditMade} entries describing this seed's own approvals`);
+
+  // 8e. Sessions / device events / sync events -- the operations screens.
+  const seedDevice = await one(
+    client,
+    `SELECT id, location_id FROM devices ORDER BY created_at LIMIT 1`,
+  );
+  let sessionsMade = 0;
+  if (seedDevice) {
+    for (const u of notifyTargets.slice(0, 4)) {
+      const exists = await one(client, `SELECT id FROM sessions WHERE user_id = $1`, [u.id]);
+      if (exists) continue;
+      await client.query(
+        `INSERT INTO sessions (user_id, refresh_token_hash, device_id, ip_address, user_agent, expires_at, created_at)
+         VALUES ($1,$2,$3,'103.147.0.10','Mozilla/5.0 (seeded demo session)', NOW() + INTERVAL '7 days', NOW() - INTERVAL '2 hours')`,
+        [
+          u.id,
+          createHash('sha256')
+            .update(`seed-session-${u.id as string}`)
+            .digest('hex'),
+          seedDevice.id,
+        ],
+      );
+      sessionsMade++;
+    }
+  }
+
+  let deviceEventsMade = 0;
+  const deviceRows = await rows(
+    client,
+    `SELECT id, location_id FROM devices ORDER BY created_at LIMIT 4`,
+  );
+  for (const d of deviceRows) {
+    for (const type of ['paired', 'online', 'offline']) {
+      const exists = await one(
+        client,
+        `SELECT id FROM device_events WHERE device_id = $1 AND type = $2`,
+        [d.id, type],
+      );
+      if (exists) continue;
+      await client.query(
+        `INSERT INTO device_events (device_id, location_id, type, detail, created_at)
+         VALUES ($1,$2,$3,$4, NOW() - ($5 || ' hours')::interval)`,
+        [d.id, d.location_id, type, JSON.stringify({ seeded: true }), String(deviceEventsMade + 1)],
+      );
+      deviceEventsMade++;
+    }
+  }
+  console.log(`  - operations: ${sessionsMade} active sessions, ${deviceEventsMade} device events`);
+
+  // 8f. The last four: document templates, sync events, approval codes,
+  // auth lockouts.
+  //
+  // `document_templates` is the interesting one. It is CORRECT for it to be
+  // empty — the resolver falls back to `defaultDocTemplate(kind)` from
+  // `@mimi/shared`, and that fallback is what every install runs on until an
+  // owner drags something. But "correct when empty" and "exercised when empty"
+  // are different claims: with no row, nothing ever tests that a template
+  // ROUND-TRIPS through Postgres and renders identically coming back out.
+  // Seeding each kind with its own shipped default is therefore visually a
+  // no-op and functionally the whole point — the designer now loads from the
+  // database on a fresh box, and a JSONB serialisation bug shows up here
+  // instead of the first time a customer saves a layout.
+  let templatesMade = 0;
+  for (const kind of DOC_KINDS) {
+    const exists = await one(client, `SELECT kind FROM document_templates WHERE kind = $1`, [kind]);
+    if (exists) continue;
+    await client.query(
+      `INSERT INTO document_templates (kind, layout, updated_by) VALUES ($1,$2,$3)`,
+      [kind, JSON.stringify(defaultDocTemplate(kind)), owner],
+    );
+    templatesMade++;
+  }
+
+  // `sync_events` — the three-tier sync monitor. Rows are modelled on what a
+  // POS device actually emits: a committed sale, already applied by the cloud
+  // projector. `(origin_device_id, client_seq)` is UNIQUE, so the sequence is
+  // per device and re-running the seed cannot collide.
+  let syncMade = 0;
+  const syncDevices = await rows(
+    client,
+    `SELECT d.id, d.location_id FROM devices d WHERE d.location_id IS NOT NULL ORDER BY d.created_at LIMIT 3`,
+  );
+  const recentSales = await rows(
+    client,
+    `SELECT id, location_id, occurred_at FROM sales ORDER BY occurred_at DESC LIMIT 9`,
+  );
+  for (const [i, sale] of recentSales.entries()) {
+    const device = syncDevices[i % Math.max(syncDevices.length, 1)];
+    if (!device) break;
+    const clientSeq = 1000 + i;
+    const exists = await one(
+      client,
+      `SELECT event_id FROM sync_events WHERE origin_device_id = $1 AND client_seq = $2`,
+      [device.id, clientSeq],
+    );
+    if (exists) continue;
+    await client.query(
+      `INSERT INTO sync_events
+         (event_id, origin_tier, origin_device_id, location_id, entity, entity_id, op, actor_user_id,
+          payload, client_seq, occurred_at, apply_status)
+       VALUES (gen_random_uuid(), 'device', $1, $2, 'sales', $3, 'create', $7, $4, $5, $6, 'applied')`,
+      [
+        device.id,
+        sale.location_id,
+        sale.id,
+        JSON.stringify({ seeded: true, entity: 'sales' }),
+        clientSeq,
+        sale.occurred_at,
+        owner,
+      ],
+    );
+    syncMade++;
+  }
+
+  // `approval_codes` (B-15) — the one-time code that replaced the static PIN.
+  // One CONSUMED (so the history/audit view has a completed handshake) and one
+  // ACTIVE but already expired-by-time is pointless, so the active one is
+  // given a live window. Codes are stored HASHED, never in clear, exactly as
+  // the service stores them.
+  let codesMade = 0;
+  const codeTargets = await rows(
+    client,
+    `SELECT a.id, a.document_type, a.document_id, a.requested_by
+       FROM approvals a
+      WHERE a.requested_by IS NOT NULL
+      ORDER BY a.created_at DESC
+      LIMIT 2`,
+  );
+  const managerForCode = userByRole.get('manager') ?? owner;
+  for (const [i, target] of codeTargets.entries()) {
+    const exists = await one(client, `SELECT id FROM approval_codes WHERE document_id = $1`, [
+      target.document_id,
+    ]);
+    if (exists) continue;
+    const consumed = i === 0;
+    await client.query(
+      `INSERT INTO approval_codes
+         (document_type, document_id, issued_by_user_id, issued_by_role,
+          redeemable_by_user_id, code_hash, state, expires_at, consumed_at, attempt_count)
+       VALUES ($1,$2,$3,'manager',$4,$5,$6,$7,$8,$9)`,
+      [
+        target.document_type,
+        target.document_id,
+        managerForCode,
+        target.requested_by,
+        createHash('sha256')
+          .update(`seed-approval-code-${target.document_id as string}`)
+          .digest('hex'),
+        consumed ? 'consumed' : 'active',
+        consumed ? daysAgo(1) : new Date(Date.now() + 5 * 60_000),
+        consumed ? daysAgo(1) : null,
+        consumed ? 1 : 0,
+      ],
+    );
+    codesMade++;
+  }
+
+  // `auth_lockouts` — one kasir who fatfingered their PIN, so the admin's
+  // "clear lockout" control has something to act on.
+  let lockoutsMade = 0;
+  const lockedUser = await one(
+    client,
+    `SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id
+      WHERE r.key = 'kasir' AND NOT EXISTS (SELECT 1 FROM auth_lockouts a WHERE a.user_id = u.id)
+      ORDER BY u.created_at LIMIT 1`,
+  );
+  if (lockedUser) {
+    await client.query(
+      `INSERT INTO auth_lockouts (user_id, failed_count, window_started_at, last_failed_at, locked_until)
+       VALUES ($1, 5, NOW() - INTERVAL '20 minutes', NOW() - INTERVAL '12 minutes', NOW() + INTERVAL '8 minutes')`,
+      [lockedUser.id],
+    );
+    lockoutsMade++;
+  }
+  console.log(
+    `  - templates/sync/security: ${templatesMade} document templates, ${syncMade} sync events, ${codesMade} approval codes, ${lockoutsMade} lockout`,
   );
 
   console.log('\n\u2713 Gap seed completed.\n');

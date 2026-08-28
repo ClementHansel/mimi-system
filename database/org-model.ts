@@ -200,7 +200,7 @@ interface PlannedUser {
  * Drivers 1 and 2 keep their names and are the two the model asks for; 3-8 fall
  * out of the model and are stood down by the surplus pass.
  */
-function legacyRenames(outletCodes: string[]): Array<[string, string]> {
+export function legacyRenames(outletCodes: string[]): Array<[string, string]> {
   const pairs: Array<[string, string]> = [
     ['kepalagudang1', 'gudang1'],
     ['kepalagudang2', 'gudang2'],

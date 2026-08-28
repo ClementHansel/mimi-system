@@ -28,6 +28,7 @@ import bcrypt from 'bcrypt';
 import { createHash } from 'node:crypto';
 import { businessDateOf } from '@mimi/shared';
 import { seedExtended } from './seed-extended.js';
+import { legacyRenames } from './org-model.js';
 import { seedGaps } from './seed-gaps.js';
 import { seedPhotos } from './seed-photos.js';
 import { applyOrgModel } from './org-model.js';
@@ -493,7 +494,40 @@ async function main(): Promise<void> {
     }
 
     const userIdByUsername: Record<string, string> = {};
+
+    // RE-RUN SAFETY: don't recreate a login that `org-model.ts` has RENAMED.
+    //
+    // This seed creates provisional staff logins (`spv_bjm01`, `kasir1_bjm01`,
+    // `ldr_bjm01`, `kepalagudang1`). The org model then renames them into the
+    // real crew (`spv_bjm01_p`, `kasir_bjm01_p`, `koki1_bjm01_p`, `gudang1`) —
+    // that rename is how existing people keep their identity when the org
+    // shape changed, and it is deliberate.
+    //
+    // The consequence for a SECOND `pnpm db:seed`: the provisional usernames no
+    // longer exist, so `ON CONFLICT (username)` does not fire, and this loop
+    // faithfully recreated all 82 of them. The org model then had a full crew
+    // already and nothing left to rename, so the duplicates simply stayed —
+    // 20 extra supervisors, 100 extra kasir, 120 extra koki, growing by 82
+    // every run. That is what made re-running the seed unsafe, and it broke
+    // fixtures that pick "a supervisor" and get one of the orphans.
+    //
+    // So: if a provisional name has already become a crew name, adopt the
+    // EXISTING user rather than minting a twin. Mapping it into
+    // `userIdByUsername` (rather than just skipping) is what keeps the ~40
+    // later call sites that look up `spv_<code>` working unchanged.
+    const renameMap = new Map(legacyRenames(allLocationCodes));
+    const renamedRows = await client.query<{ username: string; id: string }>(
+      `SELECT username, id FROM users WHERE username = ANY($1::text[])`,
+      [[...renameMap.values()]],
+    );
+    const idByCrewName = new Map(renamedRows.rows.map((r) => [r.username, r.id]));
+
     for (const u of seedUsers) {
+      const crewName = renameMap.get(u.username);
+      if (crewName && idByCrewName.has(crewName)) {
+        userIdByUsername[u.username] = idByCrewName.get(crewName)!;
+        continue;
+      }
       const res = await client.query(
         `INSERT INTO users (username, email, password_hash, pin_hash, name, role_id)
          VALUES ($1,$2,$3,$4,$5,$6)
@@ -1223,15 +1257,34 @@ async function main(): Promise<void> {
         (await client.query('SELECT id FROM products WHERE code=$1', [p.code])).rows[0].id;
     }
     for (const p of productDefs) {
+      // RE-RUN SAFETY: skip any product that has since become a PACKAGE.
+      //
+      // Migration 248 forbids a package carrying a recipe (it explodes through
+      // its members instead, and a recipe would double-count every
+      // ingredient), and enforces that with a trigger. On a FRESH database
+      // this loop is harmless — every product is still kind='product' at this
+      // point. But `seed-extended.ts` later converts several of these same
+      // products into packages, so on a SECOND run this insert tried to give a
+      // package a recipe and the trigger correctly refused, aborting
+      // `pnpm db:seed` outright. That is why re-running the seed used to fail
+      // while `db:reset` worked.
+      //
+      // Guarding in the INSERT rather than pre-filtering `productDefs` keeps
+      // the decision with the database, which is the only thing that actually
+      // knows what kind a row is now.
       const recipeRes = await client.query(
-        `INSERT INTO recipes (product_id, yield_qty) VALUES ($1, $2)
+        `INSERT INTO recipes (product_id, yield_qty)
+         SELECT $1, $2 FROM products WHERE id = $1 AND kind = 'product'
          ON CONFLICT (product_id) DO NOTHING RETURNING id`,
         [productId[p.name], p.yieldQty],
       );
       const recipeId =
         recipeRes.rows[0]?.id ??
         (await client.query('SELECT id FROM recipes WHERE product_id=$1', [productId[p.name]]))
-          .rows[0].id;
+          .rows[0]?.id;
+      // No recipe and none inserted = this product is a package now. Its
+      // ingredient lines belong to its MEMBERS, not to it.
+      if (!recipeId) continue;
       for (const ing of p.ingredients) {
         const iid = itemId[ing];
         if (!iid) continue;

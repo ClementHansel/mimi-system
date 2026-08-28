@@ -115,6 +115,58 @@ describe('StockOpname — live database (outlet + warehouse approval variants)',
   // commits). Each test's own assertions run on whichever connection just did that step's
   // write/read — never on a DIFFERENT step's already-committed-or-rolled-back connection.
 
+  it('D-03: a Supervisor sees the NAME of the Leader Outlet who counted — app_user_display() resolves it where a users join cannot, and no privilege widens', async () => {
+    const leaderOutlet = {
+      role: 'leader_outlet',
+      userId: fx.leaderOutletUserId,
+      locationIds: [fx.outletId],
+    };
+    const supervisor = {
+      role: 'supervisor',
+      userId: fx.supervisorUserId,
+      locationIds: [fx.outletId],
+    };
+    const leaderOutletActor = actorFor(fx, RoleKey.LEADER_OUTLET, [fx.outletId]);
+
+    const created = await asRequest(leaderOutlet, (client) =>
+      buildService().create(client, leaderOutletActor, { locationId: fx.outletId }),
+    );
+
+    // The Supervisor is neither central-role nor the counter, so `users_select`
+    // hides the Leader Outlet's row from them entirely. Prove that FIRST —
+    // otherwise the assertion below could pass for the boring reason that the
+    // Supervisor could see `users` all along.
+    await asRequest(supervisor, async (client) => {
+      const direct = await client.query(`SELECT id FROM users WHERE id = $1`, [
+        fx.leaderOutletUserId,
+      ]);
+      expect(direct.rows).toHaveLength(0);
+    });
+
+    // Same session, same blocked row — but the header now carries the name.
+    // Before D-03 this came from a LEFT JOIN on `users` and degraded to blank,
+    // so the Supervisor read an unattributed document.
+    const header = await asRequest(supervisor, (client) =>
+      new StockOpnameRepository().findHeader(client, created.id),
+    );
+    expect(header).toBeDefined();
+    expect(header!.counted_by).toBe(fx.leaderOutletUserId);
+    expect(header!.counted_by_name).toBeTruthy();
+    expect(header!.counted_by_name).not.toBe('');
+
+    // The list path resolves names too — it is a separate query and had the
+    // same join.
+    const listed = await asRequest(supervisor, (client) =>
+      new StockOpnameRepository().listHeaders(client, {
+        locationId: fx.outletId,
+        page: 1,
+        pageSize: 50,
+      }),
+    );
+    const mine = listed.rows.find((r) => r.id === created.id);
+    expect(mine?.counted_by_name).toBeTruthy();
+  });
+
   it('outlet opname, GENUINE RLS sessions: Leader Outlet counts, Supervisor approves — real user_locations scope throughout', async () => {
     const leaderOutlet = {
       role: 'leader_outlet',

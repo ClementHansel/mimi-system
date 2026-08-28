@@ -44,24 +44,30 @@ export interface OpnameLineRow {
 }
 
 /**
- * `users` RLS (migration 009) is "central role OR self" — a Supervisor
- * approving an opname counted by a Leader Outlet is neither. An INNER JOIN
- * to `users` for a display-only name would silently make the WHOLE header
- * row invisible to that Supervisor (the join predicate never matches once
- * RLS hides the counterparty's row), even though `stock_opname` itself is
- * plainly visible to them (`LOC`-scoped, their own outlet). LEFT JOIN here
- * is load-bearing, not stylistic: a name-visibility gap must degrade to
- * `null`, never to "the document doesn't exist."
+ * No join to `users` at all — display names are resolved separately, through
+ * `app_user_display()`. See `findHeader`/`attachUserNames` (D-03).
+ *
+ * The reasoning that used to live here still explains WHY the join is absent,
+ * so it is kept rather than deleted: `users` RLS (migration 009) is "central
+ * role OR self", and a Supervisor approving an opname counted by a Leader
+ * Outlet is neither. An INNER JOIN would have made the WHOLE header row
+ * invisible to that Supervisor — the join predicate never matches once RLS
+ * hides the counterparty — even though `stock_opname` itself is plainly
+ * visible to them (`LOC`-scoped, their own outlet).
+ *
+ * A LEFT JOIN was the previous mitigation, and it was right that a
+ * name-visibility gap must degrade to blank rather than to "the document
+ * doesn't exist". But degrading was never the goal: the Supervisor still saw
+ * an unattributed document. The `SECURITY DEFINER` lookup shows the name
+ * without widening `users_select`, so neither failure mode applies.
  */
 const HEADER_SELECT = `
   SELECT so.id, so.opname_number, so.location_id, l.name AS location_name, l.type AS location_type,
-         so.storage_area_id, so.status, so.counted_by, cu.name AS counted_by_name,
-         so.started_at, so.submitted_at, so.approval_id, so.approved_by, au.name AS approved_by_name,
+         so.storage_area_id, so.status, so.counted_by,
+         so.started_at, so.submitted_at, so.approval_id, so.approved_by,
          so.approved_at, so.notes
     FROM stock_opname so
     JOIN locations l ON l.id = so.location_id
-    LEFT JOIN users cu ON cu.id = so.counted_by
-    LEFT JOIN users au ON au.id = so.approved_by
 `;
 
 const LINE_SELECT = `
@@ -130,9 +136,53 @@ export class StockOpnameRepository {
     return res.rows[0]!.id;
   }
 
+  /**
+   * D-03 — the counter's and approver's display names come from
+   * `app_user_display()`, NOT from a join on `users`.
+   *
+   * `users_select` (migration 009) is `ROLE(owner,manager,hr_admin,finance) OR
+   * self`, so a `LEFT JOIN users` degrades to NULL for exactly the people who
+   * read this screen most: a Supervisor opening an opname counted by one of
+   * their own crew saw a blank name, and the document looked unattributed.
+   * The LEFT JOIN made that a silent blank rather than a missing row, which is
+   * why it went unnoticed.
+   *
+   * `app_user_display(uuid[])` (migration 212) is `SECURITY DEFINER` and
+   * returns only `(id, name, role_key)` — never the full `users` row, and
+   * never widening `users_select` itself. Same approach
+   * `kernel/approvals`' repository already uses for requester names.
+   */
   async findHeader(client: PoolClient, id: UUID): Promise<OpnameHeaderRow | undefined> {
     const res = await client.query<OpnameHeaderRow>(`${HEADER_SELECT} WHERE so.id = $1`, [id]);
-    return res.rows[0];
+    const row = res.rows[0];
+    if (!row) return undefined;
+    await this.attachUserNames(client, [row]);
+    return row;
+  }
+
+  /**
+   * Batched display-name lookup for a page of headers — one query for every
+   * distinct counter/approver on the page, not one per row.
+   */
+  private async attachUserNames(client: PoolClient, rows: OpnameHeaderRow[]): Promise<void> {
+    const ids = [
+      ...new Set(
+        rows.flatMap((r) => [r.counted_by, r.approved_by]).filter((v): v is UUID => Boolean(v)),
+      ),
+    ];
+    if (ids.length === 0) return;
+    const res = await client.query<{ id: string; name: string }>(
+      `SELECT id, name FROM app_user_display($1::uuid[])`,
+      [ids],
+    );
+    const byId = new Map(res.rows.map((r) => [r.id, r.name] as const));
+    for (const row of rows) {
+      // A name that cannot be resolved stays empty rather than throwing: the
+      // document still renders, same degradation the LEFT JOIN gave, but now
+      // it only happens if the user row is genuinely gone.
+      row.counted_by_name = byId.get(row.counted_by) ?? '';
+      row.approved_by_name = row.approved_by ? (byId.get(row.approved_by) ?? null) : null;
+    }
   }
 
   async listHeaders(
@@ -178,6 +228,7 @@ export class StockOpnameRepository {
         args,
       ),
     ]);
+    await this.attachUserNames(client, rows.rows);
     return { rows: rows.rows, total: Number(count.rows[0]?.count ?? '0') };
   }
 

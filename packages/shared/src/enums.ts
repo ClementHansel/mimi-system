@@ -610,6 +610,10 @@ export enum PaymentVerificationRefType {
   ONLINE_ORDER = 'online_order',
   INCENTIVE = 'incentive',
   THR = 'thr',
+  /** Kasbon disbursement (POUT-06). CONTRACTS §6.3; accepted by the DB
+   *  CHECK from migration 259 onward (D-17) — before that, loans were
+   *  booked as OTHER and those historical rows are not retro-classified. */
+  EMPLOYEE_LOAN = 'employee_loan',
   OTHER = 'other',
 }
 

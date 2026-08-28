@@ -37,13 +37,14 @@ export interface LoanApi {
 /**
  * M15 `payroll` — employee loans / kasbon (POUT-06). Approval chain per
  * CONTRACTS §5.7 / migration 069's seed: Finance -> Manager. Disbursement
- * posts a `payment_verifications` row (pending) on final approval — the
- * `employee_loan` ref_type CONTRACTS §6.3 mentions for the GL leg is not a
- * valid `payment_verifications.ref_type` per the actual CHECK constraint
- * (migration 094 only allows `'purchase_order'|'payroll_run'|'petty_cash'|
- * 'maintenance_job'|'sale_payment'|'online_order'|'incentive'|'thr'|'other'`)
- * — flagged as a schema/contract discrepancy in this agent's report; `'other'`
- * is used here rather than improvising a DDL change.
+ * posts a `payment_verifications` row (pending) on final approval, with
+ * `ref_type = 'employee_loan'` per CONTRACTS §6.3.
+ *
+ * That value was NOT accepted by the DB until migration 259 (D-17): migration
+ * 094's CHECK omitted it, so this service deliberately booked `'other'` rather
+ * than improvise a DDL change. Rows written before 259 therefore still carry
+ * `'other'` and are not retro-classified — they lack the loan id in `ref_id`
+ * that would make the reclassification safe.
  */
 @Injectable()
 export class LoansService {
@@ -220,11 +221,9 @@ export class LoansService {
         );
 
         const pvNumber = await this.nextPvNumber(client);
-        // See class header — 'employee_loan' is not a valid `ref_type` under the current CHECK
-        // constraint; 'other' is used deliberately, not as an oversight.
         await client.query(
           `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, submitted_by, notes)
-           VALUES ($1,'other',$2,'employee',$3,$4,$5,$6)`,
+           VALUES ($1,'employee_loan',$2,'employee',$3,$4,$5,$6)`,
           [
             pvNumber,
             id,

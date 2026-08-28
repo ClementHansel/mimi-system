@@ -37,6 +37,8 @@ import { formatUuidV7, type SyncPushBatch } from '@mimi/sync-protocol';
 vi.setConfig({ testTimeout: 20_000 });
 
 import { EventBus } from '../../kernel/events/event-bus.service';
+import type { DomainEvent } from '../../kernel/events/domain-events';
+import { JournalEventType } from '@mimi/shared';
 import { StockMovedEventEmitter } from '../../kernel/stock-ledger/stock-ledger-events';
 import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.service';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
@@ -126,6 +128,31 @@ describe('M10 delivery — live DB integration', () => {
   const dropService = new DropService(syncEmit, stockLedger, eventBus, coldChain, replenishment);
   const goodsReceiptService = new GoodsReceiptService(stockLedger, syncEmit);
   const routeService = new RouteService();
+
+  /**
+   * MA-107 / MA-112 — the GL *wiring*, as distinct from the posting engine.
+   *
+   * `packages/shared`'s posting-rule tests prove JGUD-03 and JOUT-01 produce
+   * balanced, correctly-signed entries GIVEN a `journal.action` event. Nothing
+   * proved the delivery services actually EMIT that event on the real
+   * dispatch/receive paths — and that is precisely the half that can regress
+   * silently, because deleting a `publish()` call breaks no other assertion in
+   * this file: stock still moves, statuses still advance, the SJ still
+   * completes, and the goods simply stop reaching the ledger.
+   *
+   * This was held open on the wrong evidence for a while. The demo box showed
+   * ~926 delivery documents with no matching journal entry, which looked like a
+   * missing publish; it is not. Both legs have published since 027b86d
+   * (2026-08-17). Those rows are SEEDED — `database/seed.ts` inserts into
+   * `surat_jalan`/`sj_drops` directly, bypassing these services, so no event
+   * could ever have fired for them. Unposted seed rows are not evidence of a
+   * wiring hole, and they were never evidence of one. A subscriber on the real
+   * code path is.
+   */
+  const journalEvents: DomainEvent<'journal.action'>[] = [];
+  eventBus.subscribe('journal.action', (e) => {
+    journalEvents.push(e);
+  });
 
   beforeAll(async () => {
     fixtures = await loadFixtures();
@@ -515,6 +542,28 @@ describe('M10 delivery — live DB integration', () => {
         [dropId, fixtures.frozenItemId],
       );
       expect(movement.rows.map((r) => r.movement_type)).toContain('transfer_out');
+
+      // JGUD-03 — the dispatch must reach the ledger, not just the warehouse
+      // balance. Dr 1120 Persediaan-in-Transit / Cr 1100 Persediaan-Gudang is
+      // the posting rule's job; emitting the event that triggers it is this
+      // service's, and that is what is asserted here.
+      // Scoped to THIS document, not just the event type: the recorder is
+      // shared by every test in the file, and a later `describe` that happens
+      // to dispatch its own SJ must not turn this into a length-2 failure.
+      const dispatched = journalEvents.filter(
+        (e) =>
+          e.payload.eventType === JournalEventType.GUDANG_GOODS_OUT_TO_OUTLET &&
+          e.payload.documentId === sjId,
+      );
+      expect(dispatched).toHaveLength(1);
+      expect(dispatched[0]!.payload).toMatchObject({
+        documentType: 'surat_jalan',
+        documentId: sjId,
+        locationId: fixtures.warehouseId,
+      });
+      // A zero-value transfer would post a balanced-but-meaningless entry, so
+      // the amount carrying real cost is part of the wiring being proven.
+      expect(Number(dispatched[0]!.payload.amount)).toBeGreaterThan(0);
     });
 
     it('depart(): requires a temperature reading for a frozen drop and records it', async () => {
@@ -660,6 +709,27 @@ describe('M10 delivery — live DB integration', () => {
 
       // The linked replenishment request reconciles to 'completed' (every line has a qty_received).
       expect(await readReplenishmentRequestStatus(requestId)).toBe('completed');
+
+      // JOUT-01 — the receipt must reach the ledger. This drop is SHORT
+      // (RECEIVED_QTY < SENT_QTY), which is the branch that matters most: the
+      // posting rule splits on `discrepancy`, clearing in-transit to outlet
+      // stock (Dr 1110 / Cr 1120) and writing the shortfall off to 6400
+      // Selisih/Susut rather than silently leaving value stranded in 1120.
+      // The rule cannot make that split unless this service reports the
+      // discrepancy in the event context, so the context is asserted too.
+      const received = journalEvents.filter(
+        (e) =>
+          e.payload.eventType === JournalEventType.OUTLET_GOODS_IN_FROM_WAREHOUSE &&
+          e.payload.documentId === dropId,
+      );
+      expect(received).toHaveLength(1);
+      expect(received[0]!.payload).toMatchObject({
+        documentType: 'sj_drops',
+        documentId: dropId,
+        locationId: fixtures.outletId,
+      });
+      expect(Number(received[0]!.payload.amount)).toBeGreaterThan(0);
+      expect(received[0]!.payload.context).toMatchObject({ discrepancy: true });
     });
   });
 

@@ -45,8 +45,19 @@ test.describe('printable documents', () => {
     const body = printPage.locator('body');
 
     // Letterhead + document identity.
-    await expect(body).toContainText('Mimi Chicken OS');
-    await expect(body).toContainText(/SJ\//);
+    //
+    // NOT 'Mimi Chicken OS' — that string is `PrintFrame`'s built-in
+    // letterhead, and this sheet sets `letterhead={false}` because a
+    // template-driven document carries its own (see the print page's own
+    // comment). What prints is the tenant's brand and address from the
+    // template, so assert THAT rather than the frame's chrome.
+    await expect(body).toContainText('Mimi Chicken');
+    await expect(body).toContainText(/SURAT JALAN/i);
+    // The document number, tolerant of both shapes in play: the app mints
+    // `SJ/202608/0020` (formatCloudDocNumber) while seeded rows carry
+    // `SJ-20260824-BJM-01`. The assertion is "there is a numbered SJ here",
+    // not which generator produced it.
+    await expect(body).toContainText(/SJ[-/]\d/);
     // The things that make it a delivery note rather than a screenshot:
     // a destination, what was sent, and somewhere to sign.
     await expect(body).toContainText(/Jl\./);
@@ -63,15 +74,12 @@ test.describe('printable documents', () => {
     // Owner has an employee record and therefore payslips; `superadmin`
     // deliberately does not (it is a technical account, kept out of payroll).
     await login(page, USERS.owner);
-    await page.goto('/me');
 
-    const body = page.locator('body');
-    await expect(body).toContainText('Akun Saya', { timeout: 20_000 });
-
-    // `/me` opens on Absen; the payslips live behind their own tab. Earlier
-    // versions of this spec skipped with "no payslip listed" without ever
-    // getting to the tab — the data was there the whole time.
-    await page.getByRole('tab', { name: /Slip Gaji/ }).click();
+    // `/me` used to hold six own-data surfaces as TABS. They are now their own
+    // routes reached from the sidebar (see `MeOverview.tsx`'s header), so
+    // clicking a "Slip Gaji" tab times out — it no longer exists. Navigate to
+    // the route the payslips actually live at.
+    await page.goto('/me/slip');
 
     // The panel lists each period collapsed; the print button only exists
     // inside an expanded slip. Expand the first one before looking for it —

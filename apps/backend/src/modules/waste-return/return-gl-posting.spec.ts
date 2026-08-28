@@ -200,7 +200,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const eventBus = new EventBus();
       buildEngine(appPoolForDi(), eventBus);
       const journalEvents: DomainEvent<'journal.action'>[] = [];
-      eventBus.subscribe('journal.action', (e) => journalEvents.push(e));
+      eventBus.subscribe('journal.action', (e) => {
+        journalEvents.push(e);
+      });
 
       const creationPhoto = await createAttachment(fx.leaderOutletUserId, 'defect_photo');
       attachmentIds.push(creationPhoto);
@@ -300,7 +302,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const eventBus = new EventBus();
       buildEngine(appPoolForDi(), eventBus);
       const journalEvents: DomainEvent<'journal.action'>[] = [];
-      eventBus.subscribe('journal.action', (e) => journalEvents.push(e));
+      eventBus.subscribe('journal.action', (e) => {
+        journalEvents.push(e);
+      });
 
       const creationPhoto = await createAttachment(fx.kepalaGudangUserId, 'defect_photo_supplier');
       attachmentIds.push(creationPhoto);

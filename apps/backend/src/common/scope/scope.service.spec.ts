@@ -3,7 +3,11 @@ import { ScopeService } from './scope.service';
 
 function makeClient(handlers: Record<string, unknown[]>) {
   return {
-    query: vi.fn(async (sql: string) => {
+    // `params` is declared even though the fake ignores it: `ScopeService`
+    // calls `query(sql, params)`, and a mock typed `(sql)` makes `calls` a
+    // 1-tuple — which silently voided the parameter assertions below (they
+    // index `[1]`, out of bounds on that type).
+    query: vi.fn(async (sql: string, _params?: unknown[]) => {
       for (const [needle, rows] of Object.entries(handlers)) {
         if (sql.includes(needle)) return { rows };
       }
@@ -111,9 +115,7 @@ describe('ScopeService', () => {
       roleKey: 'kasir',
     });
 
-    const call = client.query.mock.calls.find(([sql]: [string]) =>
-      sql.includes('FROM user_locations'),
-    );
+    const call = client.query.mock.calls.find(([sql]) => sql.includes('FROM user_locations'));
     expect(call).toBeDefined();
     expect(call![0]).toContain('WHERE user_id = $1');
     expect(call![1]).toEqual(['user-scoped-check']);

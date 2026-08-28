@@ -10,8 +10,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22"
-  PNPM_VERSION: "9.15.4"
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.4'
 
 jobs:
   build:
@@ -121,6 +121,16 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      # The build config excludes *.spec.ts/*.test.ts (they are never emitted),
+      # which quietly meant they were never TYPE-CHECKED either. 202 errors had
+      # accumulated behind that, and some were real: a mis-typed harness made
+      # TypeScript infer `unknown` and void ~105 assertions in one spec; a mock
+      # declared with the wrong arity made every SQL-parameter assertion in
+      # another an out-of-bounds index that could not fail. Gated here so the
+      # hole cannot silently reopen.
+      - name: Typecheck tests
+        run: pnpm --filter @mimi/backend typecheck:tests
 
       - name: Format check
         run: pnpm format:check

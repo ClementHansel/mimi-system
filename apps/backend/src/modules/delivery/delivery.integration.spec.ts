@@ -517,7 +517,7 @@ describe('M10 delivery — live DB integration', () => {
     });
 
     it('FR-LOG-10 — dispatch(): posts transfer_out from the warehouse freezer (strict mode) and marks the request shipped', async () => {
-      const before = await getOwnerPool().query<{ qty_on_hand: string } | undefined>(
+      const before = await getOwnerPool().query<{ qty_on_hand: string }>(
         `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
         [fixtures.warehouseId, fixtures.freezerAreaWarehouse, fixtures.frozenItemId],
       );
@@ -650,7 +650,7 @@ describe('M10 delivery — live DB integration', () => {
         ).rejects.toMatchObject({ response: { code: 'ERR_VARIANCE_REASON_REQUIRED' } });
       });
 
-      const beforeOutlet = await getOwnerPool().query<{ qty_on_hand: string } | undefined>(
+      const beforeOutlet = await getOwnerPool().query<{ qty_on_hand: string }>(
         `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
         [fixtures.outletId, fixtures.freezerAreaOutlet, fixtures.frozenItemId],
       );
@@ -1196,7 +1196,7 @@ describe('M10 delivery — live DB integration', () => {
       const clientId = randomUUID();
       const batch = buildReceivedBatch(eventId, clientId);
 
-      const beforeOutlet = await getOwnerPool().query<{ qty_on_hand: string } | undefined>(
+      const beforeOutlet = await getOwnerPool().query<{ qty_on_hand: string }>(
         `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
         [fixtures.outletId, fixtures.dryAreaOutlet, fixtures.dryItemId],
       );

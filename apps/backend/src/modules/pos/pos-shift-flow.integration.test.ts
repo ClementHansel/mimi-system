@@ -524,7 +524,7 @@ describe('POS — full shift, live database', () => {
           locationId: fx.locationId,
           platform: OnlinePlatform.SHOPEEFOOD,
           orderRef: `MIG251-${randomUUID().slice(0, 8)}`,
-          orderDate: businessDateOf(new Date()),
+          orderDate: businessDateOf(new Date().toISOString()),
           grossAmount: '42000.00',
           discountAmount: '0.00',
           platformFee: '0.00',

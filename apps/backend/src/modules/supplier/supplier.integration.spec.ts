@@ -456,8 +456,8 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
           const items = await service.getItems(client, supplierId);
           expect(items).toHaveLength(1);
-          expect(items[0].currentPrice).toBe('125000.00');
-          expect(items[0].leadTimeDays).toBe(7);
+          expect(items[0]!.currentPrice).toBe('125000.00');
+          expect(items[0]!.leadTimeDays).toBe(7);
         });
       } finally {
         await owner.query(`DELETE FROM supplier_items WHERE supplier_id = $1`, [supplierId]);
@@ -489,7 +489,7 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
 
           const history = await service.getPriceHistory(client, supplierId);
           expect(history.rows.length).toBeGreaterThanOrEqual(1);
-          expect(history.rows[0].price).toBe('100000.00');
+          expect(history.rows[0]!.price).toBe('100000.00');
         });
       } finally {
         await owner.query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [
@@ -640,9 +640,9 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
           const service = new SupplierService();
 
           const items = await service.getItems(client, supplierId);
-          expect(items[0].currentPrice).toBe('250500.75');
-          expect(typeof items[0].currentPrice).toBe('string');
-          expect(items[0].currentPrice).not.toBe(250500.75);
+          expect(items[0]!.currentPrice).toBe('250500.75');
+          expect(typeof items[0]!.currentPrice).toBe('string');
+          expect(items[0]!.currentPrice).not.toBe(250500.75);
         });
       } finally {
         await owner.query(`DELETE FROM supplier_items WHERE supplier_id = $1`, [supplierId]);

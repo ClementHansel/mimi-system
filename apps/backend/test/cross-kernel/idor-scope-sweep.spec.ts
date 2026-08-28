@@ -39,8 +39,6 @@ import { OfflineCredentialsRepository } from '../../src/kernel/sync/offline-cred
 import { assertSystemContext } from '../../src/kernel/sync/system-rls-context';
 import type { JwtAccessPayload } from '../../src/common/jwt/jwt-payload.interface';
 
-
-
 const OWNER_URL =
   process.env.DATABASE_MIGRATION_URL ??
   `postgres://${process.env.POSTGRES_USER ?? 'mimi'}:${process.env.POSTGRES_PASSWORD ?? 'mimi_secret'}@localhost:${
@@ -80,6 +78,12 @@ const appPool = new Pool({ connectionString: APP_URL, max: 5 });
  */
 let hasDb = false;
 try {
+  // @ts-expect-error TS1378 — vitest loads this file as ESM, where top-level
+  // `await` is legal. `tsconfig.testcheck.json` checks tests under the build's
+  // CommonJS setting on purpose (see that file: an ESM override turns on
+  // TS1272 across every Nest controller, whose decorator metadata genuinely
+  // needs value imports). Suppressed here rather than restructured, because
+  // the timing IS the point — see the comment block above.
   hasDb = (await ownerPool.query('SELECT 1')).rowCount === 1;
 } catch {
   hasDb = false;

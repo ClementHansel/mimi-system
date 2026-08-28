@@ -130,8 +130,8 @@ describe('StockLedgerService — property tests (live database)', () => {
           }
 
           const result = await service.post(client, [movementFor(key, step, refId)], 'strict');
-          expect(result.movements[0].balanceAfter).toBe(projected);
-          expect(result.movements[0].wentNegative).toBe(false);
+          expect(result.movements[0]!.balanceAfter).toBe(projected);
+          expect(result.movements[0]!.wentNegative).toBe(false);
           expected = projected;
         }
 
@@ -156,14 +156,14 @@ describe('StockLedgerService — property tests (live database)', () => {
           const refId = crypto.randomUUID();
 
           const result = await service.post(client, [movementFor(key, step, refId)], 'fact');
-          expect(result.movements[0].balanceAfter).toBe(projected);
+          expect(result.movements[0]!.balanceAfter).toBe(projected);
 
           if (isNegativeQty(projected)) {
-            expect(result.movements[0].wentNegative).toBe(true);
+            expect(result.movements[0]!.wentNegative).toBe(true);
             expect(result.reconciliationsOpened).toHaveLength(1);
             expectedReconciliations++;
           } else {
-            expect(result.movements[0].wentNegative).toBe(false);
+            expect(result.movements[0]!.wentNegative).toBe(false);
             expect(result.reconciliationsOpened).toHaveLength(0);
           }
           expected = projected;
@@ -176,7 +176,7 @@ describe('StockLedgerService — property tests (live database)', () => {
           `SELECT count(*)::int AS n FROM stock_reconciliations WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
           [key.locationId, key.storageAreaId, key.itemId],
         );
-        expect(Number(reconCount.rows[0].n)).toBe(expectedReconciliations);
+        expect(Number(reconCount.rows[0]!.n)).toBe(expectedReconciliations);
       }),
       { numRuns: 20 },
     );
@@ -240,7 +240,7 @@ describe('StockLedgerService — property tests (live database)', () => {
         // Redeliver the exact same batch — every movement's natural key already exists.
         for (const m of withIds) {
           const result = await service.post(client, [m], 'fact');
-          expect(result.movements[0].skippedAsDuplicate).toBe(true);
+          expect(result.movements[0]!.skippedAsDuplicate).toBe(true);
         }
 
         const balanceAfterReplay = (await readBalance(client, key)) ?? ZERO_QTY;

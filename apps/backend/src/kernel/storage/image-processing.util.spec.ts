@@ -19,11 +19,15 @@ async function makeJpegWithExif(): Promise<Buffer> {
         Model: 'TestPhone Model X',
         Software: 'mimi-chicken-e2e',
       },
+      // sharp's `WriteableExif` type omits the GPS IFD, but sharp itself
+      // writes it — and GPS is precisely the tag group
+      // `compressAndStripExif` exists to remove, so the fixture must
+      // carry it. Cast at the boundary, not on the whole object.
       GPS: {
         GPSLatitude: '1/1, 30/1, 0/1',
         GPSLongitude: '116/1, 50/1, 0/1',
       },
-    })
+    } as Parameters<sharp.Sharp['withExif']>[0])
     .toBuffer();
 }
 

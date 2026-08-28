@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Pool } from 'pg';
 import type { ConfigService } from '@nestjs/config';
-import { RoleKey } from '@mimi/shared';
+import { AssetCondition, RoleKey } from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
 import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.service';
@@ -215,7 +215,7 @@ describe('asset lifecycle (integration, live Postgres)', () => {
           proofAttachmentIds: [att1, att2],
           cost: '150000.00',
           vendor: 'PT Servis Motor',
-          conditionAfter: 'good',
+          conditionAfter: AssetCondition.GOOD,
           notes: 'Ganti oli selesai',
         },
         {

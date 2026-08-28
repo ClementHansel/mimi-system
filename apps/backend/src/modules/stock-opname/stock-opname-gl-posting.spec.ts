@@ -247,7 +247,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const eventBus = new EventBus();
       buildEngine(appPoolForDi(), eventBus);
       const journalEvents: DomainEvent<'journal.action'>[] = [];
-      eventBus.subscribe('journal.action', (e) => journalEvents.push(e));
+      eventBus.subscribe('journal.action', (e) => {
+        journalEvents.push(e);
+      });
 
       const created = await asRequest(
         { role: 'leader_outlet', userId: leader.userId, locationIds: [fx.outletId] },
@@ -362,7 +364,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const eventBus = new EventBus();
       buildEngine(appPoolForDi(), eventBus);
       const journalEvents: DomainEvent<'journal.action'>[] = [];
-      eventBus.subscribe('journal.action', (e) => journalEvents.push(e));
+      eventBus.subscribe('journal.action', (e) => {
+        journalEvents.push(e);
+      });
 
       const created = await asRequest(
         { role: 'leader_outlet', userId: leader.userId, locationIds: [fx.outletId] },
@@ -452,7 +456,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const eventBus = new EventBus();
       buildEngine(appPoolForDi(), eventBus);
       const journalEvents: DomainEvent<'journal.action'>[] = [];
-      eventBus.subscribe('journal.action', (e) => journalEvents.push(e));
+      eventBus.subscribe('journal.action', (e) => {
+        journalEvents.push(e);
+      });
 
       const created = await asRequest(
         { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },

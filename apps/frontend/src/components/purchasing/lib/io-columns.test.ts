@@ -87,7 +87,10 @@ describe('SUPPLIER_IO_COLUMNS', () => {
     // The whole point of mirroring the importer. If this ever fails, the export
     // has stopped being re-importable.
     const csv = toCsv([SUPPLIER], SUPPLIER_IO_COLUMNS);
-    const header = csv.replace(/^﻿/, '').split('\r\n')[0];
+    // `\uFEFF` as an escape, not a literal BOM: the raw character is invisible
+    // in every editor and diff, and eslint's no-irregular-whitespace rejects
+    // it outright - which had CI's lint step failing.
+    const header = csv.replace(/^\uFEFF/, '').split('\r\n')[0];
     expect(header).toBe(
       'code,name,contact_name,phone,email,address,payment_terms_days,bank_name,bank_account,bank_account_name,outlet_visible',
     );

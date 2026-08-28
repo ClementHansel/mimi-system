@@ -8,6 +8,7 @@
     "start": "nest start",
     "start:prod": "node dist/main.js",
     "lint": "eslint src/",
+    "typecheck:tests": "tsc -p tsconfig.testcheck.json --noEmit",
     "test": "vitest run",
     "wa:sandbox": "tsx src/kernel/notification/channels/test-support/wa-sandbox-cli.ts",
     "test:watch": "vitest"

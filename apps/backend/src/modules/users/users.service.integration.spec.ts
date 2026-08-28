@@ -7,6 +7,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
+import { RoleKey } from '@mimi/shared';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
 import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.service';
 import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
@@ -42,7 +43,7 @@ describe('UsersService RBAC/RLS — BOTH directions on the real DB (not just can
     const kasir = await fetchOneUserId('kasir');
     const result = await withRollback(async (client) => buildService().list({}, client), {
       userId: kasir.id,
-      roleKey: 'kasir',
+      roleKey: RoleKey.KASIR,
     });
     expect(result.rows.length).toBe(1);
     expect(result.rows[0]!.id).toBe(kasir.id);
@@ -50,7 +51,7 @@ describe('UsersService RBAC/RLS — BOTH directions on the real DB (not just can
 
   it('an OWNER session (central role) sees EVERY user — the same query, the opposite outcome', async () => {
     const result = await withRollback(async (client) => buildService().list({}, client), {
-      roleKey: 'owner',
+      roleKey: RoleKey.OWNER,
     });
     expect(result.total).toBeGreaterThan(10); // 97 seeded users at last count — definitely more than one kasir's self-view
   });
@@ -87,13 +88,13 @@ describe('UsersService.create / assignRole / assignLocations / deactivate — li
               username: `w301-users-create-${Date.now()}`,
               name: 'Test Created User',
               password: 'SomeLongEnoughPassword1!',
-              roleKey: 'kasir',
+              roleKey: RoleKey.KASIR,
               locationIds: [locationId],
             },
-            { roleKey: 'owner', sub: randomUUID() },
+            { roleKey: RoleKey.OWNER, sub: randomUUID() },
             client,
           ),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
       newUserId = created.id;
       expect(created.roleKey).toBe('kasir');
@@ -107,14 +108,14 @@ describe('UsersService.create / assignRole / assignLocations / deactivate — li
           expect(
             buildService().assignRole(
               created.id,
-              { roleKey: 'manager' },
+              { roleKey: RoleKey.MANAGER },
               { roleKey: 'supervisor', sub: randomUUID() },
               client,
             ),
           ).rejects.toMatchObject({
             response: { code: 'ERR_FORBIDDEN' },
           }),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
 
       // An owner (rank 100) may.
@@ -122,25 +123,25 @@ describe('UsersService.create / assignRole / assignLocations / deactivate — li
         (client) =>
           buildService().assignRole(
             created.id,
-            { roleKey: 'manager' },
-            { roleKey: 'owner', sub: randomUUID() },
+            { roleKey: RoleKey.MANAGER },
+            { roleKey: RoleKey.OWNER, sub: randomUUID() },
             client,
           ),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
       expect(promoted.roleKey).toBe('manager');
 
       // Deactivate revokes sessions/credentials and flips is_active.
       const deactivated = await asRequest(
         (client) => buildService().deactivate(created.id, { sub: randomUUID() }, client),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
       expect(deactivated.deactivated).toBe(true);
 
       // A GENUINELY separate connection — never sees `deactivate`'s connection's uncommitted
       // state, only what it actually COMMITted.
       const after = await asRequest((client) => buildService().getOne(created.id, client), {
-        roleKey: 'owner',
+        roleKey: RoleKey.OWNER,
       });
       expect(after.isActive).toBe(false);
     } finally {
@@ -159,13 +160,13 @@ describe('UsersService.create / assignRole / assignLocations / deactivate — li
               username: `w301-badrole-${Date.now()}`,
               name: 'Bad Role Target',
               password: 'AnotherLongPassword1!',
-              roleKey: 'kasir',
+              roleKey: RoleKey.KASIR,
               locationIds: [locationId],
             },
-            { roleKey: 'owner', sub: randomUUID() },
+            { roleKey: RoleKey.OWNER, sub: randomUUID() },
             client,
           ),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
       newUserId = created.id;
 
@@ -175,11 +176,11 @@ describe('UsersService.create / assignRole / assignLocations / deactivate — li
             buildService().assignRole(
               created.id,
               { roleKey: 'not_a_real_role' as never },
-              { roleKey: 'owner', sub: randomUUID() },
+              { roleKey: RoleKey.OWNER, sub: randomUUID() },
               client,
             ),
           ).rejects.toBeTruthy(),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
     } finally {
       if (newUserId) await deleteTestUser(newUserId).catch(() => {});
@@ -197,13 +198,13 @@ describe('UsersService.create / assignRole / assignLocations / deactivate — li
               username: `w301-locs-${Date.now()}`,
               name: 'Location Diff Target',
               password: 'YetAnotherLongPassword1!',
-              roleKey: 'kasir',
+              roleKey: RoleKey.KASIR,
               locationIds: [locationA],
             },
-            { roleKey: 'owner', sub: randomUUID() },
+            { roleKey: RoleKey.OWNER, sub: randomUUID() },
             client,
           ),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
       newUserId = created.id;
       expect(created.locations.map((l) => l.id)).toEqual([locationA]);
@@ -216,7 +217,7 @@ describe('UsersService.create / assignRole / assignLocations / deactivate — li
             { sub: randomUUID() },
             client,
           ),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
       expect(cleared.locations).toHaveLength(0);
 
@@ -228,7 +229,7 @@ describe('UsersService.create / assignRole / assignLocations / deactivate — li
             { sub: randomUUID() },
             client,
           ),
-        { roleKey: 'owner' },
+        { roleKey: RoleKey.OWNER },
       );
       expect(reassigned.locations.map((l) => l.id)).toEqual([locationA]);
     } finally {

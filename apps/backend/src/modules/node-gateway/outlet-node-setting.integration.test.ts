@@ -170,7 +170,7 @@ describe('Outlet node-enabled setting — drain-before-off (BUILD-PLAN D-26), li
       branchNodes.recordHeartbeat(client, node.id, { version: '1.0.0', relayQueueDepth: 7 }),
     );
 
-    const req = { ...reqAs('owner', ownerId) } as never;
+    const req = { ...reqAs('owner', ownerId) } as Record<string, unknown>;
     await expect(
       withSystemContext(pool, (client) =>
         controller.setEnabled({ ...req, dbClient: client } as never, locationId, {

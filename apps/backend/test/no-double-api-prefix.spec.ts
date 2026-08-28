@@ -20,6 +20,23 @@
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { describe, it, expect, afterAll } from 'vitest';
+
+/**
+ * The slice of Express' private router internals this spec walks. Not exported
+ * by @types/express (it is private API), so it is declared locally rather than
+ * cast away — an `unknown` layer type meant none of the property accesses in
+ * `processStack` were checked at all.
+ */
+interface ExpressLayer {
+  route?: { path?: string };
+  name?: string;
+  handle?: { stack?: ExpressLayer[] };
+  regexp?: RegExp;
+}
+
+interface ExpressRouter {
+  stack?: ExpressLayer[];
+}
 import { AppModule } from '../src/app.module';
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -46,14 +63,18 @@ describe.skipIf(!hasDb)('route registration (no double /api/api prefixes)', () =
     await app.init();
 
     // Get the underlying Express router from the NestJS application
-    const httpServer = app.getHttpServer() as Record<string, unknown>;
+    // Express' router internals are deliberately untyped by @types/express —
+    // `_router` is private. Describe the shape this traversal actually relies
+    // on rather than leaving every `layer` as `unknown`, which suppressed
+    // checking on the whole walk below.
+    const httpServer = app.getHttpServer() as { _router?: ExpressRouter };
     const expressRouter = httpServer._router;
 
     const foundRoutes = new Set<string>();
 
     // Traverse the router's internal stack to find all registered routes
     if (expressRouter && expressRouter.stack) {
-      const processStack = (stack: unknown[], prefix = '') => {
+      const processStack = (stack: ExpressLayer[], prefix = '') => {
         for (const layer of stack) {
           if (layer.route) {
             // This is a route (has methods like GET, POST, etc.)

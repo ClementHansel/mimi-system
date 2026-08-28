@@ -28,7 +28,7 @@ type ControllerClass = new (...args: any[]) => unknown;
 function requiredKeysFor(target: ControllerClass, method: string): string[] {
   const meta = Reflect.getMetadata(
     REQUIRE_PERMISSION_KEY,
-    (target.prototype as Record<string, unknown>)[method],
+    (target.prototype as Record<string, unknown>)[method] as object,
   ) as string[] | undefined;
   if (!meta)
     throw new Error(

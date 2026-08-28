@@ -1,4 +1,17 @@
 {
+  // Typecheck-only view of the project that INCLUDES the test files the build
+  // config excludes. Tests are never emitted, so the real tsconfig has no
+  // reason to compile them — but "not emitted" was silently reading as "not
+  // checked", and 200+ errors had accumulated behind that, several of them
+  // real bugs rather than test-code noise (a `withRollback` context typed
+  // mutable made TypeScript give up inferring the return type, voiding ~105
+  // assertions in one file; a `query` mock declared with one parameter made
+  // every SQL-parameter assertion in another an out-of-bounds index).
+  //
+  // Deliberately NOT overriding `module`: switching to ESM here would legalise
+  // top-level `await` in the one spec that wants it, but it also turns on
+  // TS1272 for `emitDecoratorMetadata` across every Nest controller in src.
+  // Fixing the single spec is the cheaper trade.
   "extends": "./tsconfig.json",
   "compilerOptions": { "noEmit": true, "incremental": false, "rootDir": "." },
   "include": ["src/**/*.ts", "test/**/*.ts"],

@@ -12,6 +12,7 @@ import {
   resolveDocumentContextsBatch,
   resolveEligibleRoles,
 } from './document-context.resolver';
+import type { DocumentContext } from './types';
 
 const ALL_ROLES = Object.values(RoleKey);
 
@@ -225,7 +226,7 @@ describe('property: no runtime-resolved role escapes the expected set', () => {
   const scenarios: Array<{
     label: string;
     documentType: ApprovalDocumentType;
-    context: { variant?: string };
+    context: DocumentContext;
     expectedEligible: readonly RoleKey[];
   }> = [
     {

@@ -425,7 +425,7 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
     ]);
 
     // ═══ 5. Warehouse issues a frozen Surat Jalan linked to the approved request (kepala_gudang) ═══
-    const before = await getOwnerPool().query<{ qty_on_hand: string } | undefined>(
+    const before = await getOwnerPool().query<{ qty_on_hand: string }>(
       `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
       [fx.warehouseId, fx.freezerAreaWarehouse, fx.frozenItemId],
     );
@@ -552,7 +552,7 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
     photoAttachmentId = await createConfirmedAttachment('receiving_photo', 'sj_drop', dropId);
     signatureAttachmentId = await createConfirmedAttachment('signature', 'sj_drop', dropId);
 
-    const beforeOutlet = await getOwnerPool().query<{ qty_on_hand: string } | undefined>(
+    const beforeOutlet = await getOwnerPool().query<{ qty_on_hand: string }>(
       `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
       [fx.outletId, fx.freezerAreaOutlet, fx.frozenItemId],
     );
@@ -627,9 +627,7 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
 
     // And the stock actually landed in the outlet's freezer — the transfer_in leg that was
     // untestable while the RLS defect stood.
-    const outletBalanceAfterReceive = await getOwnerPool().query<
-      { qty_on_hand: string } | undefined
-    >(
+    const outletBalanceAfterReceive = await getOwnerPool().query<{ qty_on_hand: string }>(
       `SELECT qty_on_hand FROM stock_balances WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3`,
       [fx.outletId, fx.freezerAreaOutlet, fx.frozenItemId],
     );

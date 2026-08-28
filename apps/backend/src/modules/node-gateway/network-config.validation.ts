@@ -133,6 +133,10 @@ export function validateNetworkConfig(
       typeof input.wifiSsid !== 'string' ||
       input.wifiSsid.length < 1 ||
       input.wifiSsid.length > 32 ||
+      // Matching control characters IS the check here: an SSID carrying NUL
+      // or an escape byte is what this rejects before it reaches the node's
+      // wpa_supplicant conf.
+      // eslint-disable-next-line no-control-regex
       /[\x00-\x1f\x7f]/.test(input.wifiSsid)
     ) {
       errors.push({

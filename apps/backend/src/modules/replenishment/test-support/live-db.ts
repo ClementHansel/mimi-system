@@ -95,8 +95,21 @@ export async function closePool(): Promise<void> {
 export interface RlsContext {
   userId: string;
   roleKey: string;
-  /** `null` = central (no location filter — `app_is_central()`); `[]`/omitted array still filters. */
-  locationIds: string[] | null;
+  /**
+   * `null` = central (no location filter — `app_is_central()`); `[]`/omitted
+   * array still filters.
+   *
+   * READONLY deliberately: callers pass `CallerScope.locationIds`
+   * (`kernel/approvals/types.ts`), which is `readonly UUID[] | null`. Typed
+   * mutable, every call site was a type error, and because the mismatch sat
+   * in the FIRST argument TypeScript gave up inferring `T` from the second —
+   * so `withRollback(...)` returned `unknown` and ~105 downstream assertions
+   * in `replenishment.integration.spec.ts` silently lost all type checking
+   * (`created.id`, `created.status`, `created.lines`: all unchecked). This
+   * harness only ever reads and `.join(',')`s the array, so widening to
+   * readonly costs nothing.
+   */
+  locationIds: readonly string[] | null;
 }
 
 /**

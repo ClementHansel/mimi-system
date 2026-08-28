@@ -98,7 +98,7 @@ describe('StockLedgerService — live database', () => {
 
     const result = await service.post(client, [movementFor(key)], 'strict');
 
-    expect(result.movements[0].balanceAfter).toBe('10.000');
+    expect(result.movements[0]!.balanceAfter).toBe('10.000');
     expect(await readBalance(client, key)).toBe('10.000');
     expect(await countMovements(client, key)).toBe(1);
   });
@@ -127,7 +127,7 @@ describe('StockLedgerService — live database', () => {
       'fact',
     );
 
-    expect(result.movements[0].wentNegative).toBe(true);
+    expect(result.movements[0]!.wentNegative).toBe(true);
     expect(await readBalance(client, key)).toBe('-1.000');
 
     const recon = await client.query<{
@@ -153,8 +153,8 @@ describe('StockLedgerService — live database', () => {
     const first = await service.post(client, [m], 'fact');
     const second = await service.post(client, [m], 'fact');
 
-    expect(second.movements[0].skippedAsDuplicate).toBe(true);
-    expect(second.movements[0].id).toBe(first.movements[0].id);
+    expect(second.movements[0]!.skippedAsDuplicate).toBe(true);
+    expect(second.movements[0]!.id).toBe(first.movements[0]!.id);
     expect(await countMovements(client, key)).toBe(1);
     expect(await readBalance(client, key)).toBe('10.000');
   });
@@ -244,7 +244,7 @@ describe('StockLedgerService — live database', () => {
       });
 
       const result = await service.post(client, [movementFor(key)], 'strict');
-      expect(result.movements[0].balanceAfter).toBe('10.000');
+      expect(result.movements[0]!.balanceAfter).toBe('10.000');
     });
 
     it('a scoped role CANNOT write stock for a location outside app.location_ids — RLS rejects the write', async () => {
@@ -312,7 +312,7 @@ describe('StockLedgerService — live database', () => {
       const counts = await client.query<{ n: string }>(
         `SELECT count(*)::int AS n FROM stock_balances`,
       );
-      expect(Number(counts.rows[0].n)).toBeGreaterThanOrEqual(630);
+      expect(Number(counts.rows[0]!.n)).toBeGreaterThanOrEqual(630);
     });
   });
 });

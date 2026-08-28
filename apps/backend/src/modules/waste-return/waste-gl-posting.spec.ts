@@ -264,7 +264,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const eventBus = new EventBus();
       buildEngine(appPoolForDi(), eventBus); // subscribes the real PostingEngineService to `eventBus`
       const journalEvents: DomainEvent<'journal.action'>[] = [];
-      eventBus.subscribe('journal.action', (e) => journalEvents.push(e));
+      eventBus.subscribe('journal.action', (e) => {
+        journalEvents.push(e);
+      });
 
       const created = await withRollbackAs(
         { role: 'kepala_gudang', userId: kgd.userId, locationIds: [fx.warehouseId] },

@@ -195,7 +195,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const eventBus = new EventBus();
       buildEngine(appPoolForDi(), eventBus); // subscribes the real PostingEngineService
       const journalEvents: DomainEvent<'journal.action'>[] = [];
-      eventBus.subscribe('journal.action', (e) => journalEvents.push(e));
+      eventBus.subscribe('journal.action', (e) => {
+        journalEvents.push(e);
+      });
 
       const created: PurchaseOrderDetail = await withRollbackAs(
         { role: 'manager', userId: mgr.userId, locationIds: [] },

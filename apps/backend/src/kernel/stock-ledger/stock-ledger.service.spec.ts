@@ -65,19 +65,19 @@ class FakePoolClient {
     }
 
     if (s.startsWith('SELECT qty_on_hand FROM stock_balances')) {
-      const [locationId, storageAreaId, itemId] = params as string[];
+      const [locationId, storageAreaId, itemId] = params as [string, string, string];
       const qty = this.balances.get(this.key(locationId, storageAreaId, itemId));
       return { rows: (qty !== undefined ? [{ qty_on_hand: qty }] : []) as T[] };
     }
 
     if (s.startsWith('UPDATE stock_balances')) {
-      const [locationId, storageAreaId, itemId, qty] = params as string[];
+      const [locationId, storageAreaId, itemId, qty] = params as [string, string, string, string];
       this.balances.set(this.key(locationId, storageAreaId, itemId), qty);
       return { rows: [] as T[] };
     }
 
     if (s.startsWith('INSERT INTO stock_balances')) {
-      const [locationId, storageAreaId, itemId, qty] = params as string[];
+      const [locationId, storageAreaId, itemId, qty] = params as [string, string, string, string];
       this.balances.set(this.key(locationId, storageAreaId, itemId), qty);
       return { rows: [] as T[] };
     }
@@ -113,14 +113,16 @@ class FakePoolClient {
         qty: qty!,
         unit_cost: unitCost!,
         ref_type: refType!,
-        ref_id: refId,
-        sync_event_id: syncEventId,
+        // These two columns are nullable; a params slot that was never
+        // supplied reads `undefined`, which is not the same value.
+        ref_id: refId ?? null,
+        sync_event_id: syncEventId ?? null,
       });
       return { rows: [{ id }] as T[] };
     }
 
     if (s.startsWith('INSERT INTO stock_reconciliations')) {
-      const [locationId, storageAreaId, itemId, tier] = params as string[];
+      const [locationId, storageAreaId, itemId, tier] = params as [string, string, string, string];
       const id = `rec-${++this.seq}`;
       this.reconciliations.push({
         id,
@@ -208,7 +210,7 @@ describe('StockLedgerService', () => {
         [movement({ refId: 'r2', qty: '5.000' })],
         'strict',
       );
-      expect(result.movements[0].balanceAfter).toBe('15.000');
+      expect(result.movements[0]!.balanceAfter).toBe('15.000');
     });
 
     it('applies usage_out as a negative delta', async () => {
@@ -219,7 +221,7 @@ describe('StockLedgerService', () => {
         [movement({ refId: 'r2', movementType: MovementType.USAGE_OUT, qty: '3.000' })],
         'strict',
       );
-      expect(result.movements[0].balanceAfter).toBe('7.000');
+      expect(result.movements[0]!.balanceAfter).toBe('7.000');
     });
   });
 
@@ -301,8 +303,8 @@ describe('StockLedgerService', () => {
         [movement({ refId: 'r2', movementType: MovementType.USAGE_OUT, qty: '10.000' })],
         'strict',
       );
-      expect(result.movements[0].wentNegative).toBe(false);
-      expect(result.movements[0].balanceAfter).toBe('0.000');
+      expect(result.movements[0]!.wentNegative).toBe(false);
+      expect(result.movements[0]!.balanceAfter).toBe('0.000');
     });
   });
 
@@ -316,9 +318,9 @@ describe('StockLedgerService', () => {
         'fact',
       );
 
-      expect(first.movements[0].skippedAsDuplicate).toBe(false);
-      expect(second.movements[0].skippedAsDuplicate).toBe(true);
-      expect(second.movements[0].id).toBe(first.movements[0].id);
+      expect(first.movements[0]!.skippedAsDuplicate).toBe(false);
+      expect(second.movements[0]!.skippedAsDuplicate).toBe(true);
+      expect(second.movements[0]!.id).toBe(first.movements[0]!.id);
       expect(client.movements).toHaveLength(1);
       // Balance reflects ONE application, not two — replay never double-applies.
       expect(client.balances.get('loc-1::area-1::item-1')).toBe('10.000');
@@ -368,7 +370,7 @@ describe('StockLedgerService', () => {
         [movement({ refId: 'single-1', syncEventId: 'sync-evt-solo' })],
         'strict',
       );
-      expect(client.movements[0].sync_event_id).toBe('sync-evt-solo');
+      expect(client.movements[0]!.sync_event_id).toBe('sync-evt-solo');
     });
   });
 
@@ -446,7 +448,7 @@ describe('StockLedgerService', () => {
 
       await service.post(client as never, [movement({ refId: 'evt-1' })], 'strict');
       expect(handler).toHaveBeenCalledTimes(1);
-      expect(handler.mock.calls[0][0]).toMatchObject({
+      expect(handler.mock.calls[0]![0]).toMatchObject({
         type: 'stock.moved',
         payload: { movementType: MovementType.PURCHASE_IN, qtyDelta: '10.000', mode: 'strict' },
       });
@@ -470,7 +472,7 @@ describe('StockLedgerService', () => {
       );
 
       expect(handler).toHaveBeenCalledTimes(2);
-      expect(handler.mock.calls[1][0].payload).toMatchObject({
+      expect(handler.mock.calls[1]![0]!.payload).toMatchObject({
         movementType: MovementType.USAGE_OUT,
         qtyDelta: '-4.000',
       });

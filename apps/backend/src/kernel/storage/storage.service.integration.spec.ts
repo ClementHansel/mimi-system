@@ -39,12 +39,19 @@ function fakeConfigService() {
 }
 
 async function makeJpegWithExif(): Promise<Buffer> {
-  return sharp({
-    create: { width: 2400, height: 1600, channels: 3, background: { r: 10, g: 100, b: 200 } },
-  })
-    .jpeg()
-    .withExif({ IFD0: { Make: 'TestPhone', Model: 'X' }, GPS: { GPSLatitude: '1/1, 30/1, 0/1' } })
-    .toBuffer();
+  return (
+    sharp({
+      create: { width: 2400, height: 1600, channels: 3, background: { r: 10, g: 100, b: 200 } },
+    })
+      .jpeg()
+      // GPS is the tag group the code under test must strip, so the fixture has
+      // to carry it — sharp writes the IFD even though its `Exif` type omits it.
+      .withExif({
+        IFD0: { Make: 'TestPhone', Model: 'X' },
+        GPS: { GPSLatitude: '1/1, 30/1, 0/1' },
+      } as Parameters<sharp.Sharp['withExif']>[0])
+      .toBuffer()
+  );
 }
 
 /** Reproduces `RlsContextGuard`'s phase 0/1/2 for one request's worth of work. Caller commits/releases via `endRequest`. */

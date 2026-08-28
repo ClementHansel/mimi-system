@@ -94,7 +94,12 @@ describe('RecipeService.explodeForSale — property tests', () => {
   it('a recipe with no lines explodes to no usage, for any qtySold', () => {
     fc.assert(
       fc.property(
-        fc.record({ productId: fc.uuid(), yieldQty: qtyArb(1, 100), lines: fc.constant([]) }),
+        fc.record({
+          productId: fc.uuid(),
+          yieldQty: qtyArb(1, 100),
+          // Annotated: bare `[]` infers `never[]`, which is not `RecipeLine[]`.
+          lines: fc.constant([] as RecipeLine[]),
+        }),
         qtyArb(0, 500),
         (recipe, qtySold) => {
           expect(RecipeService.explodeForSale(recipe, qtySold)).toEqual([]);

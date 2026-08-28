@@ -52,7 +52,7 @@ describe('WhatsApp channel — sandbox gateway (no live DB)', () => {
         return `outbox-${calls.created.length}`;
       }),
       markSent: vi.fn(async (id: string) => void calls.sent.push(id)),
-      markFailed: vi.fn(async (id: string, err: string) => void calls.failed.push(err)),
+      markFailed: vi.fn(async (_id: string, err: string) => void calls.failed.push(err)),
     } as unknown as NotificationOutboxRepository;
     return { repo, calls };
   };

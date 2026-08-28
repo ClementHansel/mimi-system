@@ -32,11 +32,21 @@
  *     gudang→supplier).
  *  5. `sj_positions` — breadcrumbs for the in-transit Surat Jalan, so the
  *     dispatcher's live map has a truck on it.
+ *  6. `voucher_batches` + `vouchers` + `voucher_redemptions` — the voucher
+ *     domain shipped with no seed at all, so the Voucher screen was empty,
+ *     the POS voucher field had no valid code to type, and the voucher
+ *     DESIGNER previewed a card that could not be printed against anything
+ *     real.
+ *  7. `chat_participants` + internal (`kind` `'direct'`/`'group'`)
+ *     conversations. Migration 243 added staff-to-staff chat; the seed only
+ *     ever wrote WhatsApp threads, so `chat_participants` was empty and the
+ *     whole internal-messaging feature looked unbuilt.
  *
  * Idempotent like the other passes: every insert is guarded, so re-running the
  * seed neither duplicates nor throws.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
+import { VOUCHER_CODE_ALPHABET, VOUCHER_CODE_BODY_LENGTH, formatVoucherCode } from '@mimi/shared';
 import type pg from 'pg';
 
 interface Row {
@@ -605,7 +615,266 @@ export async function seedGaps(client: pg.Client): Promise<void> {
     `  - approvals: ${approvalsMade} chains (${stepsMade} steps) linked to their documents — "Persetujuan Saya" is no longer empty`,
   );
 
-  console.log('\n✓ Gap seed completed.\n');
+  // -- 6. Vouchers (batches + issued codes + real redemptions) ---------------
+  //
+  // The voucher domain shipped with the document designers and had NO seed at
+  // all: an owner opening "Voucher" saw an empty list, the POS voucher field
+  // had nothing valid to type, and the voucher DESIGNER previewed a card that
+  // could never be printed against a real code. Three tables, one dead
+  // feature.
+  //
+  // Codes are minted with `formatVoucherCode` from `@mimi/shared` -- the same
+  // function the API uses -- rather than hand-written strings, so a seeded
+  // coupon is normalised and typeable exactly like a real one. `randomInt`
+  // from `node:crypto`, never `Math.random`: a forgeable voucher code is
+  // money, and a seed that modelled forgeability would teach the wrong
+  // pattern to the next person who copies it.
+  const outletsForVouchers = await rows(
+    client,
+    `SELECT id FROM locations WHERE type = 'outlet' ORDER BY code LIMIT 3`,
+  );
+  const voucherBatchSpecs = [
+    {
+      code: 'PROMO-AGT-26',
+      name: 'Promo Agustus - potongan Rp10.000',
+      type: 'fixed',
+      value: '10000.00',
+      minSubtotal: '50000.00',
+      maxDiscount: null as string | null,
+      locationIds: null as string[] | null,
+      terms: 'Berlaku untuk semua outlet. Satu voucher per transaksi.',
+      status: 'issued',
+      issue: 12,
+    },
+    {
+      code: 'DISKON-10',
+      name: 'Diskon 10% (maks Rp25.000)',
+      type: 'percentage',
+      value: '10.00',
+      minSubtotal: '75000.00',
+      maxDiscount: '25000.00',
+      locationIds: outletsForVouchers.map((o) => o.id as string),
+      terms: 'Hanya di outlet terpilih. Tidak digabung promo lain.',
+      status: 'issued',
+      issue: 8,
+    },
+    {
+      // A batch still being prepared -- the `draft` state has its own UI path
+      // (editable, cannot issue), and with no draft row nobody could see it.
+      code: 'PROMO-SEP-26',
+      name: 'Promo September (draf)',
+      type: 'fixed',
+      value: '15000.00',
+      minSubtotal: '100000.00',
+      maxDiscount: null as string | null,
+      locationIds: null as string[] | null,
+      terms: 'Draf - belum diterbitkan.',
+      status: 'draft',
+      issue: 0,
+    },
+  ];
+
+  let batchesMade = 0;
+  let vouchersMade = 0;
+  let redemptionsMade = 0;
+
+  for (const spec of voucherBatchSpecs) {
+    const existing = await one(client, `SELECT id FROM voucher_batches WHERE code = $1`, [
+      spec.code,
+    ]);
+    const created = existing
+      ? null
+      : await one(
+          client,
+          `INSERT INTO voucher_batches
+             (code, name, type, value, min_subtotal, max_discount, valid_from, valid_until,
+              location_ids, terms, status, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6, CURRENT_DATE - 7, CURRENT_DATE + 60, $7,$8,$9,$10)
+           RETURNING id`,
+          [
+            spec.code,
+            spec.name,
+            spec.type,
+            spec.value,
+            spec.minSubtotal,
+            spec.maxDiscount,
+            spec.locationIds,
+            spec.terms,
+            spec.status,
+            owner,
+          ],
+        );
+    if (created) batchesMade++;
+    const batchId = (existing?.id ?? created?.id) as string;
+
+    const already = await one(
+      client,
+      `SELECT count(*)::int AS n FROM vouchers WHERE batch_id = $1`,
+      [batchId],
+    );
+    for (let i = (already?.n as number) ?? 0; i < spec.issue; i++) {
+      const code = formatVoucherCode(
+        Array.from({ length: VOUCHER_CODE_BODY_LENGTH }, () =>
+          randomInt(VOUCHER_CODE_ALPHABET.length),
+        ),
+      );
+      await client.query(
+        `INSERT INTO vouchers (batch_id, code, status) VALUES ($1,$2,'active')
+         ON CONFLICT (code) DO NOTHING`,
+        [batchId, code],
+      );
+      vouchersMade++;
+    }
+  }
+
+  // Redeem a few against REAL seeded sales, so the redemption history, the
+  // "sudah dipakai" filter and a sale's voucher line all have something true
+  // behind them. `voucher_redemptions.voucher_id` is UNIQUE -- that constraint
+  // IS the double-spend guard -- so each insert is guarded rather than blind.
+  const redeemableVouchers = await rows(
+    client,
+    `SELECT v.id
+       FROM vouchers v
+       JOIN voucher_batches b ON b.id = v.batch_id AND b.code = 'PROMO-AGT-26'
+      WHERE v.status = 'active'
+        AND NOT EXISTS (SELECT 1 FROM voucher_redemptions r WHERE r.voucher_id = v.id)
+      ORDER BY v.created_at
+      LIMIT 3`,
+  );
+  const salesForVouchers = await rows(
+    client,
+    `SELECT id, location_id, kasir_id FROM sales
+      WHERE status = 'completed'
+      ORDER BY occurred_at DESC
+      LIMIT 3`,
+  );
+  for (let i = 0; i < Math.min(redeemableVouchers.length, salesForVouchers.length); i++) {
+    const voucher = redeemableVouchers[i]!;
+    const sale = salesForVouchers[i]!;
+    const inserted = await one(
+      client,
+      `INSERT INTO voucher_redemptions
+         (voucher_id, sale_id, location_id, discount_amount, redeemed_by, redeemed_at)
+       VALUES ($1,$2,$3,'10000.00',$4, NOW() - ($5 || ' days')::interval)
+       ON CONFLICT (voucher_id) DO NOTHING
+       RETURNING id`,
+      [voucher.id, sale.id, sale.location_id, sale.kasir_id, String(i + 1)],
+    );
+    if (inserted) {
+      await client.query(`UPDATE vouchers SET status = 'redeemed' WHERE id = $1`, [voucher.id]);
+      redemptionsMade++;
+    }
+  }
+  console.log(
+    `  - vouchers: ${batchesMade} batches, ${vouchersMade} codes issued, ${redemptionsMade} redeemed against real sales`,
+  );
+
+  // -- 7. Internal chat (staff threads, not WhatsApp) ------------------------
+  //
+  // Migration 243 added `kind IN ('whatsapp','direct','group')` and
+  // `chat_participants`, but the seed only ever wrote WhatsApp threads -- so
+  // `chat_participants` was empty and the internal messaging feature looked
+  // unbuilt on a fresh box, in exactly the way this file exists to prevent.
+  //
+  // One group thread and one DM. `direct_key` is built the SAME way
+  // `InternalChatService.openDirect` builds it (`[a,b].sort().join(':')`);
+  // if these disagreed, opening that DM in the app would create a SECOND row
+  // for the same pair instead of finding this one.
+  const managerUser = userByRole.get('manager');
+  const kepalaGudangUser = userByRole.get('kepala_gudang');
+  const supervisorUser = userByRole.get('supervisor');
+  let internalThreads = 0;
+
+  if (managerUser && kepalaGudangUser) {
+    const groupName = 'Koordinasi Gudang & Outlet';
+    const groupExisting = await one(
+      client,
+      `SELECT id FROM chat_conversations WHERE kind = 'group' AND name = $1`,
+      [groupName],
+    );
+    if (!groupExisting) {
+      const group = await one(
+        client,
+        `INSERT INTO chat_conversations
+           (kind, name, created_by, status, last_message_at, last_message_preview)
+         VALUES ('group', $1, $2, 'open', NOW() - INTERVAL '2 hours', $3)
+         RETURNING id`,
+        [groupName, owner, 'Kiriman frozen besok pagi ya, truk berangkat 06.00.'],
+      );
+      const groupId = group?.id as string;
+      const members: [string, string][] = [
+        [owner, 'admin'],
+        [managerUser, 'admin'],
+        [kepalaGudangUser, 'member'],
+      ];
+      if (supervisorUser) members.push([supervisorUser, 'member']);
+      for (const [userId, role] of members) {
+        await client.query(
+          `INSERT INTO chat_participants (conversation_id, user_id, role, joined_at, last_read_at)
+           VALUES ($1,$2,$3, NOW() - INTERVAL '9 days', NOW() - INTERVAL '2 hours')`,
+          [groupId, userId, role],
+        );
+      }
+      const groupMessages: [string, string, string][] = [
+        [kepalaGudangUser, 'Stok ayam fillet di gudang tinggal 120 kg.', '26'],
+        [managerUser, 'Sudah saya buatkan PO ke supplier utama, masuk besok.', '25'],
+        [owner, 'Kiriman frozen besok pagi ya, truk berangkat 06.00.', '2'],
+      ];
+      for (const [sender, body, hoursAgo] of groupMessages) {
+        await client.query(
+          `INSERT INTO chat_messages
+             (conversation_id, direction, body, sender_user_id, delivery_status, occurred_at)
+           VALUES ($1, 'outbound', $2, $3, 'sent', NOW() - ($4 || ' hours')::interval)`,
+          [groupId, body, sender, hoursAgo],
+        );
+      }
+      internalThreads++;
+    }
+
+    const directKey = [owner, managerUser].sort().join(':');
+    const dmExisting = await one(
+      client,
+      `SELECT id FROM chat_conversations WHERE kind = 'direct' AND direct_key = $1`,
+      [directKey],
+    );
+    if (!dmExisting) {
+      const dm = await one(
+        client,
+        `INSERT INTO chat_conversations
+           (kind, direct_key, created_by, status, last_message_at, last_message_preview)
+         VALUES ('direct', $1, $2, 'open', NOW() - INTERVAL '30 minutes', $3)
+         RETURNING id`,
+        [directKey, owner, 'Laporan penjualan minggu ini sudah saya kirim.'],
+      );
+      const dmId = dm?.id as string;
+      for (const userId of [owner, managerUser]) {
+        await client.query(
+          `INSERT INTO chat_participants (conversation_id, user_id, role, joined_at, last_read_at)
+           VALUES ($1,$2,'member', NOW() - INTERVAL '3 days', NOW() - INTERVAL '30 minutes')`,
+          [dmId, userId],
+        );
+      }
+      await client.query(
+        `INSERT INTO chat_messages
+           (conversation_id, direction, body, sender_user_id, delivery_status, occurred_at)
+         VALUES ($1,'outbound',$2,$3,'sent', NOW() - INTERVAL '40 minutes'),
+                ($1,'outbound',$4,$5,'sent', NOW() - INTERVAL '30 minutes')`,
+        [
+          dmId,
+          'Pak, minta laporan penjualan minggu ini.',
+          owner,
+          'Laporan penjualan minggu ini sudah saya kirim.',
+          managerUser,
+        ],
+      );
+      internalThreads++;
+    }
+  }
+  console.log(
+    `  - internal chat: ${internalThreads} staff thread(s) with participants and messages`,
+  );
+
+  console.log('\n\u2713 Gap seed completed.\n');
 }
 
 /**

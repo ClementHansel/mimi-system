@@ -1,5 +1,6 @@
 import { Pool, type PoolClient } from 'pg';
 import { RoleKey } from '@mimi/shared';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Live-DB harness for M10 `delivery`'s integration suite — same two-pool
@@ -52,6 +53,71 @@ export async function closePool(): Promise<void> {
   await appPool?.end();
   ownerPool = undefined;
   appPool = undefined;
+}
+
+/**
+ * A driver with NOTHING booked today — minting one if the seeded pool is
+ * exhausted.
+ *
+ * The seed ships exactly TWO active drivers, and it books one of them for
+ * `now` (an in-transit dry Surat Jalan, so the demo has live truck positions).
+ * These suites then COMMIT real Surat Jalan rows for today and never release
+ * them, so the pool of usable drivers shrank by one per run until FR-LOG's
+ * "one driver takes ONE truck type per day" rule (`assertNoTruckTypeClash`)
+ * rejected the very first test and every later one cascaded on an `undefined`
+ * SJ.
+ *
+ * Same shape of bug, and the same fix, as `pickUnusedItemInLocation` in
+ * `modules/inventory/test-support/live-db.ts` (see its long note): stop
+ * competing for a finite seeded resource and mint a dedicated one, so the
+ * guarantee the callers need is true BY CONSTRUCTION rather than true until
+ * the pool runs dry. It went unnoticed for a long time only because these
+ * live-DB suites were being silently skipped — see `vitest.config.ts`.
+ *
+ * `drivers.user_id` is UNIQUE, so a minted driver needs its own user; it is
+ * created inactive-looking but valid (`zztest_driver_*`, the seeded driver
+ * role, a copied password hash so no real credential is invented) and is inert
+ * — nothing logs in as it. No suite asserts an absolute user or driver count.
+ */
+async function pickOrMintFreeDriver(pool: Pool): Promise<{ id: string; user_id: string }> {
+  const free = await pool.query<{ id: string; user_id: string }>(
+    `SELECT d.id, d.user_id
+       FROM drivers d
+      WHERE d.is_active = true
+        AND d.user_id IS NOT NULL
+        AND NOT EXISTS (
+              SELECT 1 FROM surat_jalan sj
+               WHERE sj.driver_id = d.id
+                 AND sj.planned_date = CURRENT_DATE
+                 AND sj.status <> 'cancelled'
+            )
+      ORDER BY d.id
+      LIMIT 1`,
+  );
+  if (free.rows[0]) return free.rows[0];
+
+  const suffix = randomUUID().slice(0, 8);
+  const user = await pool.query<{ id: string }>(
+    `INSERT INTO users (username, name, password_hash, role_id)
+     SELECT $1, 'Test fixture driver', u.password_hash, r.id
+       FROM roles r
+       JOIN users u ON u.role_id = r.id
+      WHERE r.key = 'driver'
+      LIMIT 1
+     RETURNING id`,
+    [`zztest_driver_${suffix}`],
+  );
+  const userId = user.rows[0]?.id;
+  if (!userId)
+    throw new Error('pickOrMintFreeDriver: seed has no driver-role user to model a fixture on');
+
+  const driver = await pool.query<{ id: string; user_id: string }>(
+    `INSERT INTO drivers (user_id, name, is_active)
+     VALUES ($1, 'Test fixture driver', true)
+     RETURNING id, user_id`,
+    [userId],
+  );
+  return driver.rows[0]!;
 }
 
 export interface RlsCtx {
@@ -187,9 +253,7 @@ export async function loadFixtures(): Promise<Fixtures> {
     [chilledSku, frozenItem.rows[0].category_id, frozenItem.rows[0].base_unit_id],
   );
 
-  const driver = await pool.query<{ id: string; user_id: string }>(
-    `SELECT id, user_id FROM drivers WHERE is_active = true AND user_id IS NOT NULL LIMIT 1`,
-  );
+  const driver = { rows: [await pickOrMintFreeDriver(pool)] };
   if (!driver.rows[0])
     throw new Error(`Seed data is missing an active driver with a linked user_id`);
 

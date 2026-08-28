@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Live-DB harness for the Gate-G2 cross-kernel scenario
@@ -36,6 +37,58 @@ let ownerPool: Pool | undefined;
 let appPool: Pool | undefined;
 
 /** Fixture setup/teardown/verification ONLY — never construct a kernel/module service against this pool. */
+
+/**
+ * A driver with NOTHING booked today, minting one if the seeded pool is dry.
+ *
+ * Verbatim counterpart of `pickOrMintFreeDriver` in
+ * `src/modules/delivery/test-support/live-db.ts` — see that file for the full
+ * reasoning. Short version: the seed ships two active drivers and books one of
+ * them for `now`; these suites commit real Surat Jalan rows for today and
+ * never release them, so FR-LOG's "one driver takes ONE truck type per day"
+ * rule eventually rejects the first test in the file. Duplicated rather than
+ * shared because these two fixture harnesses already duplicate their whole
+ * two-pool setup on purpose (a cross-kernel suite must not import a module's
+ * private test-support).
+ */
+async function pickOrMintFreeDriver(pool: Pool): Promise<{ id: string; user_id: string }> {
+  const free = await pool.query<{ id: string; user_id: string }>(
+    `SELECT d.id, d.user_id
+       FROM drivers d
+      WHERE d.is_active = true
+        AND d.user_id IS NOT NULL
+        AND NOT EXISTS (
+              SELECT 1 FROM surat_jalan sj
+               WHERE sj.driver_id = d.id
+                 AND sj.planned_date = CURRENT_DATE
+                 AND sj.status <> 'cancelled'
+            )
+      ORDER BY d.id
+      LIMIT 1`,
+  );
+  if (free.rows[0]) return free.rows[0];
+
+  const user = await pool.query<{ id: string }>(
+    `INSERT INTO users (username, name, password_hash, role_id)
+     SELECT $1, 'Test fixture driver', u.password_hash, r.id
+       FROM roles r JOIN users u ON u.role_id = r.id
+      WHERE r.key = 'driver' LIMIT 1
+     RETURNING id`,
+    [`zztest_driver_${randomUUID().slice(0, 8)}`],
+  );
+  const userId = user.rows[0]?.id;
+  if (!userId)
+    throw new Error('pickOrMintFreeDriver: seed has no driver-role user to model a fixture on');
+
+  const driver = await pool.query<{ id: string; user_id: string }>(
+    `INSERT INTO drivers (user_id, name, is_active)
+     VALUES ($1, 'Test fixture driver', true)
+     RETURNING id, user_id`,
+    [userId],
+  );
+  return driver.rows[0]!;
+}
+
 export function getOwnerPool(): Pool {
   ownerPool ??= new Pool({ connectionString: OWNER_URL, max: 5 });
   return ownerPool;
@@ -159,9 +212,7 @@ export async function loadFixtures(): Promise<ScenarioFixtures> {
   );
   if (!frozenItem.rows[0]) throw new Error(`Seed data is missing a 'frozen' item`);
 
-  const driver = await pool.query<{ id: string; user_id: string }>(
-    `SELECT id, user_id FROM drivers WHERE is_active = true AND user_id IS NOT NULL LIMIT 1`,
-  );
+  const driver = { rows: [await pickOrMintFreeDriver(pool)] };
   if (!driver.rows[0])
     throw new Error(`Seed data is missing an active driver with a linked user_id`);
 

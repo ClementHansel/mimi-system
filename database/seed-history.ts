@@ -108,6 +108,7 @@
 
 import { createHash } from 'node:crypto';
 import pg from 'pg';
+import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
@@ -498,7 +499,7 @@ async function main(): Promise<void> {
     : null;
 
   const connectionString =
-    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+    migrationConnectionString('db:seed:history');
   // No statement timeout: the balance replay and the matview refresh are both
   // legitimately long on a quarter of history, and being killed halfway is
   // worse than being slow.

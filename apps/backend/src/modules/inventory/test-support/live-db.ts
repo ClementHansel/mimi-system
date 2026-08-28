@@ -1,5 +1,6 @@
 import { Pool, type PoolClient } from 'pg';
 import { RoleKey } from '@mimi/shared';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Live-DB harness for M07 `inventory`'s integration/property suites — same
@@ -171,6 +172,13 @@ export async function refreshUsageMatview(): Promise<void> {
 const TEST_REF_TYPES = ['test', 'low_stock_test', 'property_test', 'area_transfer'] as const;
 
 /**
+ * SKU namespace for items minted by `pickUnusedItemInLocation`. `ZZ` sorts
+ * last, so a fixture that picks `ORDER BY sku LIMIT n` keeps selecting the
+ * same seeded items it always did and never accidentally grabs a test item.
+ */
+const TEST_ITEM_SKU_PREFIX = 'ZZTEST-';
+
+/**
  * Deletes every `stock_movements`/now-orphaned `stock_balances` row this
  * suite's own fixtures could have left behind (via `seedMovementCommitted`/
  * `withCommit`, both of which commit for real — D-07 is honored throughout,
@@ -192,6 +200,34 @@ export async function purgeTestResidue(): Promise<void> {
               SELECT 1 FROM stock_movements m
                WHERE m.location_id = b.location_id AND m.storage_area_id = b.storage_area_id AND m.item_id = b.item_id
             )`,
+  );
+  // Items minted by `pickUnusedItemInLocation`.
+  //
+  // Deleted ONE AT A TIME inside a savepoint, skipping any that a foreign key
+  // still holds down. The first version of this listed the referencing tables
+  // by hand (`stock_movements`, `stock_balances`, `min_stock_rules`) and was
+  // wrong within a day: `stock_opname_lines` also references `items`, so a
+  // purge threw a foreign-key error and took the whole suite's `beforeAll`
+  // with it. Enumerating referencing tables means this helper has to be
+  // updated every time anyone adds an FK to `items` — a maintenance debt no
+  // one will remember, in a file whose failures look like product bugs.
+  //
+  // Letting Postgres answer the question instead is both shorter and
+  // total: if something still points at the row, it stays. A leftover costs
+  // nothing (the minter no longer competes for a finite pool), whereas a
+  // wrongly-deleted item would take somebody's audit trail with it.
+  await pool.query(
+    `DO $$
+     DECLARE target RECORD;
+     BEGIN
+       FOR target IN SELECT id FROM items WHERE sku LIKE '${TEST_ITEM_SKU_PREFIX}%' LOOP
+         BEGIN
+           DELETE FROM items WHERE id = target.id;
+         EXCEPTION WHEN foreign_key_violation THEN
+           -- still referenced by a real document; leave it alone
+         END;
+       END LOOP;
+     END $$;`,
   );
 }
 
@@ -339,29 +375,84 @@ export async function pickUnusedStockKey(
  * that pre-existing stock and never actually crossed the test's intended
  * threshold.
  */
+/**
+ * ── WHY THIS MINTS AN ITEM INSTEAD OF PICKING ONE ────────────────────────────
+ * This used to `CROSS JOIN items` and take any seeded item with no
+ * `stock_balances` row in the location. That made the fixture a CONSUMABLE
+ * POOL, and the pool only ever shrank:
+ *
+ *   - `purgeTestResidue()` (above) reclaims items whose balance came from a
+ *     movement in `TEST_REF_TYPES`. That part worked.
+ *   - but the other live-DB suites — stock-opname GL posting, PO receipt, the
+ *     POS shift/sale flows — post REAL business movements (`ref_type` `'sale'`,
+ *     `'opname'`, `'goods_receipt'`). Those are not residue and must never be
+ *     purged, so every run permanently stocked a few more of the 91 seeded
+ *     items in the shared fixture outlet.
+ *
+ * The failure that produced was not a test failure, it was an ERROR — "no item
+ * with zero balance anywhere in location …" — appearing only after N runs, on
+ * a database nobody had reseeded. It went unnoticed for a long time because
+ * these suites were being silently skipped (see `vitest.config.ts`: they gate
+ * on `DATABASE_URL`/`DATABASE_MIGRATION_URL`, which nothing loaded).
+ *
+ * Minting a dedicated item removes the coupling entirely: the guarantee this
+ * helper's callers need — "summed balance across every area of this location
+ * is exactly zero", which is `min_stock_rules`' own grain — is now true BY
+ * CONSTRUCTION rather than true until some unrelated suite sells something.
+ * It cannot exhaust, it cannot be raced by another suite, and it does not care
+ * what the seed happens to stock.
+ *
+ * The item is namespaced (`ZZTEST-…`, sorting last so it never lands in a
+ * `ORDER BY sku LIMIT n` fixture pick) and reclaimed by `purgeTestResidue()`.
+ * `is_sellable` is false and `is_active` is true: it must behave like a normal
+ * stocked item for balance/low-stock queries without ever appearing in a
+ * product/menu path.
+ *
+ * The one assertion this could have disturbed is inventory's
+ * `totalItems` check, and that one is written relatively
+ * (`toBe(before.totalItems + 1)`), so a new item in the catalogue is invisible
+ * to it.
+ */
 export async function pickUnusedItemInLocation(
   client: PoolClient,
   locationId: string,
 ): Promise<StockFixtureKey> {
-  const res = await client.query<{ storage_area_id: string; item_id: string }>(
-    `SELECT sa.id AS storage_area_id, i.id AS item_id
-       FROM storage_areas sa
-       CROSS JOIN items i
-      WHERE sa.location_id = $1
-        AND NOT EXISTS (
-              SELECT 1 FROM stock_balances b
-               WHERE b.location_id = $1 AND b.item_id = i.id
-            )
-      ORDER BY random()
-      LIMIT 1`,
+  const area = await client.query<{ id: string }>(
+    `SELECT id FROM storage_areas WHERE location_id = $1 ORDER BY sort_order LIMIT 1`,
     [locationId],
   );
-  const row = res.rows[0];
-  if (!row)
+  const storageAreaId = area.rows[0]?.id;
+  if (!storageAreaId)
+    throw new Error(`pickUnusedItemInLocation: location ${locationId} has no storage areas`);
+
+  // Minted over the OWNER pool on purpose: `client` is the caller's
+  // app-role transaction, which is ROLLED BACK at the end of the test. An
+  // item created there would vanish before the assertions that read it back
+  // through a different pool, which is the same reason `seedMovementCommitted`
+  // exists.
+  const created = await getOwnerPool().query<{ id: string }>(
+    // `avg_cost` is copied from a REAL priced item rather than left at the
+    // column default of 0. A zero-cost item is not a neutral fixture: stock
+    // value, opname variance and every GL posting are `qty x avg_cost`, so a
+    // free item silently turns a value-based assertion into `0 === 0`. It also
+    // enlarges the zero-cost pool that `stock-opname`'s picker has to steer
+    // around (see `pickUnusedStockKey`).
+    `INSERT INTO items (sku, name, base_unit_id, storage_type, is_sellable, is_active, avg_cost)
+     SELECT $1, $2, i.base_unit_id, 'dry', false, true, i.avg_cost
+       FROM items i
+      WHERE i.avg_cost > 0
+      ORDER BY i.sku
+      LIMIT 1
+     RETURNING id`,
+    [`${TEST_ITEM_SKU_PREFIX}${randomUUID().slice(0, 8)}`, 'Test fixture item'],
+  );
+  const itemId = created.rows[0]?.id;
+  if (!itemId)
     throw new Error(
-      `pickUnusedItemInLocation: no item with zero balance anywhere in location ${locationId} found`,
+      'pickUnusedItemInLocation: could not mint a fixture item (is the items table empty?)',
     );
-  return { locationId, storageAreaId: row.storage_area_id, itemId: row.item_id };
+
+  return { locationId, storageAreaId, itemId };
 }
 
 /**

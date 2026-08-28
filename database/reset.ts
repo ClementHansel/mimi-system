@@ -18,6 +18,7 @@
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import pg from 'pg';
+import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
@@ -36,7 +37,7 @@ function runStep(label: string, scriptFile: string): void {
 
 async function reset(): Promise<void> {
   const connectionString =
-    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+    migrationConnectionString('db:reset');
 
   // Safety check: refuse to run on production-like URLs
   if (connectionString.includes('production') || connectionString.includes('prod')) {

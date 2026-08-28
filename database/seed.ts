@@ -30,6 +30,7 @@ import { businessDateOf } from '@mimi/shared';
 import { seedExtended } from './seed-extended.js';
 import { seedGaps } from './seed-gaps.js';
 import { applyOrgModel } from './org-model.js';
+import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
@@ -134,8 +135,7 @@ async function nextDocNumber(
 }
 
 async function main(): Promise<void> {
-  const connectionString =
-    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+  const connectionString = migrationConnectionString('db:seed');
   const client = new Client({ connectionString });
   await client.connect();
 
@@ -595,12 +595,34 @@ async function main(): Promise<void> {
           : contractType === 'probation'
             ? isoDate(new Date(joinDate.getTime() + 90 * 86_400_000))
             : isoDate(new Date(joinDate.getTime() + 365 * 86_400_000));
-      await client.query(
+      // SIGNATURES BEFORE STATUS (migration 252). `employment_contracts` now
+      // carries a BEFORE INSERT OR UPDATE OF status trigger
+      // (`check_contract_signed_before_active`) refusing any row that reaches
+      // `active` without BOTH a party_type='employee' and a
+      // party_type='company' row in `contract_signatures`. This seed predates
+      // that trigger and used to insert `active` directly, which made
+      // `pnpm db:seed` fail outright against a migrated schema — the whole
+      // reset path was broken until this was fixed.
+      //
+      // So a contract is now born `draft` (which is also the column's new
+      // default), gets both signatures, and is only then promoted to its real
+      // status. That is the same order a real HR process follows, and it means
+      // the seeded data exercises the trigger's happy path instead of
+      // side-stepping it.
+      //
+      // `expired` does not strictly need signatures — the trigger only guards
+      // `active` — but an expired contract is one that WAS signed and then ran
+      // out, so seeding it unsigned would be a row that could never have
+      // existed.
+      const contractStatus =
+        contractEnd && contractEnd < isoDate(new Date()) ? 'expired' : 'active';
+      const contractRes = await client.query<{ id: string }>(
         `INSERT INTO employment_contracts
            (contract_number, employee_id, contract_type, position, location_id, base_salary,
             start_date, end_date, status, signed_at)
-         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$7
-          WHERE NOT EXISTS (SELECT 1 FROM employment_contracts WHERE employee_id = $2)`,
+         SELECT $1,$2,$3,$4,$5,$6,$7,$8,'draft',$7
+          WHERE NOT EXISTS (SELECT 1 FROM employment_contracts WHERE employee_id = $2)
+         RETURNING id`,
         [
           `KONTRAK/${isoDate(joinDate).slice(0, 7).replace('-', '')}/${employeeNumber.slice(-4)}`,
           id,
@@ -610,14 +632,37 @@ async function main(): Promise<void> {
           baseSalaryFor(position),
           isoDate(joinDate),
           contractEnd,
-          // A fixed term whose end date has already passed is EXPIRED, not
-          // active. Seeding it as active would have produced a database where
-          // the expiry report is wrong on arrival, and where the only thing
-          // that ever produced an `expired` row was the sweep endpoint — so
-          // nobody would notice if the sweep were broken.
-          contractEnd && contractEnd < isoDate(new Date()) ? 'expired' : 'active',
         ],
       );
+
+      // Only sign+promote a contract this run actually created; a re-run of
+      // the seed against an already-seeded database must stay idempotent.
+      const contractId = contractRes.rows[0]?.id;
+      if (contractId) {
+        // The company counter-signature is the owner: `userIdByUsername` is
+        // populated by the user loop above, which always runs before any
+        // employee is upserted.
+        const ownerUserId = userIdByUsername['owner'];
+        // A fixed term whose end date has already passed is EXPIRED, not
+        // active. Promoting it to active would have produced a database where
+        // the expiry report is wrong on arrival, and where the only thing that
+        // ever produced an `expired` row was the sweep endpoint — so nobody
+        // would notice if the sweep were broken.
+        await client.query(
+          `INSERT INTO contract_signatures (contract_id, party_type, employee_id, signed_at, method, created_by)
+           VALUES ($1, 'employee', $2, $3, 'wet_ink_scan', $4)`,
+          [contractId, id, isoDate(joinDate), ownerUserId],
+        );
+        await client.query(
+          `INSERT INTO contract_signatures (contract_id, party_type, user_id, signed_at, method, created_by)
+           VALUES ($1, 'company', $2, $3, 'wet_ink_scan', $2)`,
+          [contractId, ownerUserId, isoDate(joinDate)],
+        );
+        await client.query(`UPDATE employment_contracts SET status = $2 WHERE id = $1`, [
+          contractId,
+          contractStatus,
+        ]);
+      }
       return id;
     }
     function baseSalaryFor(position: string): number {

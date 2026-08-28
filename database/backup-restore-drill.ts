@@ -38,11 +38,12 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import pg from 'pg';
+import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
 const SOURCE_URL =
-  process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+  migrationConnectionString('db:drill:restore');
 const CONTAINER = process.env.DRILL_DOCKER_CONTAINER ?? 'mimi-postgres';
 const OUT_DIR = process.env.DRILL_OUT_DIR ?? '.backups';
 const KEEP = process.argv.includes('--keep');

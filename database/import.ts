@@ -41,6 +41,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import pg from 'pg';
 import { ENTITIES, parseCsv, validate, type EntityDef, type RowError } from './import-schema.js';
+import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
@@ -83,7 +84,7 @@ async function main(): Promise<void> {
   const commit = hasFlag('commit');
 
   const connectionString =
-    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+    migrationConnectionString('db:import');
   const client = new Client({ connectionString });
   await client.connect();
 

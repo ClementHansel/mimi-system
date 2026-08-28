@@ -18,13 +18,14 @@
 
 import pg from 'pg';
 import { applyOrgModel, describeOrg, CREW, SHIFTS, DEMO_PASSWORD, DEMO_PIN } from './org-model.js';
+import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
 async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run');
   const connectionString =
-    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+    migrationConnectionString('db:simulate:org');
   const client = new Client({ connectionString });
   await client.connect();
 

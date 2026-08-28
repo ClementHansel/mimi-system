@@ -50,8 +50,27 @@ beforeAll(async () => {
   // Read the seed rather than inventing master data: an outlet and a user that
   // already exist keep this suite from depending on its own fixtures being
   // consistent with everyone else's.
-  locationId = (await owner.query(`SELECT id FROM locations WHERE type = 'outlet' ORDER BY code LIMIT 1`))
-    .rows[0].id;
+  // An outlet that ACTUALLY HAS a POS shift, not merely the first one by code.
+  //
+  // `insertThrowawaySale` needs a `pos_shifts` row for this location
+  // (`sales.shift_id` is NOT NULL), and the seed does not open a shift at
+  // every outlet. Picking `ORDER BY code LIMIT 1` therefore worked only while
+  // the lowest-coded outlet happened to have one — after a `db:reset` it did
+  // not, and the whole suite failed on a NOT NULL violation that looked
+  // nothing like a voucher problem.
+  //
+  // Ordering (rather than filtering) keeps a deterministic, still-useful pick
+  // if no outlet has a shift at all: the failure is then the honest "no shift"
+  // one, at the same place, instead of an empty result here.
+  locationId = (
+    await owner.query(
+      `SELECT l.id
+         FROM locations l
+        WHERE l.type = 'outlet'
+        ORDER BY EXISTS (SELECT 1 FROM pos_shifts s WHERE s.location_id = l.id) DESC, l.code
+        LIMIT 1`,
+    )
+  ).rows[0].id;
   kasirId = (await owner.query(`SELECT id FROM users ORDER BY created_at LIMIT 1`)).rows[0].id;
 
   await owner.query(`DELETE FROM voucher_batches WHERE code = $1`, [BATCH_CODE]);

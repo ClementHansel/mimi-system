@@ -1,6 +1,60 @@
 import { defineConfig } from 'vitest/config';
 import swc from 'unplugin-swc';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'path';
+
+/**
+ * Every live-DB spec is gated on
+ * `describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL)`.
+ * Nothing loaded those: `.env` lives at the REPO ROOT, vitest's root is
+ * `apps/backend`, and this repo has no `dotenv` anywhere — `.env` is read by
+ * docker compose, and exported explicitly by `scripts/dev.sh` /
+ * `scripts/deploy.sh`.
+ *
+ * So a plain `pnpm test` SILENTLY SKIPPED 21 files / 88 tests — every RLS
+ * policy check, the approval-code integration suite, the cross-kernel specs —
+ * and still printed a green "1307 passed". A suite that quietly stops testing
+ * row-level security is worse than one that fails, because nobody investigates
+ * a pass. With these vars present the same suite runs 121 files / 1395 tests,
+ * all passing.
+ *
+ * Loaded here and handed to workers via `test.env` because `skipIf` is
+ * evaluated in the WORKER process, not in this config's process.
+ *
+ * The non-override rule matters for the same reason it does in
+ * `database/db-connection.ts` (the sibling implementation of this parser —
+ * kept separate rather than cross-importing between packages for a build-time
+ * helper): in CI or a container the real environment is authoritative and a
+ * checked-out `.env` must never win.
+ */
+function repoEnvForTests(): Record<string, string> {
+  let contents: string;
+  try {
+    contents = readFileSync(resolve(__dirname, '../../.env'), 'utf8');
+  } catch {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const rawLine of contents.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    // Real environment wins — never overwrite what CI or a container set.
+    if (process.env[key] !== undefined) continue;
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"') && value.length >= 2) ||
+      (value.startsWith("'") && value.endsWith("'") && value.length >= 2)
+    ) {
+      value = value.slice(1, -1);
+    }
+    out[key] = value;
+  }
+  return out;
+}
 
 const alias = {
   '@mimi/shared': resolve(__dirname, '../../packages/shared/src'),
@@ -59,6 +113,25 @@ const EXTRA_LIVE_DB_SPECS = [
   // for a stronger reason than the others: two of these running at once would
   // race for ports and for the same `audit_log` rows they count.
   'test/audit-http.e2e.spec.ts',
+  // ── Added 2026-08-28 ────────────────────────────────────────────────────
+  // These four were ALREADY live-DB specs and were ALREADY in the wrong
+  // project; nobody could tell, because all four gate on
+  // `describe.skipIf(!process.env.DATABASE_URL)` and nothing ever set that
+  // variable (`.env` sits at the repo root, vitest's root is `apps/backend`).
+  // They were skipped, so "runs in the parallel project" had no observable
+  // consequence. The moment the env gating was fixed (see `repoEnvForTests`
+  // above) they started running — concurrently with the serialized suites they
+  // share a database with — and the symptom was one stock-opname test failing
+  // per full run, a DIFFERENT one each time, while the whole stock-opname file
+  // passed in isolation.
+  //
+  // The first opens its own `Pool`; the other three compile the real
+  // `AppModule`, which stands up the production `DATABASE_POOL`. All four are
+  // exactly what the grep described above is meant to catch.
+  'src/common/database/system-context.live-db.regression.spec.ts',
+  'test/app-boot.spec.ts',
+  'test/no-double-api-prefix.spec.ts',
+  'test/rbac-endpoint-sweep.spec.ts',
 ];
 
 const INTEGRATION_GLOBS = [
@@ -74,6 +147,7 @@ export default defineConfig({
   test: {
     globals: true,
     root: './',
+    env: repoEnvForTests(),
     projects: [
       {
         extends: true,
@@ -90,6 +164,27 @@ export default defineConfig({
           fileParallelism: false,
           maxWorkers: 1,
           minWorkers: 1,
+          // Vitest's default 5s is a UNIT-test budget and it is the wrong one
+          // here. These specs do real Postgres round-trips, and the fast-check
+          // property suites (`stock-ledger.property`, `reconcile-opname.property`,
+          // `inventory.property`) do ~100 generated cases each, several queries
+          // per case; `test/audit-http.e2e.spec.ts` boots the whole app and
+          // binds a socket.
+          //
+          // Alone they finish in ~5s — right at the limit. Under a full
+          // `pnpm test`, where `pnpm -r` runs the frontend suite on the same
+          // CPUs, they intermittently crossed it and reported
+          // `Test timed out in 5000ms`. That reads exactly like a stock-ledger
+          // defect and is not one: no assertion ever failed, and the same files
+          // pass on a re-run. The serialization above fixes contention INSIDE
+          // this project; it cannot do anything about another package's suite
+          // running concurrently.
+          //
+          // A real regression here fails an assertion in milliseconds, so a
+          // generous ceiling costs nothing in signal — it only stops a busy
+          // machine from being reported as a bug.
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
         },
       },
     ],

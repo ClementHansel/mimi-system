@@ -24,6 +24,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import pg from 'pg';
+import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
@@ -37,7 +38,7 @@ interface Migration {
 
 async function getClient(): Promise<pg.Client> {
   const connectionString =
-    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+    migrationConnectionString('db:migrate');
 
   const client = new Client({ connectionString });
   await client.connect();

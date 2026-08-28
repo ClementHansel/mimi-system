@@ -40,6 +40,7 @@
 
 import { createHash } from 'node:crypto';
 import pg from 'pg';
+import { migrationConnectionString } from './db-connection';
 
 const { Client } = pg;
 
@@ -74,7 +75,7 @@ interface LineRow {
 async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run');
   const connectionString =
-    process.env.DATABASE_MIGRATION_URL || 'postgresql://mimi:mimi_secret@localhost:5432/mimi';
+    migrationConnectionString('fix-recipe-quantities');
   const client = new Client({ connectionString });
   await client.connect();
 

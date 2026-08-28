@@ -258,7 +258,21 @@ export async function pickUnusedStockKey(
       WHERE NOT EXISTS (
         SELECT 1 FROM stock_balances b WHERE b.location_id = $1 AND b.storage_area_id = $2 AND b.item_id = i.id
       )
-      ORDER BY random() LIMIT 1`,
+      -- PRICED ITEMS FIRST, then random among them.
+      --
+      -- ORDER BY random() alone made this a ~9%-per-run coin flip: 9 of the
+      -- ~100 seeded items carry avg_cost = 0, and an opname variance is valued
+      -- at qty x avg_cost. Draw one of those and a "large variance" test is
+      -- asserting against a variance worth Rp 0 -- so the approval chain
+      -- correctly does NOT escalate, and "a large variance escalates the
+      -- outlet chain to Manager" fails while every line of production code
+      -- behaved exactly right.
+      --
+      -- That is the worst kind of flake: it accuses the approval engine. The
+      -- randomness is still wanted (it is what stops these suites from
+      -- fighting over one fixture item), so this narrows the draw to items
+      -- where the value assertion is meaningful rather than removing it.
+      ORDER BY (i.avg_cost > 0) DESC, random() LIMIT 1`,
     [locationId, storageAreaId],
   );
   const id = res.rows[0]?.id;

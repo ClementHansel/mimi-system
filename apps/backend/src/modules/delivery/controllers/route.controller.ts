@@ -9,7 +9,11 @@ import { PlanRouteDto, SetDropInstructionsDto } from '../dto/route.dto';
 /**
  * M10 `delivery` — gudang's route planning for a Surat Jalan.
  *
- * Gated on `delivery.sj.create` (kepala_gudang only), the same permission
+ * Gated on `delivery.sj.create` (kepala_gudang, plus the all-access owner and
+ * superadmin — this said "kepala_gudang only", which is not what the matrix in
+ * `@mimi/shared/rbac` says, and an e2e test written to that wrong reading
+ * demanded the owner be denied and failed against a correct app), the same
+ * permission
  * `PATCH /delivery/surat-jalan/:id` already uses: planning the route is editing
  * the dispatch document, not a separate authority. Deliberately NOT
  * `delivery.drop.execute` — that is held by drivers too, and a driver must not

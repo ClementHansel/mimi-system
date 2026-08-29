@@ -26,6 +26,11 @@ export const USERS = {
   owner: 'owner',
   kepalaGudang: 'gudang1',
   driver: 'driver1',
+  // Holds `delivery.read` but NOT `delivery.sj.create`, which makes it the
+  // only honest subject for "can watch the delivery board, cannot plan the
+  // route". Owner and superadmin are all-access and prove nothing about a
+  // gate; see `dispatcher.spec.ts`.
+  manager: 'manager1',
 } as const;
 
 /**

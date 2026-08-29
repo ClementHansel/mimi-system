@@ -30,9 +30,21 @@ async function hasJobToday(page: import('@playwright/test').Page): Promise<boole
 }
 
 test.describe('driver job list', () => {
-  test('a driver lands directly on their own job list', async ({ page }) => {
+  test('a driver reaches their own job list from the hub', async ({ page }) => {
     await login(page, USERS.driver);
-    // Drivers are redirected past the hub — it belongs to owner/superadmin.
+    // This asserted `expectLandsOn(page, '/driver')` on the premise that
+    // "drivers are redirected past the hub — it belongs to owner/superadmin".
+    // Neither half is true any more: the hub is everyone's landing page since
+    // the owner asked for the "where do you want to work today" launchpad
+    // (F-BRAND, see the login page), and a driver reaches two interfaces —
+    // the job list and their own account — so nothing redirects them past it.
+    await expectLandsOn(page, '/');
+
+    // What actually matters for a driver on a phone is that the job list is
+    // ONE tap from where they land, so follow the link rather than calling
+    // `page.goto('/driver')`: a route that only opens when typed by hand is
+    // not reachable for someone holding a scooter helmet.
+    await page.locator('a[href="/driver"]').first().click();
     await expectLandsOn(page, '/driver');
     await expect(page.locator('body')).toContainText('Surat Jalan Hari Ini');
   });

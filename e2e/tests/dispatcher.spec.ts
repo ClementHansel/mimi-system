@@ -114,8 +114,25 @@ test.describe('dispatcher — live board', () => {
     await expect(body).toContainText(/Belum ada sinyal lokasi|Terakhir/);
   });
 
-  test('owner can watch the board but cannot plan the route', async ({ page }) => {
-    await login(page, USERS.owner);
+  /**
+   * The route planner is gated on `delivery.sj.create`, and this pair is what
+   * proves the gate is a gate rather than a permanently-open or permanently-
+   * shut door.
+   *
+   * It used to be a single test asserting the OWNER cannot plan, on the stated
+   * premise that "`delivery.sj.create` is kepala_gudang's, not owner's". The
+   * matrix says otherwise — `delivery.sj.create` is
+   * `[OWN true, KGD true, SA true]` — because owner is an all-access role.
+   * So the test demanded the opposite of the intended design and failed
+   * against a correct app. (`route.controller.ts` carries the same "kepala
+   * gudang only" slip in a comment; the matrix is the authority.)
+   *
+   * Manager is the subject that actually carries the intent: `delivery.read`
+   * true, `delivery.sj.create` false — someone who genuinely can watch the
+   * board and genuinely must not plan on it.
+   */
+  test('a manager can watch the board but cannot plan the route', async ({ page }) => {
+    await login(page, USERS.manager);
     await page.goto('/delivery');
     await expect(page.getByRole('tab', { name: /Pantau Truk/ })).toBeVisible();
 
@@ -125,7 +142,27 @@ test.describe('dispatcher — live board', () => {
     const drawer = page.locator('[role="dialog"]');
     await expect(drawer).toBeVisible();
     await expect(drawer).toContainText('Drop');
-    // `delivery.sj.create` is kepala_gudang's, not owner's.
     await expect(drawer).not.toContainText('Rute & Petunjuk Pengiriman');
+    // The editor's action, not just its heading: a heading can be renamed,
+    // but a Save button rendered to someone who cannot save is the actual
+    // defect this guards against.
+    await expect(drawer.getByRole('button', { name: /Simpan Petunjuk/ })).toHaveCount(0);
+  });
+
+  test('an all-access role IS offered the planner — the gate is not shut for everyone', async ({
+    page,
+  }) => {
+    // Without this half, deleting the planner outright would leave the
+    // negative test above green, and "nobody can plan a route" would ship as
+    // a passing suite.
+    await login(page, USERS.owner);
+    await page.goto('/delivery');
+
+    const rows = page.locator('table tbody tr');
+    await expect(rows.first()).toBeVisible();
+    await rows.first().click();
+    const drawer = page.locator('[role="dialog"]');
+    await expect(drawer).toBeVisible();
+    await expect(drawer).toContainText('Rute & Petunjuk Pengiriman');
   });
 });

@@ -146,19 +146,36 @@ async function sidebarLinks(page: import('@playwright/test').Page): Promise<stri
 
 for (const journey of JOURNEYS) {
   test.describe(`role journey — ${journey.role}`, () => {
-    test(`lands on ${journey.landing} and is offered only its own interfaces`, async ({ page }) => {
+    test(`lands on the hub and is offered only its own interfaces`, async ({ page }) => {
       const errors: string[] = [];
       page.on('pageerror', (e) => errors.push(e.message));
 
       await login(page, journey.username);
 
-      // Every non-all-access role is redirected past the hub to its own work.
-      await expectLandsOn(page, journey.landing);
+      // EVERY role lands on the hub, including this one.
+      //
+      // This used to assert `expectLandsOn(page, journey.landing)` — that a
+      // non-all-access role is redirected past the hub straight into its own
+      // work. That was the behaviour until the owner replaced it: login now
+      // "always redirects to the home hub (`/`, F-BRAND) — the owner asked for
+      // an AIRE-style 'where do you want to work today' launchpad instead of
+      // dropping straight into one module" (see the login page's own note).
+      // `app/page.tsx` still redirects past the hub, but only for someone who
+      // can reach a single interface, and since `employee` became an interface
+      // of its own nobody is in that position: everyone has their work plus
+      // Akun Saya. So the old assertion could not pass for any role, and it
+      // failed for all five.
+      //
+      // The role-appropriate landing route is not abandoned, it moved: the hub
+      // uses `getLandingRoute` to pick which card is the role's primary job,
+      // and the hub-link assertions further down are what check each role is
+      // offered its own destinations and no one else's.
+      await expectLandsOn(page, '/');
 
-      // The sidebar only exists on a chrome route; the landing route is one
-      // for every role here (POS is chromeless, so kasir is checked from /me).
+      // The sidebar only exists on a chrome route, so go to one. POS is
+      // chromeless, so kasir is checked from /me instead.
       const navHost = journey.landing === '/pos' ? '/me' : journey.landing;
-      if (navHost !== journey.landing) await page.goto(navHost);
+      await page.goto(navHost);
 
       const hrefs = await sidebarLinks(page);
 

@@ -319,6 +319,55 @@ interface ItemMeta {
   unitId: string;
 }
 
+/**
+ * Open a fiscal period for every calendar month this run will write into.
+ *
+ * Migration 218 seeds the trailing THREE CALENDAR MONTHS relative to whenever
+ * it runs, while this script generates `--days` (default 90) of documents. The
+ * two windows only coincide on the 31st of a 31-day month; on every other day
+ * the oldest documents fall before the earliest seeded period. When that
+ * happens the documents are still created, so the seed looks fine — but they
+ * can never be posted to the general ledger, because `JournalService` and
+ * `seed-journal.ts` both require a period covering `entry_date`.
+ *
+ * That is not theoretical. The demo box carried 48 delivery documents dated
+ * 2026-05-27/29 against periods starting 2026-06-01; the GL backfill skipped
+ * every one of them with "no fiscal period covers …" and the accounting
+ * coverage report showed them as a permanent gap.
+ *
+ * Widening migration 218 would not fix it: the mismatch is between a
+ * month-based window and a day-based one, so any fixed number of months is
+ * wrong for some `--days` and some start dates. Deriving the coverage from the
+ * window actually being generated is what makes the two agree by construction.
+ *
+ * Periods are opened as 'open', never 'closed' or 'locked' — same rule as
+ * migration 218. A close is a decision someone makes through
+ * `POST .../periods/:id/close`; seed data must not pretend it was made.
+ */
+async function ensureFiscalPeriods(client: pg.Client, days: number): Promise<void> {
+  // Inclusive of today: `--today` writes live routes, and the balance replay
+  // stamps movements with the current date regardless.
+  const months = new Set<string>();
+  for (let d = days; d >= 0; d--) months.add(witaDate(d).slice(0, 7));
+
+  const res = await client.query(
+    `INSERT INTO fiscal_periods (period_code, start_date, end_date, status)
+     SELECT code,
+            (code || '-01')::date,
+            ((code || '-01')::date + INTERVAL '1 month' - INTERVAL '1 day')::date,
+            'open'
+       FROM unnest($1::text[]) AS code
+     ON CONFLICT (period_code) DO NOTHING
+     RETURNING period_code`,
+    [[...months].sort()],
+  );
+  if (res.rowCount) {
+    console.log(
+      `  periods    opened ${res.rows.map((r) => r.period_code).join(', ')} to cover the window`,
+    );
+  }
+}
+
 async function loadReference(client: pg.Client, only: string[] | null) {
   const locRes = await client.query(
     `SELECT id, code, type FROM locations WHERE is_active ORDER BY code`,
@@ -509,6 +558,7 @@ async function main(): Promise<void> {
   try {
     await client.query('BEGIN');
     const ref = await loadReference(client, only);
+    await ensureFiscalPeriods(client, days);
 
     console.log(
       `\nOperating history — ${dryRun ? 'DRY RUN, nothing will be committed' : 'writing'}\n`,

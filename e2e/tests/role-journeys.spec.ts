@@ -84,32 +84,33 @@ const JOURNEYS: RoleJourney[] = [
   },
   {
     role: 'supervisor',
-    username: 'spv_bjm01',
+    // `<slot>_<outlet>_<shift>` — the shift suffix arrived with the org
+    // reshape into crews. `spv_bjm01` has not existed since; this journey had
+    // been timing out on the login page ever since, unnoticed, because the
+    // post-deploy smoke does not run this spec.
+    username: 'spv_bjm01_p',
     landing: '/outlet',
     interfaces: ['/outlet', '/pos', '/dashboard', '/warehouse', '/me', '/docs'],
     hiddenInterfaces: ['/driver'],
     dashboardAreas: ['/dashboard', '/approvals', '/delivery', '/purchasing', '/hr', '/assets'],
     hiddenAreas: ['/finance', '/admin', '/topology'],
   },
-  {
-    role: 'leader_outlet',
-    username: 'ldr_bjm01',
-    landing: '/outlet',
-    // Reaches the dashboard interface through `delivery.read`/`asset.read`,
-    // but only those areas of it — never the overview.
-    interfaces: ['/outlet', '/pos', '/warehouse', '/dashboard', '/me', '/docs'],
-    hiddenInterfaces: ['/driver'],
-    dashboardAreas: ['/delivery', '/assets'],
-    hiddenAreas: [
-      '/dashboard',
-      '/approvals',
-      '/purchasing',
-      '/finance',
-      '/hr',
-      '/admin',
-      '/topology',
-    ],
-  },
+  // NO `leader_outlet` JOURNEY — the role is retired, not broken.
+  //
+  // The org was reshaped into the crews the business actually runs (supervisor
+  // + cashier + two cooks) and NO employee holds `leader_outlet` any more. The
+  // backend fixtures already know this: `waste-return/test-support/live-db.ts`
+  // substitutes `koki`/`kasir` for it and treats an unstaffed role as skippable
+  // rather than fatal, with the reshape written up in its own comment.
+  //
+  // This spec never got the same update, so it kept logging in as `ldr_bjm01` —
+  // a user that does not exist in any seed — and timing out on the login page.
+  // Removed rather than re-pointed at a substitute user: a journey asserting
+  // which interfaces `leader_outlet` sees, driven by a cashier's session, would
+  // be testing the cashier and reporting on a role nobody holds.
+  //
+  // `RoleKey.LEADER_OUTLET` still exists in the RBAC matrix, so if the role is
+  // ever staffed again this journey should come back with a real user.
   {
     role: 'kasir',
     // The morning cashier at BJM01 — `<slot>_<outlet>_<shift>`, see support/app.ts.

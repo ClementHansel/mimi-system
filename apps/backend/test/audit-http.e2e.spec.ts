@@ -287,3 +287,67 @@ describe.skipIf(!hasDb)('B-08 — @Audited writes a real row over real HTTP', ()
     expect(res.status).toBe(401);
   }, 60_000);
 });
+
+/**
+ * A 403 must not cost a database connection.
+ *
+ * FOUND IN PRODUCTION on 2026-08-29, not by reasoning: the deployed box had all
+ * 20 pool connections sitting `idle in transaction`, every one with the same
+ * last statement — `set_config('app.location_ids', $1, true)`, the final line
+ * of `RlsContextGuard`. Login returned 500 "timeout exceeded when trying to
+ * connect" and the whole API was down, while the login PAGE still served 200,
+ * so the deploy's health check saw a healthy stack.
+ *
+ * Cause: Nest does not run interceptors when a GUARD rejects. `RlsContextGuard`
+ * had already checked a connection out and opened a transaction on it, and
+ * `RlsCleanupInterceptor` — the only thing that releases it — never ran. The
+ * connection was gone for the lifetime of the process.
+ *
+ * It needed no unusual traffic. A user opening a page their role cannot see is
+ * enough, twenty times.
+ *
+ * The fix is guard ORDER in `app.module.ts` (`PermissionsGuard` before
+ * `RlsContextGuard`), so a denial happens before any connection is taken. This
+ * test is the regression, and it asserts against the DATABASE rather than a
+ * mock, because the failure was invisible at every level above it: the request
+ * returned a perfectly correct 403 either way.
+ */
+describe.skipIf(!hasDb)('a permission denial must not leak a pooled connection', () => {
+  async function idleInTransactionCount(): Promise<number> {
+    const res = await ownerPool!.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND state = 'idle in transaction'`,
+    );
+    return Number(res.rows[0]!.n);
+  }
+
+  it('ten 403s leave the pool exactly as they found it', async () => {
+    // `payment.read` is owner/manager/finance only, so a kasir is denied it —
+    // and `PermissionsGuard` is what denies, which is the path under test.
+    const login = await api('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'kasir_bjm01_p', password: DEMO_PASSWORD },
+    });
+    expect(login.status, 'seeded kasir must be able to log in').toBe(200);
+
+    // Settle first: the login itself uses a connection, and an assertion taken
+    // mid-release would report a leak that is really just timing.
+    await new Promise((r) => setTimeout(r, 500));
+    const before = await idleInTransactionCount();
+
+    for (let i = 0; i < 10; i += 1) {
+      const denied = await api('/api/accounting/payments', { token: login.body.accessToken });
+      expect(denied.status, 'kasir must be refused payment.read').toBe(403);
+    }
+
+    await new Promise((r) => setTimeout(r, 500));
+    const after = await idleInTransactionCount();
+
+    // Equality, not a threshold. Before the fix this was before + 10 — one
+    // abandoned transaction per denial, never reclaimed.
+    expect(
+      after,
+      'each 403 abandoned a pooled connection mid-transaction; 20 of them took the whole API down',
+    ).toBe(before);
+  }, 120_000);
+});

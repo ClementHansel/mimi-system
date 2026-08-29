@@ -129,9 +129,38 @@ import { VoucherModule } from './modules/voucher/voucher.module';
   controllers: [AppController],
   providers: [
     AppService,
+    // ORDER IS LOAD-BEARING. Nest runs APP_GUARDs in registration order.
+    //
+    // `PermissionsGuard` MUST run before `RlsContextGuard`, and this is not a
+    // preference — the other order leaks a database connection on every HTTP
+    // 403, permanently, until the pool is empty and the whole API returns 500.
+    //
+    // Why: `RlsContextGuard` checks a connection out of the pool and opens a
+    // transaction on it. `RlsCleanupInterceptor` is what rolls that back and
+    // releases it — and **Nest does not run interceptors when a guard
+    // rejects**. So with `RlsContextGuard` first, a denial from
+    // `PermissionsGuard` left the connection checked out, mid-transaction,
+    // with nothing on any code path able to reclaim it.
+    //
+    // MEASURED on the deployed box 2026-08-29, which is how this was found:
+    // 20 of 20 pool connections sat `idle in transaction`, every one with the
+    // same last statement — `set_config('app.location_ids', $1, true)`, the
+    // final line of `RlsContextGuard`. Login returned 500 "timeout exceeded
+    // when trying to connect"; the API was entirely down while the login PAGE
+    // still served 200, so the deploy's own health check saw nothing wrong.
+    // Confirmed by experiment after a restart: 0 leaked, then five 403s, then
+    // exactly 5 leaked. One per denial.
+    //
+    // It needs no privileged traffic to trigger. A user opening a page their
+    // role cannot see is enough, twenty times.
+    //
+    // `PermissionsGuard` is safe to run first: it depends only on `Reflector`
+    // and `request.user`, is synchronous, and never touches the database — so
+    // it needs `JwtAuthGuard` ahead of it and nothing else. Running it earlier
+    // also means an unauthorised request never opens a transaction at all.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: RlsContextGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_GUARD, useClass: RlsContextGuard },
     { provide: APP_INTERCEPTOR, useClass: RlsCleanupInterceptor },
   ],
 })

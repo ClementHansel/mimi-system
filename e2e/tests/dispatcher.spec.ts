@@ -133,15 +133,14 @@ test.describe('dispatcher — live board', () => {
    */
   test('a manager can watch the board but cannot plan the route', async ({ page }) => {
     await login(page, USERS.manager);
-    await page.goto('/delivery');
+    // `openFirstSuratJalan` rather than a hand-rolled click: the row is
+    // server-rendered and a click that lands before hydration does nothing at
+    // all, silently. Written out longhand here, this test opened the drawer
+    // fine in isolation and failed in the full suite, which is the signature
+    // of that race rather than of a permission problem.
+    const drawer = await openFirstSuratJalan(page);
     await expect(page.getByRole('tab', { name: /Pantau Truk/ })).toBeVisible();
 
-    const rows = page.locator('table tbody tr');
-    await expect(rows.first()).toBeVisible();
-    await rows.first().click();
-    const drawer = page.locator('[role="dialog"]');
-    await expect(drawer).toBeVisible();
-    await expect(drawer).toContainText('Drop');
     await expect(drawer).not.toContainText('Rute & Petunjuk Pengiriman');
     // The editor's action, not just its heading: a heading can be renamed,
     // but a Save button rendered to someone who cannot save is the actual
@@ -156,13 +155,7 @@ test.describe('dispatcher — live board', () => {
     // negative test above green, and "nobody can plan a route" would ship as
     // a passing suite.
     await login(page, USERS.owner);
-    await page.goto('/delivery');
-
-    const rows = page.locator('table tbody tr');
-    await expect(rows.first()).toBeVisible();
-    await rows.first().click();
-    const drawer = page.locator('[role="dialog"]');
-    await expect(drawer).toBeVisible();
+    const drawer = await openFirstSuratJalan(page);
     await expect(drawer).toContainText('Rute & Petunjuk Pengiriman');
   });
 });

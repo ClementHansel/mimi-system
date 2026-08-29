@@ -107,22 +107,32 @@ test.describe('service worker + offline shell (B-6, needs a secure context)', ()
     const outcome = await registrationOutcome(page);
     test.info().annotations.push({ type: 'sw-registration', description: outcome });
 
-    // MEASURED on the demo box 2026-08-23: `untrusted-cert`.
+    // MEASURED on the demo box 2026-08-29 against
+    // `https://150-109-15-108.sslip.io`: **`activated`**.
     //
-    // `isSecureContext` is TRUE on `https://<ip>:8443` and
-    // `navigator.serviceWorker` exists — but registration throws
-    // `SecurityError: An SSL certificate error occurred when fetching the
-    // script`. Chromium will not fetch a worker script over a connection whose
-    // certificate it does not trust, and Playwright's `ignoreHTTPSErrors` does
-    // NOT extend to that fetch (it lets the PAGE load, nothing more).
+    // This closes B-14, which `docs/ACCEPTANCE.md` had carried for weeks as
+    // "service workers cannot register over HTTP" and treated as blocked on a
+    // domain purchase. It was not: sslip.io resolves a wildcard hostname to the
+    // embedded IP, so a normal trusted certificate could be issued for it, and
+    // the offline shell now works for REMOTE users rather than only on
+    // loopback.
     //
-    // So the self-signed `:8443` route genuinely unblocks geolocation, camera
-    // and PWA install — but NOT service workers, and therefore not the offline
-    // shell. That needs a TRUSTED certificate, which needs `:80` or `:443`,
-    // which is the `aire-nginx` decision. This is asserted rather than skipped
-    // silently so the day a trusted cert lands, this line fails and tells us to
-    // delete it.
-    expect(['activated', 'untrusted-cert']).toContain(outcome);
+    // The earlier reading was `untrusted-cert` on the self-signed `:8443`
+    // origin, and the distinction is worth keeping: `isSecureContext` is TRUE
+    // there and `navigator.serviceWorker` exists, but registration throws
+    // `SecurityError` because Chromium will not FETCH a worker script over an
+    // untrusted certificate — and Playwright's `ignoreHTTPSErrors` does not
+    // extend to that fetch, it only lets the page load. So self-signed unblocks
+    // geolocation, camera and PWA install, but never the offline shell.
+    //
+    // Now asserted as EXACTLY 'activated' rather than "one of two known
+    // values". Accepting `untrusted-cert` made sense while it was the live
+    // state; leaving it in now would let a certificate regression pass as
+    // green, which is the whole thing this test exists to catch.
+    expect(
+      outcome,
+      'the trusted-cert origin must register the worker — anything else is a regression in TLS, not a limitation',
+    ).toBe('activated');
   });
 
   test('the shell still renders after a reload with the network cut — the point of precaching it', async ({

@@ -304,6 +304,44 @@ against a clone, and the shared database's row counts are unchanged by that run.
   (`sync_conflicts` × 3, `offline_authorizations` × 1), and
   `SyncEventsRepository.insertEvent` depends on `ON CONFLICT (event_id)`.
 
+  **Verified against the live database on 2026-08-29** (rather than reasoned
+  about), because the first two workarounds anyone reaches for both fail:
+
+  - `CREATE TABLE ... (m date GENERATED ALWAYS AS (...) STORED) PARTITION BY
+RANGE (m)` → **"cannot use generated column in partition key"**. A derived
+    month column is a flat prohibition, not an immutability problem — it fails
+    even for a trivially immutable expression.
+  - A child table holding only `event_id` cannot reference a composite
+    `(event_id, <partition key>)` unique constraint → **"there is no unique
+    constraint matching given keys"**. So all four FKs must change or go.
+  - `UNIQUE (event_id)` alone on a partitioned table → **"unique constraint on
+    partitioned table must include all partitioning columns"**. This is the
+    one that matters: `event_id` stops being globally unique _at the database
+    level_, and it is the sync protocol's idempotency key.
+
+  **There is also no good partition key.** `sync_events` has no `created_at`.
+  The candidates are `occurred_at` — the ORIGIN's wall clock, which migration
+  120 itself marks "ADVISORY only" and which an offline or hostile device
+  controls — and `relay_received_at`, which is nullable. `server_seq` is
+  assigned at insert, so it is not deterministic on a retry, and monthly ranges
+  are not expressible in sequence space.
+
+  That last point is what breaks `ON CONFLICT (event_id)`. With a composite
+  key the guard becomes `ON CONFLICT (event_id, <partition key>)`, which is
+  only safe if the partition key is **deterministic from the event**. If it is
+  `now()`-derived, a retried push lands in a different partition, does not
+  conflict, and inserts a DUPLICATE — silently destroying the replay
+  convergence the whole protocol rests on.
+
+  **A design that does preserve every guarantee**, if partitioning is wanted:
+  keep an unpartitioned `sync_event_ids (event_id uuid PRIMARY KEY)` written in
+  the same transaction. It restores global uniqueness, gives the four FKs a
+  target that does not move, and makes `ON CONFLICT` exact again — at the cost
+  of one extra tiny row per event. The bulk table can then be partitioned by a
+  server-side `created_at` freely, because it no longer carries the uniqueness
+  burden. Monthly partitions would also need something to create them ahead of
+  time, or a DEFAULT partition so an insert never fails on a missing range.
+
   So the real choice is an architecture decision, not a migration:
 
   1. **Range-partition by time and make every unique key composite.** Gets the

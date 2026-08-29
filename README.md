@@ -21,6 +21,26 @@ socket.io · n8n · Docker Compose + Traefik. Timezone is fixed **WITA**
 - Node.js >= 22
 - pnpm >= 9 (`npm install -g pnpm@9`)
 
+### On Windows: `pnpm build` needs symlink permission
+
+`apps/frontend` builds with Next's `output: 'standalone'`, which symlinks its
+traced dependencies. Windows refuses that by default, so `pnpm build` ends with:
+
+```
+Error: EPERM: operation not permitted, symlink '...node_modules/react' -> '....next/standalone/...'
+```
+
+**This is a Windows permission setting, not a broken build.** The same commit
+builds cleanly in CI and in the deploy container (both Linux). Verified
+2026-08-29: CI reported `✓ Compiled successfully` and `✓ Generating static pages
+(48/48)` for the commit that fails locally.
+
+Fix it by enabling **Developer Mode** (Settings → System → For developers), or
+run the build from an elevated shell. Everything else — `pnpm lint`, the
+typechecks, every test suite, `pnpm db:*` — works unelevated, so this only bites
+when you build the frontend locally, which you rarely need to: `pnpm dev` does
+not use standalone output.
+
 ## First run
 
 ```bash

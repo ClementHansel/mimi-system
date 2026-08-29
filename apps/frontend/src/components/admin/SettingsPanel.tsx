@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useI18n } from '@/lib/i18n';
 import { api, ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
@@ -132,6 +133,39 @@ export function SettingsPanel() {
       <TabsContent value="general">
         <div className="flex flex-col gap-4">
           <p className="text-sm text-text-secondary">{t('admin.settings.description')}</p>
+
+          {/*
+            RISK-P5/S1 — the LAN branch-node switch is NOT here, and this card
+            exists so nobody concludes it is missing.
+
+            It is per-OUTLET, not global: each outlet independently either runs
+            a branch node on its LAN or syncs straight to the cloud (the
+            default). A global toggle on this page would be the wrong shape for
+            that, and turning one off is also not a plain switch — D-26 requires
+            the node's relay queue to be drained first, so the control lives
+            next to the node's live status where that queue is visible.
+
+            Owner-only, matching the server (`OutletNodeSettingController
+            .setEnabled` checks the role on top of the `node.manage`
+            permission), so the pointer is gated the same way rather than
+            leading a manager to a control they cannot use.
+          */}
+          {can('node.manage') && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('admin.settings.lanNode.title')}</CardTitle>
+                <p className="text-sm text-text-muted">{t('admin.settings.lanNode.hint')}</p>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/topology"
+                  className="text-sm font-medium text-brand-600 underline underline-offset-2"
+                >
+                  {t('admin.settings.lanNode.link')}
+                </Link>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="flex flex-wrap items-end justify-between gap-2">
             <Input

@@ -1929,6 +1929,16 @@ export const id = {
       // that was missing entirely — what changing each one actually DOES.
       columnSetting: 'Pengaturan',
       columnValue: 'Nilai Saat Ini',
+      // RISK-P5/S1 — a signpost, not a control. The switch is per-outlet and
+      // lives beside the node's live queue status, because turning one OFF
+      // requires that queue to be empty first (D-26). The copy says where it
+      // is and what the default is, so "I could not find it in Pengaturan"
+      // stops being a reasonable conclusion.
+      lanNode: {
+        title: 'Branch Node (LAN) per Outlet',
+        hint: 'Setiap outlet bisa memakai branch node di jaringan lokal, atau langsung ke cloud. Bawaannya langsung ke cloud. Pengaturannya ada di halaman Topologi, di samping status node outlet tersebut.',
+        link: 'Buka Topologi untuk mengatur',
+      },
       searchPlaceholder: 'Cari pengaturan…',
       searchEmpty: 'Tidak ada pengaturan yang cocok.',
       valueLabel: 'Nilai',

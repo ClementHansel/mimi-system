@@ -330,6 +330,18 @@ export interface CachedCredentialSummary {
   expiresAt: ISODateTime;
   revoked: boolean;
   lockedOut: boolean;
+  /**
+   * RISK-S2 — the amount at or above which this credential requires a selfie
+   * (§7.2 `selfieRequiredAboveIdr`).
+   *
+   * Exposed so a SURFACE can enforce the same threshold `authorizeOffline`
+   * enforces, rather than discovering it by rejection. Without it the void
+   * modal could only offer the camera optionally, and a supervisor voiding a
+   * large sale would enter their PIN, tap approve, and get
+   * `selfie_required` back — in front of a customer. A control people meet as
+   * an unexplained refusal is one they learn to work around.
+   */
+  selfieRequiredAboveIdr: Money;
 }
 
 /**
@@ -357,6 +369,7 @@ export async function listCachedCredentials(db: LocalDatabase): Promise<CachedCr
     expiresAt: c.claims.exp,
     revoked: revokedIds.has(c.credentialId),
     lockedOut: lockedOutIds.has(c.credentialId),
+    selfieRequiredAboveIdr: c.claims.selfieRequiredAboveIdr,
   }));
 }
 

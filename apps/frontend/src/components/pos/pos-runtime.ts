@@ -211,12 +211,28 @@ export function isApiError(err: unknown): err is ApiError {
 export interface CachedApproverOption {
   credentialId: string;
   role: string;
+  /**
+   * RISK-S2 — the amount at or above which this approver's credential requires
+   * a selfie (§7.2). Carried so the void modal can REQUIRE the photo before
+   * submitting, instead of letting `authorizeOffline` reject afterwards: the
+   * supervisor would already have entered their PIN, with a customer waiting,
+   * and a control people meet as an unexplained refusal is one they learn to
+   * route around.
+   */
+  selfieRequiredAboveIdr: string;
 }
 
 export async function listCachedApproverCredentials(runtime: {
   db: { store<T>(name: string): { getAll(): Promise<T[]> } };
 }): Promise<CachedApproverOption[]> {
-  type Row = { credentialId: string; claims: { role: string } };
+  type Row = { credentialId: string; claims: { role: string; selfieRequiredAboveIdr?: string } };
   const rows = await runtime.db.store<Row>('credentials').getAll();
-  return rows.map((r) => ({ credentialId: r.credentialId, role: r.claims.role }));
+  return rows.map((r) => ({
+    credentialId: r.credentialId,
+    role: r.claims.role,
+    // Fail SAFE on a credential minted before this field existed: '0' means
+    // "always require a selfie", not "never". An older credential must not be
+    // the way to skip the control.
+    selfieRequiredAboveIdr: r.claims.selfieRequiredAboveIdr ?? '0',
+  }));
 }

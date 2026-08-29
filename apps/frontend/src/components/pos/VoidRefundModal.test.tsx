@@ -12,6 +12,39 @@ vi.mock('@/lib/api', async () => {
 
 const post = api.post as unknown as ReturnType<typeof vi.fn>;
 const runtime = {} as unknown as LocalRuntime;
+
+/**
+ * A runtime whose `credentials` store holds one cached approver, so the modal
+ * can resolve a real `selfieRequiredAboveIdr`. The default `runtime` above is
+ * deliberately empty — `listCachedApproverCredentials` catches and yields no
+ * approvers, which is what the other tests here want.
+ */
+function runtimeWithApprover(selfieRequiredAboveIdr: string): LocalRuntime {
+  return {
+    db: {
+      store: () => ({
+        getAll: async () => [
+          {
+            credentialId: 'cred-1',
+            claims: { role: 'supervisor', selfieRequiredAboveIdr },
+          },
+        ],
+      }),
+    },
+  } as unknown as LocalRuntime;
+}
+
+function renderModalWith(runtimeOverride: LocalRuntime) {
+  return render(
+    <VoidRefundModal
+      open
+      onClose={() => {}}
+      runtime={runtimeOverride}
+      actor={actor}
+      saleId="sale-1"
+    />,
+  );
+}
 const actor = { actorUserId: 'u1', actorRole: 'kasir', appVersion: 'test' };
 
 function renderModal() {
@@ -112,6 +145,67 @@ describe('VoidRefundModal — offline keeps the cached-credential PIN', () => {
     renderModal();
     await screen.findByLabelText(/PIN Supervisor/);
     expect(screen.queryByTestId('unlock-challenge')).not.toBeInTheDocument();
+  });
+
+  /**
+   * RISK-S2 — the selfie gate.
+   *
+   * Both sides of the gate already existed: `authorizeOffline` refuses with
+   * `selfie_required`, and the cloud's §7.4 check 7 marks the authorization
+   * `degraded`. What did not exist was any way for the supervisor to KNOW
+   * before acting. The camera was offered unconditionally and optionally, so a
+   * large void could be attempted, the PIN entered, and only then rejected —
+   * with a customer waiting. A control that presents as an unexplained refusal
+   * after the work is done is one people learn to route around.
+   */
+  it('RISK-S2: a void at or above the credential threshold cannot be submitted without a selfie', async () => {
+    renderModalWith(runtimeWithApprover('200000.00'));
+    await screen.findByLabelText(/PIN Supervisor/);
+
+    // Pick the approver, as a supervisor would — the threshold belongs to a
+    // specific credential, so nothing can be required until one is chosen.
+    fireEvent.change(await screen.findByLabelText(/Supervisor Penyetuju/), {
+      target: { value: 'cred-1' },
+    });
+    // MoneyInput strips non-digits on change and commits on BLUR, so typing
+    // alone leaves the parent's `amount` null — the focus/blur is the part that
+    // actually sets it.
+    const amountField = await screen.findByLabelText(/Jumlah/);
+    fireEvent.focus(amountField);
+    fireEvent.change(amountField, { target: { value: '250000' } });
+    fireEvent.blur(amountField);
+
+    // The label says "wajib" AND a hint names the amount that triggered it — a
+    // requirement whose trigger is invisible reads as arbitrary. Asserted
+    // separately rather than with one loose matcher, because both carrying the
+    // word is the point.
+    await screen.findByText('Foto Selfie Supervisor (wajib)');
+    expect(screen.getByText(/Void di atas Rp200000\.00/)).toBeInTheDocument();
+
+    // And the button is genuinely blocked, not merely annotated.
+    const submit = screen.getByRole('button', { name: 'Ajukan' });
+    expect(submit).toBeDisabled();
+  });
+
+  it('RISK-S2: a void BELOW the threshold is submittable with no selfie', async () => {
+    // The gate has to be a threshold, not a blanket requirement. Demanding a
+    // photo for every small void would push staff to void twice under the
+    // limit instead — the control has to stay proportionate to stay used.
+    renderModalWith(runtimeWithApprover('200000.00'));
+    await screen.findByLabelText(/PIN Supervisor/);
+
+    fireEvent.change(await screen.findByLabelText(/Supervisor Penyetuju/), {
+      target: { value: 'cred-1' },
+    });
+    const amountField = await screen.findByLabelText(/Jumlah/);
+    fireEvent.focus(amountField);
+    fireEvent.change(amountField, { target: { value: '50000' } });
+    fireEvent.blur(amountField);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/wajib/i)).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: 'Ajukan' })).not.toBeDisabled();
   });
 
   it('still offers the supervisor PIN field, because no server exists to mint a code', async () => {

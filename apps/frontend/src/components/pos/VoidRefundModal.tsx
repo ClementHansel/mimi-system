@@ -84,8 +84,34 @@ export function VoidRefundModal({
   const [unlock, setUnlock] = useState<{ challenge: string; attemptsLeft: number } | null>(null);
   const [unlockCode, setUnlockCode] = useState('');
   const [selfie, setSelfie] = useState<{ file: File; preview: string } | null>(null);
+
   const [approvers, setApprovers] = useState<CachedApproverOption[]>([]);
   const [credentialId, setCredentialId] = useState('');
+  /**
+   * RISK-S2 — is a selfie MANDATORY for this particular approval?
+   *
+   * The threshold is the selected credential's own `selfieRequiredAboveIdr`
+   * (§7.2), which is exactly what `authorizeOffline` compares against. Deriving
+   * it here rather than hardcoding keeps the UI and the authorizer from ever
+   * disagreeing about what "above the threshold" means.
+   *
+   * Before this, the camera was offered unconditionally and was optional: a
+   * supervisor voiding a large sale could skip it, enter their PIN, tap
+   * approve, and only then be told `selfie_required` — with a customer
+   * waiting. A control that presents as an unexplained refusal after the work
+   * is done is one people learn to route around, which is the opposite of what
+   * this risk wanted.
+   *
+   * Only applies OFFLINE. Online, the supervisor is authenticated against the
+   * server directly and no credential is involved.
+   */
+  const selectedApprover = approvers.find((a) => a.credentialId === credentialId);
+  const selfieRequired =
+    !isOnline &&
+    amount !== null &&
+    selectedApprover !== undefined &&
+    Number(amount) >= Number(selectedApprover.selfieRequiredAboveIdr);
+  const selfieMissing = selfieRequired && selfie === null;
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -246,7 +272,12 @@ export function VoidRefundModal({
           <Button variant="outline" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button variant="danger" onClick={handleSubmit} loading={submitting}>
+          <Button
+            variant="danger"
+            onClick={handleSubmit}
+            loading={submitting}
+            disabled={selfieMissing}
+          >
             {awaitingCode ? t('pos.voidCodeSubmit') : t('pos.voidSubmit')}
           </Button>
         </>
@@ -373,12 +404,26 @@ export function VoidRefundModal({
           />
         )}
         {!isOnline && (
-          <PhotoCapture
-            label={t('pos.voidSelfie')}
-            value={selfie?.preview ?? null}
-            onCapture={(file) => setSelfie({ file, preview: URL.createObjectURL(file) })}
-            onRemove={() => setSelfie(null)}
-          />
+          <div className="flex flex-col gap-1">
+            <PhotoCapture
+              label={selfieRequired ? t('pos.voidSelfieRequired') : t('pos.voidSelfie')}
+              value={selfie?.preview ?? null}
+              onCapture={(file) => setSelfie({ file, preview: URL.createObjectURL(file) })}
+              onRemove={() => setSelfie(null)}
+            />
+            {/*
+              Stated BEFORE the attempt, not after it fails. The amount is what
+              makes the photo mandatory, so the message says so — a requirement
+              whose trigger is invisible reads as arbitrary.
+            */}
+            {selfieMissing && (
+              <p className="text-sm text-danger-600">
+                {t('pos.voidSelfieRequiredHint', {
+                  amount: selectedApprover?.selfieRequiredAboveIdr ?? '0',
+                })}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </Modal>

@@ -324,6 +324,13 @@ export const id = {
     voidLockedTitle: 'Terlalu banyak kode salah',
     voidLockedDescription: 'Akun ini terkunci. Minta atasan yang lebih tinggi untuk membukanya.',
     voidSelfie: 'Foto Selfie Supervisor',
+    // RISK-S2 — the copy names the AMOUNT that makes the photo mandatory.
+    // A requirement whose trigger is invisible reads as arbitrary, and an
+    // arbitrary-seeming control in front of a waiting customer is the one
+    // people find ways around.
+    voidSelfieRequired: 'Foto Selfie Supervisor (wajib)',
+    voidSelfieRequiredHint:
+      'Void di atas Rp{{amount}} wajib disertai foto selfie supervisor saat offline.',
     voidApprovedTitle: 'Void/refund disetujui',
     voidRequestedTitle: 'Void/refund diajukan',
     voidAwaitingApproval: 'Menunggu persetujuan supervisor.',

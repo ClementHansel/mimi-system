@@ -29,6 +29,20 @@ export interface WhatsAppSendResult {
  * - `WA_ENABLED=true` calls `N8N_WEBHOOK_URL_WA` and updates the SAME
  *   outbox row to `sent`/`failed` with the attempt count and last error,
  *   giving W5-04 a real retry surface later without a redesign.
+ *
+ * DECIDED 2026-08-29 (owner, RISK-P4): WhatsApp is DEFERRED past launch. The
+ * credentials were never supplied, and the channel ships inert as designed
+ * above. Nothing is lost by that, and the reason is specific rather than
+ * hopeful: no notification template depends on WhatsApp alone — all five that
+ * list it also list `in_app` and `email`, so every message still reaches its
+ * recipient by another route. `template-registry.spec.ts` pins that, because
+ * a WhatsApp-only template added later would write an outbox row, deliver
+ * nothing, and raise no error to notice it by.
+ *
+ * One thing to weigh when the cutover does happen: `approval_code_issued`
+ * currently delivers a one-time approval code over email and in-app. That is
+ * the template whose channel choice is a security decision rather than a
+ * convenience one, and it is worth revisiting deliberately at that point.
  */
 @Injectable()
 export class WhatsAppChannelService {

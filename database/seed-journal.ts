@@ -31,33 +31,27 @@
  * This runs last, asks the database what is terminal-but-unposted, and fixes
  * whatever it finds — so a new seed file is covered for free.
  *
- * ## Where the amounts come from — and a defect found while deciding
+ * ## Where the amounts come from
  *
  * Each amount is `Σ(qty × cost)` over the DOCUMENT'S OWN LINES: `sj_lines` for
  * deliveries, `stock_opname_lines` for adjustments. That is what the posting
  * rules themselves specify — JGUD-03 reads "Σ sj_line.qty × items.avg_cost at
- * dispatch", JOUT-06 reads "|qty_delta| × unit_cost".
+ * dispatch", JOUT-01 "Σ line.qty_received × cost", JOUT-06 "|qty_delta| ×
+ * unit_cost".
  *
- * My first attempt valued these from `stock_movements` instead, on the
- * reasoning that the real services post from exactly the ledger movement they
- * just made. That reasoning is right for the services and wrong here, because
- * of something worth recording:
+ * My first attempt valued these from `stock_movements` instead, reasoning that
+ * the real services post from exactly the ledger movement they just made. That
+ * is true of the services and useless here, for a simple measured reason: on a
+ * clean `migrate + seed` database there are **zero** `stock_movements` with
+ * `ref_type` of `sj_drop` or `stock_adjustment`. The seeds create the documents
+ * and their lines, not movements for them. Valuing from movements posted
+ * nothing at all.
  *
- *   **The seeded `stock_movements` have dangling `ref_id`s.** Measured
- *   2026-08-29 on a freshly seeded database: of 130 movements with
- *   `ref_type='sj_drop'`, **zero** join to a real `sj_drops` row; of 64 with
- *   `ref_type='stock_adjustment'`, **zero** join to a `stock_opname` or
- *   `stock_opname_lines` row. The movements reference documents that do not
- *   exist. Separately, `seed.ts`'s single in-flight Surat Jalan has no
- *   movements at all.
- *
- * So valuing from movements would have posted from rows that point nowhere, or
- * posted nothing. The document lines are both the contractually-named source
- * and the only trustworthy one here.
- *
- * That dangling-reference defect is NOT fixed by this script and deserves its
- * own ticket: it makes `stock_movements` unjoinable to the documents that
- * caused it, which will mislead anyone auditing stock on the demo box.
+ * (On a long-lived DEV database those ref types do appear, left behind by
+ * integration tests — deliberately, see `delivery/test-support/live-db.ts`'s
+ * `resetStockKey`, which reconciles balances rather than deleting movements
+ * because blind-deleting them once destroyed real seed rows. Those residual
+ * rows are not seed data and must not be posted from.)
  *
  * Accounts come from `posting-rules.ts` in `@mimi/shared` — the same table the
  * posting engine reads. That package is zero-I/O rule DATA, so this is reading
@@ -174,22 +168,10 @@ const BACKFILLS: readonly Backfill[] = [
   {
     refType: 'stock_adjustment',
     label: 'adjusted stock opnames (JOUT-06 / JGUD-06)',
-    // NOT derived from `stock_movements`, unlike the two above, and the reason
-    // is a real defect in the seeded data rather than a preference: the seeded
-    // `stock_movements` rows with `ref_type='stock_adjustment'` carry
-    // **dangling `ref_id`s**. Measured 2026-08-29 — 64 such movements, and
-    // NONE of their `ref_id`s match a `stock_opname` or a
-    // `stock_opname_lines` row. There is simply no link from those movements
-    // back to the document that supposedly caused them.
-    //
-    // So the amount comes from the opname's OWN lines, which is where the
-    // variance actually lives and is what the posting rule names anyway
-    // (`|qty_delta| × unit_cost`). That is also the more truthful source: the
-    // lines are what a counter actually recorded.
-    //
-    // The dangling movements are worth fixing in the seed separately — they
-    // make `stock_movements` unjoinable to its own documents — but posting
-    // from them would mean posting from data that references nothing.
+    // Valued from the opname's own lines. `stock_opname_lines` is where the
+    // variance actually lives, and is what JOUT-06/JGUD-06 name
+    // (`|qty_delta| × unit_cost`) — it is also what a counter actually
+    // recorded, which is the more truthful source for a document like this.
     //
     // `diff_qty` sign is the direction: negative is a shortage (stock the count
     // could not find), positive an overage. The amount is the ABSOLUTE value —

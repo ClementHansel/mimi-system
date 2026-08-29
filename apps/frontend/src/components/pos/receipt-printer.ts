@@ -4,6 +4,24 @@
  * Bluetooth transport so they're unit-testable without a browser Bluetooth
  * stack; `printReceipt` is the one function a screen calls.
  *
+ * TILLS ARE ANDROID. Decided 2026-08-29 (owner), amending FR-POS-01's
+ * "Android/iOS" wording, and it is a platform fact rather than a preference:
+ * **Web Bluetooth does not exist on iOS Safari at all**, and Apple does not
+ * permit an alternative browser engine that would provide it. There is no
+ * version of this file that prints to a thermal printer from an iPad.
+ *
+ * `hasWebBluetooth()` therefore returns false on every iOS device, and
+ * `printReceipt` returns `{ok:false, reason:'unsupported'}` — which
+ * `PaymentPanel` surfaces as a toast carrying the receipt text. That path is
+ * the honest degradation, not the intended workflow: a cashier cannot hand a
+ * customer a toast.
+ *
+ * iOS remains perfectly usable for management and own-data screens, which need
+ * no printer. If iOS tills are ever genuinely required, the only routes are a
+ * native wrapper (Capacitor et al — an app-store presence, signing and a
+ * second build to maintain) or an AirPrint/network printer with a different
+ * receipt pipeline. Both are scope changes, not adjustments here.
+ *
  * Money/qty are formatted via `@/lib/formatters` (decimal-string safe) —
  * this module never does its own number math on a receipt line.
  */

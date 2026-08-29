@@ -229,6 +229,46 @@ for svc in "${DEFAULT_SERVICES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
+# Backups (NFR-06) — install the nightly job, then check it is actually working
+# ---------------------------------------------------------------------------
+# infrastructure/backup/backup.sh has existed since Wave 1 and was never
+# scheduled: its README says "not wired into cron yet — that's a W7-01 ticket".
+# A backup script nobody installed is not a backup, so the deploy installs it.
+#
+# Idempotent by marker comment, not by grepping for the command line: the
+# command contains paths and redirections that are easy to reformat, and a
+# near-match would silently install a SECOND nightly job.
+CRON_MARKER="# mimi-chicken nightly backup (NFR-06)"
+if ! crontab -l 2>/dev/null | grep -qF "$CRON_MARKER"; then
+  log "installing nightly backup cron (02:00 WITA)"
+  {
+    crontab -l 2>/dev/null || true
+    echo "$CRON_MARKER"
+    # `bash <script>` deliberately, never `./<script>`: this job once died
+    # every night for a week on a lost executable bit, and an executable bit
+    # is easy to lose (a zip round-trip, a Windows checkout, a cp out of a
+    # container). Invoking through bash makes that failure impossible.
+    echo "0 2 * * * cd $PWD && set -a && . ./.env.vps && set +a && bash ./infrastructure/backup/backup.sh >> $HOME/mimi-backup.log 2>&1"
+  } | crontab -
+else
+  log "nightly backup cron already installed"
+fi
+
+# Verify rather than assume. This is the check whose absence let five
+# consecutive silent failures go unnoticed. A warning, not a failure: a
+# freshly provisioned box legitimately has no dump yet, and refusing to deploy
+# over that would be worse than saying so.
+if bash ./infrastructure/backup/backup.sh verify; then
+  :
+else
+  echo "" >&2
+  echo "WARNING: no recent database backup (NFR-06). The cron job is installed;" >&2
+  echo "if this persists past tomorrow, run it by hand and read the output:" >&2
+  echo "    set -a && . ./.env.vps && set +a && bash ./infrastructure/backup/backup.sh" >&2
+  echo "" >&2
+fi
+
+# ---------------------------------------------------------------------------
 # Verify — a deploy that is not checked is a deploy you are guessing about
 # ---------------------------------------------------------------------------
 # BOTH entrances, because checking only one is how a deploy that had already

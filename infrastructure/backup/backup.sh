@@ -34,6 +34,48 @@ OFFSITE_REMOTE_CMD="${OFFSITE_REMOTE_CMD:-}"
 
 mkdir -p "$BACKUP_DIR"
 
+# `verify` mode: is there a RECENT dump? Exits non-zero if not.
+#
+# This exists because the failure this script actually had was SILENT. Five
+# consecutive nightly runs died on a lost executable bit, the log recorded
+# every one, and nobody read it — reading a log is a thing a person has to
+# remember. Meanwhile dumps/ held two hand-made files, so the directory looked
+# like a working backup. A dump nobody checks for is not a backup; this is the
+# check, callable from cron or from a deploy.
+if [ "${1:-}" = "verify" ]; then
+  MAX_AGE_HOURS="${BACKUP_MAX_AGE_HOURS:-36}"
+  # `|| true` is load-bearing: with no dumps the glob matches nothing, `ls`
+  # exits 2, and `set -e` aborts the script before the "NO BACKUP FOUND"
+  # branch below can report it — the empty case would exit silently, which
+  # is exactly the failure this mode exists to make loud.
+  newest=$(ls -1t "$BACKUP_DIR"/mimi-*.sql.gz 2>/dev/null | head -1 || true)
+  if [ -z "$newest" ]; then
+    echo "[$(date -Iseconds)] NO BACKUP FOUND in $BACKUP_DIR" >&2
+    exit 1
+  fi
+  age_hours=$(( ( $(date +%s) - $(stat -c %Y "$newest") ) / 3600 ))
+  if [ "$age_hours" -gt "$MAX_AGE_HOURS" ]; then
+    echo "[$(date -Iseconds)] STALE BACKUP: newest is ${age_hours}h old (max ${MAX_AGE_HOURS}h) — $newest" >&2
+    exit 1
+  fi
+  echo "[$(date -Iseconds)] OK — newest backup is ${age_hours}h old: $newest"
+  exit 0
+fi
+
+# Remove a partial dump if anything below fails. `set -e` aborts mid-pipeline
+# and would otherwise leave a truncated .sql.gz with a FRESH timestamp — the
+# most dangerous artifact here, because retention and the verify check above
+# would both count it as a real backup.
+cleanup_partial() {
+  code=$?
+  if [ "$code" -ne 0 ] && [ -f "$DUMP_FILE" ]; then
+    echo "[$(date -Iseconds)] FAILED (exit $code) — removing partial $DUMP_FILE" >&2
+    rm -f "$DUMP_FILE"
+  fi
+  exit "$code"
+}
+trap cleanup_partial EXIT
+
 echo "[$(date -Iseconds)] Starting backup of ${POSTGRES_DB} from ${CONTAINER_NAME}..."
 
 # pg_dump runs INSIDE the container against its own local socket — no
@@ -44,6 +86,22 @@ docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}" 
   pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=plain --no-owner --no-privileges \
   | gzip -9 > "$DUMP_FILE"
 
+
+# Integrity + plausibility, because "the file exists" is not evidence of a
+# backup. `gzip -t` catches truncation; the size floor catches a dump that
+# succeeded structurally but holds nothing — a gzip of zero bytes is about 20
+# bytes and passes every other check here.
+#
+# `pipefail` (set at the top) is what makes the pipeline above safe at all:
+# without it the exit status would be gzip's, and gzip succeeds perfectly well
+# at compressing the empty output of a pg_dump that failed.
+gzip -t "$DUMP_FILE"
+dump_bytes=$(stat -c %s "$DUMP_FILE")
+MIN_DUMP_BYTES="${MIN_DUMP_BYTES:-102400}"
+if [ "$dump_bytes" -lt "$MIN_DUMP_BYTES" ]; then
+  echo "[$(date -Iseconds)] IMPLAUSIBLE DUMP: ${dump_bytes} bytes (< ${MIN_DUMP_BYTES}) — treating as failure" >&2
+  exit 1
+fi
 echo "[$(date -Iseconds)] Wrote $DUMP_FILE ($(du -h "$DUMP_FILE" | cut -f1))"
 
 # ---- Local retention -------------------------------------------------------

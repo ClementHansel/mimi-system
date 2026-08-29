@@ -4,14 +4,21 @@
 
 - `backup.sh` — nightly `pg_dump` (plain SQL, gzip'd), local rolling
   retention (`RETENTION_DAYS`, default 14), optional offsite copy hook.
-  Not wired into cron yet — that's a W7-01 (VPS provisioning) ticket; this
-  script is the artifact that ticket installs.
+  **Installed automatically by `scripts/deploy.sh`** as of 2026-08-29 — it is
+  no longer something a person has to remember to wire up.
+- `backup.sh verify` — "is there a dump newer than `BACKUP_MAX_AGE_HOURS`
+  (default 36)?", exiting non-zero if not. The deploy runs it and warns.
 
-## Setup (done once, on the VPS, by W7-01)
+## Setup
+
+Nothing to do — `scripts/deploy.sh` installs the cron entry on every deploy,
+idempotently. It keys off a marker comment rather than matching the command
+line, so a reformatted command can never install a second nightly job.
+
+The entry it installs, for reference:
 
 ```bash
-crontab -e
-# add — note `bash <script>`, not `<script>`:
+# mimi-chicken nightly backup (NFR-06)
 0 2 * * * cd /home/ubuntu/mimi && set -a && . ./.env.vps && set +a \
   && bash ./infrastructure/backup/backup.sh >> /home/ubuntu/mimi-backup.log 2>&1
 ```
@@ -30,10 +37,25 @@ git, so the direct form works too — but `bash` in front means a lost executabl
 bit can never silently disable backups again, and an executable bit is easy to
 lose (a `zip` round-trip, a checkout on Windows, a `cp` from a container).
 
-**Nothing alerts on failure.** The log recorded five consecutive failures and
-was not read, because reading it is a thing a person has to remember to do. A
-dump that is not verified to exist is not a backup; see NFR-06 and the note
-below on `drill:restore`.
+**Failure used to be silent.** The log recorded five consecutive failures and
+was not read, because reading a log is a thing a person has to remember to do.
+Three changes make that specific failure impossible to repeat:
+
+1. `scripts/deploy.sh` runs `backup.sh verify` and prints a loud warning when
+   the newest dump is missing or stale. It warns rather than fails — a freshly
+   provisioned box legitimately has no dump yet, and refusing to deploy over
+   that would be worse than saying so.
+2. A failed run no longer leaves a **partial** `.sql.gz` behind. `set -e`
+   aborts mid-pipeline, and the truncated file it used to leave carried a
+   FRESH timestamp — so retention and the verify check would both have counted
+   it as real. An `EXIT` trap now deletes it.
+3. Every dump is checked with `gzip -t` and against a size floor
+   (`MIN_DUMP_BYTES`, default 100 KiB). `pipefail` catches a failed `pg_dump`,
+   but a gzip of zero bytes is about 20 bytes and passes every other check —
+   only the size floor catches a dump that "succeeded" with nothing in it.
+
+Still true: nothing _pages_ anyone. The deploy warning is the alerting
+mechanism, so a long gap between deploys is a long gap between checks.
 
 Set `OFFSITE_REMOTE_CMD` to whatever offsite tool is chosen (rclone to
 S3/B2/Drive, `aws s3 cp`, `scp` to a second host, etc.) — the script no-ops

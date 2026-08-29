@@ -277,12 +277,31 @@ fi
 # port has gone.
 PUBLIC_URL="${VPS_PUBLIC_URL:-https://150-109-15-108.sslip.io}"
 DIRECT_URL="${VPS_DIRECT_URL:-http://150.109.15.108:${FRONTEND_PUBLIC_PORT:-8080}}"
-log "waiting for $PUBLIC_URL/login and $DIRECT_URL/login"
+# THE API IS PROBED SEPARATELY FROM THE PAGE, and that is the whole point.
+#
+# This check used to be the two /login pages alone. On 2026-08-29 the deployed
+# backend had leaked its entire connection pool (every HTTP 403 abandoned one —
+# see app.module.ts's guard-order comment), so EVERY api call returned 500
+# "timeout exceeded when trying to connect" and the system was unusable. This
+# script reported the deploy healthy anyway, because /login is a rendered page
+# and renders perfectly well with no database behind it.
+#
+# A deploy check that cannot tell a working system from a dead one is worse
+# than none: it converts an outage into a green tick.
+#
+# The API probe is a login with DELIBERATELY BAD credentials. It needs no
+# secrets, changes nothing, and is unambiguous: 401 means the request reached
+# the handler, took a pooled connection, queried users and came back — the
+# whole path. 500 means the pool is gone. A 200 would be alarming in its own
+# right and is not treated as success either.
+API_LOGIN="$PUBLIC_URL/api/auth/login"
+log "waiting for $PUBLIC_URL/login, $DIRECT_URL/login and a live API on $API_LOGIN"
 for attempt in $(seq 1 30); do
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$PUBLIC_URL/login" || echo 000)
   direct=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$DIRECT_URL/login" || echo 000)
-  if [ "$code" = "200" ] && [ "$direct" = "200" ]; then
-    log "OK — both entrances returned 200 after ${attempt} attempt(s)"
+  api=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST "$API_LOGIN"     -H 'Content-Type: application/json'     -d '{"username":"deploy-healthcheck-not-a-user","password":"x"}' || echo 000)
+  if [ "$code" = "200" ] && [ "$direct" = "200" ] && [ "$api" = "401" ]; then
+    log "OK — both entrances 200 and the API answered 401 after ${attempt} attempt(s)"
     log "previous images kept as :previous — ./scripts/deploy.sh --rollback"
     exit 0
   fi
@@ -290,7 +309,11 @@ for attempt in $(seq 1 30); do
 done
 
 echo "" >&2
-echo "DEPLOY UNVERIFIED: $PUBLIC_URL/login=$code  $DIRECT_URL/login=$direct (want 200/200)." >&2
+echo "DEPLOY UNVERIFIED: $PUBLIC_URL/login=$code  $DIRECT_URL/login=$direct  api=$api (want 200/200/401)." >&2
+if [ "$api" = "500" ]; then
+  echo "api=500 usually means the database pool is exhausted — check:" >&2
+  echo "    docker exec mimi-postgres psql -U mimi -d mimi -c \"SELECT count(*) FROM pg_stat_activity WHERE state='idle in transaction'\"" >&2
+fi
 echo "The new containers ARE running. To go back:" >&2
 echo "    ./scripts/deploy.sh --rollback" >&2
 exit 1

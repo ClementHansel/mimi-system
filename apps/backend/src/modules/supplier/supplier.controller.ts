@@ -54,7 +54,16 @@ export class SupplierController {
     return this.service.list(
       requireDbClient(req),
       q,
-      active === 'true',
+      // `active === 'true'` was wrong in a way that emptied the whole page.
+      // The param is OPTIONAL, so an absent one arrives as `undefined` — and
+      // `undefined === 'true'` is `false`, not `undefined`. The service reads
+      // `false` as "asked for inactive only" and appends `AND is_active =
+      // false` on top of its own `is_active IS NOT FALSE` baseline, which is a
+      // contradiction: zero rows, always. The frontend never sends `active`
+      // (see `getSuppliers` in purchasing/lib/api.ts), so the supplier list
+      // was unconditionally empty in production with 17 suppliers in the
+      // table. Absent must stay absent; only an explicit value filters.
+      active === undefined ? undefined : active === 'true',
       page ? parseInt(page, 10) : 1,
       pageSize ? parseInt(pageSize, 10) : 50,
     );

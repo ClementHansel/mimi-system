@@ -306,6 +306,43 @@ describe('OfflineAuthService — live database (§7.4 adversarial)', () => {
     const row = await outcomeFor(event.eventId);
     expect(row?.outcome).toBe('failed');
     expect(row?.failure_reason).toMatch(/binding HMAC/i);
+
+    // D-11 — WHERE a failed re-verification goes, which is the half that was
+    // never asserted for a void with a valid credential (only the forged case
+    // checked it).
+    //
+    // Owner decision 2026-08-29: a failed re-verification of an already-
+    // executed void produces a DISPUTE for finance, not an approval row. The
+    // reason is that the void physically happened — cash left the drawer, stock
+    // was reversed — so writing `rejected` on an `approvals` row would describe
+    // a decision nobody made and imply the void did not occur. What is true is
+    // narrower: the action happened and its authority did not hold up.
+    const conflict = await pool.query<{
+      queue: string;
+      assignee_role: string;
+      physical_effect_suspected: boolean;
+      detail: { outcome: string };
+    }>(
+      `SELECT queue, assignee_role, physical_effect_suspected, detail
+         FROM sync_conflicts WHERE kind = 'offline_auth' AND loser_event_id = $1`,
+      [event.eventId],
+    );
+    expect(conflict.rows).toHaveLength(1);
+    expect(conflict.rows[0]!.queue).toBe('finance');
+    expect(conflict.rows[0]!.assignee_role).toBe('finance');
+    // §7.5 — the field that records "operations already acted on this". A
+    // dispute that did not say so would be indistinguishable from a request
+    // that was simply declined before anything happened.
+    expect(conflict.rows[0]!.physical_effect_suspected).toBe(true);
+    expect(conflict.rows[0]!.detail.outcome).toBe('failed');
+
+    // And NO approval bookkeeping, deliberately. `approvals` is the record of
+    // decisions people made; this was not one.
+    const approvals = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM approvals WHERE document_id = $1`,
+      [entityId],
+    );
+    expect(approvals.rows[0]!.count).toBe('0');
   });
 
   it('(iii) a binding replayed onto a different document fails', async () => {

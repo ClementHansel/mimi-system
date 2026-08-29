@@ -321,25 +321,30 @@ function readOnlineOrderRecorded(data: unknown): OnlineOrderRecordedPayload | un
  * attendance is.
  *
  * `void_refunds.*` and `online_orders.*` are materialized too (this projector
- * owns every push-class op in its module), but
- * `void_refunds.approved_offline`/`executed` skip full `ApprovalService`
- * bookkeeping (`approvals`/`approval_steps` rows). This projector can only
- * ever record the provisional grant on `void_refunds` itself, because
- * `OfflineAuthService`'s re-verification outcome is computed AFTER it runs in
- * `runApplyHooks`'s call order.
+ * owns every push-class op in its module), and `void_refunds.approved_offline`
+ * / `executed` deliberately do NOT write `ApprovalService` bookkeeping
+ * (`approvals` / `approval_steps` rows). D-11 asked whether they should. Owner
+ * decision 2026-08-29: they should not.
  *
- * D-11, on what it would take to change that. The ordering is NOT a hard
- * constraint: `OfflineAuthService.verifyAndRecord` reads only the credential
- * row and the event envelope — no domain rows, so nothing stops it running
- * before projection. What is genuinely undecided is the SEMANTICS, and that is
- * why this is still not guessed at here. §7.4 yields three outcomes, and each
- * needs a deliberate answer: `verified` presumably writes an approved
- * `approvals`/`approval_steps` pair backdated to the offline decision;
- * `failed` has to represent a void that already physically happened at the
- * till and was then repudiated, which is not "rejected" in the normal sense;
- * and `unprovable` (§6.4 — an expired credential plus a backdated clock)
- * belongs in the finance queue rather than resolved either way. Inventing that
- * mapping in a projector would put fraud-control semantics in the wrong layer.
+ * The reasoning, so this is not "re-fixed" later. An offline-approved void has
+ * already PHYSICALLY happened by the time the cloud sees it — cash left the
+ * drawer, stock was reversed. If the cloud's §7.4 re-verification then comes
+ * back `failed`, an `approvals` row saying `rejected` would describe a decision
+ * nobody made and imply the void did not occur. What is actually true is
+ * narrower: the action happened, and its authority did not hold up.
+ *
+ * So that case is recorded as a DISPUTE instead, and it already is —
+ * `OfflineAuthService.persist()` writes a `sync_conflicts` row (kind
+ * `offline_auth`, queue `finance`, `physicalEffectSuspected: true`) alongside
+ * the `offline_authorizations` row carrying the outcome and failure reason.
+ * Finance resolves it through `ExceptionsService.recordVerdict`. `unprovable`
+ * (§6.4 — an expired credential plus a backdated clock) takes the same route
+ * for the same reason: writing any approval row would assert more than is
+ * known.
+ *
+ * `approvals` stays what it says it is — the record of decisions people made.
+ * This projector therefore records only the provisional grant on
+ * `void_refunds` itself, which is the fact it actually witnessed.
  */
 @Injectable()
 export class PosSyncProjector implements SyncProjector {

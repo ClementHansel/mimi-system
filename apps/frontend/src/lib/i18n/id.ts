@@ -1833,6 +1833,15 @@ export const id = {
         city: 'Kota',
         address: 'Alamat',
         phone: 'No. Telepon',
+        // FR-LOG-03 — outlet only. 'Belum diatur' is a real state, not a
+        // placeholder: an outlet nobody has agreed a schedule for must read as
+        // undecided rather than appear to be on the rarest one.
+        cadence: 'Frekuensi Pengiriman',
+        cadenceNone: 'Belum diatur',
+        cadenceDaily: 'Setiap hari',
+        cadenceTwiceWeekly: '2x seminggu',
+        cadenceThriceWeekly: '3x seminggu',
+        cadenceWeekly: 'Mingguan',
         geofenceRadius: 'Radius Geofence (m)',
         // Closing / reopening an outlet. The copy is deliberate: this is a SOFT
         // close (`is_active = false`), and promising deletion would be a lie —

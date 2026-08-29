@@ -1981,6 +1981,10 @@ function LocationFormModal({
   const [radius, setRadius] = useState(
     location?.geofenceRadiusIsOverride ? String(location.geofenceRadiusM) : '',
   );
+  // FR-LOG-03. '' is the "not agreed yet" state and is sent as null — the
+  // Select's placeholder option, not a missing value. An outlet nobody has
+  // decided about must read as undecided rather than adopt a schedule.
+  const [cadence, setCadence] = useState<string>(location?.deliveryCadence ?? '');
   const [locating, setLocating] = useState(false);
   const inheritedRadiusM =
     location && !location.geofenceRadiusIsOverride ? location.geofenceRadiusM : null;
@@ -2030,6 +2034,9 @@ function LocationFormModal({
       // Empty means inherit — sent as null so a PATCH can CLEAR an override,
       // which `undefined` (omitted) could never express.
       geofenceRadiusM: radius === '' ? null : Number(radius),
+      // Null, not undefined: clearing an agreed cadence back to "not agreed"
+      // has to be expressible, and an omitted key would leave it untouched.
+      deliveryCadence: cadence === '' ? null : cadence,
     };
     try {
       if (location) await api.patch(`/locations/${location.id}`, body);
@@ -2109,6 +2116,29 @@ function LocationFormModal({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
+
+        {/*
+          FR-LOG-03 — outlets only. A warehouse ships rather than receives, so
+          a delivery cadence on one is meaningless and offering the field there
+          would invite someone to set it.
+        */}
+        {type === 'outlet' && (
+          <Select
+            label={t('admin.masterData.locations.cadence')}
+            value={cadence}
+            onValueChange={setCadence}
+            options={[
+              { value: '', label: t('admin.masterData.locations.cadenceNone') },
+              { value: 'daily', label: t('admin.masterData.locations.cadenceDaily') },
+              { value: 'twice_weekly', label: t('admin.masterData.locations.cadenceTwiceWeekly') },
+              {
+                value: 'thrice_weekly',
+                label: t('admin.masterData.locations.cadenceThriceWeekly'),
+              },
+              { value: 'weekly', label: t('admin.masterData.locations.cadenceWeekly') },
+            ]}
+          />
+        )}
 
         <div className="col-span-2 flex flex-col gap-1 border-t border-border pt-3">
           <p className="text-sm font-semibold text-text-primary">

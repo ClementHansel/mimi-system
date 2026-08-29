@@ -14,6 +14,7 @@
  * modules embed.
  */
 import type {
+  DeliveryCadence,
   ApprovalState,
   ApprovalStepState,
   AssetCategory,
@@ -151,6 +152,13 @@ export interface Location {
   geofenceRadiusM: number;
   /** True when this location overrides the default rather than inheriting it. */
   geofenceRadiusIsOverride: boolean;
+  /**
+   * FR-LOG-03 — the agreed replenishment frequency for this outlet, or `null`
+   * when none has been agreed. `null` is a real state, not a missing value:
+   * an outlet nobody has decided about must not read as the rarest schedule.
+   * Always `null` on a warehouse, which ships rather than receives.
+   */
+  deliveryCadence: DeliveryCadence | null;
   isActive: boolean;
   storageAreaCount: number;
 }

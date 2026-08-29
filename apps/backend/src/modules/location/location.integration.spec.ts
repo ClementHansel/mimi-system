@@ -17,7 +17,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { can, LocationType, RoleKey, StorageAreaType } from '@mimi/shared';
+import { can, DeliveryCadence, LocationType, RoleKey, StorageAreaType } from '@mimi/shared';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
 import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.service';
@@ -94,6 +94,67 @@ describe('LocationService (live database)', () => {
       locationService.update(client, created.id, { name: 'After' }, ACTOR),
     );
     expect(updated.name).toBe('After');
+  });
+
+  it('FR-LOG-03 — delivery cadence defaults to null, round-trips, and can be CLEARED back to null', async () => {
+    // The requirement is "flexible delivery frequency: daily, 2-3x weekly, or
+    // weekly depending on distance and sales". Owner decision 2026-08-29: this
+    // is a per-outlet configuration the logistics team plans against, not a
+    // scheduler — so what has to be right is that the field stores what was
+    // agreed and can express "nothing agreed yet".
+    //
+    // That last part is the whole test. `null` is a real state, distinct from
+    // 'weekly': an outlet nobody has decided about must read as undecided
+    // rather than silently appear to be on the rarest schedule. Two ways to
+    // get that wrong — defaulting on create, and being unable to clear it —
+    // and both are checked.
+    const created = await withRollback((client) =>
+      locationService.create(
+        client,
+        {
+          code: nextCode('LOC'),
+          name: 'Cadence Probe',
+          type: LocationType.OUTLET,
+          city: 'Samarinda',
+        },
+        ACTOR,
+      ),
+    );
+    createdLocationIds.push(created.id);
+
+    // Not defaulted on create. A new outlet has no agreed cadence, and picking
+    // one here would be a decision the creator did not make.
+    expect(created.deliveryCadence).toBeNull();
+
+    const set = await withRollback((client) =>
+      locationService.update(
+        client,
+        created.id,
+        { deliveryCadence: DeliveryCadence.THRICE_WEEKLY },
+        ACTOR,
+      ),
+    );
+    expect(set.deliveryCadence).toBe('thrice_weekly');
+
+    // Re-read on its own connection: `update` returns what it built, and this
+    // is what actually persisted.
+    const reread = await withRollback((client) => locationService.getById(client, created.id));
+    expect(reread.deliveryCadence).toBe('thrice_weekly');
+
+    // An omitted key leaves it alone — otherwise every edit of an outlet's
+    // phone number would wipe its delivery schedule.
+    const unrelated = await withRollback((client) =>
+      locationService.update(client, created.id, { phone: '0541-000000' }, ACTOR),
+    );
+    expect(unrelated.deliveryCadence).toBe('thrice_weekly');
+
+    // ...but an explicit null CLEARS it. This is why the service checks
+    // `!== undefined` rather than truthiness: a truthiness check would make
+    // "we no longer have an agreement with this outlet" inexpressible.
+    const cleared = await withRollback((client) =>
+      locationService.update(client, created.id, { deliveryCadence: null }, ACTOR),
+    );
+    expect(cleared.deliveryCadence).toBeNull();
   });
 
   it('deactivates a location', async () => {

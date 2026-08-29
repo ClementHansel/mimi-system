@@ -15,7 +15,7 @@ import {
   type ValidationArguments,
   type ValidatorConstraintInterface,
 } from 'class-validator';
-import { LocationType } from '@mimi/shared';
+import { DeliveryCadence, LocationType } from '@mimi/shared';
 
 /** Decimal-string pattern for NUMERIC(9,6) lat/lng — optional leading `-`, at least one digit. */
 const DECIMAL_RE = /^-?\d+(\.\d+)?$/;
@@ -170,6 +170,19 @@ export class CreateLocationDto {
   @IsInt()
   @Min(0)
   geofenceRadiusM?: number | null;
+
+  /**
+   * FR-LOG-03 — how often this outlet is meant to be replenished.
+   *
+   * Optional AND nullable: omitting it leaves the cadence alone, and passing
+   * `null` clears it back to "not agreed". Those are different operations, so
+   * the service checks `!== undefined` rather than truthiness — otherwise
+   * there would be no way to un-set a cadence once one was chosen.
+   */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsIn(Object.values(DeliveryCadence))
+  deliveryCadence?: DeliveryCadence | null;
 }
 
 /**
@@ -254,4 +267,17 @@ export class UpdateLocationDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /**
+   * FR-LOG-03 — how often this outlet is meant to be replenished.
+   *
+   * Optional AND nullable: omitting it leaves the cadence alone, and passing
+   * `null` clears it back to "not agreed". Those are different operations, so
+   * the service checks `!== undefined` rather than truthiness — otherwise
+   * there would be no way to un-set a cadence once one was chosen.
+   */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsIn(Object.values(DeliveryCadence))
+  deliveryCadence?: DeliveryCadence | null;
 }

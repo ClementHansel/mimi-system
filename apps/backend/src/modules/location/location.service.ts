@@ -17,6 +17,7 @@ export interface LocationRow {
   latitude: string | null;
   longitude: string | null;
   geofence_radius_m: number | null;
+  delivery_cadence: string | null;
   is_active: boolean;
   storage_area_count: string;
 }
@@ -40,6 +41,11 @@ export interface Location {
   geofenceRadiusM: number;
   /** True when this location overrides the default rather than inheriting it. */
   geofenceRadiusIsOverride: boolean;
+  /**
+   * FR-LOG-03 — the agreed replenishment frequency, or `null` when none has
+   * been agreed. `null` is a real state, not a missing value.
+   */
+  deliveryCadence: 'daily' | 'twice_weekly' | 'thrice_weekly' | 'weekly' | null;
   isActive: boolean;
   storageAreaCount: number;
 }
@@ -79,6 +85,11 @@ export class LocationService {
       longitude: row.longitude,
       geofenceRadiusM: row.geofence_radius_m ?? defaultRadiusM,
       geofenceRadiusIsOverride: row.geofence_radius_m !== null,
+      // FR-LOG-03. Passed through as null when unset rather than defaulted:
+      // "no cadence agreed" is a real state the planning screen must be able
+      // to show, and substituting the rarest schedule here would invent an
+      // agreement nobody made.
+      deliveryCadence: (row.delivery_cadence as Location['deliveryCadence']) ?? null,
       isActive: row.is_active,
       storageAreaCount: parseInt(row.storage_area_count, 10),
     };
@@ -86,7 +97,7 @@ export class LocationService {
 
   private readonly baseSelect = `
     SELECT l.id, l.code, l.name, l.type, l.city, l.address, l.phone, l.latitude, l.longitude,
-           l.geofence_radius_m, l.is_active,
+           l.geofence_radius_m, l.delivery_cadence, l.is_active,
            (SELECT COUNT(*) FROM storage_areas sa WHERE sa.location_id = l.id AND sa.is_active = true) AS storage_area_count
     FROM locations l`;
 
@@ -152,8 +163,8 @@ export class LocationService {
         // NULL, not COALESCE(..., 100): an omitted radius means "inherit
         // `hr.geofence_radius_m`" (migration 229), and baking 100 in here would
         // silently give every new outlet a permanent override at the old value.
-        `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude, geofence_radius_m)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude, geofence_radius_m, delivery_cadence)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          RETURNING id`,
         [
           dto.code,
@@ -165,6 +176,10 @@ export class LocationService {
           dto.latitude ?? null,
           dto.longitude ?? null,
           dto.geofenceRadiusM ?? null,
+          // FR-LOG-03. Not defaulted on create either: a new outlet starts
+          // with no agreed cadence, and saying 'weekly' would be a decision
+          // the person creating it did not make.
+          dto.deliveryCadence ?? null,
         ],
       );
       const id = res.rows[0]!.id;
@@ -218,6 +233,10 @@ export class LocationService {
       if (dto.latitude !== undefined) set('latitude', dto.latitude);
       if (dto.longitude !== undefined) set('longitude', dto.longitude);
       if (dto.geofenceRadiusM !== undefined) set('geofence_radius_m', dto.geofenceRadiusM);
+      // FR-LOG-03. `null` is meaningful here — it un-sets the cadence back to
+      // "not agreed" — so this checks `!== undefined` like the rest rather
+      // than truthiness, which would make clearing it impossible.
+      if (dto.deliveryCadence !== undefined) set('delivery_cadence', dto.deliveryCadence);
       // The only way back from `deactivate()` below — see `UpdateLocationDto`'s
       // note on why reactivation is a PATCH rather than its own route.
       if (dto.isActive !== undefined) set('is_active', dto.isActive);

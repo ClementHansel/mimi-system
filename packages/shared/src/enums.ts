@@ -26,6 +26,26 @@ export enum LocationType {
   OFFICE = 'office',
 }
 
+/**
+ * FR-LOG-03 — how often an outlet is meant to be replenished.
+ *
+ * Planning input for the logistics team, NOT a scheduler: nothing in the system
+ * generates shipments from this. It answers "what did we agree with this
+ * outlet", so a planner can see at a glance that a weekly outlet has had
+ * nothing for nine days.
+ *
+ * `locations.delivery_cadence` is NULLABLE on purpose: no value means "not yet
+ * agreed", which is genuinely different from `WEEKLY`. An outlet nobody has
+ * decided about should read as undecided rather than silently adopt the rarest
+ * schedule.
+ */
+export enum DeliveryCadence {
+  DAILY = 'daily',
+  TWICE_WEEKLY = 'twice_weekly',
+  THRICE_WEEKLY = 'thrice_weekly',
+  WEEKLY = 'weekly',
+}
+
 /** D-15: typed storage areas inside a location. Stock is keyed by (location, area, item). */
 export enum StorageAreaType {
   FREEZER = 'freezer',

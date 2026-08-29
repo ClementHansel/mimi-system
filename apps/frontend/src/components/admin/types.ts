@@ -39,6 +39,8 @@ export interface Location {
   geofenceRadiusM: number;
   /** True when this location overrides the default rather than inheriting it. */
   geofenceRadiusIsOverride: boolean;
+  /** FR-LOG-03 — agreed replenishment frequency, or null when none is agreed. */
+  deliveryCadence: 'daily' | 'twice_weekly' | 'thrice_weekly' | 'weekly' | null;
   isActive: boolean;
   storageAreaCount: number;
 }

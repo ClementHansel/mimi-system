@@ -8,6 +8,7 @@
     "migrate": "tsx migrate.ts",
     "migrate:status": "tsx migrate.ts --status",
     "seed": "tsx seed.ts",
+    "seed:journal": "tsx seed-journal.ts",
     "reset": "tsx reset.ts",
     "test:template": "tsx test-db.ts template",
     "test:clone": "tsx test-db.ts clone",

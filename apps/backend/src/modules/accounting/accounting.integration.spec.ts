@@ -46,6 +46,7 @@ import { JournalService } from './journal.service';
 import { PostingEngineService } from './posting-engine.service';
 import { PaymentVerificationsService, type PaymentActor } from './payment-verifications.service';
 import { ExceptionsService } from './exceptions.service';
+import { ReportsService } from './reports.service';
 
 import {
   appPoolForDi,
@@ -60,6 +61,7 @@ import {
 describe('M17 accounting — live DB integration', () => {
   let fixtures: Fixtures;
   const coa = new ChartOfAccountsService();
+  const reports = new ReportsService();
   const periods = new FiscalPeriodsService();
   const journal = new JournalService(coa, periods);
   const eventBus = new EventBus();
@@ -686,6 +688,97 @@ describe('M17 accounting — live DB integration', () => {
         expect(debitTotal).toBe(creditTotal);
       },
     );
+  });
+
+  it('FR-ACC-JGUD-07 — stock-value report totals qty x avg_cost per category, and counts UNCATEGORISED stock', async () => {
+    // Appendix A-8 settles JGUD-07 as "a valuation statement, not an event":
+    // served primarily by this report, with the revaluation posting rule kept
+    // only for a manual FIN correction. The report had no test at all.
+    //
+    // The two properties asserted here are the two bugs the implementation's
+    // own comments record having shipped, and neither is visible from a happy
+    // path with tidy data:
+    //
+    //  1. `item_categories` must be a LEFT join. `items.category_id` is
+    //     nullable, and the inner join it replaced silently dropped every
+    //     uncategorised item's stock — an inventory report that quietly
+    //     UNDERSTATES inventory, which is the worst direction for it to be
+    //     wrong in.
+    //  2. `ROUND(..., 2)`. qty_on_hand is NUMERIC(_,3) and avg_cost is
+    //     NUMERIC(_,2), so the product carries five fractional digits and SUM
+    //     keeps them; `addMoney`'s fixed-point guard then throws, and the
+    //     report failed outright for any location holding stock.
+    const owner = {
+      role: RoleKey.OWNER,
+      userId: fixtures.usersByRole[RoleKey.OWNER],
+      locationIds: [],
+    };
+
+    // An item with NO category, and a known cost, at an isolated storage area
+    // so the arithmetic below is exact rather than "at least".
+    const setup = await asCommittedRequest(owner, async (client) => {
+      const item = await client.query<{ id: string }>(
+        `INSERT INTO items (sku, name, base_unit_id, avg_cost, category_id)
+         SELECT $1, 'JGUD-07 Uncategorised Probe', i.base_unit_id, '1234.56', NULL
+           FROM items i WHERE i.id = $2
+         RETURNING id`,
+        [`JGUD07-${Date.now()}`, fixtures.itemId],
+      );
+      const itemId = item.rows[0]!.id;
+      const area = await client.query<{ id: string }>(
+        `SELECT id FROM storage_areas WHERE location_id = $1 LIMIT 1`,
+        [fixtures.warehouseId],
+      );
+      await client.query(
+        `INSERT INTO stock_balances (location_id, storage_area_id, item_id, qty_on_hand)
+         VALUES ($1,$2,$3,'3.000')`,
+        [fixtures.warehouseId, area.rows[0]!.id, itemId],
+      );
+      return { itemId };
+    });
+
+    try {
+      const report = await asRequest(owner, (client) =>
+        reports.stockValue(client, fixtures.warehouseId),
+      );
+
+      expect(report).toHaveLength(1);
+      const warehouse = report[0]!;
+      expect(warehouse.locationId).toBe(fixtures.warehouseId);
+
+      // The uncategorised bucket exists and carries this item's value. Its
+      // label is a real name rather than an empty string — a blank would
+      // render as an empty row and get used as a React key.
+      const uncategorised = warehouse.byCategory.find((c) => c.categoryName === 'Tanpa Kategori');
+      expect(uncategorised, 'uncategorised stock must be reported, not dropped').toBeDefined();
+      // 3.000 x 1234.56 = 3703.68 exactly, so this is an equality rather than a
+      // tolerance — and it is only reachable at all if the LEFT join holds.
+      expect(Number(uncategorised!.value)).toBeGreaterThanOrEqual(3703.68);
+
+      // Every value is Money-shaped: two decimals, no five-digit product
+      // leaking through. This is the assertion that fails if the ROUND is lost.
+      for (const category of warehouse.byCategory) {
+        expect(category.value).toMatch(/^-?\d+\.\d{2}$/);
+      }
+      expect(warehouse.value).toMatch(/^-?\d+\.\d{2}$/);
+
+      // The location total is the sum of its categories — the report is read
+      // as "this outlet holds X, made up of these", so a total that does not
+      // reconcile to its own breakdown is worse than no total.
+      const summed = warehouse.byCategory.reduce((acc, c) => acc + Number(c.value), 0);
+      expect(Number(warehouse.value)).toBeCloseTo(summed, 2);
+
+      // Unfiltered, the report covers more than one location — proving the
+      // locationId filter above narrowed rather than being a no-op.
+      const all = await asRequest(owner, (client) => reports.stockValue(client));
+      expect(all.length).toBeGreaterThan(1);
+      expect(all.map((r) => r.locationId)).toContain(fixtures.warehouseId);
+    } finally {
+      await asCommittedRequest(owner, async (client) => {
+        await client.query(`DELETE FROM stock_balances WHERE item_id = $1`, [setup.itemId]);
+        await client.query(`DELETE FROM items WHERE id = $1`, [setup.itemId]);
+      });
+    }
   });
 
   it('idempotency: replaying the SAME (eventType, refType, refId) does not double-post', async () => {

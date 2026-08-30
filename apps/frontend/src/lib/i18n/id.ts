@@ -2724,6 +2724,8 @@ export const id = {
       columnDays: 'Hari',
       columnReason: 'Alasan',
       columnStatus: 'Status',
+      columnAttachment: 'Lampiran',
+      viewAttachment: 'Lihat Lampiran',
       type: {
         annual: 'Cuti Tahunan',
         marriage: 'Cuti Nikah',
@@ -2965,6 +2967,8 @@ export const id = {
       startDate: 'Tanggal Mulai',
       endDate: 'Tanggal Selesai',
       reasonLabel: 'Alasan (opsional)',
+      attachmentLabel: 'Lampiran (opsional)',
+      attachmentHint: 'Surat dokter, undangan, atau dokumen pendukung lain. Maks. 10 MB.',
     },
     // Data Pribadi — the employee's own HR record, read-only (corrections go
     // through Admin SDM, because these fields feed pay).

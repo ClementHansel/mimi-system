@@ -20,6 +20,7 @@ import { ExportButton } from '@/components/common/ExportButton';
 import { approveLeave, listLeaves, rejectLeave } from './lib/hr-api';
 import { LEAVE_EXPORT_COLUMNS } from './lib/io-columns';
 import type { Leave } from './lib/types';
+import { LeaveAttachmentLink } from './LeaveAttachmentLink';
 import type { Paginated } from '@/lib/shared-types';
 
 const LEAVE_TYPES = ['annual', 'marriage', 'sick', 'permission', 'unpaid'];
@@ -115,6 +116,14 @@ export function LeaveApprovalPanel() {
           },
           { key: 'days', header: t('hr.leaves.columnDays'), align: 'right' },
           { key: 'reason', header: t('hr.leaves.columnReason'), render: (r) => r.reason ?? '—' },
+          {
+            // The supporting document — the thing that makes a `sick` request
+            // checkable rather than taken on trust. `leave_requests` has always
+            // had `attachment_id`; nothing ever rendered it.
+            key: 'attachment',
+            header: t('hr.leaves.columnAttachment'),
+            render: (r) => <LeaveAttachmentLink attachmentId={r.attachmentId} />,
+          },
           {
             key: 'status',
             header: t('hr.leaves.columnStatus'),

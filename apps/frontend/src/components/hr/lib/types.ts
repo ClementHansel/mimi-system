@@ -100,7 +100,8 @@ export interface Leave {
   days: string;
   reason: string | null;
   status: string;
-  attachmentUrl: string | null;
+  /** Attachment id; resolve to a URL with `resolveAttachmentUrl` before rendering. */
+  attachmentId: string | null;
   decidedBy: string | null;
 }
 

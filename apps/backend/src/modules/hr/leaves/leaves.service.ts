@@ -32,7 +32,7 @@ export interface LeaveRow {
   days: string;
   reason: string | null;
   status: LeaveStatus;
-  attachmentUrl: string | null;
+  attachmentId: string | null;
   decidedBy: string | null;
 }
 
@@ -96,11 +96,10 @@ export class LeavesService {
 
     params.push(pageSize, (page - 1) * pageSize);
     const res = await client.query<Record<string, any>>(
-      `SELECT lr.*, e.name AS employee_name, u.name AS decided_by_name, a.object_key AS attachment_key
+      `SELECT lr.*, e.name AS employee_name, u.name AS decided_by_name
          FROM leave_requests lr
          JOIN employees e ON e.id = lr.employee_id
          LEFT JOIN users u ON u.id = lr.decided_by
-         LEFT JOIN attachments a ON a.id = lr.attachment_id
         WHERE ${where}
         ORDER BY lr.created_at DESC
         LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -503,11 +502,10 @@ export class LeavesService {
 
   private async getRowOrThrow(client: PoolClient, id: UUID): Promise<LeaveRow> {
     const res = await client.query<Record<string, any>>(
-      `SELECT lr.*, e.name AS employee_name, u.name AS decided_by_name, a.object_key AS attachment_key
+      `SELECT lr.*, e.name AS employee_name, u.name AS decided_by_name
          FROM leave_requests lr
          JOIN employees e ON e.id = lr.employee_id
          LEFT JOIN users u ON u.id = lr.decided_by
-         LEFT JOIN attachments a ON a.id = lr.attachment_id
         WHERE lr.id = $1`,
       [id],
     );
@@ -525,11 +523,16 @@ export class LeavesService {
     days: String(r.days),
     reason: r.reason ?? null,
     status: r.status,
-    // The full presigned URL needs StorageService + JwtAccessPayload context this read-heavy path
-    // doesn't thread through; the attachment id/key is enough for CONTRACTS' `attachmentUrl` shape
-    // once the frontend requests `/api/attachments/:id/url` directly (same indirection `AttendanceRow`
-    // avoids only because its own service already injects StorageService).
-    attachmentUrl: r.attachment_key ?? null,
+    // The ATTACHMENT ID. The client turns it into a URL through
+    // `/api/attachments/:id/url` (`lib/attachment-url.ts`), which is what the
+    // previous comment here already described as the plan — but the query
+    // selected `a.object_key`, so the field carried an S3 KEY instead. That
+    // endpoint takes a UUID, so the documented call could never have worked,
+    // and putting the key in an <img src>/<a href> resolves it against the
+    // current page and 404s. Same defect that made the finance selfie and
+    // payment-proof evidence invisible; `lr.attachment_id` is already in
+    // `lr.*`, so the attachments join it needed is gone too.
+    attachmentId: r.attachment_id ?? null,
     decidedBy: r.decided_by_name ?? null,
   });
 }

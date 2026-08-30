@@ -14,11 +14,14 @@ import {
   Textarea,
   StatusBadge,
   EmptyState,
+  FileUpload,
 } from '@/components/ui';
 import { fmtDateRange } from '@/lib/dates';
 import { newUuid } from '@/lib/uuid';
 import { createLeaveRequest, cancelLeaveRequest, getMyLeaves } from './lib/me-api';
 import type { Leave, LeaveQuota } from '@/components/hr/lib/types';
+import { uploadLeaveAttachment } from '@/components/hr/lib/attachments';
+import { LeaveAttachmentLink } from '@/components/hr/LeaveAttachmentLink';
 
 const currentYear = new Date().getFullYear();
 const LEAVE_TYPES = ['annual', 'marriage', 'sick', 'permission', 'unpaid'];
@@ -106,6 +109,9 @@ export function CutiPanel() {
                   {fmtDateRange(leave.startDate, leave.endDate)} · {leave.days} {t('me.cuti.days')}
                 </p>
                 {leave.reason && <p className="text-sm text-text-muted">{leave.reason}</p>}
+                {/* Their own copy of what they attached — so someone can
+                    confirm the right file went up without asking HR. */}
+                {leave.attachmentId && <LeaveAttachmentLink attachmentId={leave.attachmentId} />}
                 {leave.status === 'pending' && (
                   <Button
                     size="sm"
@@ -168,6 +174,14 @@ function NewLeaveModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reason, setReason] = useState('');
+  /**
+   * The supporting document — a doctor's note, a wedding invitation.
+   *
+   * The API and the `leave_requests` table have carried `attachment_id` all
+   * along; there was simply no way to send one, so every row had NULL and an
+   * approver had nothing to check a `sick` request against.
+   */
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -176,12 +190,22 @@ function NewLeaveModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     setBusy(true);
     setError(null);
     try {
+      // Upload FIRST, and let a failure abort the whole submit. The reverse
+      // order would create the leave request and then lose its evidence, which
+      // is the worst outcome available here: the request is approvable, looks
+      // complete, and silently has nothing behind it. Failing before anything
+      // is created leaves the form filled in and retryable.
+      const attachmentId = files[0]
+        ? await uploadLeaveAttachment({ file: files[0], kind: 'leave_attachment' })
+        : undefined;
+
       await createLeaveRequest({
         clientId: mintId(),
         type,
         startDate,
         endDate,
         reason: reason || undefined,
+        attachmentId,
       });
       toast({ title: t('me.cuti.createSuccess'), variant: 'success' });
       onCreated();
@@ -233,6 +257,15 @@ function NewLeaveModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           label={t('me.cuti.reasonLabel')}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
+        />
+        <FileUpload
+          label={t('me.cuti.attachmentLabel')}
+          hint={t('me.cuti.attachmentHint')}
+          accept="image/*,application/pdf"
+          maxSizeMb={10}
+          value={files}
+          onChange={setFiles}
+          disabled={busy}
         />
         {error && <p className="text-sm text-danger-600">{error}</p>}
       </div>

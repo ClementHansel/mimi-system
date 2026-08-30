@@ -1,0 +1,222 @@
+# Deploy Mimi Chicken OS to the NEW production VPS (43.156.62.134) on every
+# push to main.
+#
+# This box is SHARED with someone else's live production service:
+# conextlab.ai's LiteLLM gateway (litellm-litellm-1, litellm-db-1,
+# litellm-redis-1) sits behind a host Caddy that owns :80 and :443. Every
+# command below is scoped to `-p mimi` and to /home/ubuntu/mimi, publishes
+# nothing beyond 127.0.0.1, and never touches Caddy, the litellm containers,
+# or the Docker daemon itself — see docker-compose.cohost.yml for the
+# loopback/port-block overlay that makes this possible. Nothing here prunes
+# images, prunes volumes, or restarts Docker — all three would hit the
+# neighbour.
+#
+# This workflow is deliberately separate from deploy-vps.yml (the demo box at
+# 150.109.15.108). That one owns its own dedicated host, runs a TLS sidecar,
+# and ships a self-signed cert; none of that applies here, where the host
+# Caddy already terminates TLS with a real certificate. Keep both workflows —
+# do not try to parameterize one into the other.
+#
+# No post-deploy e2e-smoke job (yet): deploy-vps.yml runs one against
+# VPS_PUBLIC_URL, but the domain for this box (mimichicken.my.id) is still
+# being pointed here and Caddy/TLS is being handled separately, outside this
+# workflow. PROD_PUBLIC_URL is provisioned now so that job can be added later
+# without a fresh round of secret-wiring.
+name: deploy-prod
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reshape_org:
+        description: 'Apply the org model (crew per shift, regional managers, 2 gudang + 2 drivers) to the server database'
+        type: boolean
+        default: false
+        required: false
+
+# A second push while a deploy is mid-build would have two `compose up` runs
+# racing on the same project. Queue them instead, and never cancel a running
+# deploy — a half-applied stack is worse than a slightly stale one.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Open SSH session
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_VPS_SSH_KEY }}
+
+      - name: Trust the host key
+        # Pinned from the known_hosts secret rather than blind-accepting, so a
+        # DNS or routing hijack cannot silently redirect a deploy (with its
+        # keys) to someone else's machine.
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Pull, migrate and rebuild
+        env:
+          HOST: ${{ secrets.PROD_VPS_HOST }}
+          USER: ${{ secrets.PROD_VPS_USER }}
+          RESHAPE_ORG: ${{ inputs.reshape_org }}
+        run: |
+          # Passed as an env PREFIX on the remote command rather than
+          # interpolated into the heredoc. The heredoc stays quoted ('REMOTE')
+          # so the runner expands nothing inside it — that is what lets
+          # server-side variables like $DATABASE_MIGRATION_URL resolve on the
+          # server, and it is worth keeping.
+          ssh "$USER@$HOST" RESHAPE_ORG="${RESHAPE_ORG:-false}" bash -euo pipefail <<'REMOTE'
+            cd /home/ubuntu/mimi
+
+            # .env.vps holds the generated production secrets and lives ONLY on
+            # the server — it is gitignored and never travels through CI. This
+            # workflow never writes to it: the neighbour-safe port block and
+            # loopback bindings it carries are the operator's to manage.
+            test -f .env.vps || { echo "::error::.env.vps missing on server"; exit 1; }
+
+            git fetch --prune origin main
+            git reset --hard origin/main
+
+            # node_modules must exist for the disposable migration runner
+            # below to resolve @mimi/database and @mimi/shared. Re-running
+            # this on every deploy is cheap once the pnpm store is warm, and
+            # it is the only thing standing between a dependency bump and a
+            # migration container that can't find its own packages.
+            sudo docker run --rm -v /home/ubuntu/mimi:/app -w /app node:22-alpine sh -c \
+              'corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.4 --activate >/dev/null 2>&1 && pnpm install --frozen-lockfile --filter @mimi/database... --filter @mimi/shared'
+
+            # Apply pending migrations BEFORE rebuilding/restarting the app
+            # containers. Missing this step is what left a migration
+            # unapplied while code that assumed it shipped went live — the
+            # stack comes up "healthy" and quietly behaves as though the fix
+            # were not there. The runner is disposable and joins the existing
+            # compose network so it can reach postgres by service name.
+            set -a; . ./.env.vps; set +a
+            sudo docker run --rm --network mimi_mimi-network \
+              -v /home/ubuntu/mimi:/app -w /app/database \
+              -e DATABASE_MIGRATION_URL="$DATABASE_MIGRATION_URL" \
+              -e DATABASE_URL="$DATABASE_URL" \
+              -e DB_APP_PASSWORD="$DB_APP_PASSWORD" \
+              node:22-alpine sh -c \
+              'corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.4 --activate >/dev/null 2>&1 && pnpm migrate'
+
+            # cohost overlay LAST — it is the one that keeps every port on
+            # 127.0.0.1 in the dedicated 41xxx block so this can never collide
+            # with, or expose anything past, the neighbour's Caddy.
+            sudo docker compose -p mimi \
+              -f docker-compose.yml -f docker-compose.vps.yml -f docker-compose.cohost.yml \
+              --env-file .env.vps \
+              up -d --build --remove-orphans
+
+            # OPT-IN, never on a push. `simulate-org.ts` renames and creates
+            # LOGINS, so it must be an explicit decision, not a side effect of
+            # shipping code. It is idempotent — a second run reports nothing
+            # to do — and it deactivates rather than deletes, so no history is
+            # lost. Same disposable runner as the migration above.
+            if [ "${RESHAPE_ORG:-false}" = "true" ]; then
+              echo "Applying the org model to the server database"
+              sudo docker run --rm --network mimi_mimi-network \
+                -v /home/ubuntu/mimi:/app -w /app/database \
+                -e DATABASE_MIGRATION_URL="$DATABASE_MIGRATION_URL" \
+                node:22-alpine sh -c \
+                'apk add --no-cache python3 make g++ >/dev/null 2>&1; corepack enable >/dev/null 2>&1 && corepack prepare pnpm@9.15.4 --activate >/dev/null 2>&1 && pnpm simulate:org'
+            fi
+
+            # --remove-orphans is scoped to project `mimi` by -p, so it can
+            # only remove containers this stack previously created — it
+            # cannot touch litellm-*, which is a different compose project.
+          REMOTE
+
+      - name: Refresh reporting rollups
+        env:
+          HOST: ${{ secrets.PROD_VPS_HOST }}
+          USER: ${{ secrets.PROD_VPS_USER }}
+        # The dashboard reads materialized views, not the base tables.
+        # Migrations create/refresh them while the database may still be
+        # near-empty relative to a bulk import, so a stale rollup renders as
+        # numbers that look plausible but are quietly wrong rather than
+        # obviously broken.
+        run: |
+          ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
+            # The list is DERIVED, not hardcoded, so adding or dropping a
+            # rollup is picked up automatically instead of breaking this step
+            # on "relation does not exist" after the app is already live.
+            # CONCURRENTLY needs a unique index, which every rollup has.
+            views=$(sudo docker exec mimi-postgres psql -U mimi -d mimi -v ON_ERROR_STOP=1 \
+              -tAc "SELECT matviewname FROM pg_matviews WHERE schemaname = 'public' ORDER BY matviewname")
+            if [ -z "$views" ]; then
+              echo "::error::no materialized views found — expected the reporting rollups from migration 100"
+              exit 1
+            fi
+            for v in $views; do
+              sudo docker exec mimi-postgres psql -U mimi -d mimi -v ON_ERROR_STOP=1 \
+                -tAc "REFRESH MATERIALIZED VIEW CONCURRENTLY ${v}" >/dev/null
+              echo "refreshed ${v}"
+            done
+          REMOTE
+
+      - name: Verify the stack answers
+        env:
+          HOST: ${{ secrets.PROD_VPS_HOST }}
+          USER: ${{ secrets.PROD_VPS_USER }}
+        run: |
+          ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
+            cd /home/ubuntu/mimi
+            port="$(grep -E '^FRONTEND_PORT=' .env.vps | cut -d= -f2)"
+
+            # Poll rather than sleep-then-check: a cold build can take a while
+            # to become healthy, and a fixed sleep either wastes time or lies.
+            #
+            # BOTH the page AND the API, and the second one is the whole
+            # point. /login is a rendered page and renders fine with no
+            # database behind it at all — a frontend-only check would report
+            # a healthy deploy while every API call is returning 500. The API
+            # probe is a login with DELIBERATELY BAD credentials: no secrets,
+            # changes nothing, unambiguous. 401 means the request reached the
+            # handler, took a pooled connection, queried users and came back.
+            # 500 means the DB pool is exhausted or gone.
+            for i in $(seq 1 30); do
+              code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port}/login" || true)"
+              api="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST \
+                "http://127.0.0.1:${port}/api/auth/login" \
+                -H 'Content-Type: application/json' \
+                -d '{"username":"deploy-healthcheck-not-a-user","password":"x"}' || true)"
+              if [ "$code" = "200" ] && [ "$api" = "401" ]; then
+                echo "frontend 200 and API 401 after ${i}0s"; exit 0
+              fi
+              sleep 10
+            done
+
+            echo "::error::stack unhealthy after 5 minutes -- frontend=${code} api=${api} (want 200/401)"
+            if [ "$api" = "500" ]; then
+              echo "::error::api=500 usually means the DB pool is exhausted; idle-in-transaction count:"
+              sudo docker exec mimi-postgres psql -U mimi -d mimi -tAc \
+                "SELECT count(*) FROM pg_stat_activity WHERE state='idle in transaction'" || true
+            fi
+            sudo docker compose -p mimi \
+              -f docker-compose.yml -f docker-compose.vps.yml -f docker-compose.cohost.yml \
+              --env-file .env.vps logs --tail 40 frontend backend
+            exit 1
+          REMOTE
+
+      - name: Confirm the neighbour is untouched
+        if: always()
+        env:
+          HOST: ${{ secrets.PROD_VPS_HOST }}
+          USER: ${{ secrets.PROD_VPS_USER }}
+        # This box's whole justification is that Mimi's deploy can never
+        # touch conextlab.ai's LiteLLM gateway. Printed on every run — success
+        # or failure — as a standing record, not just checked once by hand.
+        run: |
+          ssh "$USER@$HOST" bash -euo pipefail <<'REMOTE'
+            echo "neighbour containers:"
+            sudo docker ps --format '  {{.Names}}: {{.Status}}' \
+              --filter name=litellm-litellm-1 --filter name=litellm-db-1 --filter name=litellm-redis-1
+          REMOTE

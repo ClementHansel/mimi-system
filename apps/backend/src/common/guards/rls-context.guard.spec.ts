@@ -196,13 +196,14 @@ describe('RlsContextGuard', () => {
 
     await guard.canActivate(makeContext(request));
 
-    const tenantCall = mockClient.query.mock.calls.find(([sql]: [string]) =>
+    // No parameter annotation: `mock.calls` is `any[][]`, so declaring the
+    // element as the tuple `[string]` is a narrowing TypeScript refuses (an
+    // `any[]` may be empty). The inferred `any` is what line 120 already does.
+    const tenantCall = mockClient.query.mock.calls.find(([sql]) =>
       sql.includes('app_tenant_of_user'),
     );
     expect(tenantCall?.[1]).toEqual(['user-t']);
-    const setTenant = mockClient.query.mock.calls.find(([sql]: [string]) =>
-      sql.includes('app.tenant_id'),
-    );
+    const setTenant = mockClient.query.mock.calls.find(([sql]) => sql.includes('app.tenant_id'));
     expect(setTenant?.[1]).toEqual(['tenant-1']);
     expect(JSON.stringify(mockClient.query.mock.calls)).not.toContain('attacker-tenant');
   });

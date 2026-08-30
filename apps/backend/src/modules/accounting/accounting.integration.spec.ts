@@ -23,6 +23,7 @@
  * never hardcoded `'owner'`, per this module's brief.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { ConfigService } from '@nestjs/config';
 import {
   AccountType,
   ERR_PROOF_REQUIRED,
@@ -47,6 +48,7 @@ import { PostingEngineService } from './posting-engine.service';
 import { PaymentVerificationsService, type PaymentActor } from './payment-verifications.service';
 import { ExceptionsService } from './exceptions.service';
 import { ReportsService } from './reports.service';
+import { StorageService } from '../../kernel/storage/storage.service';
 
 import {
   appPoolForDi,
@@ -73,7 +75,13 @@ describe('M17 accounting — live DB integration', () => {
   const conflictDetector = new ConflictDetectorService(syncEvents, syncConflicts);
   const syncEmit = new SyncEmitService(syncEvents, conflictDetector);
   const payments = new PaymentVerificationsService(syncEmit, eventBus);
-  const exceptions = new ExceptionsService(eventBus);
+  // `ExceptionsService` gained a StorageService dependency when the review
+  // queue started presigning the offline-auth selfie. Constructed the same way
+  // `product.integration.spec.ts` does — `onModuleInit` is never called, so
+  // there is no MinIO bucket check, and the only method that reaches storage
+  // (`list`'s `selfieUrl`) swallows its own failures by design. This suite
+  // exercises `recordVerdict`, which does not touch it at all.
+  const exceptions = new ExceptionsService(eventBus, new StorageService(new ConfigService()));
 
   beforeAll(async () => {
     fixtures = await loadFixtures();

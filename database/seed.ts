@@ -1867,6 +1867,107 @@ async function main(): Promise<void> {
     }
 
     // =========================================================================
+    // TWO NOT-YET-DISPATCHED SURAT JALAN — one draft, one ready
+    // =========================================================================
+    // WHY THIS BLOCK EXISTS: every other SJ this repo seeds is already gone
+    // from the yard. The block above hardcodes `'in_transit'`, and
+    // `seed-history.ts` writes `isToday ? 'in_transit' : 'completed'` — so on
+    // a freshly seeded database NOTHING is in `draft` or `ready`.
+    //
+    // That pair of statuses is exactly what the dispatcher's assignment screen
+    // (`DispatchAssignScreen`) lists, and it lists only those two on purpose:
+    // `SuratJalanService.update` and `RouteService.planRoute` both refuse any
+    // other status, so a picker offering an in-transit SJ would be a picker
+    // full of dead ends. The consequence was that the whole "Penugasan
+    // Pengiriman" tab rendered its empty state on every seeded environment —
+    // the screen looked unbuilt when it was only unfed, the same failure mode
+    // `seed-history.ts` already calls out for today's in-progress route.
+    //
+    // Both are DRY runs: `driver1` already holds today's dry route above, and
+    // the "one truck type per driver per day" rule `SuratJalanService.create`
+    // enforces means a frozen run for the same driver on the same date would
+    // be data the application itself would reject.
+    {
+      const plannedSjs = [
+        { marker: 'seed-demo-sj-draft', status: 'draft', driver: 'driver2', vehicleIdx: 4 },
+        { marker: 'seed-demo-sj-ready', status: 'ready', driver: 'driver3', vehicleIdx: 5 },
+      ];
+      // Drop on the OTHER outlets than the in-transit run above, so the
+      // dispatcher screen shows two routes that do not overlap.
+      const plannedOutlets = demoOutlets.slice(3, 6);
+      const vehiclePlateList = Object.keys(vehicleId);
+      for (const spec of plannedSjs) {
+        // Same idempotency marker trick as the in-flight SJ above: surat_jalan
+        // has no client_id column, and the document number must stay free to
+        // come from a fresh allocation rather than a hardcoded literal.
+        const existing = await client.query('SELECT id FROM surat_jalan WHERE notes = $1', [
+          spec.marker,
+        ]);
+        let sjId: string;
+        if (existing.rows.length > 0) {
+          sjId = existing.rows[0].id;
+          // Roll forward for the same reason the in-flight SJ does: a planned
+          // date left in the past reads as a missed run, and the dispatcher
+          // screen sorts on it.
+          await client.query(
+            `UPDATE surat_jalan SET planned_date = $2 WHERE id = $1 AND status NOT IN ('completed','cancelled')`,
+            [sjId, isoDate(daysAgo(0))],
+          );
+        } else {
+          const sjNumber = await nextDocNumber(client, 'SJ');
+          const res = await client.query(
+            `INSERT INTO surat_jalan (sj_number, origin_location_id, shipment_type_id, driver_id, vehicle_id, status, planned_date, created_by, notes)
+             SELECT $1, $2, st.id, $3, $4, $5, $6, $7, $8
+             FROM shipment_types st WHERE st.key='dry'
+             RETURNING id`,
+            [
+              sjNumber,
+              locationId['GDG'],
+              // A short driver roster is legal (`driverCount` follows the
+              // employee mix), so fall back to driver1 rather than inserting
+              // a NULL into a NOT NULL column. Still dry, so still no clash.
+              driverRowId[spec.driver] ?? driverRowId['driver1'],
+              vehicleId[vehiclePlateList[spec.vehicleIdx]],
+              spec.status,
+              isoDate(daysAgo(0)),
+              userIdByUsername['kepalagudang1'],
+              spec.marker,
+            ],
+          );
+          sjId = res.rows[0].id;
+        }
+
+        // `dispatched_at` stays NULL and every drop stays 'pending': nothing
+        // has left the warehouse yet, so seeding departure times here would
+        // contradict the status the screen is being fed.
+        for (let i = 0; i < plannedOutlets.length; i++) {
+          const code = plannedOutlets[i];
+          const dropClientId = stableUuid(`${spec.marker}-drop-${i}`);
+          const dropRes = await client.query(
+            `INSERT INTO sj_drops (sj_id, drop_seq, location_id, status, client_id)
+             VALUES ($1,$2,$3,'pending',$4)
+             ON CONFLICT (client_id) DO NOTHING RETURNING id`,
+            [sjId, i + 1, locationId[code], dropClientId],
+          );
+          const dropId =
+            dropRes.rows[0]?.id ??
+            (await client.query('SELECT id FROM sj_drops WHERE client_id=$1', [dropClientId]))
+              .rows[0].id;
+          for (const itemName of coreItems.slice(0, 3)) {
+            await client.query(
+              `INSERT INTO sj_lines (sj_id, drop_id, item_id, unit_id, qty)
+               VALUES ($1,$2,$3,$4,$5) ON CONFLICT (drop_id, item_id) DO NOTHING`,
+              [sjId, dropId, itemId[itemName], unitId['kg'], rnd(20, 60)],
+            );
+          }
+        }
+      }
+      console.log(
+        `  - two not-yet-dispatched Surat Jalan (draft / ready) with ${plannedOutlets.length} drops each`,
+      );
+    }
+
+    // =========================================================================
     // ATTENDANCE — last 5 workdays for a sample of employees
     // =========================================================================
     let attCount = 0;

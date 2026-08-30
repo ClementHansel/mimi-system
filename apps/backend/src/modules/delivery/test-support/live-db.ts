@@ -98,8 +98,8 @@ async function pickOrMintFreeDriver(pool: Pool): Promise<{ id: string; user_id: 
 
   const suffix = randomUUID().slice(0, 8);
   const user = await pool.query<{ id: string }>(
-    `INSERT INTO users (username, name, password_hash, role_id)
-     SELECT $1, 'Test fixture driver', u.password_hash, r.id
+    `INSERT INTO users (username, name, password_hash, role_id, tenant_id)
+     SELECT $1, 'Test fixture driver', u.password_hash, r.id, app_the_only_tenant()
        FROM roles r
        JOIN users u ON u.role_id = r.id
       WHERE r.key = 'driver'
@@ -144,6 +144,7 @@ export async function withRollback<T>(
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
       ctx.locationIds === null ? '' : ctx.locationIds.join(','),
     ]);
@@ -172,6 +173,7 @@ export async function withCommit<T>(
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
       ctx.locationIds === null ? '' : ctx.locationIds.join(','),
     ]);

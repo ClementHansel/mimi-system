@@ -163,8 +163,11 @@ export class LocationService {
         // NULL, not COALESCE(..., 100): an omitted radius means "inherit
         // `hr.geofence_radius_m`" (migration 229), and baking 100 in here would
         // silently give every new outlet a permanent override at the old value.
-        `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude, geofence_radius_m, delivery_cadence)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        // `tenant_id` from the session, not the payload — see the same note in
+        // `users.repository.ts`. An outlet created here belongs to the company
+        // of whoever created it, and to no other.
+        `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude, geofence_radius_m, delivery_cadence, tenant_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, current_setting('app.tenant_id')::uuid)
          RETURNING id`,
         [
           dto.code,

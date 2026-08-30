@@ -132,6 +132,12 @@ export class AuthService {
       // every subsequent request for this user.
       await client.query(`SELECT set_config('app.user_id', $1, true)`, [user.id]);
       await client.query(`SELECT set_config('app.role', $1, true)`, [user.role_key]);
+      // THIS user's tenant, not "the only" tenant. Login is the one place that
+      // must get this from the identity being authenticated — a shared instance
+      // authenticates people from different companies through this same path.
+      await client.query(`SELECT set_config('app.tenant_id', app_tenant_of_user($1)::text, true)`, [
+        user.id,
+      ]);
       const locationScope = await this.scope.resolveLocationIds(client, {
         sub: user.id,
         roleKey: user.role_key,
@@ -237,6 +243,9 @@ export class AuthService {
         });
       }
       await client.query(`SELECT set_config('app.role', $1, true)`, [user.role_key]);
+      await client.query(`SELECT set_config('app.tenant_id', app_tenant_of_user($1)::text, true)`, [
+        user.id,
+      ]);
 
       const session = await this.repo.findSession(client, payload.sessionId);
       const sessionValid =

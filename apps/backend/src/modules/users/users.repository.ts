@@ -155,7 +155,13 @@ export class UsersRepository {
     },
   ): Promise<UUID> {
     const res = await client.query<{ id: UUID }>(
-      `INSERT INTO users (username, name, email, phone, password_hash, role_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      // `tenant_id` comes from the SESSION, never from the caller's payload —
+      // a create endpoint that accepted a tenant would let an owner mint users
+      // into another company. `current_setting` is what RlsContextGuard set
+      // from this user's own row, so a new user always lands in the creator's
+      // tenant and nowhere else.
+      `INSERT INTO users (username, name, email, phone, password_hash, role_id, tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6, current_setting('app.tenant_id')::uuid) RETURNING id`,
       [row.username, row.name, row.email, row.phone, row.passwordHash, row.roleId],
     );
     return res.rows[0]!.id;

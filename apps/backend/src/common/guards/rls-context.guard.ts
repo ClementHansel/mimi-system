@@ -16,7 +16,7 @@ export interface RequestWithDbContext {
 /**
  * Sets the Postgres session context the entire RLS layer rests on
  * (CONTRACTS.md §1.14 block 009): a `SET LOCAL ROLE`, then `app.user_id`,
- * `app.role`, `app.location_ids`. Runs AFTER `JwtAuthGuard` (needs
+ * `app.role`, `app.tenant_id`, `app.location_ids`. Runs AFTER `JwtAuthGuard` (needs
  * `request.user`) and BEFORE `PermissionsGuard`. Must be paired with
  * `RlsCleanupInterceptor`, which commits/rolls back and releases the
  * connection this guard checks out — see that file for why release alone
@@ -137,6 +137,40 @@ export class RlsContextGuard implements CanActivate {
       // Phase 1 — from the verified JWT, no DB read required.
       await client.query(`SELECT set_config('app.user_id', $1, true)`, [user.sub]);
       await client.query(`SELECT set_config('app.role', $1, true)`, [user.roleKey]);
+
+      // Phase 1.5 — the TENANT, the outermost scoping dimension
+      // (docs/MULTI-TENANCY.md §3). Must precede phase 2: `app_in_tenant()`
+      // fails closed on an unset `app.tenant_id`, so any read before this
+      // point sees nothing.
+      //
+      // Resolved from the user's OWN ROW via `app_tenant_of_user()`, never
+      // from a header, query parameter or body. Anything the caller can
+      // influence is a tenant-escape vector, and this is the boundary between
+      // one client's data and another's.
+      //
+      // It is deliberately NOT a JWT claim, despite the JWT being signed and
+      // therefore trustworthy. A tenant move (or a token minted before this
+      // column existed) would otherwise keep working against the old tenant
+      // until the access token expired — a stale claim on the one dimension
+      // that must never be stale.
+      //
+      // `app_tenant_of_user` is SECURITY DEFINER because of a real bootstrap
+      // cycle: the `users` policy this enables cannot be satisfied until
+      // `app.tenant_id` is set, and it cannot be set without reading `users`.
+      // `app_is_self(id)` is kept outside the tenant gate in that policy for
+      // the same reason.
+      const tenantRes = await client.query<{ tenant_id: string | null }>(
+        `SELECT app_tenant_of_user($1) AS tenant_id`,
+        [user.sub],
+      );
+      const tenantId = tenantRes.rows[0]?.tenant_id ?? null;
+      if (!tenantId) {
+        // No tenant means no scope, and an empty string would fail closed
+        // anyway — but refusing here says so out loud instead of handing back
+        // a session that silently sees nothing and looks like empty data.
+        throw new Error(`No tenant resolved for user ${user.sub}`);
+      }
+      await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [tenantId]);
 
       // Phase 2 — resolve location scope UNDER RLS, now that phase 0's role
       // switch and phase 1's vars are live on THIS client/transaction. Must

@@ -86,8 +86,8 @@ describe.skipIf(!process.env.DATABASE_URL || !process.env.DATABASE_MIGRATION_URL
 
       const makeManager = async (username: string): Promise<string> => {
         const res = await ownerPool.query<{ id: string }>(
-          `INSERT INTO users (username, email, password_hash, name, role_id, is_active)
-           VALUES ($1, $2, 'x-not-a-real-hash', $3, $4, true)
+          `INSERT INTO users (username, email, password_hash, name, role_id, is_active, tenant_id)
+           VALUES ($1, $2, 'x-not-a-real-hash', $3, $4, true, app_the_only_tenant())
            RETURNING id`,
           [username, `${username}@example.invalid`, 'Manager Under Test', roleId],
         );

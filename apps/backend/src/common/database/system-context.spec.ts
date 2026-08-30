@@ -19,7 +19,7 @@ function makeClient() {
 }
 
 describe('assertSystemContext', () => {
-  it('switches role, then sets app.role, app.user_id, app.location_ids — in that order', async () => {
+  it('switches role, then sets app.role, app.user_id, app.tenant_id, app.location_ids — in that order', async () => {
     const client = makeClient();
 
     await assertSystemContext(client as never, { role: SYSTEM_CENTRAL_ROLE });
@@ -30,7 +30,15 @@ describe('assertSystemContext', () => {
       expect.stringContaining('app.user_id'),
       [SYSTEM_SENTINEL_USER_ID],
     ]);
-    expect(client.calls[3]).toEqual([expect.stringContaining('app.location_ids'), ['']]);
+    // The tenant, and it takes NO bind parameter: background work has no
+    // acting user to derive one from, so the value comes from
+    // `app_the_only_tenant()` inside the database, which raises rather than
+    // guessing once a second tenant exists.
+    expect(client.calls[3]).toEqual([
+      expect.stringContaining('app.tenant_id'),
+      undefined,
+    ]);
+    expect(client.calls[4]).toEqual([expect.stringContaining('app.location_ids'), ['']]);
   });
 
   it('defaults app.user_id to the inert all-zero sentinel when no userId is given', async () => {

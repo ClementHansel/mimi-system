@@ -66,6 +66,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         await client.query('BEGIN');
         await client.query('SET LOCAL ROLE app_user');
         await client.query(`SELECT set_config('app.role', 'kasir', true)`);
+        await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
         await client.query(`SELECT set_config('app.user_id', $1, true)`, [
           '99999999-9999-9999-9999-999999999999',
         ]);

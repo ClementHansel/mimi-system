@@ -112,6 +112,7 @@ async function withCommitAs<T>(
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
       ctx.locationIds.join(','),
     ]);

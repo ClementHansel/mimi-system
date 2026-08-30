@@ -41,6 +41,7 @@ async function withRequestContext<T>(
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.role', 'owner', true)`);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(
       `SELECT set_config('app.user_id', '00000000-0000-0000-0000-000000000000', true)`,
     );
@@ -74,6 +75,7 @@ async function withOwnUserContext<T>(
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
     await client.query(`SELECT set_config('app.role', '', true)`);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', '', true)`);
     const result = await fn(client);
     await client.query('COMMIT');

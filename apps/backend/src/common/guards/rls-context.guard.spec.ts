@@ -29,6 +29,10 @@ describe('RlsContextGuard', () => {
     mockClient = {
       query: vi.fn(async (sql: string) => {
         callLog.push(sql);
+        // `app_tenant_of_user` is the one query whose RESULT the guard acts on
+        // — it refuses the request when no tenant comes back. A blanket
+        // `{ rows: [] }` therefore makes every test fail for the wrong reason.
+        if (sql.includes('app_tenant_of_user')) return { rows: [{ tenant_id: 'tenant-1' }] };
         return { rows: [] };
       }),
       release: vi.fn(() => callLog.push('RELEASE')),
@@ -117,13 +121,18 @@ describe('RlsContextGuard', () => {
     expect(roleCall).toEqual(['SET LOCAL ROLE app_user']); // exactly one arg — no params array
   });
 
-  it('runs the two phases in order: app.user_id/app.role set BEFORE ScopeService runs, app.location_ids set AFTER — on the SAME client', async () => {
+  it('runs the phases in order: app.user_id/app.role/app.tenant_id set BEFORE ScopeService runs, app.location_ids set AFTER — on the SAME client', async () => {
     vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+    // CAPTURE inside the mock, ASSERT outside it.
+    //
+    // This used to `expect(...)` directly inside `resolveLocationIds`, where
+    // the guard's own try/catch swallows the thrown assertion and turns the
+    // failure into `return false` — after which the test's remaining
+    // expectations still pass. It was proven inert when phase 1.5 took the
+    // set_config count from 2 to 3 and this test kept reporting green.
+    let sawAtScopeTime: string[] = [];
     scope.resolveLocationIds.mockImplementation(async () => {
-      // At the moment ScopeService (phase 2) runs, phase 1's vars must
-      // already be visible in the call log — never the other way around.
-      expect(callLog.some((sql) => sql.includes('set_config'))).toBe(true);
-      expect(callLog.filter((sql) => sql.includes('set_config'))).toHaveLength(2); // user_id, role — NOT location_ids yet
+      sawAtScopeTime = callLog.filter((sql) => sql.includes('set_config'));
       return ['loc-9'];
     });
     const request: RequestWithDbContext = {
@@ -132,6 +141,12 @@ describe('RlsContextGuard', () => {
 
     await guard.canActivate(makeContext(request));
 
+    // Exactly the three that must precede scope resolution — user_id, role and
+    // tenant_id — and NOT location_ids, which is phase 2's own output.
+    expect(sawAtScopeTime).toHaveLength(3);
+    expect(sawAtScopeTime.some((sql) => sql.includes('app.tenant_id'))).toBe(true);
+    expect(sawAtScopeTime.some((sql) => sql.includes('app.location_ids'))).toBe(false);
+
     // ScopeService is called with THIS request's client (phase 2 runs under
     // the same RLS transaction phase 1 opened, never a separate connection)
     // and the plain {sub, roleKey} shape — not the raw JwtAccessPayload.
@@ -139,8 +154,57 @@ describe('RlsContextGuard', () => {
       sub: 'user-9',
       roleKey: 'supervisor',
     });
-    // And app.location_ids is set only after phase 2 resolves.
-    expect(callLog.filter((sql) => sql.includes('set_config'))).toHaveLength(3);
+    // And app.location_ids is set only after phase 2 resolves: four in total.
+    expect(callLog.filter((sql) => sql.includes('set_config'))).toHaveLength(4);
+  });
+
+  it('REFUSES the request when no tenant resolves, rather than opening a scopeless session', async () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+    // A user row with no tenant. `app_in_tenant()` fails closed, so such a
+    // session would see nothing anyway — but "sees nothing" is
+    // indistinguishable from "this client has no data", which is the shape a
+    // silent tenancy bug takes. Refusing says so out loud.
+    mockClient.query.mockImplementation(async (sql: string) => {
+      callLog.push(sql);
+      if (sql.includes('app_tenant_of_user')) return { rows: [{ tenant_id: null }] };
+      return { rows: [] };
+    });
+    scope.resolveLocationIds.mockResolvedValue([]);
+    const request: RequestWithDbContext = {
+      user: { sub: 'user-nt', username: 'nt', roleKey: 'kasir', locationIds: [] },
+    };
+
+    expect(await guard.canActivate(makeContext(request))).toBe(false);
+    // And it must not leave the connection checked out — this guard is the one
+    // that leaked the whole pool once already (see app.module.ts).
+    expect(callLog).toContain('RELEASE');
+    expect(callLog.some((sql) => sql.includes('app.tenant_id'))).toBe(false);
+  });
+
+  it('resolves the tenant from the user id ONLY — never from anything the caller can set', async () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+    scope.resolveLocationIds.mockResolvedValue([]);
+    // A hostile payload: headers and body carrying another tenant. The guard
+    // reads neither. This is the tenant-escape vector the whole boundary
+    // exists to prevent, and it is cheap to assert we never opened the door.
+    const request = {
+      user: { sub: 'user-t', username: 't', roleKey: 'kasir', locationIds: [] },
+      headers: { 'x-tenant-id': 'attacker-tenant' },
+      body: { tenantId: 'attacker-tenant' },
+      query: { tenantId: 'attacker-tenant' },
+    } as unknown as RequestWithDbContext;
+
+    await guard.canActivate(makeContext(request));
+
+    const tenantCall = mockClient.query.mock.calls.find(([sql]: [string]) =>
+      sql.includes('app_tenant_of_user'),
+    );
+    expect(tenantCall?.[1]).toEqual(['user-t']);
+    const setTenant = mockClient.query.mock.calls.find(([sql]: [string]) =>
+      sql.includes('app.tenant_id'),
+    );
+    expect(setTenant?.[1]).toEqual(['tenant-1']);
+    expect(JSON.stringify(mockClient.query.mock.calls)).not.toContain('attacker-tenant');
   });
 
   it('sets an empty app.location_ids for an unrestricted (central) role', async () => {

@@ -69,6 +69,7 @@ export async function asRequest<T>(
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
       ctx.locationIds.join(','),
     ]);
@@ -256,7 +257,8 @@ export function freshId(): string {
 export async function insertIsolatedOutletLocation(): Promise<string> {
   const code = `T${randomBytes(4).toString('hex').toUpperCase()}`;
   const res = await getOwnerPool().query<{ id: string }>(
-    `INSERT INTO locations (code, name, type, city) VALUES ($1, 'W3-10 isolated test outlet', 'outlet', 'Balikpapan') RETURNING id`,
+    `INSERT INTO locations (code, name, type, city, tenant_id)
+     VALUES ($1, 'W3-10 isolated test outlet', 'outlet', 'Balikpapan', app_the_only_tenant()) RETURNING id`,
     [code],
   );
   return res.rows[0]!.id;

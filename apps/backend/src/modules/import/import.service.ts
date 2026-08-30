@@ -241,6 +241,7 @@ export class ImportService {
       await client.query('SET LOCAL ROLE app_user');
       await client.query(`SELECT set_config('app.user_id', $1, true)`, [actorUserId]);
       await client.query(`SELECT set_config('app.role', $1, true)`, [user.roleKey]);
+      await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
       await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
         locationScope === null ? '' : locationScope.join(','),
       ]);

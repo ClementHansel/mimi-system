@@ -1172,6 +1172,7 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
         });
 
         await client.query(`SELECT set_config('app.role', $1, true)`, [RoleKey.KEPALA_GUDANG]);
+        await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
         await client.query(`SELECT set_config('app.user_id', $1, true)`, [kgdApproverId]);
         // ScopeService's real kepalaGudangScope() is "their warehouse UNION every outlet that
         // warehouse has shipped to" — this replenishment request's `approvals.location_id` is the

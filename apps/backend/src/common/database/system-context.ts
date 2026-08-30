@@ -162,6 +162,12 @@ export async function assertSystemContext(
   await client.query(`SELECT set_config('app.user_id', $1, true)`, [
     options.userId ?? SYSTEM_SENTINEL_USER_ID,
   ]);
+  // Background work has no acting user, so it has no tenant to derive one
+  // from. `app_the_only_tenant()` returns the tenant while exactly one exists
+  // and RAISES as soon as a second does — deliberately failing the job rather
+  // than running a cron sweep against an arbitrary company's data. Making
+  // background work tenant-aware is step 2 of docs/MULTI-TENANCY.md.
+  await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
   await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
     (options.locationIds ?? []).join(','),
   ]);

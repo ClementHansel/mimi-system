@@ -167,6 +167,7 @@ export async function withRollbackAs<T>(
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
       ctx.locationIds.join(','),
     ]);
@@ -450,6 +451,7 @@ export async function readOwnNotifications(
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
     await client.query(`SELECT set_config('app.role', '', true)`);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', '', true)`);
     const res = await client.query<{ type: string; title: string; body: string }>(
       `SELECT type, title, body FROM notifications WHERE user_id = $1 ORDER BY created_at DESC`,

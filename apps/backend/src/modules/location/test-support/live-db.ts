@@ -78,6 +78,7 @@ export async function withRollback<T>(
       opts.userId ?? SYSTEM_CONTEXT_USER_ID,
     ]);
     await client.query(`SELECT set_config('app.role', $1, true)`, [opts.roleKey ?? 'owner']);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
       (opts.locationIds ?? []).join(','),
     ]);
@@ -104,11 +105,29 @@ export interface Fixtures {
 /** Reads real seeded rows over the OWNER pool — never inserts master data this agent's tests don't own. */
 export async function loadFixtures(): Promise<Fixtures> {
   const pool = getOwnerPool();
+  // ORDER BY, and only locations that actually HAVE a storage area.
+  //
+  // These were bare `LIMIT 1` with no ORDER BY, so which row came back depended
+  // on physical heap order — and other specs insert locations into this shared
+  // database (`device-registry`'s "isolated test outlet", which has no storage
+  // areas at all). Picking that one made `storageAreaOutlet` undefined and this
+  // whole fixture threw, in a spec that had nothing to do with the change that
+  // moved the rows. It surfaced when migration 263's table-wide UPDATE rewrote
+  // every `locations` row and reshuffled that order.
+  //
+  // `code` is unique, so this is stable; the EXISTS is what makes it correct
+  // rather than merely deterministic.
   const warehouse = await pool.query<{ id: string }>(
-    `SELECT id FROM locations WHERE type = 'warehouse' LIMIT 1`,
+    `SELECT l.id FROM locations l
+      WHERE l.type = 'warehouse'
+        AND EXISTS (SELECT 1 FROM storage_areas s WHERE s.location_id = l.id)
+      ORDER BY l.code LIMIT 1`,
   );
   const outlet = await pool.query<{ id: string }>(
-    `SELECT id FROM locations WHERE type = 'outlet' LIMIT 1`,
+    `SELECT l.id FROM locations l
+      WHERE l.type = 'outlet'
+        AND EXISTS (SELECT 1 FROM storage_areas s WHERE s.location_id = l.id)
+      ORDER BY l.code LIMIT 1`,
   );
   const items = await pool.query<{ id: string }>(`SELECT id FROM items ORDER BY id LIMIT 2`);
   const units = await pool.query<{ id: string }>(`SELECT id FROM units ORDER BY code LIMIT 2`);

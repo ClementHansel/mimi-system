@@ -53,6 +53,7 @@ async function withCentralContext<T>(
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE app_user');
     await client.query(`SELECT set_config('app.role', 'owner', true)`);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', '', true)`);
     const result = await fn(client);
     await client.query('COMMIT');

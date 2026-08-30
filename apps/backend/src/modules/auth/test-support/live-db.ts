@@ -93,6 +93,7 @@ export async function withRollback<T>(
     await client.query(`SELECT set_config('app.role', $1, true)`, [
       ctx.roleKey ?? SYSTEM_CENTRAL_ROLE,
     ]);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
       (ctx.locationIds ?? []).join(','),
     ]);
@@ -154,7 +155,11 @@ export async function insertTestUser(row: {
   ]);
   if (!roleRes.rows[0]) throw new Error(`Unknown role '${row.roleKey}'`);
   const res = await pool.query<{ id: string }>(
-    `INSERT INTO users (username, name, role_id, password_hash, pin_hash) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+    // `tenant_id` is explicit here rather than defaulted: the column has no
+    // DEFAULT on purpose (migration 263), so a fixture that forgets a tenant
+    // fails loudly instead of quietly landing in whichever company sorts first.
+    `INSERT INTO users (username, name, role_id, password_hash, pin_hash, tenant_id)
+     VALUES ($1,$2,$3,$4,$5, app_the_only_tenant()) RETURNING id`,
     [row.username, row.name, roleRes.rows[0].id, row.passwordHash, row.pinHash ?? null],
   );
   return res.rows[0]!.id;
@@ -270,6 +275,7 @@ export async function asCommittedRequest<T>(
     await client.query(`SELECT set_config('app.role', $1, true)`, [
       ctx.roleKey ?? SYSTEM_CENTRAL_ROLE,
     ]);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
       (ctx.locationIds ?? []).join(','),
     ]);

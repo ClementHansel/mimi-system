@@ -8,6 +8,7 @@ import {
   Settings as SettingsIcon,
   FileText,
   Palette,
+  Mail,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
@@ -17,6 +18,7 @@ import { UsersPanel } from './UsersPanel';
 import { MasterDataPanel } from './MasterDataPanel';
 import { AuditPanel } from './AuditPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { EmailSettingsPanel } from './EmailSettingsPanel';
 import { DocumentsPanel } from './DocumentsPanel';
 import { BrandPanel } from './BrandPanel';
 
@@ -89,6 +91,16 @@ export function AdminShell() {
         icon: FileText,
         visible: can('doc_template.manage'),
         content: <DocumentsPanel />,
+      },
+      {
+        // Its own tab rather than a row inside Settings: this holds a live
+        // credential and a connection test, which is a different kind of thing
+        // from the key/value rows the Settings tab lists.
+        value: 'email',
+        labelKey: 'admin.tabs.email',
+        icon: Mail,
+        visible: can('settings.read'),
+        content: <EmailSettingsPanel />,
       },
       {
         value: 'brand',

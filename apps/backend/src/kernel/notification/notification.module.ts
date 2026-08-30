@@ -31,6 +31,10 @@ import { NotificationOutboxRepository } from './channels/notification-outbox.rep
   // conversation messages through the SAME channel so that chat inherits the
   // outbox record and the `WA_ENABLED` kill switch instead of holding a second
   // opinion about whether a message was delivered.
-  exports: [NotificationService, WhatsAppChannelService],
+  // `EmailChannelService` is exported for `modules/settings`, whose email
+  // settings screen must invalidate this service's per-tenant transporter cache
+  // on save — otherwise a corrected App Password would not take effect until
+  // the next restart.
+  exports: [NotificationService, WhatsAppChannelService, EmailChannelService],
 })
 export class NotificationModule {}

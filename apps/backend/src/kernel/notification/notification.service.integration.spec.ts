@@ -135,7 +135,7 @@ describe('NotificationService (integration, live Postgres as mimi_app)', () => {
     try {
       const outboxRepo = new NotificationOutboxRepository(pool);
       const whatsapp = new WhatsAppChannelService(fakeConfig({ WA_ENABLED: 'false' }), outboxRepo);
-      const email = new EmailChannelService(fakeConfig({ SMTP_HOST: '' }), outboxRepo);
+      const email = new EmailChannelService(fakeConfig({ SMTP_HOST: '' }), outboxRepo, pool);
       const gateway = { pushToUser: vi.fn() } as unknown as NotificationGateway;
       const inApp = new InAppChannelService(pool, gateway);
       const service = new NotificationService(pool, inApp, email, whatsapp);
@@ -213,7 +213,7 @@ describe('NotificationService (integration, live Postgres as mimi_app)', () => {
     // internally for every query it issues (`common/database/system-context.ts`).
     const outboxRepo = new NotificationOutboxRepository(pool);
     const whatsapp = new WhatsAppChannelService(fakeConfig({ WA_ENABLED: 'false' }), outboxRepo);
-    const email = new EmailChannelService(fakeConfig({ SMTP_HOST: '' }), outboxRepo);
+    const email = new EmailChannelService(fakeConfig({ SMTP_HOST: '' }), outboxRepo, pool);
     const gateway = { pushToUser: vi.fn() } as unknown as NotificationGateway;
     const inApp = new InAppChannelService(pool, gateway);
     const service = new NotificationService(pool, inApp, email, whatsapp);

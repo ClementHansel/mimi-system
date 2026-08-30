@@ -6,6 +6,8 @@ import { SettingsRepository } from './settings.repository';
 import { StatutoryController } from './statutory.controller';
 import { StatutoryService } from './statutory.service';
 import { StatutoryRepository } from './statutory.repository';
+import { EmailSettingsService } from './email-settings.service';
+import { NotificationModule } from '../../kernel/notification/notification.module';
 
 /**
  * M20 `settings` — owned by Wave 3, agent W3-01 (senior-be).
@@ -23,8 +25,14 @@ import { StatutoryRepository } from './statutory.repository';
  * agent's final report.
  */
 @Module({
-  imports: [SyncEngineModule],
+  imports: [SyncEngineModule, NotificationModule],
   controllers: [SettingsController, StatutoryController],
-  providers: [SettingsService, SettingsRepository, StatutoryService, StatutoryRepository],
+  providers: [
+    SettingsService,
+    SettingsRepository,
+    StatutoryService,
+    StatutoryRepository,
+    EmailSettingsService,
+  ],
 })
 export class SettingsModule {}

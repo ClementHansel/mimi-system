@@ -413,7 +413,9 @@ export function buildApprovalServiceWithNotifications(): ApprovalService {
   const pool = getAppPool();
   const outbox = new NotificationOutboxRepository(pool);
   const whatsapp = new WhatsAppChannelService(fakeConfig({ WA_ENABLED: 'false' }), outbox);
-  const email = new EmailChannelService(fakeConfig({ SMTP_HOST: '' }), outbox);
+  // The pool is the third argument now: the channel looks up the recipient's
+  // tenant SMTP (migration 264) instead of one process-wide transporter.
+  const email = new EmailChannelService(fakeConfig({ SMTP_HOST: '' }), outbox, pool);
   const gateway = { pushToUser: () => {} } as unknown as NotificationGateway;
   const inApp = new InAppChannelService(pool, gateway);
   const notifications = new NotificationService(pool, inApp, email, whatsapp);

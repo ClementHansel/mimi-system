@@ -28,6 +28,8 @@ interface RecipientContact {
   id: string;
   email: string | null;
   phone: string | null;
+  /** Whose SMTP sends to this person — see `resolveContacts`. */
+  tenantId: string;
 }
 
 /**
@@ -81,6 +83,7 @@ export class NotificationService {
       if (activeChannels.includes('email')) {
         if (contact.email) {
           const sendResult = await this.email.send(
+            contact.tenantId,
             contact.email,
             request.templateKey,
             text.title,
@@ -123,11 +126,26 @@ export class NotificationService {
   private async resolveContacts(userIds: string[]): Promise<RecipientContact[]> {
     if (userIds.length === 0) return [];
     return withSystemContext(this.pool, { role: SYSTEM_CENTRAL_ROLE }, async (client) => {
-      const result = await client.query<{ id: string; email: string | null; phone: string | null }>(
-        'SELECT id, email, phone FROM users WHERE id = ANY($1::uuid[])',
+      // `tenant_id` comes back too, because outbound mail is sent through the
+      // RECIPIENT'S OWN tenant SMTP (migration 264). A notification to client
+      // A's staff must leave from client A's mailbox, not from whichever
+      // company happened to configure email first.
+      const result = await client.query<{
+        id: string;
+        email: string | null;
+        phone: string | null;
+        tenant_id: string;
+      }>(
+        'SELECT id, email, phone, tenant_id FROM users WHERE id = ANY($1::uuid[])',
         [userIds],
       );
-      return result.rows;
+      // snake_case out of Postgres, camelCase in the domain type.
+      return result.rows.map((r) => ({
+        id: r.id,
+        email: r.email,
+        phone: r.phone,
+        tenantId: r.tenant_id,
+      }));
     });
   }
 }

@@ -6,9 +6,18 @@
 # Docker daemon — all three would hit the neighbours.
 name: deploy-vps
 
+# RETIRED as an automatic deploy (owner decision, 2026-08-30).
+#
+# Production now lives at https://mimichicken.my.id and deploys from
+# `sammyjason39/mimichicken-os` via `deploy-prod.yml`. The demo box
+# (150.109.15.108) stays reachable for reference, but it no longer rebuilds on
+# every push: two environments drifting from one branch means every push has to
+# be reasoned about twice, and a bad commit reached both at once.
+#
+# `push:` is deliberately removed rather than commented out — a commented
+# trigger is one uncomment away from silently coming back. Deploy it by hand
+# from the Actions tab when it is actually wanted.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       reshape_org:

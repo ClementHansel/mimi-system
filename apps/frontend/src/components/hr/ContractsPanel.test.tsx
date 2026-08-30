@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ContractsPanel } from './ContractsPanel';
 import { useSessionStore } from '@/stores/session-store';
 import { api } from '@/lib/api';
@@ -16,6 +16,12 @@ import { api } from '@/lib/api';
  * that wrong in either direction (offering delete on a signed/active
  * contract, or never offering it at all) is the kind of bug a glance at the
  * table would not catch.
+ *
+ * Those actions live in `ContractDetailModal` as of 2026-08-30, reached by
+ * clicking the row — so the guards are now asserted per OPENED contract
+ * rather than by counting buttons across the table. That is a stronger
+ * assertion, not a weaker one: counting proved "one row somewhere offers
+ * delete", while opening proves WHICH one does.
  */
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
@@ -104,7 +110,23 @@ describe('ContractsPanel', () => {
     expect(await screen.findByText('KONTRAK/202601/0001')).toBeInTheDocument();
     expect(screen.getByText('KONTRAK/202601/0002')).toBeInTheDocument();
     // Fully signed vs. still-outstanding read differently.
-    expect(screen.getByText('Sudah ditandatangani semua pihak')).toBeInTheDocument();
+    expect(screen.getByText('Lengkap')).toBeInTheDocument();
+    expect(screen.getByText('Belum lengkap')).toBeInTheDocument();
+  });
+
+  it('opens the contract detail on a row click, with the fields the list drops', async () => {
+    setPermissions(['hr.contract.read']);
+    mockApiGet([DRAFT_UNSIGNED]);
+    render(<ContractsPanel />);
+
+    fireEvent.click(await screen.findByText('KONTRAK/202601/0001'));
+
+    expect(await screen.findByText('Kontrak KONTRAK/202601/0001')).toBeInTheDocument();
+    // Jabatan and Gaji Pokok are not columns any more — the dialog is the
+    // only place they are readable, so their absence here would mean the
+    // trimmed table simply lost them.
+    expect(screen.getByText('Kasir')).toBeInTheDocument();
+    expect(screen.getByText('Rp3.500.000')).toBeInTheDocument();
   });
 
   it('hides create, sign, terminate and delete without hr.contract.manage', async () => {
@@ -112,10 +134,14 @@ describe('ContractsPanel', () => {
     mockApiGet([DRAFT_UNSIGNED]);
     render(<ContractsPanel />);
 
-    await screen.findByText('KONTRAK/202601/0001');
+    // Opened, not just listed: the actions moved into the detail dialog, so
+    // asserting against the closed table would pass for the wrong reason.
+    fireEvent.click(await screen.findByText('KONTRAK/202601/0001'));
+    await screen.findByText('Kontrak KONTRAK/202601/0001');
     expect(screen.queryByRole('button', { name: 'Buat Kontrak' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Catat Tanda Tangan/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Hapus/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Ubah/ })).not.toBeInTheDocument();
   });
 
   it('shows create with hr.contract.manage', async () => {
@@ -134,12 +160,19 @@ describe('ContractsPanel', () => {
     mockApiGet([DRAFT_UNSIGNED, ACTIVE_FULLY_SIGNED]);
     render(<ContractsPanel />);
 
-    await screen.findByText('KONTRAK/202601/0001');
-    // Exactly one delete button — the draft/unsigned row — never the active,
-    // fully-signed one. `ContractsService.remove` refuses the latter server
-    // side; this proves the button itself is never offered for it.
-    const deleteButtons = screen.getAllByRole('button', { name: 'Hapus' });
-    expect(deleteButtons).toHaveLength(1);
+    fireEvent.click(await screen.findByText('KONTRAK/202601/0001'));
+    await screen.findByText('Kontrak KONTRAK/202601/0001');
+    expect(screen.getByRole('button', { name: /Hapus/ })).toBeInTheDocument();
+    // Two controls share the name: `Modal`'s header X and the footer
+    // button. Either closes it; take the first.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Tutup' })[0]!);
+
+    // The active, fully-signed contract offers no delete at all.
+    // `ContractsService.remove` refuses it server side; this proves the
+    // button is never presented for it either.
+    fireEvent.click(screen.getByText('KONTRAK/202601/0002'));
+    await screen.findByText('Kontrak KONTRAK/202601/0002');
+    expect(screen.queryByRole('button', { name: /Hapus/ })).not.toBeInTheDocument();
   });
 
   it('offers terminate only for an active contract', async () => {
@@ -147,8 +180,15 @@ describe('ContractsPanel', () => {
     mockApiGet([DRAFT_UNSIGNED, ACTIVE_FULLY_SIGNED]);
     render(<ContractsPanel />);
 
-    await screen.findByText('KONTRAK/202601/0001');
-    const terminateButtons = screen.getAllByRole('button', { name: 'Putus Kontrak' });
-    expect(terminateButtons).toHaveLength(1);
+    fireEvent.click(await screen.findByText('KONTRAK/202601/0001'));
+    await screen.findByText('Kontrak KONTRAK/202601/0001');
+    expect(screen.queryByRole('button', { name: /Putus Kontrak/ })).not.toBeInTheDocument();
+    // Two controls share the name: `Modal`'s header X and the footer
+    // button. Either closes it; take the first.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Tutup' })[0]!);
+
+    fireEvent.click(screen.getByText('KONTRAK/202601/0002'));
+    await screen.findByText('Kontrak KONTRAK/202601/0002');
+    expect(screen.getByRole('button', { name: /Putus Kontrak/ })).toBeInTheDocument();
   });
 });

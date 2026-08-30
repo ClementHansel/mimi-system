@@ -95,7 +95,7 @@ describe('asset lifecycle (integration, live Postgres)', () => {
       const outbox = new NotificationOutboxRepository(pool);
       const gateway = new NotificationGateway(new TokenService(stubConfig));
       const inApp = new InAppChannelService(pool, gateway);
-      const email = new EmailChannelService(stubConfig, outbox);
+      const email = new EmailChannelService(stubConfig, outbox, pool);
       const whatsapp = new WhatsAppChannelService(stubConfig, outbox);
       const notifications = new NotificationService(pool, inApp, email, whatsapp);
 

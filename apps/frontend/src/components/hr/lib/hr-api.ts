@@ -169,6 +169,32 @@ export function createShift(body: {
   return api.post<WorkShift>('/hr/shifts', body);
 }
 
+/**
+ * `PATCH /api/hr/shifts/:id` — partial, so an omitted key is left ALONE
+ * server-side (`ShiftsService.updateShift` only builds a `SET` for the keys
+ * present in the DTO).
+ *
+ * `locationId` is deliberately NOT in this signature even though the DTO
+ * accepts it. Re-scoping a shift between "this outlet" and "every location"
+ * is the bulk importer's decision to make — its natural key is
+ * (name, location), so it has to own that column. A timing edit from the
+ * roster screen must never move a shift's scope as a side effect: an outlet
+ * supervisor fixing "Malam ends at 23:30" would otherwise be one stray field
+ * away from claiming a company-wide template as their own.
+ */
+export function updateShift(
+  id: string,
+  body: {
+    name?: string;
+    startTime?: string;
+    endTime?: string;
+    breakMinutes?: number;
+    isActive?: boolean;
+  },
+) {
+  return api.patch<WorkShift>(`/hr/shifts/${id}`, body);
+}
+
 export function getRoster(params: {
   locationId: string;
   from: string;

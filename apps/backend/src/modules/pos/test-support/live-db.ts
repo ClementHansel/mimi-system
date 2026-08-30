@@ -360,7 +360,7 @@ export function buildNotificationService(pool: Pool): NotificationService {
   return new NotificationService(
     pool,
     new InAppChannelService(pool, fakeGateway),
-    new EmailChannelService(fakeConfigService(), outbox),
+    new EmailChannelService(fakeConfigService(), outbox, pool),
     new WhatsAppChannelService(fakeConfigService({ WA_ENABLED: 'false' }), outbox),
   );
 }

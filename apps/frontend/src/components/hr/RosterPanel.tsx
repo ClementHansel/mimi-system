@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
 import {
+  Badge,
   Button,
   Card,
   CardContent,
   EmptyState,
   Input,
+  Modal,
   Select,
   PermissionGate,
 } from '@/components/ui';
@@ -17,7 +19,14 @@ import { usePermissions } from '@/lib/permissions';
 import { useSessionStore } from '@/stores/session-store';
 import { toDateInput } from '@/lib/dates';
 import { ExportButton } from '@/components/common/ExportButton';
-import { createShift, getRoster, listLocationCodesById, listShifts, putRoster } from './lib/hr-api';
+import {
+  createShift,
+  getRoster,
+  listLocationCodesById,
+  listShifts,
+  putRoster,
+  updateShift,
+} from './lib/hr-api';
 import { MasterDataIo } from '@/components/admin/MasterDataIo';
 import { rosterExportColumns, workShiftIoColumns } from './lib/io-columns';
 import type { RosterRow, WorkShift } from './lib/types';
@@ -38,6 +47,49 @@ function addDays(d: Date, n: number): Date {
 }
 
 const LIBUR = '__off__';
+
+/**
+ * One editable row of `ShiftTemplatesCard`. `breakMinutes` is a STRING here
+ * and a number on the wire: an `<input type="number">` is empty-string while
+ * someone is retyping it, and coercing that to `0` mid-keystroke silently
+ * wipes a break the user only meant to edit.
+ */
+interface ShiftDraft {
+  name: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: string;
+}
+
+function toShiftDraft(s: WorkShift): ShiftDraft {
+  return {
+    name: s.name,
+    startTime: s.startTime,
+    endTime: s.endTime,
+    breakMinutes: String(s.breakMinutes ?? 0),
+  };
+}
+
+function isShiftDirty(s: WorkShift, d: ShiftDraft): boolean {
+  const o = toShiftDraft(s);
+  return (
+    d.name !== o.name ||
+    d.startTime !== o.startTime ||
+    d.endTime !== o.endTime ||
+    d.breakMinutes !== o.breakMinutes
+  );
+}
+
+/**
+ * Mirrors `ShiftsService.assertWindow` and the DTO's `@IsString` on `name`.
+ * The server stays the authority — this only spares the user a round trip
+ * that comes back as a generic toast with no field attached to it.
+ */
+function validateShiftDraft(d: ShiftDraft, t: (k: string) => string): string | null {
+  if (!d.name.trim()) return t('hr.roster.shiftNameRequired');
+  if (d.startTime === d.endTime) return t('hr.roster.shiftSameTime');
+  return null;
+}
 
 /**
  * F08 `hr` — shift roster (`hr.shift.read`/`.manage`, FR-HR-02): bulk-assign
@@ -146,10 +198,38 @@ export function RosterPanel({ locationId: fixedLocationId }: { locationId?: stri
 
   useEffect(reload, [locationId, from, to]);
 
-  const shiftOptions = [
-    { value: LIBUR, label: t('hr.roster.off') },
-    ...shifts.map((s) => ({ value: s.id, label: `${s.name} (${s.startTime}-${s.endTime})` })),
-  ];
+  /**
+   * The dropdown for one day. Built from the ACTIVE templates plus any shift
+   * a saved assignment already points at.
+   *
+   * That second half is not defensive padding. `listShifts` filters on
+   * `is_active = true` while `getRoster` joins `shift_assignments` without
+   * that filter, so the moment a template is deactivated (which the card
+   * below can now do) every day already rostered onto it has a value that
+   * matches no `<option>`. A native `<select>` renders that as BLANK — the
+   * cell reads as if nobody is scheduled, on a screen whose whole job is
+   * saying who is. The id is still in `draft`, so a save would round-trip it
+   * correctly; it is only the display that lies, which is worse, not better.
+   */
+  const shiftOptions = useMemo(() => {
+    const active = new Set(shifts.map((s) => s.id));
+    const orphans = new Map<string, string>();
+    for (const row of rows) {
+      for (const day of row.days) {
+        if (day.workShiftId && !active.has(day.workShiftId) && !orphans.has(day.workShiftId)) {
+          orphans.set(day.workShiftId, day.shiftName ?? day.workShiftId);
+        }
+      }
+    }
+    return [
+      { value: LIBUR, label: t('hr.roster.off') },
+      ...shifts.map((s) => ({ value: s.id, label: `${s.name} (${s.startTime}-${s.endTime})` })),
+      ...[...orphans].map(([id, name]) => ({
+        value: id,
+        label: `${name} (${t('hr.roster.inactiveShift')})`,
+      })),
+    ];
+  }, [shifts, rows, t]);
 
   async function save() {
     setSaving(true);
@@ -274,6 +354,10 @@ export function RosterPanel({ locationId: fixedLocationId }: { locationId?: stri
       )}
 
       {locationId && shifts.length > 0 && (
+        <ShiftTemplatesCard shifts={shifts} onChanged={reload} canManage={can('hr.shift.manage')} />
+      )}
+
+      {locationId && shifts.length > 0 && (
         // Shift TEMPLATES, not the roster grid above. Round-trips through the
         // bulk importer as of 2026-08-27, once `ShiftDto` started carrying
         // `locationId` — see `io-columns.ts`'s header for what was blocking it.
@@ -301,6 +385,220 @@ export function RosterPanel({ locationId: fixedLocationId }: { locationId?: stri
         </PermissionGate>
       )}
     </div>
+  );
+}
+
+/**
+ * The shift TEMPLATES for the picked location — the "presets" the roster
+ * grid's dropdowns are built from — editable in place.
+ *
+ * ADDED 2026-08-30, and the gap it closes is a real one. `POST /hr/shifts`
+ * had a form (`NewShiftForm`, below) and `PATCH /hr/shifts/:id` had none, so
+ * "Malam ends at 23:30, it should be 23:00" was answerable only by exporting
+ * the CSV beside this card, editing a cell and importing it back — a
+ * round-trip whose natural key is (name, location), so a supervisor who
+ * corrected the NAME in the same pass silently got a second template instead
+ * of a renamed one. The endpoint was always there; only the buttons weren't.
+ *
+ * TWO THINGS THIS DELIBERATELY WILL NOT DO.
+ *
+ *  - It never sends `locationId`. `listShifts` returns this outlet's shifts
+ *    AND the company-wide ones (`location_id IS NULL`), so both are on screen
+ *    together; a scope change hiding inside a timing edit is how one outlet
+ *    quietly annexes a template every other outlet is rostering against.
+ *    Editing a company-wide row is still allowed — the owner has to be able
+ *    to — but it is badged and it asks first, because the blast radius is
+ *    every location, not the one named in the picker above.
+ *  - It offers deactivate, not delete. `shift_assignments` keeps pointing at
+ *    the row (and `getRoster` keeps reading it), so "delete" would be a lie
+ *    about already-published schedules.
+ */
+function ShiftTemplatesCard({
+  shifts,
+  onChanged,
+  canManage,
+}: {
+  shifts: WorkShift[];
+  onChanged: () => void;
+  canManage: boolean;
+}) {
+  const { t } = useI18n();
+  const [drafts, setDrafts] = useState<Record<string, ShiftDraft>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+  /** The row a confirmation is open for, and which of the two questions it is. */
+  const [pending, setPending] = useState<{ shift: WorkShift; kind: 'global' | 'off' } | null>(null);
+
+  // Re-seed from the server on every reload. Rebuilt from `shifts` rather
+  // than merged into the previous state, so a template that vanished
+  // (deactivated here or elsewhere) takes its stale draft with it instead of
+  // resurrecting on the next render.
+  useEffect(() => {
+    setDrafts(Object.fromEntries(shifts.map((s) => [s.id, toShiftDraft(s)])));
+  }, [shifts]);
+
+  function patch(id: string, part: Partial<ShiftDraft>) {
+    setDrafts((prev) => (prev[id] ? { ...prev, [id]: { ...prev[id], ...part } } : prev));
+  }
+
+  async function commit(shift: WorkShift) {
+    const draft = drafts[shift.id];
+    if (!draft) return;
+    const error = validateShiftDraft(draft, t);
+    if (error) {
+      toast({ title: error, variant: 'danger' });
+      return;
+    }
+    setBusyId(shift.id);
+    try {
+      const breakMinutes = Number(draft.breakMinutes);
+      await updateShift(shift.id, {
+        name: draft.name.trim(),
+        startTime: draft.startTime,
+        endTime: draft.endTime,
+        breakMinutes: Number.isFinite(breakMinutes) && breakMinutes >= 0 ? breakMinutes : 0,
+      });
+      toast({ title: t('hr.roster.shiftUpdated'), variant: 'success' });
+      onChanged();
+    } catch {
+      toast({ title: t('auth.genericError'), variant: 'danger' });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function deactivate(shift: WorkShift) {
+    setBusyId(shift.id);
+    try {
+      await updateShift(shift.id, { isActive: false });
+      toast({ title: t('hr.roster.shiftDeactivated'), variant: 'success' });
+      onChanged();
+    } catch {
+      toast({ title: t('auth.genericError'), variant: 'danger' });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">
+            {t('hr.roster.templatesTitle')}
+          </h3>
+          <p className="mt-1 text-xs text-text-secondary">{t('hr.roster.templatesHint')}</p>
+        </div>
+
+        <div className="flex flex-col divide-y divide-border">
+          {shifts.map((shift) => {
+            const draft = drafts[shift.id];
+            if (!draft) return null;
+            const dirty = isShiftDirty(shift, draft);
+            return (
+              <div key={shift.id} className="flex flex-wrap items-end gap-3 py-3 first:pt-0">
+                <Input
+                  label={t('hr.roster.shiftName')}
+                  value={draft.name}
+                  onChange={(e) => patch(shift.id, { name: e.target.value })}
+                  size="sm"
+                  disabled={!canManage}
+                  wrapperClassName="w-40"
+                />
+                <Input
+                  type="time"
+                  label={t('hr.roster.shiftStart')}
+                  value={draft.startTime}
+                  onChange={(e) => patch(shift.id, { startTime: e.target.value })}
+                  size="sm"
+                  disabled={!canManage}
+                  wrapperClassName="w-32"
+                />
+                <Input
+                  type="time"
+                  label={t('hr.roster.shiftEnd')}
+                  value={draft.endTime}
+                  onChange={(e) => patch(shift.id, { endTime: e.target.value })}
+                  size="sm"
+                  disabled={!canManage}
+                  wrapperClassName="w-32"
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  label={t('hr.roster.shiftBreak')}
+                  value={draft.breakMinutes}
+                  onChange={(e) => patch(shift.id, { breakMinutes: e.target.value })}
+                  size="sm"
+                  disabled={!canManage}
+                  wrapperClassName="w-28"
+                />
+                {shift.locationId === null && (
+                  <Badge variant="info" size="sm" className="mb-1.5">
+                    {t('hr.roster.globalShift')}
+                  </Badge>
+                )}
+                {canManage && (
+                  <div className="ml-auto flex items-end gap-2">
+                    <Button
+                      size="sm"
+                      // A company-wide template asks first — see the doc comment.
+                      onClick={() =>
+                        shift.locationId === null
+                          ? setPending({ shift, kind: 'global' })
+                          : void commit(shift)
+                      }
+                      disabled={!dirty}
+                      loading={busyId === shift.id}
+                    >
+                      {t('common.save')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPending({ shift, kind: 'off' })}
+                      disabled={busyId === shift.id}
+                    >
+                      {t('common.deactivate')}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+
+      <Modal
+        open={pending !== null}
+        onClose={() => setPending(null)}
+        title={
+          pending?.kind === 'off' ? t('hr.roster.deactivateTitle') : t('hr.roster.globalEditTitle')
+        }
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPending(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant={pending?.kind === 'off' ? 'danger' : 'primary'}
+              onClick={() => {
+                if (!pending) return;
+                const { shift, kind } = pending;
+                setPending(null);
+                void (kind === 'off' ? deactivate(shift) : commit(shift));
+              }}
+            >
+              {pending?.kind === 'off' ? t('common.deactivate') : t('common.save')}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-text-secondary">
+          {pending?.kind === 'off' ? t('hr.roster.deactivateBody') : t('hr.roster.globalEditBody')}
+        </p>
+      </Modal>
+    </Card>
   );
 }
 

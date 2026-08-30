@@ -1629,6 +1629,37 @@ export const id = {
       // canvas it cannot save.
       documents: 'Dokumen',
       brand: 'Merek',
+      email: 'Email',
+    },
+    email: {
+      title: 'Pengaturan Email',
+      description:
+        'Hubungkan akun Gmail perusahaan Anda. Semua notifikasi email akan dikirim dari akun ini.',
+      gmailHelpTitle: 'Cara mendapatkan App Password Gmail',
+      gmailStep1: 'Aktifkan Verifikasi 2 Langkah di Akun Google Anda.',
+      gmailStep2:
+        'Buka myaccount.google.com/apppasswords, lalu buat App Password baru (pilih "Mail").',
+      gmailStep3: 'Salin 16 karakter yang muncul, lalu tempel di kolom App Password di bawah.',
+      host: 'Server SMTP',
+      port: 'Port',
+      port587: '587 — STARTTLS (disarankan untuk Gmail)',
+      port465: '465 — SSL/TLS',
+      username: 'Alamat Gmail',
+      password: 'App Password',
+      passwordHint: '16 karakter dari Google. Bukan kata sandi akun Anda.',
+      passwordStored: 'Sudah tersimpan. Kosongkan jika tidak ingin mengubah.',
+      fromEmail: 'Alamat Pengirim',
+      fromEmailHint:
+        'Gmail akan menimpa alamat ini dengan akun di atas kecuali "Send mail as" diatur.',
+      fromName: 'Nama Pengirim',
+      enabled: 'Aktifkan pengiriman email',
+      enabledHint: 'Nonaktifkan untuk berhenti mengirim tanpa menghapus kredensial.',
+      testButton: 'Uji Koneksi',
+      testOk: 'Koneksi berhasil.',
+      testFailed: 'Koneksi gagal.',
+      lastTestOk: 'Uji koneksi terakhir berhasil.',
+      lastTestFailed: 'Uji koneksi terakhir gagal',
+      saveSuccess: 'Pengaturan email tersimpan.',
     },
     users: {
       title: 'Pengguna',
@@ -2619,6 +2650,18 @@ export const id = {
         probation: 'Masa Percobaan',
         internship: 'Magang',
       },
+      // Column-width labels. The full `type.*` names wrapped every list row to
+      // three lines, which is what pushed the action buttons off the right
+      // edge of the table; the long form still shows in the detail dialog and
+      // in the create/edit form, where there is room for it.
+      typeShort: {
+        pkwt: 'PKWT',
+        pkwtt: 'PKWTT',
+        probation: 'Percobaan',
+        internship: 'Magang',
+      },
+      detailTitle: 'Kontrak {{number}}',
+      detailHint: 'Klik baris mana pun pada daftar untuk membuka detail kontrak.',
       position: 'Jabatan',
       location: 'Penempatan',
       locationPlaceholder: 'Seluruh perusahaan',
@@ -2635,7 +2678,7 @@ export const id = {
       deleteSuccess: 'Draf kontrak berhasil dihapus.',
       deleteBlockedSigned: 'Kontrak yang sudah ada tanda tangan tidak bisa dihapus.',
       deleteBlockedStatus: 'Hanya draf yang bisa dihapus — kontrak ini sudah {{status}}.',
-      expiringFilter: 'Akan Berakhir Dalam (hari)',
+      expiringFilter: 'Berakhir Dalam (hari)',
       expiringFilterHint: 'Kosongkan untuk menampilkan semua kontrak aktif dan draf.',
       empty: 'Belum ada kontrak tercatat.',
       // Signing (migration 252).
@@ -2661,6 +2704,10 @@ export const id = {
         signSuccess: 'Tanda tangan berhasil dicatat.',
         alreadySigned: 'Pihak ini sudah menandatangani kontrak ini.',
         fullySigned: 'Sudah ditandatangani semua pihak',
+        // Badge-sized counterparts of `fullySigned`/`outstanding` for the list.
+        shortComplete: 'Lengkap',
+        shortIncomplete: 'Belum lengkap',
+        none: 'Belum ada tanda tangan tercatat.',
         activateHint:
           'Kontrak baru bisa diaktifkan setelah pegawai DAN perusahaan sama-sama menandatangani.',
       },
@@ -2689,6 +2736,22 @@ export const id = {
       addShift: 'Tambah Shift',
       noLocation: 'Pilih lokasi terlebih dahulu untuk mengatur jadwal shift.',
       noEmployees: 'Belum ada pegawai aktif di lokasi ini.',
+      shiftBreak: 'Istirahat (mnt)',
+      templatesTitle: 'Template Shift',
+      templatesHint:
+        'Jam pada template ini yang muncul di pilihan tiap hari. Mengubahnya berlaku untuk jadwal berikutnya; absensi yang sudah tercatat tidak dihitung ulang.',
+      globalShift: 'Semua Lokasi',
+      shiftUpdated: 'Template shift berhasil diperbarui.',
+      shiftDeactivated: 'Template shift dinonaktifkan.',
+      shiftNameRequired: 'Nama shift wajib diisi.',
+      shiftSameTime: 'Jam mulai dan jam selesai tidak boleh sama.',
+      inactiveShift: 'Nonaktif',
+      deactivateTitle: 'Nonaktifkan template shift?',
+      deactivateBody:
+        'Template ini akan hilang dari pilihan shift. Jadwal yang sudah tersimpan dengan shift ini tetap ada dan tetap terbaca, tetapi tidak bisa dipilih lagi untuk hari baru. Template hanya bisa diaktifkan kembali lewat impor CSV.',
+      globalEditTitle: 'Ubah template milik semua lokasi?',
+      globalEditBody:
+        'Template ini tidak dimiliki outlet mana pun — perubahan jam berlaku untuk SELURUH lokasi yang memakainya, bukan hanya lokasi yang sedang dipilih.',
     },
     attendance: {
       location: 'Lokasi',

@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { FilePlus2, PenLine, Trash2, XCircle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDate, fmtDateTime } from '@/lib/dates';
 import { formatMoney } from '@/lib/formatters';
 import {
+  Badge,
   Button,
   Card,
   CardContent,
@@ -94,6 +95,7 @@ export function ContractsPanel() {
   const [locationCodeById, setLocationCodeById] = useState<Map<string, string>>(new Map());
   const [exportRows, setExportRows] = useState<ContractExportRow[]>([]);
 
+  const [viewing, setViewing] = useState<Contract | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Contract | null>(null);
   const [signing, setSigning] = useState<Contract | null>(null);
@@ -170,7 +172,18 @@ export function ContractsPanel() {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <CardContent className="flex flex-wrap items-end justify-between gap-3">
+        {/*
+          One `items-end` row of label+control pairs, with the hints BELOW it
+          rather than inside a field.
+
+          The hint placement is the whole fix, not a tidy-up. `items-end`
+          aligns the bottom of each child, and a field carrying a `hint` is
+          two lines taller than its neighbours — so the two dropdowns were
+          being shoved down until their inputs sat level with the hint's last
+          line, leaving the empty band above them that made this bar look
+          broken. Same reason `expiringFilter` lost its second line of label.
+        */}
+        <CardContent className="flex flex-col gap-2">
           <div className="flex flex-wrap items-end gap-3">
             <Select
               label={t('hr.contracts.columnStatus')}
@@ -200,29 +213,31 @@ export function ContractsPanel() {
               min={0}
               value={expiringWithinDays}
               onChange={(e) => setExpiringWithinDays(e.target.value)}
-              hint={t('hr.contracts.expiringFilterHint')}
-              wrapperClassName="w-40"
+              wrapperClassName="w-44"
             />
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <MasterDataIo
+                entity="employment_contracts"
+                titleKey="hr.contracts.title"
+                rows={exportRows}
+                columns={contractIoColumns(locationCodeById)}
+                filenameBase="kontrak_kerja"
+                onImported={refreshAfterWrite}
+                canImport={canManage}
+              />
+              {canManage && (
+                <Button
+                  leftIcon={<FilePlus2 className="size-4" />}
+                  onClick={() => setCreateOpen(true)}
+                >
+                  {t('hr.contracts.createButton')}
+                </Button>
+              )}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <MasterDataIo
-              entity="employment_contracts"
-              titleKey="hr.contracts.title"
-              rows={exportRows}
-              columns={contractIoColumns(locationCodeById)}
-              filenameBase="kontrak_kerja"
-              onImported={refreshAfterWrite}
-              canImport={canManage}
-            />
-            {canManage && (
-              <Button
-                leftIcon={<FilePlus2 className="size-4" />}
-                onClick={() => setCreateOpen(true)}
-              >
-                {t('hr.contracts.createButton')}
-              </Button>
-            )}
-          </div>
+          <p className="text-xs text-text-secondary">
+            {t('hr.contracts.expiringFilterHint')} {t('hr.contracts.detailHint')}
+          </p>
         </CardContent>
       </Card>
 
@@ -234,30 +249,45 @@ export function ContractsPanel() {
         </Card>
       ) : (
         <DataTable
+          /*
+            EIGHT columns, not twelve, and every one of them `nowrap`.
+            Jabatan / Gaji Pokok / Penempatan / the signature sentence all
+            moved into `ContractDetailModal` — at twelve columns the table
+            wrapped `PKWT (Waktu Tertentu)` and `Gudang Pusat Balikpapan`
+            onto three lines each and pushed the row's own action buttons
+            past the right edge of the viewport, where they could not be
+            clicked at all. The row itself is the way in now (`onRowClick`),
+            which is also where those actions live.
+          */
           columns={[
-            { key: 'contractNumber', header: t('hr.contracts.columnNumber') },
-            { key: 'employeeName', header: t('hr.contracts.columnEmployee') },
+            {
+              key: 'contractNumber',
+              header: t('hr.contracts.columnNumber'),
+              render: (r) => (
+                <span className="whitespace-nowrap font-medium text-text-primary">
+                  {r.contractNumber}
+                </span>
+              ),
+            },
+            {
+              key: 'employeeName',
+              header: t('hr.contracts.columnEmployee'),
+              render: (r) => <span className="whitespace-nowrap">{r.employeeName}</span>,
+            },
             {
               key: 'contractType',
               header: t('hr.contracts.columnType'),
-              render: (r) => t(`hr.contracts.type.${r.contractType}`),
-            },
-            { key: 'position', header: t('hr.contracts.columnPosition') },
-            {
-              key: 'baseSalary',
-              header: t('hr.contracts.baseSalary'),
-              render: (r) => (r.baseSalary ? formatMoney(r.baseSalary) : '—'),
-            },
-            {
-              key: 'locationName',
-              header: t('hr.contracts.columnLocation'),
-              render: (r) => r.locationName ?? t('hr.contracts.locationPlaceholder'),
+              render: (r) => (
+                <span className="whitespace-nowrap">
+                  {t(`hr.contracts.typeShort.${r.contractType}`)}
+                </span>
+              ),
             },
             {
               key: 'startDate',
               header: t('hr.contracts.columnPeriod'),
               render: (r) => (
-                <span className="text-sm">
+                <span className="whitespace-nowrap text-sm">
                   {fmtDate(r.startDate)} — {r.endDate ? fmtDate(r.endDate) : '∞'}
                 </span>
               ),
@@ -268,59 +298,23 @@ export function ContractsPanel() {
               render: (r) => <StatusBadge domain="contract" status={r.status} size="sm" />,
             },
             {
-              key: 'employeeSigned',
+              key: 'fullySigned',
               header: t('hr.contracts.columnSigned'),
-              render: (r) =>
-                r.fullySigned ? (
-                  <span className="text-xs font-medium text-success-700">
-                    {t('hr.contracts.signatures.fullySigned')}
-                  </span>
-                ) : (
-                  <span className="text-xs text-text-muted">
-                    {r.employeeSigned
-                      ? t('hr.contracts.signatures.employeeParty')
-                      : t('hr.contracts.signatures.companyParty')}{' '}
-                    {t('hr.contracts.signatures.outstanding')}
-                  </span>
-                ),
+              render: (r) => (
+                <Badge variant={r.fullySigned ? 'success' : 'warning'} size="sm">
+                  {r.fullySigned
+                    ? t('hr.contracts.signatures.shortComplete')
+                    : t('hr.contracts.signatures.shortIncomplete')}
+                </Badge>
+              ),
             },
             {
               key: 'daysUntilExpiry',
               header: t('hr.contracts.columnExpiry'),
-              render: (r) => (r.daysUntilExpiry !== null ? r.daysUntilExpiry : '—'),
-            },
-            {
-              key: 'id',
-              header: '',
               render: (r) => (
-                <div className="flex justify-end gap-2">
-                  {canManage && r.status !== 'terminated' && (
-                    <Button size="sm" variant="ghost" onClick={() => setSigning(r)}>
-                      <PenLine className="size-3.5" aria-hidden />
-                      {t('hr.contracts.signatures.signButton')}
-                    </Button>
-                  )}
-                  {canManage && (r.status === 'draft' || r.status === 'active') && (
-                    <Button size="sm" variant="ghost" onClick={() => setEditing(r)}>
-                      {t('common.edit')}
-                    </Button>
-                  )}
-                  {canManage && r.status === 'active' && (
-                    <Button size="sm" variant="ghost" onClick={() => setTerminating(r)}>
-                      <XCircle className="size-3.5" aria-hidden />
-                      {t('hr.contracts.terminate.button')}
-                    </Button>
-                  )}
-                  {canManage &&
-                    r.status === 'draft' &&
-                    !r.employeeSigned &&
-                    r.companySignerCount === 0 && (
-                      <Button size="sm" variant="ghost" onClick={() => setDeleting(r)}>
-                        <Trash2 className="size-3.5" aria-hidden />
-                        {t('hr.contracts.deleteButton')}
-                      </Button>
-                    )}
-                </div>
+                <span className="whitespace-nowrap">
+                  {r.daysUntilExpiry !== null ? r.daysUntilExpiry : '—'}
+                </span>
               ),
             },
           ]}
@@ -328,7 +322,35 @@ export function ContractsPanel() {
           keyField={(r) => r.id}
           loading={loading}
           emptyTitle={t('hr.contracts.empty')}
+          onRowClick={setViewing}
           onPageChange={(page) => setData((d) => ({ ...d, page }))}
+        />
+      )}
+
+      {viewing && (
+        <ContractDetailModal
+          contract={viewing}
+          canManage={canManage}
+          onClose={() => setViewing(null)}
+          // Each hand-off closes the detail rather than stacking a second
+          // dialog on top of it: `Modal` renders its own overlay, and two of
+          // them means the Escape key closes the wrong one.
+          onSign={() => {
+            setSigning(viewing);
+            setViewing(null);
+          }}
+          onEdit={() => {
+            setEditing(viewing);
+            setViewing(null);
+          }}
+          onTerminate={() => {
+            setTerminating(viewing);
+            setViewing(null);
+          }}
+          onDelete={() => {
+            setDeleting(viewing);
+            setViewing(null);
+          }}
         />
       )}
 
@@ -393,6 +415,184 @@ export function ContractsPanel() {
         </Modal>
       )}
     </div>
+  );
+}
+
+/** One label/value pair of `ContractDetailModal`. */
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-xs text-text-muted">{label}</dt>
+      <dd className="text-sm text-text-primary">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * The whole contract, opened by clicking its row.
+ *
+ * This is where the columns the list dropped went — Jabatan, Gaji Pokok,
+ * Penempatan, Catatan, the termination reason, and the actual signature
+ * ledger (`contract_signatures`, which the list could only ever summarise as
+ * a yes/no). It is also where every row action now lives: at twelve columns
+ * those buttons rendered past the right edge of the table and were
+ * unreachable, and a dialog that already names the contract is a safer place
+ * to press "Putus Kontrak" than a cramped cell in a list of forty.
+ *
+ * The status/permission guards are copied from the row actions they replace,
+ * not relaxed: terminate is `active`-only, edit is draft-or-active, and
+ * delete stays draft-and-unsigned because `ContractsService.remove` refuses
+ * anything else (a signed contract is a legal record).
+ */
+function ContractDetailModal({
+  contract,
+  canManage,
+  onClose,
+  onSign,
+  onEdit,
+  onTerminate,
+  onDelete,
+}: {
+  contract: Contract;
+  canManage: boolean;
+  onClose: () => void;
+  onSign: () => void;
+  onEdit: () => void;
+  onTerminate: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+  const [signatures, setSignatures] = useState<ContractSignature[] | null>(null);
+
+  useEffect(() => {
+    listContractSignatures(contract.id)
+      .then(setSignatures)
+      .catch(() => setSignatures([]));
+  }, [contract.id]);
+
+  const canDelete =
+    canManage &&
+    contract.status === 'draft' &&
+    !contract.employeeSigned &&
+    contract.companySignerCount === 0;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title={t('hr.contracts.detailTitle', { number: contract.contractNumber })}
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+          {canDelete && (
+            <Button
+              variant="ghost"
+              className="mr-auto"
+              leftIcon={<Trash2 className="size-3.5" />}
+              onClick={onDelete}
+            >
+              {t('hr.contracts.deleteButton')}
+            </Button>
+          )}
+          <Button variant="outline" onClick={onClose}>
+            {t('common.close')}
+          </Button>
+          {canManage && contract.status === 'active' && (
+            <Button
+              variant="outline"
+              leftIcon={<XCircle className="size-3.5" />}
+              onClick={onTerminate}
+            >
+              {t('hr.contracts.terminate.button')}
+            </Button>
+          )}
+          {canManage && (contract.status === 'draft' || contract.status === 'active') && (
+            <Button variant="outline" leftIcon={<PenLine className="size-3.5" />} onClick={onEdit}>
+              {t('common.edit')}
+            </Button>
+          )}
+          {canManage && contract.status !== 'terminated' && (
+            <Button onClick={onSign}>{t('hr.contracts.signatures.signButton')}</Button>
+          )}
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge domain="contract" status={contract.status} size="sm" />
+          <Badge variant={contract.fullySigned ? 'success' : 'warning'} size="sm">
+            {contract.fullySigned
+              ? t('hr.contracts.signatures.fullySigned')
+              : t('hr.contracts.signatures.shortIncomplete')}
+          </Badge>
+        </div>
+
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+          <DetailRow label={t('hr.contracts.employee')}>
+            {contract.employeeName}{' '}
+            <span className="text-text-muted">({contract.employeeNumber})</span>
+          </DetailRow>
+          <DetailRow label={t('hr.contracts.contractType')}>
+            {t(`hr.contracts.type.${contract.contractType}`)}
+          </DetailRow>
+          <DetailRow label={t('hr.contracts.position')}>{contract.position}</DetailRow>
+          <DetailRow label={t('hr.contracts.location')}>
+            {contract.locationName ?? t('hr.contracts.locationPlaceholder')}
+          </DetailRow>
+          <DetailRow label={t('hr.contracts.baseSalary')}>
+            {contract.baseSalary ? formatMoney(contract.baseSalary) : '—'}
+          </DetailRow>
+          <DetailRow label={t('hr.contracts.columnPeriod')}>
+            {fmtDate(contract.startDate)} — {contract.endDate ? fmtDate(contract.endDate) : '∞'}
+          </DetailRow>
+          <DetailRow label={t('hr.contracts.columnExpiry')}>
+            {contract.daysUntilExpiry !== null ? contract.daysUntilExpiry : '—'}
+          </DetailRow>
+          {contract.signedAt && (
+            <DetailRow label={t('hr.contracts.signedAtLegacy')}>
+              {fmtDate(contract.signedAt)}
+            </DetailRow>
+          )}
+          {contract.terminationReason && (
+            <DetailRow label={t('hr.contracts.terminate.reason')}>
+              {contract.terminationReason}
+            </DetailRow>
+          )}
+          {contract.notes && (
+            <DetailRow label={t('hr.contracts.notes')}>{contract.notes}</DetailRow>
+          )}
+        </dl>
+
+        <div className="flex flex-col gap-2">
+          <h4 className="text-sm font-semibold text-text-primary">
+            {t('hr.contracts.signatures.title')}
+          </h4>
+          {signatures === null ? (
+            <div className="h-12 animate-pulse rounded-md bg-surface-sunken" />
+          ) : signatures.length === 0 ? (
+            <p className="text-sm text-text-secondary">{t('hr.contracts.signatures.none')}</p>
+          ) : (
+            <ul className="flex flex-col gap-1 rounded-md bg-surface-sunken p-3 text-xs text-text-secondary">
+              {signatures.map((sig) => (
+                <li key={sig.id}>
+                  {t(
+                    `hr.contracts.signatures.${sig.partyType === 'employee' ? 'employeeParty' : 'companyParty'}`,
+                  )}
+                  {' — '}
+                  {sig.signerName}{' '}
+                  {t('hr.contracts.signatures.signedAt', { when: fmtDateTime(sig.signedAt) })}
+                  {' · '}
+                  {t(`hr.contracts.signatures.method.${sig.method}`)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!contract.fullySigned && (
+            <p className="text-xs text-text-muted">{t('hr.contracts.signatures.activateHint')}</p>
+          )}
+        </div>
+      </div>
+    </Modal>
   );
 }
 

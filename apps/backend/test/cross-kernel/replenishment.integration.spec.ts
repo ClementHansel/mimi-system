@@ -134,7 +134,7 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
   // attempted while the `notifications` row and `notification_outbox` row it writes are real.
   const outboxRepo = new NotificationOutboxRepository(getAppPool());
   const whatsapp = new WhatsAppChannelService(fakeConfig({ WA_ENABLED: 'false' }), outboxRepo);
-  const email = new EmailChannelService(fakeConfig({ SMTP_HOST: '' }), outboxRepo);
+  const email = new EmailChannelService(fakeConfig({ SMTP_HOST: '' }), outboxRepo, getAppPool());
   const gateway = { pushToUser: () => {} } as unknown as NotificationGateway;
   const inApp = new InAppChannelService(getAppPool(), gateway);
   const notifications = new NotificationService(getAppPool(), inApp, email, whatsapp);

@@ -3,11 +3,15 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDefined,
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
+  Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -56,4 +60,47 @@ export class PutApprovalChainDto {
 export class PutApprovalModeDto {
   @IsIn(APPROVAL_MODES)
   mode!: ApprovalMode;
+}
+
+/**
+ * `PUT /api/settings/email` — a tenant's own SMTP (migration 264).
+ *
+ * `password` is OPTIONAL on purpose: the GET returns a mask, so a client
+ * editing only the port sends no password and the stored one is kept.
+ */
+export class PutEmailSettingsDto {
+  @IsString()
+  @MaxLength(255)
+  host!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  port!: number;
+
+  @IsBoolean()
+  secure!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  username?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  password?: string;
+
+  @IsEmail()
+  @MaxLength(255)
+  fromEmail!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  fromName?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
 }

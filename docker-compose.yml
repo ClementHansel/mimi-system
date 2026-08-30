@@ -148,6 +148,11 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mimi_minio}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-mimi_minio_secret}
       MINIO_BUCKET: ${MINIO_BUCKET:-mimi-storage}
+      # Seals tenant SMTP passwords at rest (migration 264). Without it the
+      # email settings screen refuses to store a password rather than saving
+      # one in the clear — a deliberate hard failure, since "encrypted" that
+      # silently is not would be worse than an obvious refusal.
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-change_me_in_production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_in_production_refresh}

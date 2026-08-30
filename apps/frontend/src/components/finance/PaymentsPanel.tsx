@@ -7,6 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { formatMoney } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/dates';
+import { resolveAttachmentUrl } from '@/lib/attachment-url';
 import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
@@ -318,6 +319,18 @@ function PaymentDrawer({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * The presigned URL for the proof, resolved from its attachment id.
+   *
+   * The API used to send a field called `proofUrl` that was actually the raw
+   * S3 object key, and this panel put it straight into `<a href>`. The browser
+   * resolved it against the current page and 404'd, so "Lihat Bukti" never
+   * opened anything — a verifier approved payments having never seen the
+   * evidence. `resolveAttachmentUrl` is the same helper the print paths use,
+   * and it returns null rather than throwing on failure.
+   */
+  const [proofUrl, setProofUrl] = useState<string | null>(null);
+
   const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [referenceNumber, setReferenceNumber] = useState('');
   const [verifyNote, setVerifyNote] = useState('');
@@ -337,6 +350,23 @@ function PaymentDrawer({
       .finally(() => setLoading(false));
   }
   useEffect(load, [id]);
+
+  // Resolve the proof id to a presigned URL whenever the payment (re)loads —
+  // including right after an upload, so the link appears without a reopen.
+  // `cancelled` guards the case where the drawer moves to another payment
+  // while this presign is still in flight: without it the previous payment's
+  // proof URL can land on the new payment and offer the wrong evidence.
+  useEffect(() => {
+    let cancelled = false;
+    setProofUrl(null);
+    if (!pv?.proofAttachmentId) return;
+    void resolveAttachmentUrl(pv.proofAttachmentId).then((url) => {
+      if (!cancelled) setProofUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pv?.proofAttachmentId]);
 
   async function doUploadProof() {
     const file = proofFiles[0];
@@ -450,9 +480,9 @@ function PaymentDrawer({
                 {pv.paidBy ? `${fmtDateTime(pv.paidAt)} (${pv.paidVia})` : '—'}
               </dd>
             </dl>
-            {pv.proofUrl && (
+            {proofUrl && (
               <a
-                href={pv.proofUrl}
+                href={proofUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="text-sm font-medium text-brand-600 hover:underline"
@@ -505,12 +535,12 @@ function PaymentDrawer({
                 size="sm"
                 onClick={doVerify}
                 loading={busy === 'verify'}
-                disabled={!pv.proofUrl}
+                disabled={!pv.proofAttachmentId}
                 className="self-start"
               >
                 {t('finance.payments.verifyButton')}
               </Button>
-              {!pv.proofUrl && (
+              {!pv.proofAttachmentId && (
                 <p className="text-xs text-text-muted">{t('finance.payments.proofRequiredHint')}</p>
               )}
             </section>

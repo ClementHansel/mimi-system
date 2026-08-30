@@ -918,7 +918,8 @@ export interface PaymentVerification {
   payeeName: string | null;
   amount: Money;
   status: PaymentStatus | 'rejected';
-  proofUrl: string | null;
+  /** Attachment id; the client presigns it via `/attachments/:id/url`. */
+  proofAttachmentId: string | null;
   referenceNumber: string | null;
   submittedBy: string;
   verifiedBy: string | null;

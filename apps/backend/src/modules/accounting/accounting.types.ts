@@ -138,7 +138,6 @@ export interface PaymentVerificationRow {
   amount: Money;
   status: 'pending' | 'verified' | 'paid' | 'rejected';
   proof_attachment_id: UUID | null;
-  proof_url: string | null;
   reference_number: string | null;
   submitted_by: UUID;
   verified_by: UUID | null;

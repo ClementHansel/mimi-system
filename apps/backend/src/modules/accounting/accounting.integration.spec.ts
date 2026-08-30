@@ -908,8 +908,19 @@ describe('M17 accounting — live DB integration', () => {
         },
       );
 
+      // `recordVerdict` now also takes the CALLER, because the exception row
+      // carries a selfie whose URL has to be presigned per request (it used to
+      // hand the raw S3 object key to the reviewer's <img>). The session-context
+      // `owner` above is not that shape — `StorageService` wants the JWT claim.
+      const ownerJwt = {
+        sub: fixtures.usersByRole[RoleKey.OWNER]!,
+        username: 'owner',
+        roleKey: RoleKey.OWNER,
+        locationIds: [],
+      };
+
       const verdict = await asRequest(owner, (client) =>
-        exceptions.recordVerdict(client, fixtures.usersByRole[RoleKey.OWNER], caseId, {
+        exceptions.recordVerdict(client, ownerJwt, fixtures.usersByRole[RoleKey.OWNER], caseId, {
           verdict: 'rejected',
           reason: 'test: rejecting this case',
         }),

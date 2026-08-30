@@ -28,14 +28,13 @@ import { withWrite } from './db-tx';
 const PV_SELECT = `
   SELECT pv.id, pv.pv_number, pv.ref_type, pv.ref_id, pv.reference_number AS ref_number, pv.payee_type, pv.payee_id,
          COALESCE(s.name, e.name, pv.payee_id::text) AS payee_name,
-         pv.amount, pv.status, pv.proof_attachment_id, a.object_key AS proof_url, pv.reference_number,
+         pv.amount, pv.status, pv.proof_attachment_id, pv.reference_number,
          pv.submitted_by, pv.verified_by, pv.verified_at, pv.approval_id, pv.paid_by, pv.paid_at, pv.paid_via,
          pv.rejection_reason, pv.location_id, l.name AS location_name, pv.notes
     FROM payment_verifications pv
     LEFT JOIN locations l ON l.id = pv.location_id
     LEFT JOIN suppliers s ON pv.payee_type = 'supplier' AND s.id = pv.payee_id
     LEFT JOIN employees e ON pv.payee_type = 'employee' AND e.id = pv.payee_id
-    LEFT JOIN attachments a ON a.id = pv.proof_attachment_id
 `;
 
 export interface PaymentActor {
@@ -548,7 +547,14 @@ function toPaymentVerification(row: PaymentVerificationRow): PaymentVerification
     payeeName: row.payee_name,
     amount: row.amount,
     status: row.status as PaymentVerification['status'],
-    proofUrl: row.proof_url,
+    // The ATTACHMENT ID, resolved to a presigned URL by the client
+    // (`lib/attachment-url.ts`) — the same contract `waste-return`'s proof
+    // fields already use. This used to be `a.object_key AS proof_url`, i.e.
+    // the raw S3 key, handed straight to `<a href>` in `PaymentsPanel`. The
+    // browser resolved it against the current page and 404'd, so "Lihat Bukti"
+    // never opened the proof and a verifier approved payments without once
+    // seeing the evidence they were approving against.
+    proofAttachmentId: row.proof_attachment_id,
     referenceNumber: row.reference_number,
     submittedBy: row.submitted_by,
     verifiedBy: row.verified_by,

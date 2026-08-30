@@ -325,7 +325,7 @@ export class ExceptionsController {
     @Req() req: RequestWithDbContext,
     @Query() query: ListExceptionsQueryDto,
   ): Promise<Paginated<unknown>> {
-    return this.exceptions.list(req.dbClient!, query);
+    return this.exceptions.list(req.dbClient!, req.user!, query);
   }
 
   @Post(':id/verdict')
@@ -336,6 +336,6 @@ export class ExceptionsController {
     @Param('id') id: string,
     @Body() dto: ExceptionVerdictDto,
   ) {
-    return this.exceptions.recordVerdict(req.dbClient!, req.user!.sub, id, dto);
+    return this.exceptions.recordVerdict(req.dbClient!, req.user!, req.user!.sub, id, dto);
   }
 }

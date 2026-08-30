@@ -14,6 +14,8 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { EventBus } from '../../kernel/events/event-bus.service';
+import { StorageService } from '../../kernel/storage/storage.service';
+import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import type { ExceptionVerdictDto, ListExceptionsQueryDto } from './dto/accounting.dto';
 import { withWrite } from './db-tx';
 
@@ -35,7 +37,7 @@ interface OfflineAuthConflictRow {
   device_name: string | null;
   occurred_at: string | null;
   relay_received_at: string | null;
-  selfie_url: string | null;
+  selfie_attachment_id: string | null;
   pin_attempts: number | null;
   outcome: string | null;
   verdict: 'upheld' | 'rejected' | null;
@@ -47,14 +49,13 @@ const CASE_SELECT = `
          oa.id AS oa_id, oa.document_type, oa.document_id, oa.amount::text AS amount,
          u.name AS approver_name, d.name AS device_name,
          oa.granted_at AS occurred_at, oa.relay_received_at,
-         att.object_key AS selfie_url, oa.pin_attempts_before_success AS pin_attempts,
+         oa.selfie_attachment_id AS selfie_attachment_id, oa.pin_attempts_before_success AS pin_attempts,
          oa.outcome, oa.verdict
     FROM sync_conflicts sc
     LEFT JOIN locations l ON l.id = sc.location_id
     LEFT JOIN offline_authorizations oa ON oa.id = sc.entity_id AND sc.entity = 'offline_authorizations'
     LEFT JOIN users u ON u.id = oa.user_id
     LEFT JOIN devices d ON d.id = oa.device_id
-    LEFT JOIN attachments att ON att.id = oa.selfie_attachment_id
    WHERE sc.kind = 'offline_auth'
 `;
 
@@ -72,10 +73,34 @@ const CASE_SELECT = `
  */
 @Injectable()
 export class ExceptionsService {
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(
+    private readonly eventBus: EventBus,
+    private readonly storage: StorageService,
+  ) {}
+
+  /**
+   * Presign one selfie, or null. Never throws: a missing or unreadable
+   * attachment must not take down the whole exception queue — a reviewer with
+   * no photo can still see the PIN attempts, the device and the amount, and
+   * decide. Same trade-off (and same shape) as HR's `safeSelfieUrl`.
+   */
+  private async selfieUrl(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    attachmentId: string | null,
+  ): Promise<string | null> {
+    if (!attachmentId) return null;
+    try {
+      const { url } = await this.storage.getUrl(client, user, null, attachmentId);
+      return url;
+    } catch {
+      return null;
+    }
+  }
 
   async list(
     client: PoolClient,
+    user: JwtAccessPayload,
     query: ListExceptionsQueryDto,
   ): Promise<Paginated<OfflineAuthCase>> {
     const page = query.page ?? 1;
@@ -105,7 +130,11 @@ export class ExceptionsService {
       ),
     ]);
     return {
-      rows: rows.rows.map(toOfflineAuthCase),
+      rows: await Promise.all(
+        rows.rows.map(async (r) =>
+          toOfflineAuthCase(r, await this.selfieUrl(client, user, r.selfie_attachment_id)),
+        ),
+      ),
       total: Number(count.rows[0]?.count ?? '0'),
       page,
       pageSize,
@@ -114,6 +143,7 @@ export class ExceptionsService {
 
   async recordVerdict(
     client: PoolClient,
+    user: JwtAccessPayload,
     actorId: UUID,
     id: UUID,
     dto: ExceptionVerdictDto,
@@ -180,12 +210,30 @@ export class ExceptionsService {
       const updated = await client.query<OfflineAuthConflictRow>(`${CASE_SELECT} AND sc.id = $1`, [
         id,
       ]);
-      return toOfflineAuthCase(updated.rows[0]!);
+      return toOfflineAuthCase(
+        updated.rows[0]!,
+        await this.selfieUrl(client, user, updated.rows[0]!.selfie_attachment_id),
+      );
     });
   }
 }
 
-function toOfflineAuthCase(row: OfflineAuthConflictRow): OfflineAuthCase {
+/**
+ * `selfieUrl` must be a URL the browser can actually load.
+ *
+ * This used to select `att.object_key` straight into the field, so the finance
+ * reviewer's `<img src>` got an S3 KEY — `attendance_selfie/<uuid>-x.jpg` —
+ * which the browser resolves against the current page (`/finance/...`) and
+ * 404s. The selfie never appeared, on the one screen whose entire purpose is
+ * judging whether an offline authorization was the person it claims to be
+ * (RISK-S2). Nothing failed loudly: a broken <img> renders as empty space, and
+ * an empty space beside "no evidence" reads exactly like "there was no photo".
+ *
+ * `StorageService.getUrl` is what HR's attendance rows already use for the
+ * same attachments (`safeSelfieUrl`), and it also enforces the entity-scope
+ * check that `attachments` has no RLS for.
+ */
+function toOfflineAuthCase(row: OfflineAuthConflictRow, selfieUrl: string | null): OfflineAuthCase {
   return {
     id: row.id,
     class: row.outcome === 'unprovable' ? 'offline_auth_unprovable' : 'offline_auth_failed',
@@ -197,7 +245,7 @@ function toOfflineAuthCase(row: OfflineAuthConflictRow): OfflineAuthCase {
     outletName: row.location_name ?? '',
     occurredAt: row.occurred_at ?? '',
     relayReceivedAt: row.relay_received_at ?? '',
-    evidence: { selfieUrl: row.selfie_url, pinAttempts: row.pin_attempts },
+    evidence: { selfieUrl, pinAttempts: row.pin_attempts },
     physicalEffectSuspected: row.physical_effect_suspected,
     outcome: row.outcome ?? 'pending_verification',
     verdict: row.verdict,

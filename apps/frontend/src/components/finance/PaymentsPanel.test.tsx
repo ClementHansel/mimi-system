@@ -46,7 +46,7 @@ function pv(overrides: Partial<PaymentVerification> = {}): PaymentVerification {
     payeeName: 'Toko ABC',
     amount: '1250000.00',
     status: 'pending',
-    proofUrl: null,
+    proofAttachmentId: null,
     referenceNumber: null,
     submittedBy: 'u2',
     verifiedBy: null,
@@ -81,8 +81,8 @@ describe('PaymentsPanel — payment verification queue', () => {
   it('disables Verifikasi on a pending PV with no proof attached yet', async () => {
     setPermissions(['payment.read', 'payment.verify']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/accounting/payments/')) return Promise.resolve(pv({ proofUrl: null }));
-      return Promise.resolve({ rows: [pv({ proofUrl: null })], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/accounting/payments/')) return Promise.resolve(pv({ proofAttachmentId: null }));
+      return Promise.resolve({ rows: [pv({ proofAttachmentId: null })], total: 1, page: 1, pageSize: 25 });
     });
 
     render(<PaymentsPanel />);
@@ -99,9 +99,9 @@ describe('PaymentsPanel — payment verification queue', () => {
     setPermissions(['payment.read', 'payment.verify']);
     vi.mocked(api.get).mockImplementation((path: string) => {
       if (path.startsWith('/accounting/payments/'))
-        return Promise.resolve(pv({ proofUrl: 'https://storage/proof.jpg' }));
+        return Promise.resolve(pv({ proofAttachmentId: 'att-proof-1' }));
       return Promise.resolve({
-        rows: [pv({ proofUrl: 'https://storage/proof.jpg' })],
+        rows: [pv({ proofAttachmentId: 'att-proof-1' })],
         total: 1,
         page: 1,
         pageSize: 25,
@@ -127,7 +127,7 @@ describe('PaymentsPanel — payment verification queue', () => {
     setPermissions(['payment.read', 'payment.pay']);
     vi.mocked(api.get).mockImplementation((path: string) => {
       if (path.startsWith('/accounting/payments/'))
-        return Promise.resolve(pv({ status: 'verified', proofUrl: 'https://storage/proof.jpg' }));
+        return Promise.resolve(pv({ status: 'verified', proofAttachmentId: 'att-proof-1' }));
       return Promise.resolve({
         rows: [pv({ status: 'verified' })],
         total: 1,
@@ -147,7 +147,7 @@ describe('PaymentsPanel — payment verification queue', () => {
     setPermissions(['payment.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
       if (path.startsWith('/accounting/payments/'))
-        return Promise.resolve(pv({ proofUrl: 'https://storage/proof.jpg' }));
+        return Promise.resolve(pv({ proofAttachmentId: 'att-proof-1' }));
       return Promise.resolve({ rows: [pv()], total: 1, page: 1, pageSize: 25 });
     });
 

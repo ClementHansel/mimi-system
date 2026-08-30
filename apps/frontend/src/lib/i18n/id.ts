@@ -372,6 +372,10 @@ export const id = {
     select: 'Pilih…',
     searchPlaceholder: 'Cari…',
     noResults: 'Tidak ada hasil',
+    // The clear button's aria-label. Missing, it was the only thing a screen
+    // reader announced for that control — and `translate()` returns the KEY
+    // when it cannot resolve one, so the button read out as "common.clear".
+    clear: 'Hapus pilihan',
     showDetail: 'Lihat detail',
     hideDetail: 'Sembunyikan',
     save: 'Simpan',
@@ -404,6 +408,11 @@ export const id = {
     yes: 'Ya',
     no: 'Tidak',
     actions: 'Aksi',
+    // Shown as the whole heading when someone opens a panel their role cannot
+    // reach (`WarehousePanelPage`). Missing, that page's only text was the
+    // literal string "common.noAccess" — the dev-only console warning in
+    // `translate()` is compiled out of production, so nothing else said so.
+    noAccess: 'Anda tidak memiliki akses ke halaman ini',
     viewDetails: 'Lihat Detail',
     reason: 'Alasan',
     reasonPlaceholder: 'Tuliskan alasan…',

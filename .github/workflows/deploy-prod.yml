@@ -42,8 +42,22 @@ concurrency:
   group: deploy-prod
   cancel-in-progress: false
 
+
+# ── WHICH REPO MAY RUN THIS ────────────────────────────────────────────────
+# The code lives in TWO GitHub repositories: `sammyjason39/mimichicken-os` (the
+# official one, which deploys production) and `ClementHansel/mimi-system` (the
+# working mirror, which deploys the demo box). The same workflow FILES exist in
+# both, so without this guard a push to both remotes would start two concurrent
+# deploys against the SAME server.
+#
+# That is not hypothetical: two migration runs racing one restore is exactly how
+# this project's production database ended up half-migrated once already, and a
+# concurrent `docker compose up --build` would fight over the same containers.
+# One repository owns each environment; the other one skips.
 jobs:
   deploy:
+    # Only sammyjason39/mimichicken-os deploys production.
+    if: github.repository == 'sammyjason39/mimichicken-os'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

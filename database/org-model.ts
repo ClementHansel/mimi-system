@@ -348,8 +348,8 @@ export async function applyOrgModel(client: pg.Client): Promise<OrgModelResult> 
   for (const p of planned) {
     if (!roleId[p.roleKey]) throw new Error(`Unknown role "${p.roleKey}"`);
     const res = await client.query<{ id: string; inserted: boolean }>(
-      `INSERT INTO users (username, email, password_hash, pin_hash, name, role_id, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,true)
+      `INSERT INTO users (username, email, password_hash, pin_hash, name, role_id, is_active, tenant_id)
+       VALUES ($1,$2,$3,$4,$5,$6,true, app_the_only_tenant())
        ON CONFLICT (username) DO UPDATE
          SET name = EXCLUDED.name,
              role_id = EXCLUDED.role_id,

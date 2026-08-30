@@ -220,8 +220,15 @@ async function main(): Promise<void> {
         // a permanent per-location OVERRIDE at the old radius: 229 nulled them,
         // and then the next seed put 100 straight back, so a freshly seeded box
         // silently ignored the setting. CI caught exactly that.
-        `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        `INSERT INTO locations (code, name, type, city, address, phone, latitude, longitude, tenant_id)
+         -- tenant_id is NOT NULL as of migration 263 and has no DEFAULT, on
+         -- purpose: with more than one tenant "the default company" is never a
+         -- correct answer. app_the_only_tenant() supplies it while exactly one
+         -- exists and RAISES as soon as a second does, so seeding a
+         -- multi-tenant database fails loudly instead of filing one client's
+         -- outlets under another. (No backticks in here - this is inside a JS
+         -- template literal, and one would end the string.)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, app_the_only_tenant())
          ON CONFLICT (code) DO UPDATE SET
            name = EXCLUDED.name,
            -- An existing box re-seeded after 229 must also drop the stale
@@ -529,8 +536,8 @@ async function main(): Promise<void> {
         continue;
       }
       const res = await client.query(
-        `INSERT INTO users (username, email, password_hash, pin_hash, name, role_id)
-         VALUES ($1,$2,$3,$4,$5,$6)
+        `INSERT INTO users (username, email, password_hash, pin_hash, name, role_id, tenant_id)
+         VALUES ($1,$2,$3,$4,$5,$6, app_the_only_tenant())
          ON CONFLICT (username) DO UPDATE SET name = EXCLUDED.name
          RETURNING id`,
         [

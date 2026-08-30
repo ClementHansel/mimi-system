@@ -1,0 +1,43 @@
+# Co-hosting overlay — for a box that is ALREADY RUNNING SOMETHING ELSE.
+#
+# `docker-compose.vps.yml` assumes the machine is Mimi's: it publishes the
+# frontend on `0.0.0.0:8080` and a TLS sidecar on `0.0.0.0:8443`, and it lets
+# the base file's default ports (4000, 5432, 6379, 9000…) fall where they may.
+# That is correct for a dedicated host and actively dangerous on a shared one.
+#
+# The shared host this was written for (43.156.62.134) runs conextlab.ai's
+# LiteLLM gateway: Caddy owns :80 and :443 with real certificates, and LiteLLM
+# is published on 127.0.0.1:4000 — which is exactly Mimi's default backend
+# port. Starting the stack unmodified would fight for that port and, worse,
+# take :80/:443 away from a service that has been live for days.
+#
+# So this overlay does three things, and nothing else:
+#
+#  1. PUBLISHES NOTHING PUBLICLY. Every port binds to 127.0.0.1. The host's
+#     existing Caddy is the only thing the internet talks to, and it reaches
+#     Mimi over loopback.
+#  2. MOVES EVERY PORT into a dedicated 41xxx block (see `.env.vps`), so a
+#     collision with the neighbour is impossible rather than merely unlikely.
+#  3. DROPS Mimi's own TLS sidecar. Two things cannot both terminate TLS, and
+#     the host Caddy already does it properly with Let's Encrypt instead of
+#     the self-signed certificate the sidecar generates.
+#
+# Usage (note the ORDER — later files win):
+#   docker compose -p mimi -f docker-compose.yml -f docker-compose.vps.yml \
+#                  -f docker-compose.cohost.yml --env-file .env.vps up -d
+#
+# `!override` rather than a plain list: Compose MERGES `ports` by appending,
+# so without it the `0.0.0.0:8080` binding from the VPS file would survive
+# alongside the loopback one and quietly expose the app anyway.
+
+services:
+  frontend:
+    ports: !override
+      - '127.0.0.1:${FRONTEND_PORT:-41300}:3000'
+
+  # Disabled by assigning a profile that is never activated — the same
+  # mechanism `docker-compose.vps.yml` uses to keep n8n out of the stack.
+  # Deleting the service instead would mean maintaining a divergent copy of
+  # the VPS file; this leaves one line pointing at why it is off.
+  tls:
+    profiles: ['dedicated-host-only']

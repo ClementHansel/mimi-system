@@ -8,6 +8,7 @@ import { Button, Card, CardContent, EmptyState, Badge } from '@/components/ui';
 import { fmtTime } from '@/lib/dates';
 import type { LiveDelivery } from '@/lib/shared-types';
 import { getLiveBoard } from './lib/delivery-api';
+import { SuratJalanDetailDrawer } from './SuratJalanDetailDrawer';
 
 /**
  * Leaflet reaches for `window` at import time, so the map is loaded client-side
@@ -43,6 +44,11 @@ export function LiveTrackingPanel() {
   const [deliveries, setDeliveries] = useState<LiveDelivery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  /** The row the dispatcher opened. The live board answers "where", and the
+   * next question is always "what is on that truck / which drop is it on" —
+   * which is the SAME drawer the Surat Jalan list opens, deliberately reused
+   * rather than a second, thinner detail view that would drift from it. */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -103,7 +109,25 @@ export function LiveTrackingPanel() {
               const ageMs = pos ? now - new Date(pos.recordedAt).getTime() : null;
               const stale = ageMs !== null && ageMs > STALE_AFTER_MS;
               return (
-                <Card key={d.sjId}>
+                <Card
+                  key={d.sjId}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedId(d.sjId)}
+                  // Keyboard parity with the mouse: this is a plain <div>, so
+                  // Enter/Space do not activate it for free the way they would
+                  // on a real button. A <button> is not an option here — the row
+                  // contains its own "open in maps" link, and nesting an anchor
+                  // inside a button is invalid HTML that browsers repair by
+                  // hoisting the link out of the row.
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedId(d.sjId);
+                    }
+                  }}
+                  className="cursor-pointer transition-colors hover:bg-surface-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                >
                   <CardContent className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-medium text-text-primary">
@@ -148,6 +172,9 @@ export function LiveTrackingPanel() {
                           href={`https://www.google.com/maps/search/?api=1&query=${pos.latitude},${pos.longitude}`}
                           target="_blank"
                           rel="noopener noreferrer"
+                          // The whole row now opens the SJ drawer; without this
+                          // the map link would ALSO open it behind the new tab.
+                          onClick={(e) => e.stopPropagation()}
                           className="inline-flex items-center gap-1 rounded-md border border-border-strong px-2.5 py-1.5 text-sm text-text-primary hover:bg-stone-50"
                         >
                           <MapPin className="size-4" aria-hidden />
@@ -161,6 +188,17 @@ export function LiveTrackingPanel() {
             })}
           </div>
         </>
+      )}
+
+      {selectedId && (
+        <SuratJalanDetailDrawer
+          id={selectedId}
+          onClose={() => setSelectedId(null)}
+          // A status walk from inside the drawer (dispatch, cancel) can move a
+          // trip on or off this board, so refresh it rather than waiting out
+          // the 30s poll with a row that no longer matches reality.
+          onChanged={() => void reload()}
+        />
       )}
     </div>
   );

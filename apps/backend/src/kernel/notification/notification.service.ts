@@ -135,10 +135,7 @@ export class NotificationService {
         email: string | null;
         phone: string | null;
         tenant_id: string;
-      }>(
-        'SELECT id, email, phone, tenant_id FROM users WHERE id = ANY($1::uuid[])',
-        [userIds],
-      );
+      }>('SELECT id, email, phone, tenant_id FROM users WHERE id = ANY($1::uuid[])', [userIds]);
       // snake_case out of Postgres, camelCase in the domain type.
       return result.rows.map((r) => ({
         id: r.id,

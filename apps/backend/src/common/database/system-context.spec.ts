@@ -34,10 +34,7 @@ describe('assertSystemContext', () => {
     // acting user to derive one from, so the value comes from
     // `app_the_only_tenant()` inside the database, which raises rather than
     // guessing once a second tenant exists.
-    expect(client.calls[3]).toEqual([
-      expect.stringContaining('app.tenant_id'),
-      undefined,
-    ]);
+    expect(client.calls[3]).toEqual([expect.stringContaining('app.tenant_id'), undefined]);
     expect(client.calls[4]).toEqual([expect.stringContaining('app.location_ids'), ['']]);
   });
 

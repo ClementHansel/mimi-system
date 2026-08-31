@@ -81,8 +81,14 @@ describe('PaymentsPanel — payment verification queue', () => {
   it('disables Verifikasi on a pending PV with no proof attached yet', async () => {
     setPermissions(['payment.read', 'payment.verify']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/accounting/payments/')) return Promise.resolve(pv({ proofAttachmentId: null }));
-      return Promise.resolve({ rows: [pv({ proofAttachmentId: null })], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/accounting/payments/'))
+        return Promise.resolve(pv({ proofAttachmentId: null }));
+      return Promise.resolve({
+        rows: [pv({ proofAttachmentId: null })],
+        total: 1,
+        page: 1,
+        pageSize: 25,
+      });
     });
 
     render(<PaymentsPanel />);

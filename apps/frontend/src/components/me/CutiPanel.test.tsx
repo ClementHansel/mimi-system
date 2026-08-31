@@ -53,7 +53,9 @@ const NOTE = () => new File(['x'], 'surat-dokter.pdf', { type: 'application/pdf'
 describe('CutiPanel — leave request with a supporting document', () => {
   beforeEach(() => {
     vi.mocked(getMyLeaves).mockReset().mockResolvedValue(EMPTY);
-    vi.mocked(createLeaveRequest).mockReset().mockResolvedValue({} as never);
+    vi.mocked(createLeaveRequest)
+      .mockReset()
+      .mockResolvedValue({} as never);
     vi.mocked(uploadLeaveAttachment).mockReset();
   });
 

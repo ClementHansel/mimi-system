@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Printer } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { VoucherBatchStatus, VoucherStatus, VoucherType } from '@/lib/shared-types';
 import { fmtDate, fmtDateTime } from '@/lib/dates';
 import { formatMoney } from '@/lib/formatters';
@@ -21,16 +20,13 @@ import { getVoucherBatch, issueVoucherBatch, closeVoucherBatch, voidVoucher } fr
 import { VoucherBatchModal } from './VoucherBatchModal';
 import type { VoucherBatch, Voucher } from './types';
 
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
-
 /** `success` for active, `neutral` for the terminal/void states — same flat tone table StatusBadge uses, hand-picked here since neither `VoucherStatus` nor `VoucherBatchStatus` has a `StatusBadge` domain of its own (see this file's report notes). */
 const BATCH_STATUS_VARIANT: Record<VoucherBatchStatus, 'neutral' | 'success' | 'default'> = {
   [VoucherBatchStatus.Draft]: 'neutral',
   [VoucherBatchStatus.Issued]: 'success',
   [VoucherBatchStatus.Closed]: 'default',
 };
+import { errMsg } from '@/lib/api-error';
 
 const VOUCHER_STATUS_VARIANT: Record<VoucherStatus, 'success' | 'default' | 'danger'> = {
   [VoucherStatus.Active]: 'success',

@@ -131,6 +131,17 @@ const ERROR_CODES = {
    *  destructive to a live outlet (W3-10 remote-command hardening). */
   ERR_NODE_SHIFT_OPEN: 'ERR_NODE_SHIFT_OPEN',
 
+  // ── Database-shaped refusals (mapped from SQLSTATE by the exception filter) ──
+  // These exist so a constraint the code did not pre-check still reaches the
+  // user as a sentence about THEIR data instead of the driver's own words.
+  // `all-exceptions.filter.ts` maps SQLSTATE → one of these and puts the
+  // machine detail (`constraint`, and the `entity`/`field` parsed out of it)
+  // in `details`, so the frontend can name the field without parsing English.
+  /** SQLSTATE 23505 unique_violation — a value that has to be unique is taken. */
+  ERR_DUPLICATE: 'ERR_DUPLICATE',
+  /** SQLSTATE 23503 foreign_key_violation — the row is referenced by, or references, another. */
+  ERR_REFERENCED: 'ERR_REFERENCED',
+
   // ── Generic ───────────────────────────────────────────────────────────────
   ERR_NOT_FOUND: 'ERR_NOT_FOUND',
   ERR_VALIDATION: 'ERR_VALIDATION',
@@ -219,6 +230,8 @@ export const {
   ERR_VOUCHER_WRONG_LOCATION,
   ERR_VOUCHER_OFFLINE_BLOCKED,
   ERR_DOC_SOURCE_NOT_FOUND,
+  ERR_DUPLICATE,
+  ERR_REFERENCED,
   ERR_NOT_FOUND,
   ERR_VALIDATION,
   ERR_CONFLICT,

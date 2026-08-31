@@ -10,6 +10,7 @@ import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 import type { ActorMeta } from '@/lib/local/api/local-runtime';
 import type { Money } from '@/lib/shared-types';
 import { usePosShiftStore, type OpenShift } from './shift-store';
+import { apiErrorDetail } from '@/lib/api-error';
 
 /**
  * "Tutup Kasir" (FR-POS-02). The counted-vs-expected comparison shown here
@@ -69,7 +70,7 @@ export function ShiftCloseModal({
     } catch (err) {
       toast({
         title: t('pos.shiftCloseFailed'),
-        description: err instanceof Error ? err.message : undefined,
+        description: apiErrorDetail(err),
         variant: 'danger',
       });
     } finally {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
@@ -17,17 +17,7 @@ import { MasterDataIo } from '@/components/admin/MasterDataIo';
 import { accountIoColumns } from './lib/io-columns';
 import { AccountType } from './types';
 import type { Account } from './types';
-
-/**
- * F07 finance — chart of accounts (CONTRACTS §4.17, D-04). `GET /accounts`
- * returns a plain `Account[]` (tree-ordered), not `Paginated<T>` — small
- * enough (a few dozen postable + header rows) that DataTable is fed a
- * synthetic one-page `Paginated` wrapper rather than pulled through
- * `useApiList`, which assumes a real paginated endpoint underneath it.
- */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 const TYPE_OPTIONS = Object.values(AccountType);
 

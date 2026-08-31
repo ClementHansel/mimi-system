@@ -13,11 +13,7 @@ import { SupplierFormModal } from './SupplierFormModal';
 import { SupplierDetailDrawer } from './SupplierDetailDrawer';
 import type { Paginated } from '@/lib/shared-types';
 import type { Supplier } from './lib/types';
-
-/** Same shape the other panels in this app use (`MasterDataPanel`, `CreateSuratJalanModal`): surface the server's message, fall back to a generic one. */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 /**
  * FR-SUP-01/03/04 — the supplier master list, and the way into one supplier's

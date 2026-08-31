@@ -17,6 +17,7 @@ import {
   type ChatConversation,
   type ChatMessage,
 } from './lib/chat-api';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * W7 — the admin chat inbox: every WhatsApp conversation, threaded, with a
@@ -229,7 +230,7 @@ function NewConversationModal({
       await onCreated(convo.id);
     } catch (err) {
       toast({
-        title: err instanceof Error && err.message ? err.message : t('auth.genericError'),
+        title: errMsg(err, t('errors.generic')),
         variant: 'danger',
       });
     } finally {

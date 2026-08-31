@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, RotateCcw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { formatMoney } from '@/lib/formatters';
 import { fmtDate } from '@/lib/dates';
@@ -25,18 +25,7 @@ import { JournalDescription } from './JournalDescription';
 import { sumMoney, moneyEquals, isZeroMoney } from './lib/money';
 import { journalIoColumns } from './lib/io-columns';
 import type { Account, JournalEntry, Money } from './types';
-
-/**
- * F07 finance — journal (CONTRACTS §4.17). "Every journal entry balances" is
- * the one thing that must be right here: the manual-post form computes a
- * live debit/credit total (via `sumMoney`, `BigInt`-cents, never a float sum)
- * and disables Submit until they match — the backend still rejects an
- * unbalanced entry (`ERR_UNBALANCED_ENTRY`), this is just the UI half of
- * "impossible to create an unbalanced entry from here".
- */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 export function JournalPanel() {
   const { t } = useI18n();

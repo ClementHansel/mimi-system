@@ -37,6 +37,7 @@ import {
 import { DocumentRenderer } from './DocumentRenderer';
 import { getDocTemplate, putDocTemplate, resetDocTemplate } from './doc-api';
 import { sampleDocData } from './sample-data';
+import { apiErrorDetail } from '@/lib/api-error';
 
 /**
  * The document designer: drag boxes on a page, see the result live, save it.
@@ -920,7 +921,7 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
     } catch (err) {
       toast({
         title: t('doc.designer.uploadFailed'),
-        description: err instanceof Error ? err.message : undefined,
+        description: apiErrorDetail(err),
         variant: 'danger',
       });
     } finally {

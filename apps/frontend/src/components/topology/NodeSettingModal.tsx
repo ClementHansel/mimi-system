@@ -18,10 +18,6 @@ import {
 } from './lib/node-api';
 import type { MintedPairingToken } from './lib/device-api';
 
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
-
 function errCode(err: unknown): string | undefined {
   return err instanceof ApiError ? err.code : undefined;
 }
@@ -29,6 +25,7 @@ function errCode(err: unknown): string | undefined {
 function msRemaining(expiresAt: string): number {
   return new Date(expiresAt).getTime() - Date.now();
 }
+import { errMsg } from '@/lib/api-error';
 
 function fmtCountdown(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { formatMoney } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/dates';
@@ -20,18 +20,7 @@ import { useApiList } from '@/components/admin/useApiList';
 import type { Paginated } from '@/lib/api';
 import { exceptionIoColumns } from './lib/io-columns';
 import type { OfflineAuthCase } from './types';
-
-/**
- * F07 finance — the D-17 exception queue (SYNC-PROTOCOL §7.5). These are
- * offline-authorization approvals that could not be re-verified once the
- * device came back online (`failed`/`unprovable`) — a fraud-control surface,
- * not an ordinary payments list, so every row here carries a danger/warning
- * treatment plus the "possible physical effect" flag rather than the neutral
- * styling `PaymentsPanel` uses.
- */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 export function ExceptionsPanel() {
   const { t } = useI18n();

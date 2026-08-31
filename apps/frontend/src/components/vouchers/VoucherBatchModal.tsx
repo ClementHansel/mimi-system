@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError, api } from '@/lib/api';
+import { api } from '@/lib/api';
 import { VoucherType } from '@/lib/shared-types';
 import type { Money, Paginated, UUID } from '@/lib/shared-types';
 import { MoneyInput } from '@/components/ui/MoneyInput';
@@ -14,10 +14,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { createVoucherBatch, updateVoucherBatch } from './voucher-api';
 import type { VoucherBatch, VoucherBatchInput } from './types';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 /**
  * A location as this modal needs it — id + name only. Fetched from

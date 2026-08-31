@@ -3,14 +3,10 @@
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, MapPin, MapPinOff, Save } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { Button, Textarea, toast } from '@/components/ui';
 import type { Drop } from '@/lib/shared-types';
 import { planRoute, setDropInstructions } from './lib/delivery-api';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 interface PlannedStop {
   dropId: string;

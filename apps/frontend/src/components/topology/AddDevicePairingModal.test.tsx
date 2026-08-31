@@ -58,7 +58,11 @@ describe('AddDevicePairingModal', () => {
     expect(screen.queryByText(MINTED.token)).not.toBeInTheDocument();
   });
 
-  it('shows the server error message and stays on the form when minting fails', async () => {
+  it('shows a readable error and stays on the form when minting fails', async () => {
+    // `'locationId is required'` is the developer message, and this test used
+    // to assert it rendered — a camelCase field name at a user. The screen now
+    // resolves `ERR_VALIDATION` through i18n; what matters here is unchanged
+    // and still asserted below: an error appears, and the minted code does not.
     vi.mocked(mintDevicePairingToken).mockRejectedValue(
       new ApiError(400, 'ERR_VALIDATION', 'locationId is required'),
     );
@@ -67,7 +71,11 @@ describe('AddDevicePairingModal', () => {
     fireEvent.change(screen.getByLabelText(/Lokasi/i), { target: { value: 'loc-a' } });
     fireEvent.click(screen.getByRole('button', { name: /Buat Kode Pemasangan/i }));
 
-    await waitFor(() => expect(screen.getByText('locationId is required')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.getByText('Data yang dikirim tidak valid. Periksa kembali isian Anda.'),
+      ).toBeInTheDocument(),
+    );
     expect(screen.queryByText(MINTED.displayCode)).not.toBeInTheDocument();
   });
 

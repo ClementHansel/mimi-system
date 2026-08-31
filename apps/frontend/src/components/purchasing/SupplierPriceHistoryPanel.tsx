@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDate } from '@/lib/dates';
 import { formatMoney } from '@/lib/formatters';
@@ -15,10 +14,7 @@ import type { Item, PriceHistoryEntry } from './lib/types';
 import type { Paginated } from '@/lib/shared-types';
 import { ExportButton } from '@/components/common/ExportButton';
 import { PRICE_HISTORY_EXPORT_COLUMNS } from './lib/io-columns';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 /**
  * FR-SUP-04 — append-only supplier price history, role-locked behind

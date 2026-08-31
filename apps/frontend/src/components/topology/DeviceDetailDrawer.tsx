@@ -4,16 +4,12 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Save, Unlink, Archive } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
-import { ApiError } from '@/lib/api';
 import { Drawer, StatusBadge, Input, Select, Button, Modal, toast } from '@/components/ui';
 import { fmtDateTime } from '@/lib/dates';
 import { DeviceCategory } from '@/lib/shared-types';
 import type { TopologyDevice, TopologyLocation } from './lib/types';
 import { updateDevice, unpairDevice, retireDevice } from './lib/device-api';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 /**
  * Per-device detail (ticket: "last seen, app version, queue depth, and

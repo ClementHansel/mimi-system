@@ -25,6 +25,7 @@ import {
   type InternalConversation,
 } from './lib/internal-chat-api';
 import type { ChatMessage } from './lib/chat-api';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * Internal (staff-to-staff) chat — person-to-person and group. SEPARATE
@@ -282,7 +283,7 @@ function NewChatModal({
       await onCreated(convo.id);
     } catch (err) {
       toast({
-        title: err instanceof Error && err.message ? err.message : t('auth.genericError'),
+        title: errMsg(err, t('errors.generic')),
         variant: 'danger',
       });
     } finally {
@@ -301,7 +302,7 @@ function NewChatModal({
       await onCreated(convo.id);
     } catch (err) {
       toast({
-        title: err instanceof Error && err.message ? err.message : t('auth.genericError'),
+        title: errMsg(err, t('errors.generic')),
         variant: 'danger',
       });
     } finally {
@@ -490,7 +491,7 @@ function ManageGroupModal({
       await reload();
     } catch (err) {
       toast({
-        title: err instanceof Error && err.message ? err.message : t('auth.genericError'),
+        title: errMsg(err, t('errors.generic')),
         variant: 'danger',
       });
     } finally {
@@ -507,7 +508,7 @@ function ManageGroupModal({
       await reload();
     } catch (err) {
       toast({
-        title: err instanceof Error && err.message ? err.message : t('auth.genericError'),
+        title: errMsg(err, t('errors.generic')),
         variant: 'danger',
       });
     } finally {
@@ -524,7 +525,7 @@ function ManageGroupModal({
       await reload();
     } catch (err) {
       toast({
-        title: err instanceof Error && err.message ? err.message : t('auth.genericError'),
+        title: errMsg(err, t('errors.generic')),
         variant: 'danger',
       });
     } finally {

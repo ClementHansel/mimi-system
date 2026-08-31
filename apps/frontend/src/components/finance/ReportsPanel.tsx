@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, AlertTriangle, CalendarX, FileWarning, FileSearch } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { formatMoney } from '@/lib/formatters';
 import { toDateInput } from '@/lib/dates';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
@@ -28,6 +28,7 @@ import type {
   BalanceSheetReport,
   StockValueRow,
 } from './types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F07 finance — reports (CONTRACTS §4.17: trial balance, P&L, balance sheet,
@@ -69,10 +70,6 @@ function ReportError({ message }: { message: string }) {
       size="sm"
     />
   );
-}
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
 }
 
 function TrialBalanceTab() {

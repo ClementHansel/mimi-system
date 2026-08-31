@@ -2,21 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { Modal, Select, Button } from '@/components/ui';
 import { fmtTime } from '@/lib/dates';
 import { DeviceCategory } from '@/lib/shared-types';
 import { mintDevicePairingToken, type MintedPairingToken } from './lib/device-api';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
 
 const PAIRING_TOKEN_TTL_MIN = 15; // §7.2/§4.21 — matches PairingTokensService's fixed TTL.
 
 function msRemaining(expiresAt: string): number {
   return new Date(expiresAt).getTime() - Date.now();
 }
+import { errMsg } from '@/lib/api-error';
 
 function fmtCountdown(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));

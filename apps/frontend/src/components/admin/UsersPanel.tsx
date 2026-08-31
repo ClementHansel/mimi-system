@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, UserPlus } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError, type Paginated } from '@/lib/api';
+import { api, type Paginated } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDateTime } from '@/lib/dates';
 import { toast } from '@/components/ui/Toast';
@@ -21,6 +21,7 @@ import { RoleKey } from '@/lib/shared-types';
 import { ROLE_SENIORITY, assignableRoles, roleLabel } from './roleRank';
 import { userIoColumns } from './lib/io-columns';
 import type { Location, UserRow } from './types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F10 admin — Users (CONTRACTS §4.2 M02). List/create/edit/role-assign
@@ -41,10 +42,6 @@ function ActiveBadge({ active }: { active: boolean }) {
       <XCircle className="size-3.5" aria-hidden /> {t('admin.users.statusInactive')}
     </span>
   );
-}
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
 }
 
 export function UsersPanel() {

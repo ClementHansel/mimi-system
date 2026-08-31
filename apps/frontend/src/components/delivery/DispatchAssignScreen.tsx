@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { Card, CardContent, Select, StatusBadge, EmptyState } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
 import { SuratJalanStatus, type SuratJalan } from '@/lib/shared-types';
@@ -10,10 +9,6 @@ import type { Driver, Vehicle } from './lib/types';
 import { getDrivers, getSuratJalan, getVehicles, listSuratJalan } from './lib/delivery-api';
 import { AssignDriverVehicleForm } from './AssignDriverVehicleForm';
 import { DropOrderEditor } from './DropOrderEditor';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
 
 // Only draft/ready SJs are worth picking here — `loading`/`in_transit`/
 // `completed`/`cancelled` can neither have their driver/vehicle reassigned
@@ -24,6 +19,7 @@ function errMsg(err: unknown, fallback: string): string {
 function isEditableStatus(status: string): boolean {
   return status === SuratJalanStatus.DRAFT || status === SuratJalanStatus.READY;
 }
+import { errMsg } from '@/lib/api-error';
 
 /**
  * The dispatcher's screen for picking a Surat Jalan, assigning its driver +

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowRightLeft, Store } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { fmtDate } from '@/lib/dates';
 import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
@@ -24,33 +23,7 @@ import type { LocationOption } from './lib/types';
 // which is this app's seam onto `@mimi/shared` for the replenishment shapes.
 import type { Paginated } from '@/lib/shared-types';
 import type { Replenishment } from '@/components/outlet/lib/types';
-
-/**
- * "Permintaan Outlet" — the office's view of what the stores are asking for,
- * and the one place an outlet request becomes a purchase request.
- *
- * Owner's ruling (2026-08-21): "Need to have a place to see requests from
- * stores properly and able to convert that to PR, and later PR to PO." Until
- * now these requests existed only in Gudang's approval queue, so Pembelian —
- * the people who actually buy what the warehouse cannot ship — had no sight of
- * them at all and retyped the lines from a WhatsApp message.
- *
- * What conversion does NOT do, on purpose:
- *
- *  - It does not change the outlet's request. That request has its own life in
- *    gudang (fulfil it from stock), and buying the goods in is the OTHER answer
- *    to it, not a state change of it. Both answers can be true at once for
- *    different lines.
- *  - It does not price anything. The new PR is a DRAFT with `est_price` 0; the
- *    office fills in prices and a supplier, then submits. A conversion that
- *    invented figures would look like a quote.
- *
- * The link survives on the PR (`sourceReplenishmentNumber` in its drawer), so
- * "which store asked for this?" is answerable from the document afterwards.
- */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 /**
  * Statuses worth converting. A `draft` request has not been sent by the outlet

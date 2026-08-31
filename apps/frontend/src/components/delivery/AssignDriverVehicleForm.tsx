@@ -3,15 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Save } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { Button, Select, toast } from '@/components/ui';
 import type { SuratJalan } from '@/lib/shared-types';
 import type { Driver, Vehicle } from './lib/types';
 import { patchSuratJalan } from './lib/delivery-api';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 /**
  * Dispatch screen (`/delivery/assign`) driver + truck picker.

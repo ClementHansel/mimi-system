@@ -277,6 +277,42 @@ export class ReplenishmentRepository {
     return res.rows.map(mapLineRow);
   }
 
+  /**
+   * Lines for a PAGE of requests, in one query.
+   *
+   * `list`/`listWarehouseQueue` used to hand `[]` to `toResource`, so every
+   * request in a list arrived with no lines — which is why Pembelian →
+   * Permintaan Outlet showed "Jumlah Item 0" against a real request, and why
+   * its CSV export (one row per LINE, deliberately) wrote one blank-item row
+   * per request instead. Per-request `findLines` calls would have fixed the
+   * display and added N queries to every page; `= ANY($1)` is the same read
+   * once.
+   */
+  async findLinesForRequests(
+    client: PoolClient,
+    requestIds: readonly UUID[],
+  ): Promise<Map<string, ReplenishmentLineRow[]>> {
+    const byRequest = new Map<string, ReplenishmentLineRow[]>();
+    if (requestIds.length === 0) return byRequest;
+    const res = await client.query(
+      `SELECT rl.request_id, rl.id, rl.item_id, i.name AS item_name, u.code AS unit_code,
+              rl.qty_requested, rl.qty_approved, rl.qty_shipped, rl.qty_received, rl.amend_reason
+         FROM replenishment_request_lines rl
+         JOIN items i ON i.id = rl.item_id
+         JOIN units u ON u.id = rl.unit_id
+        WHERE rl.request_id = ANY($1)
+        ORDER BY i.name ASC`,
+      [requestIds as UUID[]],
+    );
+    for (const raw of res.rows) {
+      const key = String(raw.request_id);
+      const bucket = byRequest.get(key);
+      if (bucket) bucket.push(mapLineRow(raw));
+      else byRequest.set(key, [mapLineRow(raw)]);
+    }
+    return byRequest;
+  }
+
   async list(
     client: PoolClient,
     filter: ListFilter,

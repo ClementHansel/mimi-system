@@ -35,11 +35,7 @@ import {
 } from './lib/hr-api';
 import { SALARY_COMPONENT_IO_COLUMNS } from './lib/salary-components-io';
 import type { EmployeeComponentAssignment, PayrollComponent } from './lib/types';
-
-/** Same shape every other master-data panel in this app uses to surface the server's own message. */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 // `CreateComponentDto` only ever accepts these two — `'employer_cost'` (BPJS
 // employer shares) is a real `type` value the LIST can return, but nothing in

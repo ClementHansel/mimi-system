@@ -11,6 +11,7 @@ import { Request, Response } from 'express';
 import type { ApiErrorShape, ErrorCode } from '@mimi/shared';
 import { ERROR_CODE_LIST, ERR_INTERNAL } from '@mimi/shared';
 import { defaultCodeForStatus } from './error-code.util';
+import { isPgError, mapPgError, pgErrorMessage } from './pg-error.util';
 
 function isErrorCode(value: unknown): value is ErrorCode {
   return typeof value === 'string' && (ERROR_CODE_LIST as readonly string[]).includes(value);
@@ -40,6 +41,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const shape = this.toErrorShape(exception);
+
+    // A mapped database refusal (409/422/403) is logged at `warn` even though
+    // it is not a 5xx: the response deliberately no longer carries the
+    // driver's text, so this is the only place the constraint that actually
+    // fired is recorded.
+    if (shape.statusCode < 500 && isPgError(exception) && mapPgError(exception)) {
+      this.logger.warn(
+        `${request.method} ${request.originalUrl ?? request.url} → ${shape.statusCode} ${shape.code}: ${
+          exception instanceof Error ? exception.message : String(exception)
+        }`,
+      );
+    }
 
     if (shape.statusCode >= 500) {
       this.logger.error(
@@ -79,6 +92,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
 
       return { statusCode, code: defaultCodeForStatus(statusCode), message: exception.message };
+    }
+
+    // Raw database errors reach here (a constraint no service pre-checked).
+    // `pg-error.util` turns the recognized ones into a real status and a
+    // stable code, and — the point of the exercise — replaces the driver's
+    // English/schema-flavoured text so it can never be shown to a user.
+    if (isPgError(exception)) {
+      const mapped = mapPgError(exception);
+      if (mapped) {
+        return {
+          statusCode: mapped.statusCode,
+          code: mapped.code,
+          message: pgErrorMessage(exception),
+          details: Object.keys(mapped.details).length > 0 ? mapped.details : undefined,
+        };
+      }
     }
 
     const message = exception instanceof Error ? exception.message : 'Internal server error';

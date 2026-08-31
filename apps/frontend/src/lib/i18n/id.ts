@@ -429,6 +429,107 @@ export const id = {
     notes: 'Catatan',
   },
 
+  /**
+   * SERVER ERRORS, KEYED BY THE MACHINE `code` — the one place a failed
+   * request becomes a sentence a user can act on.
+   *
+   * Why this block exists (owner, 2026-08-31): saving a supplier whose code
+   * was taken put the driver's own words in a toast —
+   * `duplicate key value violates unique constraint "suppliers_code_key"`.
+   * Every screen that showed `err.message` had the same hole, because
+   * `ApiErrorShape.message` is a DEVELOPER fallback (CONTRACTS §0), never
+   * user-facing copy. `lib/api-error.ts` resolves from here instead.
+   *
+   * Two rules for anything added below:
+   *  - Say what the user can DO. "Kode ini sudah dipakai" beats "Konflik
+   *    data": one of them tells you to type a different code.
+   *  - No table, column, constraint or SQLSTATE names. `byField` names the
+   *    FORM's field, and an unrecognised field falls back to the
+   *    field-less sentence rather than printing a column name.
+   */
+  errors: {
+    // Last resorts, by HTTP status class — reached when a response carries a
+    // `code` this map has no line for, so a new backend code degrades to a
+    // sane sentence instead of a raw one.
+    generic: 'Terjadi kesalahan. Silakan coba lagi.',
+    network: 'Tidak dapat menghubungi server. Periksa koneksi Anda.',
+    badRequest: 'Data yang dikirim tidak valid. Periksa kembali isian Anda.',
+    unauthorized: 'Sesi Anda telah berakhir. Silakan masuk kembali.',
+    forbidden: 'Anda tidak punya akses untuk tindakan ini.',
+    notFound: 'Data yang dimaksud tidak ditemukan.',
+    conflict: 'Data ini bentrok dengan data lain. Muat ulang lalu coba lagi.',
+    server: 'Server sedang bermasalah. Coba lagi beberapa saat.',
+
+    byCode: {
+      ERR_DUPLICATE: 'Data ini sudah ada. Gunakan nilai yang berbeda.',
+      ERR_DUPLICATE_FIELD: '{{field}} "{{value}}" sudah dipakai. Gunakan yang lain.',
+      ERR_DUPLICATE_FIELD_NO_VALUE: '{{field}} ini sudah dipakai. Gunakan yang lain.',
+      ERR_REFERENCED:
+        'Data ini masih terpakai di dokumen lain, jadi tidak bisa diubah atau dihapus.',
+      ERR_VALIDATION: 'Data yang dikirim tidak valid. Periksa kembali isian Anda.',
+      ERR_VALIDATION_FIELD: '{{field}} belum benar. Periksa kembali isian tersebut.',
+      ERR_NOT_FOUND: 'Data yang dimaksud tidak ditemukan.',
+      ERR_CONFLICT: 'Data ini bentrok dengan data lain. Muat ulang lalu coba lagi.',
+      ERR_FORBIDDEN: 'Anda tidak punya akses untuk tindakan ini.',
+      ERR_LOCATION_OUT_OF_SCOPE: 'Lokasi ini di luar wilayah Anda.',
+      ERR_INTERNAL: 'Server sedang bermasalah. Coba lagi beberapa saat.',
+      ERR_AUTH_TOKEN_EXPIRED: 'Sesi Anda telah berakhir. Silakan masuk kembali.',
+      ERR_AUTH_TOKEN_INVALID: 'Sesi Anda tidak valid. Silakan masuk kembali.',
+      ERR_AUTH_INVALID_CREDENTIALS: 'Username atau kata sandi salah.',
+      ERR_AUTH_PIN_INVALID: 'PIN salah.',
+      ERR_AUTH_PIN_LOCKED: 'PIN terkunci karena terlalu banyak percobaan. Minta atasan membuka.',
+      ERR_REASON_REQUIRED: 'Alasan wajib diisi.',
+      ERR_VARIANCE_REASON_REQUIRED: 'Selisih wajib diberi alasan.',
+      ERR_PHOTO_REQUIRED: 'Foto wajib dilampirkan.',
+      ERR_SIGNATURE_REQUIRED: 'Tanda tangan wajib diisi.',
+      ERR_PROOF_REQUIRED: 'Bukti wajib dilampirkan.',
+      ERR_APPROVAL_STEP_ROLE: 'Tahap persetujuan ini bukan wewenang Anda.',
+      ERR_APPROVAL_INVALID_TRANSITION: 'Status dokumen sudah berubah. Muat ulang halaman ini.',
+      ERR_APPROVAL_ALREADY_DECIDED: 'Dokumen ini sudah diputuskan sebelumnya.',
+      ERR_DISPUTES_OPEN: 'Masih ada selisih yang belum diselesaikan.',
+      ERR_OFFLINE_NOT_ELIGIBLE: 'Tindakan ini tidak bisa dilakukan saat offline.',
+      ERR_STOCK_INSUFFICIENT: 'Stok tidak mencukupi.',
+      ERR_AREA_HAS_STOCK: 'Area ini masih ada stok, jadi belum bisa dinonaktifkan.',
+      ERR_SHIPMENT_TYPE_MIX: 'Barang beku dan kering tidak boleh satu surat jalan.',
+      ERR_GEOFENCE_OUT_OF_RANGE: 'Anda berada di luar radius lokasi absen.',
+      ERR_PERIOD_CLOSED: 'Periode akuntansi ini sudah ditutup.',
+      ERR_UNBALANCED_ENTRY: 'Debit dan kredit belum seimbang.',
+      // Node gateway (D-26). The first pair shows the `_NO_DETAILS` sibling
+      // convention: the refusal quotes the queue depth the server sent, and
+      // still says something useful when it sent none.
+      ERR_NODE_QUEUE_PENDING:
+        'Masih ada {{pendingCount}} data di node ini yang belum terkirim ke pusat. Node baru bisa dimatikan setelah semuanya terkirim.',
+      ERR_NODE_QUEUE_PENDING_NO_DETAILS:
+        'Masih ada data di node ini yang belum terkirim ke pusat. Node baru bisa dimatikan setelah semuanya terkirim.',
+      ERR_NODE_UNREACHABLE:
+        'Node ini sedang tidak terhubung, jadi perubahan tidak bisa dipastikan sampai. Coba lagi setelah node online.',
+      ERR_NODE_SHIFT_OPEN:
+        'Outlet ini masih ada shift POS yang terbuka. Tutup shift dulu, atau centang paksa jalankan.',
+    },
+
+    /**
+     * Field labels in the FORM's vocabulary, keyed by the column name the
+     * server reports in `details.field`. Anything not listed here is treated
+     * as unknown on purpose — better a sentence without the field name than
+     * one naming `bank_account_name` at a user.
+     */
+    byField: {
+      code: 'Kode',
+      name: 'Nama',
+      phone: 'Nomor telepon',
+      email: 'Email',
+      username: 'Username',
+      barcode: 'Barcode',
+      sku: 'SKU',
+      request_number: 'Nomor permintaan',
+      pr_number: 'Nomor PR',
+      po_number: 'Nomor PO',
+      sj_number: 'Nomor surat jalan',
+      invoice_number: 'Nomor invoice',
+      nik: 'NIK',
+    },
+  },
+
   validation: {
     required: 'Wajib diisi',
     invalidNumber: 'Angka tidak valid',
@@ -1411,6 +1512,7 @@ export const id = {
       deactivated: 'Supplier dinonaktifkan',
       created: 'Supplier ditambahkan',
       updated: 'Supplier diperbarui',
+      saveFailed: 'Supplier gagal disimpan.',
       columnCode: 'Kode',
       columnName: 'Nama Supplier',
       columnContact: 'Kontak',

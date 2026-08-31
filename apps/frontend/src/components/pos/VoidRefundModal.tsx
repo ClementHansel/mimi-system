@@ -16,7 +16,7 @@ import {
   Badge,
 } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useConnectivityStore } from '@/stores/connectivity-store';
 import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 import type { ActorMeta } from '@/lib/local/api/local-runtime';
@@ -28,6 +28,7 @@ import {
   type CachedApproverOption,
 } from './pos-runtime';
 import { usePosShiftStore } from './shift-store';
+import { apiErrorDetail } from '@/lib/api-error';
 
 /**
  * Void/refund (FR-POS-03) — ALWAYS requires supervisor authorization, never
@@ -251,9 +252,7 @@ export function VoidRefundModal({
       recordVoid();
       onClose();
     } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined;
-      toast({ title: t('pos.voidFailed'), description: message, variant: 'danger' });
+      toast({ title: t('pos.voidFailed'), description: apiErrorDetail(err), variant: 'danger' });
     } finally {
       setSubmitting(false);
     }

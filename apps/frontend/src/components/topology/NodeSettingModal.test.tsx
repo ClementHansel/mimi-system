@@ -129,10 +129,18 @@ describe('NodeSettingModal', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
-  it('surfaces the server drain-before-off message verbatim when turning a node off fails', async () => {
+  it('explains the drain-before-off refusal, quoting the queue depth the server sent', async () => {
     setUser('owner', ['node.manage']);
+    // `message` is the DEVELOPER string (CONTRACTS §0) and this test used to
+    // assert it appeared on screen — in English, to an Owner. The refusal's
+    // useful part is the COUNT, which the endpoint already sends in
+    // `details.pendingCount`, so the Indonesian sentence quotes it from there
+    // (`lib/api-error.ts`) and `message` stays out of the UI.
     vi.mocked(setOutletNodeEnabled).mockRejectedValue(
-      new ApiError(400, 'ERR_NODE_QUEUE_PENDING', '3 event(s) are still queued on this node.'),
+      new ApiError(400, 'ERR_NODE_QUEUE_PENDING', '3 event(s) are still queued on this node.', {
+        pendingCount: 3,
+        reachable: true,
+      }),
     );
 
     render(
@@ -157,7 +165,11 @@ describe('NodeSettingModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nonaktifkan Node' }));
 
     await waitFor(() =>
-      expect(screen.getByText('3 event(s) are still queued on this node.')).toBeInTheDocument(),
+      expect(
+        screen.getByText(
+          'Masih ada 3 data di node ini yang belum terkirim ke pusat. Node baru bisa dimatikan setelah semuanya terkirim.',
+        ),
+      ).toBeInTheDocument(),
     );
   });
 

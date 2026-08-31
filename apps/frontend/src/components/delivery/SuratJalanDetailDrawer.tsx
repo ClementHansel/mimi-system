@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Truck, Ban, AlertTriangle, Thermometer, Printer } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import type { Drop, TempLog, Temp, SuratJalan } from '@/lib/shared-types';
 import {
   Drawer,
@@ -30,10 +29,7 @@ import {
 import { RoutePlanner } from './RoutePlanner';
 import { TruckTypeBadge } from './TruckTypeLegend';
 import { routeCompletion, isDropTerminal } from './lib/drop-progress';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 const CANCELLABLE_STATUSES = new Set(['draft', 'ready', 'loading']);
 

@@ -122,3 +122,60 @@ describe('AllExceptionsFilter', () => {
     });
   });
 });
+
+/**
+ * The supplier-duplicate outage, at the filter (owner, 2026-08-31). A raw
+ * `pg` error thrown by a service that had not pre-checked a constraint used
+ * to fall through to `500 ERR_INTERNAL` carrying the driver's own English —
+ * `duplicate key value violates unique constraint "suppliers_code_key"` —
+ * which the frontend showed in a toast.
+ *
+ * Both halves are asserted, because either one alone would have left the bug
+ * visible: the STATUS has to stop being 500 (it is a refusal the user can
+ * fix), and the MESSAGE has to stop carrying the driver's text and our table
+ * names.
+ */
+describe('AllExceptionsFilter — raw database errors', () => {
+  function pgError(over: Record<string, string> & { code: string }) {
+    return Object.assign(
+      new Error('duplicate key value violates unique constraint "suppliers_code_key"'),
+      over,
+    );
+  }
+
+  it('serves a unique violation as 409 ERR_DUPLICATE with the field in details', () => {
+    const { host, status, json } = makeHost();
+    new AllExceptionsFilter().catch(
+      pgError({ code: '23505', constraint: 'suppliers_code_key', table: 'suppliers' }),
+      host,
+    );
+    expect(status).toHaveBeenCalledWith(409);
+    const shape = json.mock.calls[0]![0] as Record<string, unknown>;
+    expect(shape.code).toBe('ERR_DUPLICATE');
+    expect(shape.details).toMatchObject({ entity: 'suppliers', field: 'code' });
+  });
+
+  it("never puts the driver's text in the response", () => {
+    const { host, json } = makeHost();
+    new AllExceptionsFilter().catch(
+      pgError({ code: '23505', constraint: 'suppliers_code_key' }),
+      host,
+    );
+    const message = String((json.mock.calls[0]![0] as Record<string, unknown>).message);
+    expect(message).not.toContain('duplicate key');
+    expect(message).not.toContain('unique constraint');
+    expect(message).toBe('Database constraint violation (SQLSTATE 23505)');
+  });
+
+  it('still reports a genuine database fault as 500', () => {
+    // A deadlock is not something the caller did wrong; downgrading it to a
+    // 4xx would tell them to fix their input and hide a real problem.
+    const { host, status, json } = makeHost();
+    new AllExceptionsFilter().catch(
+      Object.assign(new Error('deadlock detected'), { code: '40P01' }),
+      host,
+    );
+    expect(status).toHaveBeenCalledWith(500);
+    expect((json.mock.calls[0]![0] as Record<string, unknown>).code).toBe('ERR_INTERNAL');
+  });
+});

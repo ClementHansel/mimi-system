@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { Button, Input, Modal, Textarea, toast } from '@/components/ui';
+import { errMsg } from '@/lib/api-error';
 import { createSupplier, updateSupplier } from './lib/api';
 import type { Supplier } from './lib/types';
 
@@ -84,11 +85,14 @@ export function SupplierFormModal({
       });
       onSaved();
     } catch (err) {
-      // Surface the server's message: the realistic failure is a duplicate
-      // `code`, and "gagal menyimpan" would send someone hunting for the wrong
-      // problem.
+      // The realistic failure here is a duplicate `code`, and it has to SAY
+      // so — "gagal menyimpan" would send someone hunting for the wrong
+      // problem. It used to say so in the driver's words
+      // (`duplicate key value violates unique constraint "suppliers_code_key"`);
+      // `apiErrorText` reads the same 409's `code`+`details.field` and
+      // produces «Kode "SUP001" sudah dipakai. Gunakan yang lain.»
       toast({
-        title: err instanceof Error && err.message ? err.message : t('auth.genericError'),
+        title: errMsg(err, t('purchasing.suppliers.saveFailed')),
         variant: 'danger',
       });
     } finally {

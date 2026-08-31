@@ -3,7 +3,6 @@
 import { useMemo, useEffect, useRef, useState } from 'react';
 import { Plus, Printer, Upload } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { PurchaseOrderStatus, PurchaseRequestStatus } from '@/lib/shared-types';
 import type { Money, Qty } from '@/lib/shared-types';
@@ -57,10 +56,7 @@ import type {
   PurchaseOrderDetail,
   PurchaseRequestListRow,
 } from './lib/types';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Upload } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { formatMoney } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/dates';
@@ -31,17 +31,7 @@ import {
   type PaymentVerification,
   type Money,
 } from './types';
-
-/**
- * F07 finance — payment verification queue (FR-ACCT-01..04, CONTRACTS
- * §4.17/§5.8). The Pending -> Verified -> Paid ladder: a transfer-method
- * sale sits `pending` until Finance confirms the money actually arrived, so
- * every state transition here is one deliberate, permission-gated action —
- * never a silent status flip. `rejected` is a dead end off pending/verified.
- */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 const REF_TYPE_OPTIONS = Object.values(PaymentVerificationRefType);
 const PAYEE_TYPE_OPTIONS = Object.values(PayeeType);

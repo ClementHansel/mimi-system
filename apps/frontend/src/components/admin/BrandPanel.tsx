@@ -28,6 +28,7 @@ import {
 } from '@/lib/shared-types';
 import { DocumentRenderer } from '@/components/documents/DocumentRenderer';
 import { sampleDocData } from '@/components/documents/sample-data';
+import { apiErrorDetail } from '@/lib/api-error';
 
 /**
  * Admin → Merek: the logo, the favicon, and the four colours every printed
@@ -151,7 +152,7 @@ export function BrandPanel() {
     } catch (err) {
       toast({
         title: t('brand.uploadFailed'),
-        description: err instanceof Error ? err.message : undefined,
+        description: apiErrorDetail(err),
         variant: 'danger',
       });
     } finally {

@@ -36,15 +36,11 @@ import {
 import { contractIoColumns, type ContractExportRow } from './lib/contracts-io-columns';
 import type { Contract, ContractSignature } from './lib/types';
 import type { Paginated } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 const CONTRACT_TYPES = ['pkwt', 'pkwtt', 'probation', 'internship'] as const;
 const CONTRACT_STATUSES = ['draft', 'active', 'expired', 'terminated'] as const;
 const SIGN_METHODS = ['wet_ink_scan', 'digital', 'in_person_witnessed'] as const;
-
-/** Same shape every other panel in this app uses to surface a server message. */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback;
-}
 
 /**
  * F08 `hr` — employment contracts CRUD, per-party signatures, and

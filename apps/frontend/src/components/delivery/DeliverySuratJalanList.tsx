@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { SuratJalanStatus, type SuratJalan } from '@/lib/shared-types';
 import {
   Button,
@@ -22,10 +21,7 @@ import { routeCompletion } from './lib/drop-progress';
 import { TruckTypeBadge } from './TruckTypeLegend';
 import { CreateSuratJalanModal } from './CreateSuratJalanModal';
 import { SuratJalanDetailDrawer } from './SuratJalanDetailDrawer';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 /**
  * EXPORT ONLY on this list, deliberately.

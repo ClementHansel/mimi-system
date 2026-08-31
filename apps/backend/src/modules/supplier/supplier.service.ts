@@ -1,6 +1,11 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { UUID, Money, ISODate, Paginated } from '@mimi/shared';
+import { UUID, Money, ISODate, Paginated, ERR_DUPLICATE } from '@mimi/shared';
 import { formatDateOnly } from '../../common/date-only.util';
 import { withWrite } from './db-tx';
 
@@ -152,11 +157,17 @@ export class SupplierService {
     }
 
     if (q) {
+      // ONE placeholder for the one `%q%` value, reused across the three
+      // columns. The previous version pushed the value, wrote `$n` three
+      // times, then rewrote the first `$n` to `$n-1` and appended a fourth
+      // clause — with no `active` filter that arithmetic reached `$0`, which
+      // Postgres has no such thing as, so EVERY supplier search 500'd. The
+      // appended clause was also outside the parentheses, which would have
+      // made `OR phone ILIKE ...` beat the `is_active` guard and list
+      // deactivated suppliers.
       params.push(`%${q}%`);
-      where += ` AND (name ILIKE $${params.length} OR code ILIKE $${params.length} OR phone ILIKE $${params.length})`;
-      const qParam = params.length - 1;
-      where = where.replace(`$${params.length}`, `$${qParam}`);
-      where += ` OR phone ILIKE $${qParam}`;
+      const qParam = params.length;
+      where += ` AND (name ILIKE $${qParam} OR code ILIKE $${qParam} OR phone ILIKE $${qParam})`;
     }
 
     params.push(pageSize, offset);
@@ -195,11 +206,11 @@ export class SupplierService {
     let where = 'is_active IS NOT FALSE AND outlet_visible = true';
 
     if (q) {
+      // Same single-placeholder form as `list` above — see the note there for
+      // what the arithmetic version did wrong.
       params.push(`%${q}%`);
-      where += ` AND (name ILIKE $${params.length} OR code ILIKE $${params.length} OR phone ILIKE $${params.length})`;
-      const qParam = params.length - 1;
-      where = where.replace(`$${params.length}`, `$${qParam}`);
-      where += ` OR phone ILIKE $${qParam}`;
+      const qParam = params.length;
+      where += ` AND (name ILIKE $${qParam} OR code ILIKE $${qParam} OR phone ILIKE $${qParam})`;
     }
 
     params.push(pageSize, offset);
@@ -253,6 +264,24 @@ export class SupplierService {
   ): Promise<Supplier> {
     if (!dto.code?.trim()) throw new BadRequestException('code is required');
     if (!dto.name?.trim()) throw new BadRequestException('name is required');
+
+    // Pre-check the one collision this form actually hits. `suppliers_code_key`
+    // would refuse the INSERT anyway and the exception filter now maps that to
+    // the same 409/`ERR_DUPLICATE`, but only this check can say `field: 'code'`
+    // with certainty instead of parsing it out of a constraint name — and it
+    // keeps a routine typo out of the error log as an unhandled DB error.
+    // Still a race with a concurrent INSERT of the same code; the constraint
+    // and the filter remain the backstop for that.
+    const clash = await client.query<{ id: string }>(`SELECT id FROM suppliers WHERE code = $1`, [
+      dto.code.trim(),
+    ]);
+    if (clash.rows.length > 0) {
+      throw new ConflictException({
+        code: ERR_DUPLICATE,
+        message: `Supplier code ${dto.code.trim()} already exists`,
+        details: { entity: 'suppliers', field: 'code', value: dto.code.trim() },
+      });
+    }
 
     return withWrite(client, async () => {
       const res = await client.query<Record<string, any>>(

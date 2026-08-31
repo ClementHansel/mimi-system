@@ -19,6 +19,7 @@ import { printReceipt, buildReceiptText } from './receipt-printer';
 import { CHANNEL_META } from './channel-meta';
 import { VoucherEntry } from './VoucherEntry';
 import type { PosChannel, PosPaymentMethod } from './types';
+import { apiErrorDetail } from '@/lib/api-error';
 
 const METHOD_META: Record<PosPaymentMethod, { icon: typeof Banknote; labelKey: string }> = {
   cash: { icon: Banknote, labelKey: 'pos.paymentCash' },
@@ -193,7 +194,7 @@ export function PaymentPanel({
     } catch (err) {
       toast({
         title: t('pos.saleFailed'),
-        description: err instanceof Error ? err.message : undefined,
+        description: apiErrorDetail(err),
         variant: 'danger',
       });
     } finally {

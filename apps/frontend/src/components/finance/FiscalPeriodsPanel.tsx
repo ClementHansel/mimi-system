@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Lock, Unlock } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDate, fmtDateTime } from '@/lib/dates';
 import { toast } from '@/components/ui/Toast';
@@ -15,19 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ExportButton } from '@/components/common/ExportButton';
 import { fiscalPeriodIoColumns } from './lib/io-columns';
 import type { FiscalPeriod } from './types';
-
-/**
- * F07 finance — fiscal periods (CONTRACTS §4.17, D-04).
- *
- * Reads the CAMELCASE shape `GET /accounting/periods` returns. It previously
- * read snake_case, which had been right when `FiscalPeriodsService` returned raw
- * `pg` rows; once that service grew a `toFiscalPeriod` mapper, every field here
- * silently became `undefined` — the table rendered blank period codes and
- * "— – —" for every date range. See `types.ts` for why nothing caught it.
- */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 export function FiscalPeriodsPanel() {
   const { t } = useI18n();

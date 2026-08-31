@@ -38,16 +38,7 @@ import type {
   RecipeLine,
   Qty,
 } from './types';
-
-/**
- * F10 admin — Master Data (CONTRACTS §4.4 item, §4.5 product/recipe, §4.3
- * location + storage areas D-15). Four sub-tabs under one `Tabs` shell rather
- * than four routes — this is a laptop back-office surface where switching
- * "which master list am I looking at" is a tab flick, not a navigation.
- */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 // ── Items ────────────────────────────────────────────────────────────────
 /**

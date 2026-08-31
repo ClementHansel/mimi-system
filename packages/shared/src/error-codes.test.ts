@@ -13,11 +13,12 @@ describe('ErrorCode — closed literal union, same discipline as PermissionKey/S
     // 37 + ERR_NODE_QUEUE_PENDING + ERR_NODE_UNREACHABLE (BUILD-PLAN D-26, node-gateway drain-before-off)
     // + the four B-15 approval-code outcomes (INVALID / EXPIRED / LOCKED / NOT_ISSUED)
     // + 7 voucher rejection codes + ERR_DOC_SOURCE_NOT_FOUND (concurrent Wave-3 work)
-    // + ERR_NODE_SHIFT_OPEN (W3-10, node-gateway remote-command hardening).
+    // + ERR_NODE_SHIFT_OPEN (W3-10, node-gateway remote-command hardening)
+    // + ERR_DUPLICATE / ERR_REFERENCED (SQLSTATE 23505/23503 mapping in the exception filter).
     // NOTE: this count is a moving target under concurrent agents — re-derive it from
     // the actual ERROR_CODES object length rather than trusting this comment's arithmetic.
-    expect(ERROR_CODE_LIST).toHaveLength(52);
-    expect(new Set(ERROR_CODE_LIST).size).toBe(52);
+    expect(ERROR_CODE_LIST).toHaveLength(54);
+    expect(new Set(ERROR_CODE_LIST).size).toBe(54);
   });
 
   it('includes the two codes swept in from CONTRACTS.md/W1-D that were missing before this sweep', () => {

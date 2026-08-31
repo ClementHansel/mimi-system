@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { toast } from '@/components/ui/Toast';
 import { downloadCsv, toCsv } from '@/lib/export/csv';
 import { parseCsv, type CsvRecord } from '@/lib/import/csv-parse';
+import { errMsg } from '@/lib/api-error';
 
 /** One column the template declares and the mapper may read. */
 export interface LineImportColumn {
@@ -151,7 +152,7 @@ export function LineImportButton<TLine>({
       } catch (err) {
         // A mapper that throws is a bug, but one bad row must not take the
         // whole file down — the operator still gets the other 199 lines.
-        mapped = { ok: false, error: err instanceof Error ? err.message : t('table.error') };
+        mapped = { ok: false, error: errMsg(err, t('table.error')) };
       }
       if (!mapped.ok) errors.push({ line: row.line, message: mapped.error });
       else if (mapped.line === null) skipped += 1;

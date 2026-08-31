@@ -104,7 +104,19 @@ export class ReplenishmentService {
       page,
       pageSize,
     });
-    return { rows: rows.map((r) => this.toResource(r, [], null)), total, page, pageSize };
+    // Lines in ONE extra query for the whole page, not `[]`: a request whose
+    // lines are missing renders as "Jumlah Item 0" and exports as a blank row
+    // (owner's screenshot, 2026-08-31).
+    const linesByRequest = await this.repo.findLinesForRequests(
+      client,
+      rows.map((r) => r.id),
+    );
+    return {
+      rows: rows.map((r) => this.toResource(r, linesByRequest.get(r.id) ?? [], null)),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async warehouseQueue(
@@ -118,7 +130,16 @@ export class ReplenishmentService {
       page,
       pageSize,
     });
-    return { rows: rows.map((r) => this.toResource(r, [], null)), total, page, pageSize };
+    const linesByRequest = await this.repo.findLinesForRequests(
+      client,
+      rows.map((r) => r.id),
+    );
+    return {
+      rows: rows.map((r) => this.toResource(r, linesByRequest.get(r.id) ?? [], null)),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async getById(client: PoolClient, id: UUID): Promise<Replenishment> {

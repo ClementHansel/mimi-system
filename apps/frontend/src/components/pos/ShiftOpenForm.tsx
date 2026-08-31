@@ -18,6 +18,7 @@ import type { ActorMeta } from '@/lib/local/api/local-runtime';
 import type { Money, UUID } from '@/lib/shared-types';
 import { mintClientId } from './pos-runtime';
 import { usePosShiftStore } from './shift-store';
+import { apiErrorDetail } from '@/lib/api-error';
 
 /**
  * "Buka Kasir" (FR-POS-02). Fully local in every connectivity tier
@@ -60,7 +61,7 @@ export function ShiftOpenForm({
     } catch (err) {
       toast({
         title: t('pos.shiftOpenFailed'),
-        description: err instanceof Error ? err.message : undefined,
+        description: apiErrorDetail(err),
         variant: 'danger',
       });
     } finally {

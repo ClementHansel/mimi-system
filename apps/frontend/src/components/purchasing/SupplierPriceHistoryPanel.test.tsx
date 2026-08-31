@@ -53,7 +53,14 @@ describe('SupplierPriceHistoryPanel — role-locked pricing (D-20)', () => {
 
     render(<SupplierPriceHistoryPanel />);
 
-    expect(await screen.findByText('Forbidden')).toBeInTheDocument();
+    // The sentence comes from the `code`, not from `message`. This assertion
+    // used to read `findByText('Forbidden')` — the server's DEVELOPER text
+    // (CONTRACTS §0), in English, on screen. `lib/api-error.ts` now resolves
+    // `ERR_FORBIDDEN` through i18n, so what a supervisor actually reads is
+    // Indonesian; asserting the raw word again would re-open that hole.
+    expect(
+      await screen.findByText('Anda tidak punya akses untuk tindakan ini.'),
+    ).toBeInTheDocument();
   });
 
   it('prompts to pick a supplier before it ever calls the price-history endpoint', async () => {

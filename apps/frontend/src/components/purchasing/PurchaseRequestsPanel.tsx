@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, History, ArrowRightLeft } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { PurchaseRequestStatus } from '@/lib/shared-types';
 import type { Money, Qty } from '@/lib/shared-types';
@@ -50,10 +49,7 @@ import type {
   PurchaseRequestDetail,
   PurchaseRequestHistoryEntry,
 } from './lib/types';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 /**
  * `audit_log.action` holds the permission-shaped verb the `@Audited()`

@@ -15,23 +15,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { getMyLoans, requestMyLoan, type MyLoan } from './lib/me-api';
 import type { Money } from '@/lib/shared-types';
-
-/**
- * "Pinjaman" (kasbon) — the employee's own loans, and the form to ask for one
- * (owner, 2026-08-21: the `employee` interface covers "loan req").
- *
- * The request goes to `POST /payroll/loans/me`, which takes the borrower from
- * the session and submits the SAME Finance -> Manager approval chain the
- * office's own `POST /payroll/loans` uses. Nothing here shortcuts approval: a
- * request lands `pending` and the person who asked cannot advance it.
- *
- * `outstanding` is the number people actually come here for — "how much do I
- * still owe" — so it is the figure shown large on each card, with the principal
- * and the monthly deduction underneath as context.
- */
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
+import { errMsg } from '@/lib/api-error';
 
 export function PinjamanPanel() {
   const { t } = useI18n();

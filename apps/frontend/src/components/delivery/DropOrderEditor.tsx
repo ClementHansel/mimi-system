@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, GripVertical, Save } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { Button, toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { ExportButton } from '@/components/common/ExportButton';
@@ -13,10 +12,6 @@ import type { CsvRecord } from '@/lib/import/csv-parse';
 import { buildNameIndex, resolveNamed } from '@/lib/import/resolve';
 import type { Drop } from '@/lib/shared-types';
 import { planRoute } from './lib/delivery-api';
-
-function errMsg(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message : fallback;
-}
 
 interface Stop {
   dropId: string;
@@ -29,6 +24,7 @@ interface SeqImportRow {
   dropId: string;
   seq: number;
 }
+import { errMsg } from '@/lib/api-error';
 
 /**
  * Dedicated dispatch screen (`/delivery/assign`) reorder widget for one

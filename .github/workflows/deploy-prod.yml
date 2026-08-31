@@ -234,3 +234,76 @@ jobs:
             sudo docker ps --format '  {{.Names}}: {{.Status}}' \
               --filter name=litellm-litellm-1 --filter name=litellm-db-1 --filter name=litellm-redis-1
           REMOTE
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # POST-DEPLOY SMOKE — the job this file's header said would be "added later
+  # without a fresh round of secret-wiring". Later is now: mimichicken.my.id
+  # resolves to this box and the host Caddy terminates TLS with a real cert,
+  # so `PROD_PUBLIC_URL` finally points somewhere a browser can reach.
+  #
+  # It exists because of 2026-08-31, when the owner found four defects by hand
+  # on this box — supplier search 500ing on every query, a duplicate supplier
+  # code answering in Postgres' own words, and outlet requests counted as "0
+  # item" in Pembelian — all of which had passing unit tests and a green CI.
+  # None of them was reachable without a real database and a real click.
+  #
+  # READ-ONLY, deliberately: `E2E_ALLOW_WRITES` is NOT set here. This is a live
+  # business. Every spec that submits anything skips itself without that flag,
+  # so nothing in this job can put a fake order into a real outlet's approval
+  # queue or leave a junk supplier behind. The demo box (deploy-vps.yml) is
+  # where the write paths get exercised.
+  #
+  # `if: always()` is wrong for this one — a smoke against a box whose deploy
+  # failed reports the deploy's failure a second time under a confusing name.
+  # ───────────────────────────────────────────────────────────────────────────
+  e2e-smoke:
+    name: Post-deploy e2e smoke
+    needs: deploy
+    if: github.repository == 'sammyjason39/mimichicken-os'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Chromium only — both Playwright projects are Chromium-based, so
+      # installing three browsers to use one wastes minutes on every deploy.
+      - name: Install Playwright Chromium
+        run: pnpm --filter @mimi/e2e exec playwright install --with-deps chromium
+
+      - name: Smoke production
+        env:
+          E2E_BASE_URL: ${{ secrets.PROD_PUBLIC_URL }}
+        run: |
+          if [ -z "${E2E_BASE_URL:-}" ]; then
+            echo "::error::PROD_PUBLIC_URL secret is not set — the smoke would" \
+                 "silently run against localhost and pass with nothing served."
+            exit 1
+          fi
+          # The sweep is the load-bearing one: every static route and every tab
+          # of every tabbed area, asserting each renders, does not show "Gagal
+          # memuat data", and shows the user no SQL, no `ERR_*` code and no
+          # unresolved i18n key. `purchasing`/`outlet-request` add the specific
+          # regressions; their write halves skip themselves here.
+          pnpm --filter @mimi/e2e exec playwright test \
+            tests/surface-sweep.spec.ts tests/purchasing.spec.ts \
+            tests/outlet-request.spec.ts tests/hub.spec.ts
+
+      - name: Upload the report when it fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-e2e-smoke-report
+          path: e2e/playwright-report
+          retention-days: 7

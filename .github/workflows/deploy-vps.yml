@@ -399,14 +399,27 @@ jobs:
           # hardcoded so moving the box (or finally getting a domain — B-14)
           # does not need a workflow edit.
           E2E_BASE_URL: ${{ secrets.VPS_PUBLIC_URL }}
+          # WRITES ALLOWED HERE, and only here. This is the demo box: its data
+          # is disposable, so the specs that must actually submit something (a
+          # replenishment request, a deliberately-duplicated supplier code) run.
+          # The production smoke deliberately does NOT set this — see
+          # deploy-prod.yml's own note.
+          E2E_ALLOW_WRITES: '1'
         run: |
           if [ -z "${E2E_BASE_URL:-}" ]; then
             echo "::error::VPS_PUBLIC_URL secret is not set — the smoke would" \
                  "silently run against localhost and pass with nothing served."
             exit 1
           fi
+          # `surface-sweep` walks every static route and every tab of every
+          # tabbed area; the other two cover the flows the 2026-08-31 bug
+          # report landed on. Added because all four of those defects shipped
+          # through a green CI — each needed a real database and a real click
+          # to show itself.
           pnpm --filter @mimi/e2e exec playwright test \
-            tests/hub.spec.ts tests/session-recovery.spec.ts tests/print.spec.ts             tests/service-worker.spec.ts
+            tests/hub.spec.ts tests/session-recovery.spec.ts tests/print.spec.ts \
+            tests/service-worker.spec.ts tests/surface-sweep.spec.ts \
+            tests/purchasing.spec.ts tests/outlet-request.spec.ts
 
       - name: Upload the report when it fails
         if: failure()

@@ -781,3 +781,104 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
     expect(approved.status).toBe(ReplenishmentStatus.AWAITING_APPROVAL);
   });
 });
+
+/**
+ * "Jumlah Item 0" and «Permintaan ini tidak punya item.» — the owner's
+ * screenshots, 2026-08-31. Two screens, one cause:
+ *
+ *   - Pembelian → Permintaan Outlet listed RR/202608/0011 with 0 items
+ *   - its "Jadikan PR" modal offered nothing to convert
+ *
+ * while the SAME request, opened in the outlet interface, showed
+ * "Air Mineral Botol · 1.000 pack". The detail read (`getById` → `findLines`)
+ * was always right; `list()` and `warehouseQueue()` passed a literal `[]` to
+ * `toResource`, so every request in a LIST arrived with no lines. Nothing
+ * caught it because every existing assertion in this file goes through the
+ * detail path.
+ *
+ * This is a LIVE-DB test on purpose, not a unit test with a fake client. The
+ * new read is `WHERE rl.request_id = ANY($1)` under
+ * `replenishment_request_lines_parent` (migration 037), an RLS policy that
+ * checks the PARENT request's location — the one thing a mocked client cannot
+ * prove, and the way a batched `ANY()` read could plausibly differ from N
+ * per-row reads.
+ */
+describe('ReplenishmentService.list — lines come back with the rows (live DB)', () => {
+  it('carries every line of every request on the page, matching what the detail read returns', async () => {
+    const { service } = buildServices();
+    const ldr = callerFor(fx.outletA.leaderUserId, RoleKey.LEADER_OUTLET, [fx.outletA.locationId]);
+    const owner = callerFor(fx.ownerUserId, RoleKey.OWNER, null);
+
+    // TWO requests, so the test also proves lines are attributed to the right
+    // row — a `Map` keyed wrong would still make both non-empty, and a single
+    // request could not tell the difference.
+    const first = await withRollback(
+      { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+      (client) =>
+        service.create(client, ldr, {
+          locationId: fx.outletA.locationId,
+          lines: [{ itemId: fx.itemId, qtyRequested: '1000.000', unitId: fx.unitId }],
+        }),
+    );
+    createdRequestIds.push(first.id);
+
+    const second = await withRollback(
+      { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+      (client) =>
+        service.create(client, ldr, {
+          locationId: fx.outletA.locationId,
+          lines: [
+            { itemId: fx.itemId, qtyRequested: '7.000', unitId: fx.unitId },
+            { itemId: fx.itemId2, qtyRequested: '3.000', unitId: fx.unitId },
+          ],
+        }),
+    );
+    createdRequestIds.push(second.id);
+
+    // The office's own read — the screen that showed 0.
+    const page = await withRollback(
+      { userId: owner.userId, roleKey: owner.roleKey, locationIds: owner.locationIds },
+      (client) => service.list(client, { locationId: fx.outletA.locationId, pageSize: 100 }),
+    );
+
+    const listedFirst = page.rows.find((r) => r.id === first.id);
+    const listedSecond = page.rows.find((r) => r.id === second.id);
+    expect(listedFirst).toBeDefined();
+    expect(listedSecond).toBeDefined();
+
+    // The regression, stated as the screenshot stated it: the count is not 0.
+    expect(listedFirst!.lines).toHaveLength(1);
+    expect(listedSecond!.lines).toHaveLength(2);
+
+    // …and the lines are the RIGHT ones, not just the right number of them.
+    expect(listedFirst!.lines[0]!.qtyRequested).toBe('1000.000');
+    expect(listedFirst!.lines[0]!.itemName).toBeTruthy();
+    expect(listedSecond!.lines.map((l) => l.qtyRequested).sort()).toEqual(['3.000', '7.000']);
+
+    // Same shape as the detail read, which was never broken — so the list and
+    // the drawer can no longer disagree about one request.
+    const detail = await withRollback(
+      { userId: owner.userId, roleKey: owner.roleKey, locationIds: owner.locationIds },
+      (client) => service.getById(client, second.id),
+    );
+    expect(listedSecond!.lines).toEqual(detail.lines);
+  });
+
+  it('returns an empty page without a stray query when nothing matches', async () => {
+    // `findLinesForRequests` short-circuits on an empty id list; a `= ANY('{}')`
+    // against Postgres would be harmless but pointless, and an unguarded
+    // `ANY(undefined)` would throw on the emptiest, most common case of all.
+    const { service } = buildServices();
+    const owner = callerFor(fx.ownerUserId, RoleKey.OWNER, null);
+    const page = await withRollback(
+      { userId: owner.userId, roleKey: owner.roleKey, locationIds: owner.locationIds },
+      (client) =>
+        service.list(client, {
+          locationId: fx.outletA.locationId,
+          status: ReplenishmentStatus.CANCELLED,
+          pageSize: 100,
+        }),
+    );
+    expect(page.rows.every((r) => Array.isArray(r.lines))).toBe(true);
+  });
+});

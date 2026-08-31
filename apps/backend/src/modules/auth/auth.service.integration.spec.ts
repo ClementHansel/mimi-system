@@ -13,7 +13,7 @@ import {
   SYSTEM_CENTRAL_ROLE,
   withSystemContext,
 } from '../../common/database/system-context';
-import { hashPin } from './pin-hash.util';
+import { hashPin, verifyPin } from './pin-hash.util';
 import {
   assignUserToLocation,
   closeTestPool,
@@ -24,6 +24,7 @@ import {
   getOwnerPool,
   insertTestDevice,
   insertTestUser,
+  asRequest,
   withRawAppConnection,
 } from './test-support/live-db';
 import { buildAuthService } from './test-support/service-factory';
@@ -314,6 +315,120 @@ describe('B-15 — the PIN oracle is gone, and must stay gone', () => {
     // path (`offline_credentials.pin_verifier`), which no server-issued code
     // can replace while the outlet has no internet.
     expect(typeof (service as unknown as Record<string, unknown>).setPin).toBe('function');
+  });
+});
+
+/**
+ * `POST /api/auth/pin` RETURNED SUCCESS AND SAVED NOTHING (found 2026-08-31).
+ *
+ * `setPin` wrote `users.pin_hash`, emitted the sync event and returned
+ * `{ ok: true }` without committing, so `RlsCleanupInterceptor`'s
+ * unconditional ROLLBACK discarded both. The user-visible effect was a loop no
+ * one could escape: `mustSetPin` stays true, `/set-pin` accepts the form,
+ * reports success, and asks again on the next login. Every seeded role without
+ * a PIN — finance, hr_admin, driver — could not complete a first login at all.
+ *
+ * WHY NOTHING CAUGHT IT. The only existing assertion about `setPin` was that
+ * the method exists (above). A unit test cannot catch this class of bug by
+ * construction: with a mock client, `COMMIT` is one more recorded call and its
+ * absence is invisible. So the test has to be here, on a real connection, and
+ * it has to read the row back on a SEPARATE connection — reading it on the
+ * same one would see the uncommitted write and pass against the broken code.
+ */
+describe('setPin — the write has to survive the request', () => {
+  it('persists the PIN for a later, separate connection to read', async () => {
+    const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
+    const userId = await insertTestUser({
+      username: `w301-setpin-${Date.now()}`,
+      name: 'Test Set Pin',
+      roleKey: 'kasir',
+      passwordHash,
+      // No `pinHash`: this is the state every new user starts in, and the one
+      // the bug made permanent.
+    });
+    try {
+      const service = buildAuthService(getAppPool());
+      const username = await withUsername(userId);
+
+      const before = await getOwnerPool().query<{ pin_hash: string | null }>(
+        'SELECT pin_hash FROM users WHERE id = $1',
+        [userId],
+      );
+      expect(before.rows[0]!.pin_hash).toBeNull();
+
+      // Through the service on a real request-shaped client, exactly as the
+      // controller calls it.
+      const result = await asRequest(
+        (client) =>
+          service.setPin(
+            { currentPassword: TEST_PASSWORD, pin: TEST_PIN },
+            {
+              sub: userId,
+              username,
+              roleKey: 'kasir',
+              locationIds: [],
+            } as never,
+            client,
+          ),
+        { userId, roleKey: 'kasir' },
+      );
+      expect(result).toEqual({ ok: true });
+
+      // THE ASSERTION THAT FAILS ON THE BROKEN CODE: a different connection,
+      // after the request ended. `asRequest`/`withRollback` rolls back on the
+      // way out, so the row is only here if `setPin` committed it itself.
+      const after = await getOwnerPool().query<{ pin_hash: string | null }>(
+        'SELECT pin_hash FROM users WHERE id = $1',
+        [userId],
+      );
+      expect(after.rows[0]!.pin_hash).not.toBeNull();
+
+      // And it is the PIN that was set, not merely some value — a hash of the
+      // wrong input would satisfy `not.toBeNull()` and still lock the user out
+      // of every offline authorisation.
+      expect(await verifyPin(TEST_PIN, after.rows[0]!.pin_hash!)).toBe(true);
+    } finally {
+      await deleteTestUser(userId);
+    }
+  });
+
+  it('clears `mustSetPin`, so the next login does not ask again', async () => {
+    // The loop, stated as the user experienced it. `me()` is what the frontend
+    // reads to decide whether to force `/set-pin`, so this is the assertion
+    // that maps to "I set my PIN and it keeps asking".
+    const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
+    const userId = await insertTestUser({
+      username: `w301-mustsetpin-${Date.now()}`,
+      name: 'Test Must Set Pin',
+      roleKey: 'kasir',
+      passwordHash,
+    });
+    try {
+      const service = buildAuthService(getAppPool());
+      const username = await withUsername(userId);
+
+      const caller = { sub: userId, username, roleKey: 'kasir', locationIds: [] } as never;
+
+      const beforeMe = await asRequest((client) => service.me(caller, client), {
+        userId,
+        roleKey: 'kasir',
+      });
+      expect(beforeMe.mustSetPin).toBe(true);
+
+      await asRequest(
+        (client) =>
+          service.setPin({ currentPassword: TEST_PASSWORD, pin: TEST_PIN }, caller, client),
+        { userId, roleKey: 'kasir' },
+      );
+
+      const afterMe = await asRequest((client) => service.me(caller, client), {
+        userId,
+        roleKey: 'kasir',
+      });
+      expect(afterMe.mustSetPin).toBe(false);
+    } finally {
+      await deleteTestUser(userId);
+    }
   });
 });
 

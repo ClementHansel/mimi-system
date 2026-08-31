@@ -346,6 +346,27 @@ export class AuthService {
 
   // ── PIN set / verify ─────────────────────────────────────────────────────
 
+  /**
+   * SETTING A PIN SAVED NOTHING. This method wrote `users.pin_hash`, emitted
+   * the sync event, returned `{ ok: true }` — and never committed, so
+   * `RlsCleanupInterceptor`'s unconditional ROLLBACK threw the write away.
+   *
+   * That is not a cosmetic bug: `mustSetPin` is what `/set-pin` gates first
+   * login on, so every user seeded WITHOUT a PIN (finance, hr_admin and driver
+   * in the demo org) was in a loop — set the PIN, get a success, land back on
+   * `/set-pin` next login, forever. Nothing in the app could clear it. Found
+   * on 2026-08-31 by the new e2e login sweep, which is the only thing that
+   * exercises a first login; every unit test calls this method with a mock
+   * client that has no notion of a transaction.
+   *
+   * The `BE-TXN-ROLLBACK` tripwire had already been naming it in the logs, in
+   * full, with the transaction id — the same warning that caught
+   * `PUT /api/settings/email` (e3a4b1d) and the stock-opname data loss before
+   * that. Third time for this one pattern, so the comment stays: a mutating
+   * handler on the request's own client MUST commit, and the response must be
+   * built before that commit (`SET LOCAL ROLE` and the `app.*` session vars
+   * are transaction-scoped and revert the instant COMMIT runs — D-21/D-22).
+   */
   async setPin(
     dto: SetPinDto,
     caller: JwtAccessPayload,
@@ -370,6 +391,10 @@ export class AuthService {
       actorUserId: caller.sub,
       locationIds,
     });
+
+    // Every read this response needs is already done, so it is safe to end the
+    // transaction here — and mandatory, per the header above.
+    await client.query('COMMIT');
 
     return { ok: true };
   }

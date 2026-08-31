@@ -20,12 +20,26 @@ import type { Pool, PoolClient } from 'pg';
  * maintained by hand is a list that rots, and the thing it stops testing is a
  * data leak.
  */
-const APP_URL = `postgres://mimi_app:${process.env.DB_APP_PASSWORD ?? 'mimi_app_secret'}@localhost:${
-  process.env.POSTGRES_PORT ?? '55433'
-}/${process.env.POSTGRES_DB ?? 'mimi'}`;
-const OWNER_URL = `postgres://mimi:${process.env.POSTGRES_PASSWORD ?? 'mimi'}@localhost:${
-  process.env.POSTGRES_PORT ?? '55433'
-}/${process.env.POSTGRES_DB ?? 'mimi'}`;
+/**
+ * `DATABASE_URL`/`DATABASE_MIGRATION_URL` FIRST, hand-built local URL only as
+ * the fallback — the same order every other live-DB suite uses (see any
+ * `test-support/live-db.ts`). Building the URL unconditionally from
+ * `POSTGRES_PORT ?? '55433'` is why this suite passed on a laptop and failed
+ * in CI with ECONNREFUSED on 55433: that port is this project's LOCAL compose
+ * mapping, chosen because a native Postgres already owns 5432 on the dev
+ * machine. CI's Postgres service is on 5432 and hands the connection over in
+ * `DATABASE_URL`, which this file was ignoring.
+ */
+const APP_URL =
+  process.env.DATABASE_URL ??
+  `postgres://mimi_app:${process.env.DB_APP_PASSWORD ?? 'mimi_app_secret'}@localhost:${
+    process.env.POSTGRES_PORT ?? '55433'
+  }/${process.env.POSTGRES_DB ?? 'mimi'}`;
+const OWNER_URL =
+  process.env.DATABASE_MIGRATION_URL ??
+  `postgres://mimi:${process.env.POSTGRES_PASSWORD ?? 'mimi'}@localhost:${
+    process.env.POSTGRES_PORT ?? '55433'
+  }/${process.env.POSTGRES_DB ?? 'mimi'}`;
 
 const hasDb = process.env.VITEST_LIVE_DB !== 'off';
 

@@ -414,6 +414,23 @@ describe('M10 delivery — live DB integration', () => {
         expect(recap.byCity[0]!.items[0]!.itemId).toBe(fixtures.frozenItemId);
         expect(Number(recap.byCity[0]!.items[0]!.qty)).toBeCloseTo(7.5, 3);
 
+        // The per-outlet grain the recap screen filters on. Both shipments hit
+        // the SAME outlet, so this is the case that separates "one row per
+        // drop" from "one row per destination" — and the one where the city's
+        // counts and the outlet's happen to agree, because there is only one.
+        expect(recap.byCity[0]!.sjCount).toBe(2);
+        expect(recap.byCity[0]!.dropCount).toBe(2);
+        expect(recap.byCity[0]!.frozenSjCount).toBe(2);
+        expect(recap.byCity[0]!.drySjCount).toBe(0);
+        expect(recap.byCity[0]!.byOutlet).toHaveLength(1);
+        const outletRow = recap.byCity[0]!.byOutlet[0]!;
+        expect(outletRow.locationId).toBe(fixtures.outletId);
+        expect(outletRow.sjCount).toBe(2);
+        expect(outletRow.dropCount).toBe(2);
+        expect(outletRow.frozenSjCount).toBe(2);
+        expect(outletRow.items).toHaveLength(1);
+        expect(Number(outletRow.items[0]!.qty)).toBeCloseTo(7.5, 3);
+
         // The date filter is the other half of the requirement. Without it the
         // team would be handed every shipment ever planned, every morning.
         const dayBefore = await withRollback((client) =>

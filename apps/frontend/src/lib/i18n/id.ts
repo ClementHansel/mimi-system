@@ -2476,6 +2476,18 @@ export const id = {
       drySjCount: 'SJ Kering',
       outletsCount: '{{count}} outlet',
       empty: 'Belum ada pengiriman untuk tanggal ini',
+      // The recap opens on the ALL-cities total and is narrowed from there; the
+      // per-city cards it used to render unconditionally were one long page.
+      city: 'Kota',
+      outlet: 'Outlet',
+      allCities: 'Semua Kota',
+      allOutlets: 'Semua Outlet',
+      searchItem: 'Cari barang…',
+      scopeAll: 'Semua Kota & Outlet',
+      itemsCount: '{{count}} barang',
+      noItems: 'Tidak ada barang pada filter ini',
+      item: 'Nama Barang',
+      qty: 'Jumlah',
     },
     waste: {
       unitCost: 'Nilai Satuan',

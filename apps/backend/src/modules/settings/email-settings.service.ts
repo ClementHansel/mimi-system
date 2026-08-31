@@ -7,6 +7,7 @@ import {
   sealSmtpPassword,
 } from '../../kernel/notification/smtp-secret';
 import { EmailChannelService } from '../../kernel/notification/channels/email-channel.service';
+import { withWrite } from './db-tx';
 
 export interface EmailSettingsRes {
   host: string;
@@ -82,7 +83,22 @@ export class EmailSettingsService {
     };
   }
 
+  /**
+   * `withWrite` is not optional. `RlsCleanupInterceptor` issues an
+   * UNCONDITIONAL ROLLBACK on the request's client, so a handler that writes
+   * without its own BEGIN/COMMIT returns a cheerful 200 and silently discards
+   * the write — the stock-opname data-loss bug this codebase already learned
+   * once, and which its warning caught again here.
+   */
   async save(
+    client: PoolClient,
+    dto: PutEmailSettings,
+    actorId: string,
+  ): Promise<EmailSettingsRes> {
+    return withWrite(client, () => this.saveInner(client, dto, actorId));
+  }
+
+  private async saveInner(
     client: PoolClient,
     dto: PutEmailSettings,
     actorId: string,
@@ -175,10 +191,15 @@ export class EmailSettingsService {
       outcome = { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
 
-    await client.query(
-      `UPDATE tenant_email_settings
-          SET last_tested_at = NOW(), last_test_ok = $1, last_test_error = $2`,
-      [outcome.ok, outcome.error],
+    // Same reason as `save`: recording the verdict is a write, and without a
+    // commit it is rolled back — leaving the panel showing "never tested"
+    // immediately after a test that did run.
+    await withWrite(client, () =>
+      client.query(
+        `UPDATE tenant_email_settings
+            SET last_tested_at = NOW(), last_test_ok = $1, last_test_error = $2`,
+        [outcome.ok, outcome.error],
+      ),
     );
     return outcome;
   }

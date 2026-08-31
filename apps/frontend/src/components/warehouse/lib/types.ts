@@ -168,15 +168,43 @@ export interface Vehicle {
   isActive: boolean;
 }
 
+export interface DailyRecapItem {
+  itemId: UUID;
+  itemName: string;
+  qty: Qty;
+}
+
+/**
+ * One drop destination. `sjCount` here is the DISTINCT Surat Jalan touching this
+ * outlet, so the per-outlet counts do not sum to the city's — a multi-drop SJ
+ * counts once for every outlet it visits.
+ */
+export interface DailyRecapOutlet {
+  locationId: UUID;
+  locationName: string;
+  sjCount: number;
+  dropCount: number;
+  frozenSjCount: number;
+  drySjCount: number;
+  items: DailyRecapItem[];
+}
+
+export interface DailyRecapCity {
+  city: string;
+  outlets: number;
+  sjCount: number;
+  dropCount: number;
+  frozenSjCount: number;
+  drySjCount: number;
+  items: DailyRecapItem[];
+  byOutlet: DailyRecapOutlet[];
+}
+
 export interface DailyRecap {
   date: ISODate;
   sjCount: number;
   dropCount: number;
-  byCity: {
-    city: string;
-    outlets: number;
-    items: { itemId: UUID; itemName: string; qty: Qty }[];
-  }[];
+  byCity: DailyRecapCity[];
   frozenSjCount: number;
   drySjCount: number;
 }

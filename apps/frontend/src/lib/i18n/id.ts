@@ -1207,6 +1207,14 @@ export const id = {
       online_order: 'Pesanan Online',
       incentive: 'Insentif',
       thr: 'THR',
+      // Added 2026-09-01. `PaymentVerificationRefType.EMPLOYEE_LOAN` shipped
+      // (migration 259, D-17) without a label here, so Finance's payments
+      // table, its filter dropdown and its detail drawer all rendered the raw
+      // key `finance.refType.employee_loan` — `translate()` returns the key on
+      // a miss, and the `console.warn` beside it is silenced in production
+      // builds. `enum-labels.test.ts` now fails if an enum member is added
+      // without a label, which is the only reason this cannot happen twice.
+      employee_loan: 'Kasbon Karyawan',
       other: 'Lainnya',
     },
     payeeType: {

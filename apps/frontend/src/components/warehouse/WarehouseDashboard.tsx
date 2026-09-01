@@ -54,7 +54,12 @@ export function WarehouseDashboard() {
    * `locationScope`-filtered server-side, so granting it would widen FORMAT and
    * not REACH. That is a CONTRACTS §3 change and is not made here.
    */
-  const canSeeOpsStatus = can('dashboard.view');
+  // ANY-of, mirroring the endpoint's own guard: `dashboard.view` for the
+  // office, `replenishment.approve.warehouse` for whoever runs the warehouse —
+  // which is the whole point of this page. Kept in step with
+  // `DashboardController.getOpsStatus`; if they drift, this screen either
+  // shows an error it should not or hides tiles it could have shown.
+  const canSeeOpsStatus = can(['dashboard.view', 'replenishment.approve.warehouse']);
 
   useEffect(() => {
     if (!canSeeOpsStatus) return;

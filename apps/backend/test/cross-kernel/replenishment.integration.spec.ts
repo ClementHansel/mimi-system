@@ -127,7 +127,15 @@ describe('Gate G2 cross-kernel scenario: replenishment -> approvals -> delivery 
 
   const replenishmentRepo = new ReplenishmentRepository();
   const replenishmentAdvancement = new ReplenishmentAdvancementService(replenishmentRepo, syncEmit);
-  const replenishment = new ReplenishmentService(replenishmentRepo, approvals, syncEmit);
+  // The pool is for the service's `findRequesterNames` — a system-context read
+  // for callers whose own RLS cannot resolve a requester's name (every row, for
+  // kepala_gudang). Same real pool the rest of this harness uses.
+  const replenishment = new ReplenishmentService(
+    replenishmentRepo,
+    approvals,
+    syncEmit,
+    getAppPool(),
+  );
 
   // REAL NotificationService (not a spy) — WA disabled and no SMTP host configured, exactly
   // `notification.service.integration.spec.ts`'s own pattern, so no outbound network call is

@@ -92,7 +92,16 @@ function buildServices(): {
   const sync = new SyncEmitService(events, conflictDetector);
   const repo = new ReplenishmentRepository();
   return {
-    service: new ReplenishmentService(repo, new ApprovalService(new ApprovalsRepository()), sync),
+    // The pool is for `findRequesterNames` — a system-context read the service
+    // makes when the caller's own RLS cannot resolve a requester's name (which
+    // is every row, for kepala_gudang). Passing the real DI pool rather than a
+    // stub keeps this suite's promise: real classes, real connection, real RLS.
+    service: new ReplenishmentService(
+      repo,
+      new ApprovalService(new ApprovalsRepository()),
+      sync,
+      appPoolForDi(),
+    ),
     advancement: new ReplenishmentAdvancementService(repo, sync),
   };
 }
@@ -803,6 +812,58 @@ describe('ReplenishmentService — live DB (mimi_app, real RLS)', () => {
  * prove, and the way a batched `ANY()` read could plausibly differ from N
  * per-row reads.
  */
+/**
+ * WHO ASKED FOR THIS — resolved for the warehouse, whose own RLS cannot.
+ *
+ * `users_select` (migration 263) admits only self/owner/manager/hr_admin/
+ * finance, so `ROW_SELECT`'s `LEFT JOIN users` is NULL for every row a
+ * kepala_gudang reads. That is why Gudang's approval queue showed the raw
+ * requester UUID (fixed 2026-09-01), and then nothing at all. The warehouse
+ * fulfils requests from every outlet by design (D-14), so the owner ruled the
+ * name back in.
+ *
+ * Live-DB, and it has to be: the whole mechanism is one RLS context failing to
+ * read a row and a system context succeeding. A mocked client has neither.
+ */
+describe('ReplenishmentService — the requester has a name even for Gudang (live DB)', () => {
+  it('names the requester for a warehouse caller who cannot read `users` at all', async () => {
+    const { service } = buildServices();
+    const ldr = callerFor(fx.outletA.leaderUserId, RoleKey.LEADER_OUTLET, [fx.outletA.locationId]);
+    const kgd = callerFor(fx.kepalaGudangUserId, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+
+    const created = await withRollback(
+      { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+      (client) =>
+        service.create(client, ldr, {
+          locationId: fx.outletA.locationId,
+          lines: [{ itemId: fx.itemId, qtyRequested: '2.000', unitId: fx.unitId }],
+        }),
+    );
+    createdRequestIds.push(created.id);
+
+    // First, the premise: this role genuinely cannot read that user row. If
+    // this ever stops being true the test above it is no longer proving
+    // anything, and this assertion says so out loud rather than passing quietly.
+    const blocked = await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) =>
+        client.query<{ name: string }>(`SELECT name FROM users WHERE id = $1`, [ldr.userId]),
+    );
+    expect(blocked.rows).toHaveLength(0);
+
+    // And now the read the warehouse actually makes.
+    const detail = await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) => service.getById(client, created.id),
+    );
+
+    expect(detail.requestedBy, 'Gudang still cannot see who asked').not.toBeNull();
+    expect(detail.requestedBy).not.toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+});
+
 describe('ReplenishmentService.list — lines come back with the rows (live DB)', () => {
   it('carries every line of every request on the page, matching what the detail read returns', async () => {
     const { service } = buildServices();

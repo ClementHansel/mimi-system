@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import {
   businessDateOf,
   formatCloudDocNumber,
@@ -8,6 +8,7 @@ import {
   type UUID,
 } from '@mimi/shared';
 import { formatDateOnly } from '../../common/date-only.util';
+import { SYSTEM_CENTRAL_ROLE, withSystemContext } from '../../common/database/system-context';
 
 export interface ReplenishmentRow {
   id: UUID;
@@ -288,6 +289,49 @@ export class ReplenishmentRepository {
    * display and added N queries to every page; `= ANY($1)` is the same read
    * once.
    */
+  /**
+   * DISPLAY NAMES for the people who raised these requests — resolved in a
+   * system context, because the caller cannot read `users` at all.
+   *
+   * `users_select` (migration 263) admits only self/owner/manager/hr_admin/
+   * finance, so for KEPALA GUDANG — the role that works the warehouse approval
+   * queue — the `LEFT JOIN users` in `ROW_SELECT` yields NULL for every row but
+   * their own. The queue therefore showed no requester at all (and, before
+   * 2026-09-01, the raw UUID). The warehouse fulfils requests from every
+   * outlet by design (D-14), so "who asked for this" is information the job
+   * needs; the owner ruled it in on 2026-09-01.
+   *
+   * BOUNDED ON PURPOSE, and this is the part to preserve if it is ever
+   * touched:
+   *  - the ids come from rows the caller ALREADY read under their own RLS, so
+   *    this discloses the name of someone whose request they can see, and
+   *    reaches nothing they could not otherwise reach;
+   *  - it selects `id, name` and nothing else — no username, no phone, no
+   *    role, no location;
+   *  - it is a READ in system context, never a write.
+   *
+   * It takes the POOL rather than the request's client on purpose:
+   * `withSystemContext` opens its own transaction, and running one on the
+   * caller's mid-request connection would trample the `SET LOCAL ROLE` and
+   * `app.*` vars that RLS depends on for the rest of that request (D-21/D-22).
+   */
+  async findRequesterNames(pool: Pool, userIds: readonly UUID[]): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    const wanted = [...new Set(userIds)];
+    if (wanted.length === 0) return names;
+
+    return withSystemContext(pool, { role: SYSTEM_CENTRAL_ROLE }, async (client) => {
+      const res = await client.query<{ id: string; name: string | null }>(
+        `SELECT id, name FROM users WHERE id = ANY($1::uuid[])`,
+        [wanted as UUID[]],
+      );
+      for (const row of res.rows) {
+        if (row.name) names.set(row.id, row.name);
+      }
+      return names;
+    });
+  }
+
   async findLinesForRequests(
     client: PoolClient,
     requestIds: readonly UUID[],

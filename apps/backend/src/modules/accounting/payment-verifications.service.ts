@@ -27,7 +27,18 @@ import { withWrite } from './db-tx';
 
 const PV_SELECT = `
   SELECT pv.id, pv.pv_number, pv.ref_type, pv.ref_id, pv.reference_number AS ref_number, pv.payee_type, pv.payee_id,
-         COALESCE(s.name, e.name, pv.payee_id::text) AS payee_name,
+         -- NEVER pv.payee_id::text as a third fallback. It put raw UUIDs in
+         -- Finance's "Penerima" column for every payment whose payee row could
+         -- not be resolved: a supplier since deleted, an employee outside the
+         -- caller's RLS scope, or a reference that no longer points anywhere.
+         -- PaymentsPanel already renders payeeName ?? em-dash; an identifier is
+         -- not a name, and showing one discloses a key while telling the reader
+         -- nothing. Same fix as Replenishment.requestedBy (2026-09-01).
+         --
+         -- NO BACKTICKS IN HERE: this comment lives inside a TEMPLATE LITERAL,
+         -- and the first version quoted identifiers in backticks, which closed
+         -- the string and broke the build.
+         COALESCE(s.name, e.name) AS payee_name,
          pv.amount, pv.status, pv.proof_attachment_id, pv.reference_number,
          pv.submitted_by, pv.verified_by, pv.verified_at, pv.approval_id, pv.paid_by, pv.paid_at, pv.paid_via,
          pv.rejection_reason, pv.location_id, l.name AS location_name, pv.notes

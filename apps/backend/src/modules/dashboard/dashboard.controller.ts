@@ -116,8 +116,25 @@ export class DashboardController {
     );
   }
 
+  /**
+   * ALSO READABLE BY WHOEVER RUNS THE WAREHOUSE (owner ruling, 2026-09-01).
+   *
+   * `/warehouse` is built on this endpoint — deliberately, so there is ONE
+   * definition of "how many approvals are pending" rather than two that
+   * eventually disagree. But `dashboard.view` is owner/manager only, so the
+   * KEPALA GUDANG, whose front page it is, got an error state where the owner
+   * got four live tiles. The owner's own ruling created that page ("the gudang
+   * pusat page is supposed to be dashboard of all gudang").
+   *
+   * `replenishment.approve.warehouse` is the key that means "you run the
+   * central warehouse" and is held by owner/manager/kepala_gudang/superadmin.
+   * The guard is ANY-of (`PermissionsGuard`), so this widens WHO may ask,
+   * never WHAT comes back: every count inside `getOpsStatus` is already
+   * filtered by `req.locationScope`, so a warehouse caller sees warehouse
+   * scope. Format, not reach.
+   */
   @Get('ops-status')
-  @RequirePermission('dashboard.view')
+  @RequirePermission('dashboard.view', 'replenishment.approve.warehouse')
   async getOpsStatus(@Req() req: RequestWithDbContext): Promise<OpsStatusResponse> {
     return this.opsStatus.getOpsStatus(req.dbClient!, req.locationScope!);
   }

@@ -35,12 +35,58 @@ import type {
 
 // ── inventory (§4.7) ─────────────────────────────────────────────────────────
 
-export function getBalances(params: { locationId: string; storageAreaId?: string; q?: string }) {
-  const qs = new URLSearchParams({ locationId: params.locationId, page: '1' });
-  if (params.storageAreaId) qs.set('storageAreaId', params.storageAreaId);
-  if (params.q) qs.set('q', params.q);
-  qs.set('pageSize', '500');
-  return api.get<Paginated<Balance>>(`/inventory/balances?${qs.toString()}`);
+/**
+ * The server's hard cap on `pageSize` for every paginated list (its DTO
+ * rejects anything larger with a 400). Named rather than inlined because the
+ * bug this constant exists to prevent was a magic `500`.
+ */
+const MAX_PAGE_SIZE = 200;
+
+/** Refuses to loop forever if `total` and the returned rows ever disagree. */
+const MAX_BALANCE_PAGES = 25;
+
+/**
+ * EVERY balance for a location, fetched across as many pages as it takes.
+ *
+ * This asked for `pageSize=500` — over the server's cap of 200 — so
+ * `GET /api/inventory/balances` answered 400 EVERY TIME and the outlet's Stok
+ * screen showed "Gagal memuat data" to every role that opened it. Found
+ * 2026-09-01 by walking each role's own screens; it had been failing for
+ * everyone, not just the cook it was found on.
+ *
+ * Paging rather than simply lowering the number to 200, because `StockPanel`
+ * and its export are built on "every balance is already held client-side" —
+ * that is why the Ekspor button can offer "everything" without a request. A
+ * flat 200 would have made this screen work and silently truncated the export
+ * the day an outlet carried its 201st item, which is a worse bug than the one
+ * being fixed: it would look correct.
+ */
+export async function getBalances(params: {
+  locationId: string;
+  storageAreaId?: string;
+  q?: string;
+}): Promise<Paginated<Balance>> {
+  const rows: Balance[] = [];
+  let page = 1;
+  let total = 0;
+
+  for (; page <= MAX_BALANCE_PAGES; page++) {
+    const qs = new URLSearchParams({ locationId: params.locationId, page: String(page) });
+    if (params.storageAreaId) qs.set('storageAreaId', params.storageAreaId);
+    if (params.q) qs.set('q', params.q);
+    qs.set('pageSize', String(MAX_PAGE_SIZE));
+
+    const res = await api.get<Paginated<Balance>>(`/inventory/balances?${qs.toString()}`);
+    rows.push(...res.rows);
+    total = res.total;
+
+    // Stop on a short page as well as on the count: a page that comes back
+    // smaller than the limit is the last one, and trusting only `total` would
+    // spin if the two ever disagreed.
+    if (res.rows.length < MAX_PAGE_SIZE || rows.length >= total) break;
+  }
+
+  return { rows, total, page: 1, pageSize: rows.length };
 }
 
 export function getStorageAreas(locationId: string) {

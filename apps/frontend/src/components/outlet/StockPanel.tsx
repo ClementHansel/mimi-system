@@ -75,9 +75,11 @@ export function StockPanel() {
           onChange={(e) => setQ(e.target.value)}
           wrapperClassName="max-w-sm"
         />
-        {/* `fetchAll` needs no request: every balance is already held client-side
-            (the list fetches pageSize=500), so "everything" vs "what I filtered
-            to" is a real and free choice. */}
+        {/* `fetchAll` needs no request: every balance is already held
+            client-side — `getBalances` pages through all of them — so
+            "everything" vs "what I filtered to" is a real and free choice.
+            It used to say "the list fetches pageSize=500", which was over the
+            server's cap of 200 and made this screen 400 on every load. */}
         <ExportButton
           rows={filtered}
           columns={BALANCE_EXPORT_COLUMNS}

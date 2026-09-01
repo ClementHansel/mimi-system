@@ -2,10 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import {
   ApprovalDocumentType,
   can,
@@ -26,6 +27,7 @@ import {
   type ReplenishmentLine,
   type UUID,
 } from '@mimi/shared';
+import { DATABASE_POOL } from '../../common/database/database-pool.provider';
 import { ApprovalService, type CallerScope } from '../../kernel/approvals';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { ApproveReplenishmentDto } from './dto/approve-replenishment.dto';
@@ -86,7 +88,27 @@ export class ReplenishmentService {
     private readonly repo: ReplenishmentRepository,
     private readonly approvals: ApprovalService,
     private readonly syncEmit: SyncEmitService,
+    // For `findRequesterNames` only — a system-context read that must not run
+    // on the caller's mid-request client. See that method's own comment.
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
   ) {}
+
+  /**
+   * Fills in requester names the caller's own RLS could not resolve.
+   *
+   * Only the rows that came back NULL are looked up, so an office caller (who
+   * can read `users`) makes no extra query at all and Gudang makes exactly
+   * one for a whole page.
+   */
+  private async withRequesterNames(rows: ReplenishmentRow[]): Promise<ReplenishmentRow[]> {
+    const missing = rows.filter((r) => !r.requestedByName).map((r) => r.requestedBy);
+    if (missing.length === 0) return rows;
+
+    const names = await this.repo.findRequesterNames(this.pool, missing);
+    return rows.map((row) =>
+      row.requestedByName ? row : { ...row, requestedByName: names.get(row.requestedBy) ?? null },
+    );
+  }
 
   // ── reads ──────────────────────────────────────────────────────────────
 
@@ -111,8 +133,9 @@ export class ReplenishmentService {
       client,
       rows.map((r) => r.id),
     );
+    const named = await this.withRequesterNames(rows);
     return {
-      rows: rows.map((r) => this.toResource(r, linesByRequest.get(r.id) ?? [], null)),
+      rows: named.map((r) => this.toResource(r, linesByRequest.get(r.id) ?? [], null)),
       total,
       page,
       pageSize,
@@ -134,8 +157,9 @@ export class ReplenishmentService {
       client,
       rows.map((r) => r.id),
     );
+    const named = await this.withRequesterNames(rows);
     return {
-      rows: rows.map((r) => this.toResource(r, linesByRequest.get(r.id) ?? [], null)),
+      rows: named.map((r) => this.toResource(r, linesByRequest.get(r.id) ?? [], null)),
       total,
       page,
       pageSize,
@@ -151,7 +175,11 @@ export class ReplenishmentService {
       });
     const lines = await this.repo.findLines(client, id);
     const approval = await this.loadApprovalDetail(client, id, row.status);
-    return this.toResource(row, lines, approval);
+    // The detail drawer names the requester too, and is opened from the same
+    // warehouse queue — so it needs the same fill-in, or the list would show a
+    // name and the drawer behind it would show nothing.
+    const [named] = await this.withRequesterNames([row]);
+    return this.toResource(named ?? row, lines, approval);
   }
 
   async getHistory(client: PoolClient, id: UUID): Promise<ReplenishmentHistoryRow[]> {

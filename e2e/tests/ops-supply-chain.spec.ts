@@ -61,6 +61,36 @@ test.describe('The queues each job opens in the morning', () => {
     }
   });
 
+  test('the warehouse head gets their own status tiles, with numbers in them', async ({
+    browser,
+  }) => {
+    // Owner ruling, 2026-09-01. `/warehouse` is built on `/dashboard/ops-status`,
+    // which was gated on `dashboard.view` — owner/manager only — so the person
+    // whose front page this is saw an error state where the owner saw four live
+    // tiles. The endpoint now also accepts `replenishment.approve.warehouse`
+    // ("you run the central warehouse"); every count inside it was already
+    // location-scoped, so that widened who may ask, not what comes back.
+    const kgd = await personAt(browser, CREW.kepalaGudang);
+    try {
+      await kgd.page.goto('/warehouse', { waitUntil: 'domcontentloaded' });
+      await kgd.page.waitForLoadState('networkidle').catch(() => {});
+
+      const tile = kgd.page.locator('main a[href^="/warehouse"]').first();
+      await expect(tile).toBeVisible();
+
+      // A NUMBER, not the loading em dash. `WarehouseDashboard` renders "—"
+      // while it does not know, precisely so that "nothing to do" and "we could
+      // not load this" never look the same on a screen someone plans their
+      // morning with — which makes the em dash the exact symptom of the bug.
+      await expect(tile, 'the warehouse tiles never resolved to a value').toContainText(/\d/);
+
+      await assertNoLoadFailure(kgd.page, 'gudang /warehouse');
+      await assertNoTechnicalError(kgd.page, 'gudang /warehouse');
+    } finally {
+      await kgd.close();
+    }
+  });
+
   test("the warehouse head's approval queue loads and names its columns", async ({ browser }) => {
     const kgd = await personAt(browser, CREW.kepalaGudang);
     try {
@@ -73,6 +103,21 @@ test.describe('The queues each job opens in the morning', () => {
       // Oleh" (2026-09-01); `assertNoTechnicalError` now matches bare UUIDs
       // precisely so this assertion catches it coming back.
       await assertNoTechnicalError(kgd.page, 'gudang /warehouse/approvals');
+
+      // And "Diminta Oleh" carries a NAME. Gudang cannot read `users` at all
+      // (`users_select`, migration 263), so this only works because the service
+      // resolves the display name in a system context — the owner ruled the
+      // name back in on 2026-09-01 because the warehouse fulfils every outlet's
+      // requests and needs to know who asked. Skipped when the queue is empty:
+      // an empty queue is a legitimate state of a box, not a regression.
+      const rows = kgd.page.locator('table tbody tr');
+      if ((await rows.count()) > 0) {
+        const requestedBy = rows.first().locator('td').nth(2);
+        await expect(
+          requestedBy,
+          'Gudang cannot see who raised the request they are being asked to approve',
+        ).not.toHaveText('—');
+      }
     } finally {
       await kgd.close();
     }

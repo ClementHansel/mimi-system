@@ -125,3 +125,35 @@ export function collectConsoleErrors(page: Page): { errors: string[] } {
   page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
   return { errors };
 }
+
+/**
+ * Failed API calls, WITH their URLs — what the console alone cannot tell you.
+ *
+ * A browser logs `Failed to load resource: the server responded with a status
+ * of 403` and nothing about which resource, so a console-only assertion reports
+ * that something is broken without saying what. That is a bug report nobody can
+ * act on. This listens to responses instead and records `403 /api/pos/shifts`.
+ *
+ * Why it matters for role testing: a screen that fires requests the signed-in
+ * role is not allowed to make is a real defect even when the page still
+ * renders — the UI is not gating its fetches by permission, so every one of
+ * those roles pays a round trip to be told no, and any data behind them is
+ * silently missing rather than explained.
+ */
+export function collectApiFailures(page: Page): { failures: string[] } {
+  const failures: string[] = [];
+  page.on('response', (res) => {
+    const url = res.url();
+    if (!url.includes('/api/')) return;
+    if (res.status() < 400) return;
+    // Strip the origin so failures read as routes, and collapse ids so the
+    // same endpoint does not appear five times with five uuids.
+    const path = new URL(url).pathname.replace(
+      /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+      '/:id',
+    );
+    const entry = `${res.status()} ${res.request().method()} ${path}`;
+    if (!failures.includes(entry)) failures.push(entry);
+  });
+  return { failures };
+}

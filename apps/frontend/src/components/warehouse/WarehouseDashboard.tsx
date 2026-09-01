@@ -34,7 +34,30 @@ export function WarehouseDashboard() {
   const [status, setStatus] = useState<OpsStatusResponse | null>(null);
   const [failed, setFailed] = useState(false);
 
+  /**
+   * `/dashboard/ops-status` requires `dashboard.view`, which KEPALA GUDANG does
+   * not hold — so the warehouse head, whose front page this is, got a bare
+   * "Gagal memuat data" where the owner gets four live tiles, plus two 403s per
+   * visit. Found 2026-09-01 by the per-role e2e walk; every owner-run test
+   * passed this screen.
+   *
+   * Asking for something you are not allowed to have and reporting the refusal
+   * as a load failure is wrong twice: the request should not be made, and "we
+   * could not load this" is not what happened. So the fetch is gated on the
+   * permission, and a role without it gets the tiles omitted rather than an
+   * error — the rest of the page (the area cards, which ARE their work) is
+   * unaffected and still renders.
+   *
+   * WHETHER KGD SHOULD SEE THESE NUMBERS IS A SEPARATE, OPEN QUESTION. The
+   * owner's ruling that built this page ("the gudang pusat page is supposed to
+   * be dashboard of all gudang") suggests yes, and every count here is already
+   * `locationScope`-filtered server-side, so granting it would widen FORMAT and
+   * not REACH. That is a CONTRACTS §3 change and is not made here.
+   */
+  const canSeeOpsStatus = can('dashboard.view');
+
   useEffect(() => {
+    if (!canSeeOpsStatus) return;
     let cancelled = false;
     dashboardApi
       .getOpsStatus()
@@ -43,7 +66,7 @@ export function WarehouseDashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canSeeOpsStatus]);
 
   const tiles = [
     {
@@ -88,7 +111,7 @@ export function WarehouseDashboard() {
         {t('nav.warehouse')}
       </h1>
 
-      {failed ? (
+      {!canSeeOpsStatus ? null : failed ? (
         <EmptyState title={t('table.error')} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

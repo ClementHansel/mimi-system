@@ -18,7 +18,8 @@ import {
   type BrandPalette,
 } from '@/lib/shared-types';
 import { brandCssVariables, documentPalette } from './palette';
-import { getBrandIdentity, getCompanyProfile, type CompanyProfile } from './brand-api';
+import { hasPermission } from '@/lib/permissions';
+import { getBranding, getCompanyProfile, type CompanyProfile } from './brand-api';
 
 /**
  * Applies the owner's brand to the RUNNING APP: the `--color-brand-*` ramp on
@@ -144,6 +145,8 @@ export function BrandProvider({ children }: { children: ReactNode }) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
+  const permissions = user?.permissions ?? [];
+
   const refresh = useCallback(async () => {
     // The two keys are read INDEPENDENTLY, not with `Promise.all`, because
     // they fail independently and for different reasons: `brand.identity` is
@@ -152,26 +155,39 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     // must not cost the app the other one's value — an install with a logo but
     // no palette should still print its logo.
     //
-    // KNOWN GAP, flagged rather than worked around: if the backend gates
-    // `GET /settings/:key` behind `settings.read`, every role that lacks it
-    // (kasir, driver, koki…) silently keeps the shipped palette and the shipped
-    // favicon, so the till would not follow the owner's brand. The right fix is
-    // server-side — brand identity discloses nothing and should be readable by
-    // anyone authenticated, exactly as `doc_template.read` is (see `rbac.ts`'s
-    // note on why that key is universal). This client cannot fix it.
-    const [nextIdentity, nextProfile] = await Promise.all([
-      getBrandIdentity().catch(() => null),
-      getCompanyProfile().catch(() => null),
-    ]);
+    // THE KNOWN GAP THAT USED TO BE HERE IS CLOSED. This read was two
+    // `GET /settings/:key` calls behind `settings.read`, which kasir, driver,
+    // koki and supervisor do not hold — so every front-of-house screen kept the
+    // SHIPPED palette, logo and favicon however the owner branded the system,
+    // and fired two 403s per page load doing it. The comment here said the fix
+    // had to be server-side and that this client could not make it; the server
+    // side now exists as `GET /settings/branding`, authenticated but
+    // unpermissioned, returning only what a screen needs to paint itself.
+    const branding = await getBranding().catch(() => null);
+    if (branding) setIdentity(branding.identity);
 
-    if (nextIdentity) setIdentity(nextIdentity);
+    // The FULL `company.profile` is a separate, still-permissioned read: it
+    // carries address/city and whatever future keys are added, and only the
+    // Brand panel needs it (it merges into the whole object on save — see
+    // `putCompanyLogo`). ASKED FOR ONLY BY ROLES THAT MAY HAVE IT: firing it
+    // for a cashier and swallowing the 403 would leave exactly the per-page
+    // forbidden request this change set out to remove. A role without
+    // `settings.read` keeps `companyProfile` empty, which is what it has always
+    // effectively been for them.
+    const nextProfile = hasPermission(permissions, 'settings.read')
+      ? await getCompanyProfile().catch(() => null)
+      : null;
     if (nextProfile) setCompanyProfile(nextProfile);
 
-    const logoId =
-      typeof nextProfile?.logoAttachmentId === 'string' ? nextProfile.logoAttachmentId : null;
-    setLogoUrl(await resolveAttachmentUrl(logoId));
+    // Logo id comes from the branding bundle, not the profile, so it resolves
+    // for the roles that cannot read the profile at all — which is the whole
+    // point of the change above.
+    setLogoUrl(await resolveAttachmentUrl(branding?.logoAttachmentId ?? null));
     setLoaded(true);
-  }, []);
+    // `permissions` is read above, so it belongs in the dependency list — a
+    // stale closure here would decide the profile read from the PREVIOUS user
+    // after a re-login.
+  }, [permissions]);
 
   useEffect(() => {
     if (!isHydrated || !authenticated) return;

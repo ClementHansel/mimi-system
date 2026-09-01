@@ -53,6 +53,72 @@ afterAll(async () => {
   await closeTestPool();
 });
 
+/**
+ * `GET /settings/branding` — the one settings read that is NOT behind
+ * `settings.read`, added 2026-09-01.
+ *
+ * The defect it fixes: kasir, koki, supervisor and driver hold no
+ * `settings.read`, so the two brand keys 403'd for them and every till, kitchen
+ * screen and outlet device silently kept the SHIPPED palette, logo and favicon
+ * no matter what the owner set in Admin — while firing two forbidden requests
+ * per page load. `BrandProvider` had carried a "KNOWN GAP" comment saying the
+ * fix had to be server-side.
+ *
+ * Because it deliberately escapes the permission, its SHAPE is the security
+ * boundary: it must return what a screen needs to paint itself and nothing
+ * else. The projection test below is the one that matters — if someone later
+ * returns the whole `company.profile`, address and every future key travel to
+ * every cashier, and only this assertion would notice.
+ */
+describe('SettingsService.getBranding — display-only, readable by anyone signed in', () => {
+  it('returns the palette, the logo id and the company name', async () => {
+    await withRollback(async (client) => {
+      const branding = await buildService().getBranding(client);
+      expect(branding).toHaveProperty('identity');
+      expect(branding).toHaveProperty('logoAttachmentId');
+      expect(branding).toHaveProperty('companyName');
+    });
+  });
+
+  it('NEVER carries anything else from company.profile', async () => {
+    await withRollback(async (client) => {
+      // Seed a profile with a field no screen needs, exactly as a real install
+      // has (address/city are editable in Admin → Perusahaan).
+      await client.query(`UPDATE settings SET value = $1::jsonb WHERE key = 'company.profile'`, [
+        JSON.stringify({
+          name: 'PT Mimi Chicken',
+          address: 'Jl. Rahasia No. 1',
+          city: 'Balikpapan',
+          npwp: '00.000.000.0-000.000',
+          logoAttachmentId: null,
+        }),
+      ]);
+
+      const branding = await buildService().getBranding(client);
+
+      // The projection, asserted as a CLOSED set of keys rather than by
+      // checking a few absences — a future field added to the profile must not
+      // be able to ride along unnoticed.
+      expect(Object.keys(branding).sort()).toEqual(['companyName', 'identity', 'logoAttachmentId']);
+      expect(branding.companyName).toBe('PT Mimi Chicken');
+      expect(JSON.stringify(branding)).not.toContain('Jl. Rahasia');
+      expect(JSON.stringify(branding)).not.toContain('npwp');
+    });
+  });
+
+  it('is not an error on an environment that has never set a brand', async () => {
+    await withRollback(async (client) => {
+      // A fresh install has no `brand.identity` row. A cashier must get the
+      // shipped defaults, not a 404 about a settings key — `getOne` throws
+      // here, which is why this method exists separately rather than the
+      // provider calling `getOne` twice.
+      await client.query(`DELETE FROM settings WHERE key = 'brand.identity'`);
+      const branding = await buildService().getBranding(client);
+      expect(branding.identity).toBeNull();
+    });
+  });
+});
+
 describe('SettingsService — generic get/set', () => {
   it('lists seeded settings and reads one by key', async () => {
     await withRollback(async (client) => {

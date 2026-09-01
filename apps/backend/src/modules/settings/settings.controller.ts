@@ -3,7 +3,13 @@ import { Body, Controller, Get, Param, Post, Put, Query, Req } from '@nestjs/com
 import { Audited, CurrentUser, RequirePermission } from '../../common/decorators';
 import type { RequestWithDbContext } from '../../common/guards/rls-context.guard';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
-import { ApprovalChainRes, ApprovalModeRes, SettingRes, SettingsService } from './settings.service';
+import {
+  ApprovalChainRes,
+  ApprovalModeRes,
+  BrandingRes,
+  SettingRes,
+  SettingsService,
+} from './settings.service';
 import { EmailSettingsRes, EmailSettingsService } from './email-settings.service';
 import {
   ListSettingsQueryDto,
@@ -102,6 +108,37 @@ export class SettingsController {
     @Req() req: RequestWithDbContext,
   ): Promise<ApprovalModeRes> {
     return this.service.putApprovalMode(documentType, dto, caller, req.dbClient!);
+  }
+
+  /**
+   * BRANDING, READABLE BY ANYONE SIGNED IN — and it has to be, or the product
+   * does not wear the owner's brand where customers can see it.
+   *
+   * `GET /settings/:key` below is behind `settings.read`, which kasir, koki,
+   * supervisor and driver do not hold. So every till, kitchen screen and
+   * outlet device silently fell back to the SHIPPED palette, logo and favicon:
+   * the owner set their brand in Admin and the front-of-house screens ignored
+   * it, while firing two 403s per page load. `BrandProvider` flagged this in a
+   * "KNOWN GAP" comment ("the right fix is server-side … this client cannot fix
+   * it"); found in the wild 2026-09-01 by the per-role e2e walk.
+   *
+   * Deliberately NOT a widening of `settings.read`, and deliberately not the
+   * whole `company.profile` object: this returns only what a screen needs to
+   * paint itself — the palette, the favicon, the logo and the company name.
+   * Address, city and anything else a future key adds stay behind the
+   * permission. Minimum disclosure, and the company name is already printed on
+   * every invoice and surat jalan an outlet handles.
+   *
+   * Authenticated, not `@Public()`: the global JWT guard still applies, exactly
+   * as it does for `GET /auth/me`. There is no permission check because there
+   * is no permission this should require.
+   *
+   * MUST stay declared ABOVE `@Get(':key')` — Nest matches in declaration
+   * order, so below it this route would be swallowed as `key = 'branding'`.
+   */
+  @Get('branding')
+  getBranding(@Req() req: RequestWithDbContext): Promise<BrandingRes> {
+    return this.service.getBranding(req.dbClient!);
   }
 
   @Get(':key')

@@ -72,6 +72,20 @@ export interface ApprovalModeRes {
   mode: ApprovalMode;
 }
 
+/**
+ * The display-only slice of settings, for `GET /settings/branding` — see that
+ * route's own comment for why it exists. Everything here is safe for any
+ * signed-in user to read; anything that is not, does not belong in this shape.
+ */
+export interface BrandingRes {
+  /** `brand.identity` — palette + favicon. `null` on an environment that has never set one. */
+  identity: Record<string, unknown> | null;
+  /** `company.profile.logoAttachmentId`, and nothing else from that object. */
+  logoAttachmentId: string | null;
+  /** `company.profile.name` — already printed on every invoice and surat jalan. */
+  companyName: string | null;
+}
+
 @Injectable()
 export class SettingsService {
   constructor(
@@ -92,6 +106,35 @@ export class SettingsService {
         message: `Unknown settings key '${key}'`,
       });
     return mapSetting(row);
+  }
+
+  /**
+   * Reads the two branding keys and projects them down to what a screen needs
+   * to paint itself. A MISSING key is not an error here: an environment that
+   * has never opened the Brand panel has no `brand.identity` row, and the
+   * caller's job is to fall back to the shipped defaults, not to show an error
+   * to a cashier about a settings key.
+   */
+  async getBranding(client: PoolClient): Promise<BrandingRes> {
+    const [identityRow, profileRow] = await Promise.all([
+      this.repo.findByKey(client, 'brand.identity'),
+      this.repo.findByKey(client, 'company.profile'),
+    ]);
+
+    const profile =
+      profileRow && typeof profileRow.value === 'object' && profileRow.value !== null
+        ? (profileRow.value as Record<string, unknown>)
+        : {};
+
+    return {
+      identity:
+        identityRow && typeof identityRow.value === 'object' && identityRow.value !== null
+          ? (identityRow.value as Record<string, unknown>)
+          : null,
+      logoAttachmentId:
+        typeof profile.logoAttachmentId === 'string' ? profile.logoAttachmentId : null,
+      companyName: typeof profile.name === 'string' ? profile.name : null,
+    };
   }
 
   async putOne(

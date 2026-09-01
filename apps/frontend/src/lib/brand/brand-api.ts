@@ -76,6 +76,41 @@ export async function getBrandIdentity(): Promise<BrandIdentity> {
   return coerceBrandIdentity(unwrapSettingValue(response));
 }
 
+/** What `GET /settings/branding` returns — the display-only projection. */
+export interface BrandingBundle {
+  identity: BrandIdentity;
+  logoAttachmentId: string | null;
+  companyName: string | null;
+}
+
+/**
+ * The ONE read every signed-in screen makes to paint itself.
+ *
+ * Replaces the pair of `GET /settings/:key` reads this file used to do, which
+ * were behind `settings.read` and therefore 403'd for kasir, koki, supervisor
+ * and driver — so the till kept the shipped palette and logo no matter what the
+ * owner set, and every outlet page load fired two forbidden requests.
+ * `BrandProvider` had flagged it as a KNOWN GAP needing a server-side fix; the
+ * server side is `GET /settings/branding`, readable by anyone authenticated.
+ *
+ * Still tolerant of failure: an environment that has never set a brand, or a
+ * backend older than that route, must fall back to the shipped defaults rather
+ * than block the shell from rendering.
+ */
+export async function getBranding(): Promise<BrandingBundle> {
+  const response = await api.get<{
+    identity?: unknown;
+    logoAttachmentId?: unknown;
+    companyName?: unknown;
+  }>('/settings/branding');
+  return {
+    identity: coerceBrandIdentity(response?.identity),
+    logoAttachmentId:
+      typeof response?.logoAttachmentId === 'string' ? response.logoAttachmentId : null,
+    companyName: typeof response?.companyName === 'string' ? response.companyName : null,
+  };
+}
+
 export async function putBrandIdentity(identity: BrandIdentity): Promise<BrandIdentity> {
   const response = await api.put<unknown>(`/settings/${BRAND_IDENTITY_KEY}`, { value: identity });
   return coerceBrandIdentity(unwrapSettingValue(response));

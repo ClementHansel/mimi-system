@@ -482,7 +482,9 @@ export class ReplenishmentService {
       locationName: row.locationName,
       status: row.status as Replenishment['status'],
       source: row.source,
-      requestedBy: row.requestedByName ?? row.requestedBy,
+      // NEVER the raw id as a fallback — see `Replenishment.requestedBy` in
+      // @mimi/shared for what that shipped to Gudang's screen.
+      requestedBy: row.requestedByName ?? null,
       submittedAt: row.submittedAt,
       neededBy: row.neededBy,
       sjId: row.sjId,

@@ -96,6 +96,18 @@ const ALLOWED_UNGUARDED: Record<string, string> = {
   'AuthController.logout': 'ends the caller’s own session; holding a permission is not meaningful',
   'AuthController.me': 'returns the caller’s own identity — the JWT is the authorization',
   'AuthController.setPin': 'sets the caller’s OWN pin; scoped to `req.user.sub`',
+  // Branding is display-only and deliberately readable by anyone signed in:
+  // kasir, koki, supervisor and driver hold no `settings.read`, so gating this
+  // is what made every till and kitchen screen ignore the owner's palette,
+  // logo and favicon while firing two 403s per page load (found 2026-09-01).
+  // The JWT is the authorization, exactly as for `AuthController.me`.
+  //
+  // What keeps it safe is its SHAPE, not a permission: it returns palette +
+  // favicon + logo id + company name and nothing else, asserted as a CLOSED
+  // set of keys in `settings.service.integration.spec.ts` so a later change
+  // cannot let `company.profile`'s address or a future field ride along.
+  'SettingsController.getBranding': 'display-only projection; JWT is the authorization',
+
   // Liveness/readiness for the container orchestrator.
   'HealthController.check': '@Public — probe',
   'HealthController.live': '@Public — probe',

@@ -138,7 +138,8 @@ export interface Replenishment {
   locationName: string;
   status: string;
   source: 'manual' | 'auto_suggestion';
-  requestedBy: string;
+  /** Requester's name, or `null` when this caller may not read that user row — never a raw id. */
+  requestedBy: string | null;
   submittedAt: ISODateTime | null;
   neededBy: ISODate | null;
   sjId: UUID | null;

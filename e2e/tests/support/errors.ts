@@ -34,6 +34,13 @@ export const TECHNICAL_VOCABULARY: readonly RegExp[] = [
   // Raw identifiers that only exist in the schema or the wire format
   /\b\w+_key"/,
   /\bERR_[A-Z_]{3,}\b/,
+  // A BARE UUID ON SCREEN. Always a bug: either an internal key that escaped,
+  // or a human label that failed to resolve and fell back to the id. Both were
+  // true of Gudang's approval queue, which printed
+  // `2e75a93f-40f6-45a3-a177-bf20ff4e7c9c` under "Diminta Oleh" because the
+  // requester's name is not readable by that role — found 2026-09-01 by eye,
+  // and NOT caught by this guard until this line existed.
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
   // An unresolved i18n key rendering as itself — `translate()` returns the key
   // on a miss, which puts `errors.byCode.…` on screen. Silent in production
   // builds, so only a browser assertion catches it.

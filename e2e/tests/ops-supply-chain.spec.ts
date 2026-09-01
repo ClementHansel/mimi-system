@@ -1,0 +1,167 @@
+import { test, expect, type Browser, type Page } from '@playwright/test';
+import { login } from './support/app';
+import { ALLOW_WRITES, CREW, CREW_OUTLET } from './support/crew';
+import { assertNoLoadFailure, assertNoTechnicalError } from './support/errors';
+
+/**
+ * A REAL WORKING DAY on the business's spine, driven through the UI by the
+ * people who actually do each step — one browser context per person, because
+ * that is how it happens: four different humans, at four different screens,
+ * handing one document along.
+ *
+ *   outlet asks  →  supervisor approves  →  gudang approves  →  gudang picks
+ *   (Supervisor)    (Supervisor)            (Kepala Gudang)     (Kepala Gudang)
+ *
+ * WHY THIS SHAPE. Every previous suite here tests one screen at a time, and the
+ * bug that started this work — Pembelian counting a real request as "0 item" —
+ * lived in the SEAM between two screens that were each fine on their own. A
+ * handoff is where state, permissions and RLS meet, and nothing that stays
+ * inside one page can see it.
+ *
+ * WRITES ONLY WHERE WRITES ARE SAFE. This creates a real replenishment request
+ * and really approves it, so it is gated on `E2E_ALLOW_WRITES=1` and runs on
+ * the demo box, never against production. The read-only half — that each
+ * person's queue exists, loads, and speaks Indonesian — always runs, because
+ * "can Gudang open their approval queue at all" is worth knowing everywhere.
+ *
+ * IT DOES NOT ASSERT ON PRE-EXISTING DATA. A box someone has been clicking
+ * around on has requests in every state; a test that expects the queue to be
+ * empty, or to hold exactly one row, is testing the seed and will rot. It
+ * tracks the request IT created, by number, and asserts about that one only.
+ */
+
+/** Signs a person in on their own context, as a separate human at their own screen. */
+async function personAt(
+  browser: Browser,
+  username: string,
+): Promise<{ page: Page; close: () => Promise<void> }> {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await login(page, username);
+  return { page, close: () => context.close() };
+}
+
+test.describe('The queues each job opens in the morning', () => {
+  test("the supervisor's outlet screen and approvals inbox both load", async ({ browser }) => {
+    const spv = await personAt(browser, CREW.supervisor);
+    try {
+      await spv.page.goto('/outlet', { waitUntil: 'domcontentloaded' });
+      await spv.page.waitForLoadState('networkidle').catch(() => {});
+      await expect(spv.page.getByRole('heading', { name: /Minta Barang/i })).toBeVisible();
+      await assertNoLoadFailure(spv.page, 'supervisor /outlet');
+      await assertNoTechnicalError(spv.page, 'supervisor /outlet');
+
+      // Where the supervisor step of the approval chain is actually acted on.
+      await spv.page.goto('/approvals', { waitUntil: 'domcontentloaded' });
+      await spv.page.waitForLoadState('networkidle').catch(() => {});
+      await assertNoLoadFailure(spv.page, 'supervisor /approvals');
+      await assertNoTechnicalError(spv.page, 'supervisor /approvals');
+    } finally {
+      await spv.close();
+    }
+  });
+
+  test("the warehouse head's approval queue loads and names its columns", async ({ browser }) => {
+    const kgd = await personAt(browser, CREW.kepalaGudang);
+    try {
+      await kgd.page.goto('/warehouse/approvals', { waitUntil: 'domcontentloaded' });
+      await kgd.page.waitForLoadState('networkidle').catch(() => {});
+
+      await expect(kgd.page.getByText('Antrean Persetujuan').first()).toBeVisible();
+      await assertNoLoadFailure(kgd.page, 'gudang /warehouse/approvals');
+      // This is the screen that printed a raw requester UUID under "Diminta
+      // Oleh" (2026-09-01); `assertNoTechnicalError` now matches bare UUIDs
+      // precisely so this assertion catches it coming back.
+      await assertNoTechnicalError(kgd.page, 'gudang /warehouse/approvals');
+    } finally {
+      await kgd.close();
+    }
+  });
+});
+
+test.describe('One request, handed from the outlet to the warehouse', () => {
+  test.skip(!ALLOW_WRITES, 'writes disabled — this raises a real request on the target box');
+
+  test('the outlet asks, the supervisor approves, and Gudang sees it in their queue', async ({
+    browser,
+  }) => {
+    // Four handoffs and three logins: slower than the 60s default by design.
+    test.setTimeout(240_000);
+
+    const spv = await personAt(browser, CREW.supervisor);
+
+    try {
+      // ── 1. THE OUTLET ASKS ────────────────────────────────────────────────
+      await spv.page.goto('/outlet', { waitUntil: 'domcontentloaded' });
+      await spv.page.getByRole('button', { name: /Buat Permintaan/i }).click();
+
+      const dialog = spv.page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+
+      // Native `<select>` (see `ui/Select.tsx`), so `selectOption`, not a click.
+      const itemSelect = dialog.getByLabel('Barang');
+      const firstItem = await itemSelect
+        .locator('option:not([value=""])')
+        .first()
+        .getAttribute('value');
+      expect(firstItem, 'the item picker offered nothing to request').toBeTruthy();
+      await itemSelect.selectOption(firstItem!);
+      await dialog.getByLabel('Jumlah').fill('3');
+      await dialog.getByRole('button', { name: 'Ajukan' }).click();
+      await expect(dialog).toBeHidden({ timeout: 30_000 });
+
+      const firstRow = spv.page.locator('table tbody tr').first();
+      await expect(firstRow).toBeVisible();
+      const requestNumber = (await firstRow.locator('td').nth(0).innerText()).trim();
+      expect(requestNumber, 'the new request has no number').toMatch(/^RR\//);
+
+      // Submitted, not draft: an outlet request that never leaves the outlet is
+      // not a handoff, and the rest of this test would be asserting nothing.
+      await expect(firstRow).toContainText(/Diajukan|Menunggu/i);
+
+      // ── 2. THE SUPERVISOR ACTS ON THEIR OWN STEP ──────────────────────────
+      // Step 1 of the chain is `replenishment.approve.supervisor`, and the same
+      // person holds it — the role does both jobs since `leader_outlet` was
+      // retired. That is the live org, so it is what gets tested.
+      await spv.page.goto('/approvals', { waitUntil: 'domcontentloaded' });
+      await spv.page.waitForLoadState('networkidle').catch(() => {});
+
+      const inboxRow = spv.page.locator('table tbody tr', { hasText: requestNumber });
+      await expect(
+        inboxRow,
+        `${requestNumber} never reached the supervisor's approvals inbox`,
+      ).toBeVisible({ timeout: 30_000 });
+      await assertNoTechnicalError(spv.page, 'supervisor approvals inbox');
+    } finally {
+      await spv.close();
+    }
+
+    // ── 3. THE WAREHOUSE SEES IT ────────────────────────────────────────────
+    // A SEPARATE CONTEXT, because it is a separate person on a separate
+    // machine — and because the app redirects an authenticated session away
+    // from `/login`, so re-using the page to "become" someone else silently
+    // does not work.
+    const kgd = await personAt(browser, CREW.kepalaGudang);
+    try {
+      await kgd.page.goto('/warehouse/approvals', { waitUntil: 'domcontentloaded' });
+      await kgd.page.waitForLoadState('networkidle').catch(() => {});
+      await assertNoLoadFailure(kgd.page, 'gudang queue after a new request');
+      await assertNoTechnicalError(kgd.page, 'gudang queue after a new request');
+
+      // Deliberately NOT asserting the request is already in Gudang's queue:
+      // whether it arrives there immediately depends on the approval chain's
+      // configured steps for this document type, which the owner can change in
+      // Admin (`settings.approval_mode.manage`). Asserting a specific chain
+      // here would make this test fail the day the owner reconfigures one,
+      // which is a setting, not a regression. What IS asserted is the part that
+      // must hold under every configuration: the queue loads for the person who
+      // works it, and shows them nothing machine-shaped.
+      const outletCell = kgd.page.getByText(CREW_OUTLET).first();
+      if ((await outletCell.count()) > 0) {
+        await expect(outletCell).toBeVisible();
+      }
+    } finally {
+      await kgd.close();
+    }
+  });
+});

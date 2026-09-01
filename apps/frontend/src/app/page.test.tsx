@@ -126,13 +126,27 @@ describe('HomePage (home hub — interface directory)', () => {
 
     const links = hrefs(container);
     expect(links).toContain('/warehouse');
-    // `delivery.read`/`purchasing.read`/`asset.read` are dashboard areas, so
-    // the dashboard interface is reachable — as a card, not as nine cards.
-    expect(links).toContain('/dashboard');
     expect(links).toContain('/me');
-    for (const href of DASHBOARD_AREAS) {
-      expect(container.querySelector(`a[href="${href}"]`)).toBeNull();
-    }
+
+    // `delivery.read`/`purchasing.read`/`asset.read` are dashboard AREAS, so
+    // the dashboard interface is reachable — as ONE card, not nine.
+    //
+    // That card no longer points at `/dashboard`. It used to, and this test
+    // asserted it did, which is how a dead end shipped: a kepala gudang holds
+    // none of `dashboard.view`/`dashboard.outlet.view`, so clicking "Dasbor"
+    // answered "Anda tidak memiliki akses ke bagian ini." `interfaceEntryHref`
+    // now resolves the card to the first area inside the interface that this
+    // person can actually open (`lib/hub.ts`).
+    //
+    // Asserted as a PROPERTY rather than as the literal `/delivery`: exactly
+    // one dashboard-interface card, and wherever it points must be somewhere
+    // they can go. Pinning the specific area would make this fail every time
+    // the sidebar is reordered, which is not a regression.
+    const dashboardCards = links.filter(
+      (href) => href === '/dashboard' || DASHBOARD_AREAS.includes(href),
+    );
+    expect(dashboardCards).toHaveLength(1);
+    expect(dashboardCards[0]).not.toBe('/dashboard');
   });
 
   it('still gives a user with no permissions their own account and the manual', () => {

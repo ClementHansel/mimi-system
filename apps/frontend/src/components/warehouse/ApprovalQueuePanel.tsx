@@ -115,7 +115,14 @@ export function ApprovalQueuePanel() {
   const columns: DataTableColumn<Replenishment>[] = [
     { key: 'requestNumber', header: t('warehouse.approvalQueue.number') },
     { key: 'locationName', header: t('warehouse.approvalQueue.outlet') },
-    { key: 'requestedBy', header: t('warehouse.approvalQueue.requestedBy') },
+    {
+      key: 'requestedBy',
+      header: t('warehouse.approvalQueue.requestedBy'),
+      // An em dash, never a blank and never the id. Gudang cannot read another
+      // outlet's user row (`users_select`, migration 263), so this is `null`
+      // for most rows on THIS screen — it used to print the raw UUID instead.
+      render: (r) => r.requestedBy ?? '—',
+    },
     { key: 'submittedAt', header: t('common.date'), render: (r) => fmtDate(r.submittedAt) },
     {
       key: 'neededBy',

@@ -6,7 +6,7 @@ import { LayoutGrid } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { useSessionStore } from '@/stores/session-store';
 import { usePermissions } from '@/lib/permissions';
-import { reachableInterfaces } from '@/lib/hub';
+import { interfaceEntryHref, reachableInterfaces } from '@/lib/hub';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HubTopBar } from '@/components/hub/HubTopBar';
 import { WorkspaceCard } from '@/components/hub/WorkspaceCard';
@@ -96,7 +96,10 @@ export default function HomePage() {
               {interfaces.map((iface) => (
                 <WorkspaceCard
                   key={iface.id}
-                  href={iface.href}
+                  // Not `iface.href`: that is one fixed route, and reaching an
+                  // interface is ANY-of the areas inside it, so a driver or a
+                  // kepala gudang was being sent to a page they cannot open.
+                  href={interfaceEntryHref(iface, can)}
                   icon={iface.icon}
                   title={t(iface.labelKey)}
                   // One sentence per interface, keyed by its `lib/nav.ts` id so

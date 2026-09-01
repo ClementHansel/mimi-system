@@ -421,7 +421,28 @@ export interface Replenishment {
   locationName: string;
   status: ReplenishmentStatus;
   source: 'manual' | 'auto_suggestion';
-  requestedBy: string;
+  /**
+   * The requester's NAME, for display — `null` when the caller may not read
+   * that user's row.
+   *
+   * Nullable on purpose, and it is the fix for a real leak: this used to fall
+   * back to the raw `requested_by` UUID whenever the name could not be
+   * resolved, so Gudang's approval queue printed
+   * `2e75a93f-40f6-45a3-a177-bf20ff4e7c9c` in its "Diminta Oleh" column
+   * (found 2026-09-01). `users_select` (migration 263) lets only
+   * self/owner/manager/hr_admin/finance read a user row, so for KEPALA GUDANG
+   * — the role that lives on that screen — the name is null for every request
+   * that is not their own.
+   *
+   * Substituting an internal identifier for a person's name is wrong twice: it
+   * is not a name, and it discloses a key. A caller that cannot resolve it
+   * should render "—" and know it does not know.
+   *
+   * SEPARATE, STILL OPEN: that Gudang cannot see WHO asked for a delivery they
+   * are fulfilling is a real gap in the screen's usefulness, and closing it
+   * means an RLS change (a display-name read for the warehouse), not a UI one.
+   */
+  requestedBy: string | null;
   submittedAt: ISODateTime | null;
   neededBy: ISODate | null;
   sjId: UUID | null;

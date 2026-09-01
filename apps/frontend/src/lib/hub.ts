@@ -26,3 +26,44 @@ export function reachableInterfaces(
 export function hasHub(can: (keyOrKeys?: PermissionKeyOrKeys) => boolean): boolean {
   return reachableInterfaces(can).length > 1;
 }
+
+/**
+ * Where an interface's hub card should actually send THIS person.
+ *
+ * `AppInterface.href` is one fixed route, but reaching an interface is
+ * deliberately ANY-of the areas inside it — a Finance user with no
+ * `dashboard.view` still belongs in the dashboard, "they simply work in
+ * `/finance` once in" (see `INTERFACES` in `nav.ts`). The hub card ignored
+ * that and pointed everyone at `/dashboard`, so a DRIVER (in for
+ * `delivery.read`) and the KEPALA GUDANG (in for `purchasing.read`) clicked
+ * "Dasbor" and were told "Anda tidak memiliki akses ke bagian ini." — a card
+ * offering work that leads nowhere. Found 2026-09-01 by walking the hub as
+ * each real job.
+ *
+ * So: keep `href` when the person can open it, otherwise the first entry in
+ * that interface's own sidebar that they can. Falls back to `href` when
+ * nothing matches, because a card that goes to a refusal is still better than
+ * a card that goes nowhere — and that case means the interface gate and its
+ * sections disagree, which is a nav-config bug to fix at the source.
+ *
+ * This is NOT the same job as `(auth)/landing.ts`, which picks ONE route for a
+ * role at login and is deliberately a fixed map. This answers a different
+ * question — "this person clicked THIS card, where do they go" — for every
+ * interface, not just the one they land in.
+ */
+export function interfaceEntryHref(
+  iface: AppInterface,
+  can: (keyOrKeys?: PermissionKeyOrKeys) => boolean,
+): string {
+  const entries = iface.sections.flatMap((section) => section.items);
+
+  // The interface's own front door, if this person is allowed through it. An
+  // entry whose `href` matches carries the permission that guards that route;
+  // an interface whose front door is not listed in its sections (the
+  // single-screen ones) is reachable by definition — the interface gate was
+  // the only check there was.
+  const front = entries.find((entry) => entry.href === iface.href);
+  if (!front || can(front.permission)) return iface.href;
+
+  return entries.find((entry) => can(entry.permission))?.href ?? iface.href;
+}

@@ -99,7 +99,10 @@ export default function HomePage() {
                   // Not `iface.href`: that is one fixed route, and reaching an
                   // interface is ANY-of the areas inside it, so a driver or a
                   // kepala gudang was being sent to a page they cannot open.
-                  href={interfaceEntryHref(iface, can)}
+                  // The role's own landing route is preferred over "first
+                  // openable entry" — otherwise Finance lands on Persetujuan
+                  // Saya instead of Keuangan.
+                  href={interfaceEntryHref(iface, can, getLandingRoute(user))}
                   icon={iface.icon}
                   title={t(iface.labelKey)}
                   // One sentence per interface, keyed by its `lib/nav.ts` id so

@@ -42,6 +42,30 @@ describe('interfaceEntryHref — the hub card resolves to a reachable entry', ()
     expect(href).toBe('/purchasing');
   });
 
+  it("prefers the role's own landing route over whatever sits first in the sidebar", () => {
+    // FINANCE reaches the dashboard interface without `dashboard.view`, and
+    // holds an approval key — so "first openable entry" sent them to
+    // `/approvals` (Persetujuan Saya), not `/finance`. Right destination for
+    // the driver, wrong one for finance. `landing.ts` already records where
+    // each role actually works, so the card asks it first.
+    const financeCan = canFor(['payment.read', 'payment.verify', 'accounting.journal.read']);
+    expect(interfaceEntryHref(dashboard, financeCan, '/finance')).toBe('/finance');
+
+    // Without the landing hint the fallback still applies, and still lands
+    // somewhere they can open — it is a preference, not a requirement.
+    expect(interfaceEntryHref(dashboard, financeCan)).not.toBe('/dashboard');
+  });
+
+  it('ignores a landing route that is not in this interface, or that they cannot open', () => {
+    // A kasir's landing is `/pos`, which is a different INTERFACE — the
+    // dashboard card must not be pointed at it.
+    const can = canFor(['delivery.read']);
+    expect(interfaceEntryHref(dashboard, can, '/pos')).toBe('/delivery');
+    // And a landing inside this interface that the role cannot actually open
+    // is not a valid destination either.
+    expect(interfaceEntryHref(dashboard, can, '/finance')).toBe('/delivery');
+  });
+
   it('never returns a route the person cannot open, for any single-permission holder', () => {
     // The property that matters, checked across every gate the interface
     // admits: whatever the card points at, they can open it. A future area

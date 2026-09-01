@@ -83,6 +83,23 @@ export async function assertNoTechnicalError(page: Page, context?: string): Prom
  * else, so a sweep that only checked for technical words would have missed it.
  */
 export async function assertNoLoadFailure(page: Page, context?: string): Promise<void> {
+  // A CLIENT-SIDE CRASH FIRST, because it is the worst outcome and the one that
+  // reports itself least clearly. Next.js replaces the whole page with
+  // "Application error: a client-side exception has occurred", which contains
+  // none of the app's own error copy — so the tab sweep that found the Sales
+  // tab crashing on production (2026-09-01) failed with a locator TIMEOUT and
+  // said nothing about a crash. Naming it turns a confusing failure into an
+  // obvious one.
+  for (const phrase of ['Application error', 'client-side exception', 'Unhandled Runtime Error']) {
+    if ((await page.getByText(phrase, { exact: false }).count()) > 0) {
+      throw new Error(
+        `THE PAGE CRASHED${context ? ` (${context})` : ''} — "${phrase}". ` +
+          `A client-side exception replaced the whole surface; check the browser console ` +
+          `and run the same step against a dev build for the real stack trace.`,
+      );
+    }
+  }
+
   for (const phrase of ['Gagal memuat data', 'Gagal memuat', 'Terjadi kesalahan']) {
     const count = await page.getByText(phrase, { exact: false }).count();
     if (count > 0) {

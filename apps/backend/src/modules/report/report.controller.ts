@@ -80,7 +80,25 @@ export class ReportController {
       locationId: query.locationId,
       groupBy: query.groupBy,
     });
-    sendReportRows(res, query.format, 'sales-report', result.rows, {
+    // `sendReportObject`, not `sendReportRows`: the JSON body is the WHOLE
+    // `SalesReportResult` (`{groupBy, from, to, rows}`), which is the shape the
+    // service produces and the shape `report-types.ts` declares on the client.
+    //
+    // This used to send `result.rows` — a bare array — so the panel's
+    // `setRows(res.rows)` read `undefined` and `rows.map(...)` threw. The Sales
+    // tab of the owner's dashboard answered "Application error: a client-side
+    // exception has occurred" and had never worked. Found on production
+    // 2026-09-01 by the tab sweep; no 4xx and no server log, because the
+    // request succeeded — only the envelope was wrong.
+    //
+    // The file this panel lives beside already carries a warning about exactly
+    // this hazard ("Guessing this wrong once already shipped a panel that
+    // rendered 'no data' over 1,372 real rows"). Same mistake, one layer down,
+    // and the reason both sides now name one shared type instead of two.
+    //
+    // CSV/XLSX are unaffected: they still flatten `result.rows`, which is what
+    // a flat file can represent.
+    sendReportObject(res, query.format, 'sales-report', result, result.rows, {
       header: ['groupKey', 'groupLabel', 'txCount', 'gross', 'discount', 'platformFees', 'net'],
       toRow: (r) => [
         r.groupKey,

@@ -54,6 +54,11 @@ export function hasHub(can: (keyOrKeys?: PermissionKeyOrKeys) => boolean): boole
 export function interfaceEntryHref(
   iface: AppInterface,
   can: (keyOrKeys?: PermissionKeyOrKeys) => boolean,
+  /**
+   * This role's own landing route (`(auth)/landing.ts`), when there is one.
+   * Optional so the pure-nav tests can exercise the fallback on its own.
+   */
+  landingRoute?: string,
 ): string {
   const entries = iface.sections.flatMap((section) => section.items);
 
@@ -64,6 +69,18 @@ export function interfaceEntryHref(
   // the only check there was.
   const front = entries.find((entry) => entry.href === iface.href);
   if (!front || can(front.permission)) return iface.href;
+
+  // THE ROLE'S OWN HOME FIRST, if it lives in this interface and they can open
+  // it. Without this, the fallback below picks whatever happens to sit at the
+  // top of the sidebar — which sent FINANCE to "Persetujuan Saya" instead of
+  // Keuangan, because `/approvals` is listed first and they hold an approval
+  // key. Right destination, wrong one for them. `landing.ts` already encodes
+  // where each role actually works ("Kasir opens straight into POS"), so this
+  // reuses that answer rather than inventing a second, worse one.
+  if (landingRoute) {
+    const home = entries.find((entry) => entry.href === landingRoute);
+    if (home && can(home.permission)) return home.href;
+  }
 
   return entries.find((entry) => can(entry.permission))?.href ?? iface.href;
 }

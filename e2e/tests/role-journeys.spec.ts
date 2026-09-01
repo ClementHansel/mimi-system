@@ -47,6 +47,23 @@ interface RoleJourney {
 /** Every interface, so "hidden" can be asserted as the complement of "seen". */
 const ALL_INTERFACES = ['/dashboard', '/pos', '/outlet', '/warehouse', '/driver', '/me', '/docs'];
 
+/**
+ * The name each interface's hub card carries (`nav.*` in `lib/i18n/id.ts`).
+ *
+ * Written out rather than derived, for the same reason the permission lists in
+ * this file are: a test that computes its expectations from the source it is
+ * testing proves nothing. If a card is renamed, this fails and names it.
+ */
+const INTERFACE_LABEL: Record<string, string> = {
+  '/dashboard': 'Dasbor',
+  '/pos': 'Kasir (POS)',
+  '/outlet': 'Outlet',
+  '/warehouse': 'Gudang Pusat',
+  '/driver': 'Pengiriman',
+  '/me': 'Akun Saya',
+  '/docs': 'Dokumentasi',
+};
+
 const JOURNEYS: RoleJourney[] = [
   {
     role: 'manager',
@@ -187,16 +204,39 @@ for (const journey of JOURNEYS) {
       }
 
       // And the hub itself offers exactly the interfaces this role can reach.
+      //
+      // ASSERTED BY THE CARD'S LABEL, not by its href. A hub card no longer
+      // points at its interface's canonical route: reaching an interface is
+      // ANY-of the areas inside it, so the card resolves to the first area
+      // THIS person can actually open (`lib/hub.ts` `interfaceEntryHref`).
+      // Before that, a driver and a kepala gudang were offered "Dasbor" and
+      // got "Anda tidak memiliki akses ke bagian ini." Finance's card now
+      // points at `/finance`, which is right and which an href-equality check
+      // reads as "finance cannot reach the dashboard" — the assertion this
+      // replaces failed for exactly that reason.
+      //
+      // The label is also the more honest subject: what the person sees on the
+      // card is the interface's name, and where it takes them is allowed to
+      // differ per role.
       await page.goto('/');
-      const hubLinks = await page
+      const hubLabels = await page
         .locator('main a[href]')
-        .evaluateAll((els) => els.map((e) => e.getAttribute('href')!));
+        .evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()));
+      const offers = (label: string) => hubLabels.some((text) => text.includes(label));
+
       for (const href of journey.interfaces) {
-        expect(hubLinks, `${journey.role} should be able to reach ${href}`).toContain(href);
+        const label = INTERFACE_LABEL[href];
+        expect(label, `no label mapped for interface ${href}`).toBeTruthy();
+        expect(offers(label), `${journey.role} should be able to reach ${href} ("${label}")`).toBe(
+          true,
+        );
       }
       for (const href of ALL_INTERFACES) {
         if (journey.interfaces.includes(href)) continue;
-        expect(hubLinks, `${journey.role} must NOT be offered ${href}`).not.toContain(href);
+        const label = INTERFACE_LABEL[href];
+        expect(offers(label), `${journey.role} must NOT be offered ${href} ("${label}")`).toBe(
+          false,
+        );
       }
 
       expect(errors, `${journey.role} hit a JS error on ${journey.landing}`).toEqual([]);

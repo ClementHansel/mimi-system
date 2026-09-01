@@ -262,3 +262,171 @@ jobs:
       - name: Skip notice
         if: steps.migrations.outputs.count == '0'
         run: echo "::notice::database/migrations is still empty — skipping migrate+seed until senior-db (W1-C) lands them."
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # THE WRITE FLOWS, against a stack this job boots and throws away.
+  #
+  # WHY THIS EXISTS. The e2e suite has specs that raise a replenishment,
+  # approve it, and ring a sale — the operations the business actually runs —
+  # and until this job they were executed by nobody. They are gated on
+  # `E2E_ALLOW_WRITES=1` because they must never run against production, and the
+  # only workflow that set that flag (deploy-vps.yml) was retired as an
+  # automatic deploy on 2026-08-30 and now fires only on workflow_dispatch. The
+  # specs covered the write paths; the pipeline did not run them.
+  #
+  # An EPHEMERAL stack is the right home for them: nothing here is anyone's
+  # data, so a test may submit freely, and the database dies with the runner.
+  # That is the difference between this job and the post-deploy smokes, which
+  # are read-only precisely because the box they hit belongs to a real
+  # business.
+  #
+  # It duplicates install+build rather than depending on `build`, on purpose:
+  # a red write-flow job should never be ambiguous about whether the build was
+  # the problem, and artifact-passing between jobs costs about what rebuilding
+  # does here.
+  # ───────────────────────────────────────────────────────────────────────────
+  e2e-write:
+    name: Write flows (ephemeral stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          TZ: Asia/Makassar
+          PGTZ: Asia/Makassar
+          POSTGRES_DB: mimi
+          POSTGRES_USER: mimi
+          POSTGRES_PASSWORD: mimi_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mimi -d mimi" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+
+    env:
+      TZ: Asia/Makassar
+      PGTZ: Asia/Makassar
+      DATABASE_URL: postgres://mimi_app:mimi_app_secret@localhost:5432/mimi
+      DATABASE_MIGRATION_URL: postgres://mimi:mimi_secret@localhost:5432/mimi
+      REDIS_URL: redis://localhost:6379
+      # Any value works — nothing outside this runner will ever verify a token
+      # it signed. Written explicitly rather than left to a default so a
+      # missing-secret crash cannot be mistaken for a test failure.
+      JWT_SECRET: ci-only-not-a-secret
+      JWT_REFRESH_SECRET: ci-only-not-a-secret-refresh
+      JWT_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      BACKEND_PORT: 4000
+      # The frontend proxies `/api` here. Without this it defaults to
+      # `http://backend:4000` under NODE_ENV=production (the compose service
+      # name), which does not resolve on a runner — every proxied call would
+      # die as an opaque 500.
+      BACKEND_ORIGIN: http://localhost:4000
+      NEXT_PUBLIC_API_URL: /api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run migrations
+        run: pnpm db:migrate
+
+      - name: Run seed
+        run: pnpm db:seed
+
+      - name: Apply the org model
+        # The crew accounts the ops specs sign in as (`spv_bpp01_p`,
+        # `kasir_bpp01_p`, `koki1_bpp01_p`) are created by `simulate:org`, NOT
+        # by the base seed — it RENAMES the provisional logins seed.ts makes
+        # (`spv_bpp01` → `spv_bpp01_p`). Without this step every ops spec fails
+        # at the login screen for a reason that looks nothing like the cause.
+        run: pnpm --filter @mimi/database simulate:org
+
+      - name: Start the backend
+        run: |
+          node apps/backend/dist/main.js > /tmp/backend.log 2>&1 &
+          echo "waiting for the backend"
+          for i in $(seq 1 60); do
+            # `/health`, NOT `/api/health`. `main.ts` EXCLUDES health from the
+            # global `/api` prefix (same reason `/sync/v1` is excluded — a probe
+            # should need no knowledge of the REST prefix), so `/api/health`
+            # 404s on a perfectly healthy backend. `-f` makes curl fail on that
+            # 404, which is what turns the wrong path into a 120-second wait and
+            # then a red job. Verified against a running backend, not assumed.
+            if curl -sf -o /dev/null http://localhost:4000/health; then
+              echo "backend is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the backend never answered on :4000"
+          tail -80 /tmp/backend.log
+          exit 1
+
+      - name: Start the frontend
+        run: |
+          pnpm --filter @mimi/frontend exec next start --port 3000 \
+            > /tmp/frontend.log 2>&1 &
+          echo "waiting for the frontend"
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:3000/login; then
+              echo "frontend is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::the frontend never answered on :3000"
+          tail -80 /tmp/frontend.log
+          exit 1
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @mimi/e2e exec playwright install --with-deps chromium
+
+      - name: Run the write flows
+        env:
+          E2E_BASE_URL: http://localhost:3000
+          # THE WHOLE POINT OF THIS JOB. Safe here and nowhere else: this
+          # database was created four steps ago and dies with the runner.
+          E2E_ALLOW_WRITES: '1'
+        run: |
+          pnpm --filter @mimi/e2e exec playwright test \
+            tests/ops-supply-chain.spec.ts tests/ops-pos-day.spec.ts \
+            tests/purchasing.spec.ts tests/outlet-request.spec.ts \
+            tests/ops-role-reality.spec.ts
+
+      - name: Server logs when it fails
+        if: failure()
+        run: |
+          echo "── backend ──"; tail -120 /tmp/backend.log || true
+          echo "── frontend ──"; tail -60 /tmp/frontend.log || true
+
+      - name: Upload the report when it fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-write-report
+          path: e2e/playwright-report
+          retention-days: 7

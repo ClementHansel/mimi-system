@@ -875,7 +875,7 @@ describe('ReplenishmentService.list — lines come back with the rows (live DB)'
       (client) =>
         service.list(client, {
           locationId: fx.outletA.locationId,
-          status: ReplenishmentStatus.CANCELLED,
+          status: ReplenishmentStatus.REJECTED,
           pageSize: 100,
         }),
     );

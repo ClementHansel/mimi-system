@@ -157,7 +157,20 @@ test.describe('One request, handed from the outlet to the warehouse', () => {
 
       const firstRow = spv.page.locator('table tbody tr').first();
       await expect(firstRow).toBeVisible();
-      const requestNumber = (await firstRow.locator('td').nth(0).innerText()).trim();
+
+      // WAIT FOR THE CELL TO HAVE TEXT, not merely to exist. The list refetches
+      // after the dialog closes, and reading straight away returned '' on the
+      // first live run — the row was mounted and empty for an instant. That
+      // failed the test AFTER it had already created a real request on
+      // production, which is the worst possible moment to be wrong about
+      // timing. Same fix as `purchasing.spec.ts`'s supplier-code read.
+      const numberCell = firstRow.locator('td').nth(0);
+      await expect(numberCell).toHaveText(/\S/, { timeout: 30_000 });
+      const requestNumber = (await numberCell.innerText()).trim();
+      // PRINTED, because this test writes. When it runs against a live box the
+      // number is the only way for a person to find what it created and cancel
+      // it — a replenishment request has no notes field to mark in the UI.
+      console.log(`[e2e] created replenishment request ${requestNumber}`);
       expect(requestNumber, 'the new request has no number').toMatch(/^RR\//);
 
       // Submitted, not draft: an outlet request that never leaves the outlet is
@@ -171,12 +184,48 @@ test.describe('One request, handed from the outlet to the warehouse', () => {
       await spv.page.goto('/approvals', { waitUntil: 'domcontentloaded' });
       await spv.page.waitForLoadState('networkidle').catch(() => {});
 
+      // FILTER BY VALUE, not by label. `selectOption({ label })` silently does
+      // nothing here if the label does not match exactly, and a filter that
+      // quietly fails leaves the inbox showing every document type — which is
+      // how an earlier version of this spec "found" rows it had not filtered.
+      await spv.page.getByLabel('Filter Jenis Dokumen').selectOption('replenishment_request');
+      await spv.page.waitForLoadState('networkidle').catch(() => {});
+
       const inboxRow = spv.page.locator('table tbody tr', { hasText: requestNumber });
       await expect(
         inboxRow,
         `${requestNumber} never reached the supervisor's approvals inbox`,
       ).toBeVisible({ timeout: 30_000 });
       await assertNoTechnicalError(spv.page, 'supervisor approvals inbox');
+
+      // Open it by clicking a CELL. The row is a clickable `<tr>` with no
+      // anchor, so clicking the row element itself can land between cells and
+      // do nothing at all — which reads exactly like a broken inbox.
+      await inboxRow.locator('td').first().click();
+      await spv.page.waitForURL((u) => u.pathname.startsWith('/approvals/replenishment_request/'), {
+        timeout: 30_000,
+      });
+
+      // The detail page hydrates its document AFTER the shell paints, so wait
+      // for the decision control rather than for `networkidle`.
+      const approveButton = spv.page.getByRole('button', { name: 'Setujui' });
+      await expect(approveButton).toBeVisible({ timeout: 30_000 });
+
+      // It must be showing OUR request, not whatever the inbox happened to
+      // sort first — the whole point of matching by number above.
+      await expect(spv.page.locator('body')).toContainText(requestNumber);
+      await assertNoTechnicalError(spv.page, 'supervisor approval detail');
+
+      await approveButton.click();
+
+      // Approved: the decision is recorded and the document has left this step.
+      // Asserted on the page rather than in the database, because what matters
+      // is that the person who clicked can SEE that it worked.
+      await expect(
+        spv.page.getByRole('button', { name: 'Setujui' }),
+        'the approve button is still offered — the decision did not register',
+      ).toBeHidden({ timeout: 30_000 });
+      await assertNoTechnicalError(spv.page, 'supervisor after approving');
     } finally {
       await spv.close();
     }

@@ -108,4 +108,125 @@ test.describe('Opening the till for real (opt-in: E2E_ALLOW_WRITES=1)', () => {
       'after a reload the till asked to be opened again — the shift did not persist',
     ).toBeHidden();
   });
+
+  test('rings one small cash sale, end to end', async ({ page }) => {
+    // THE SMALLEST REAL TRANSACTION the menu allows (Kerupuk, Rp3.000), because
+    // this can be pointed at a live outlet: a test sale lands in that day's
+    // takings and in that outlet's stock, and the cashier closing the shift
+    // will see it. One cheap line keeps the footprint as small as a real
+    // transaction can be, and the spec prints the receipt total so a person can
+    // find and void it.
+    test.setTimeout(240_000);
+
+    // NO BLUETOOTH PRINTER on this till — and this line is the whole reason
+    // the test works at all.
+    //
+    // `printReceipt` (`pos/receipt-printer.ts`) calls
+    // `navigator.bluetooth.requestDevice()`, which opens the browser's printer
+    // CHOOSER. Headless Chromium exposes `navigator.bluetooth` and reports a
+    // secure context, but has no UI to show a chooser in — so that promise
+    // never settles, `handleSubmit` never reaches `clearCart()`, and the till
+    // sits with a full basket and no toast. That looks exactly like a
+    // double-charge bug (the sale IS already in the outbox by then) and it
+    // cost an hour to rule out: on a real device the chooser appears, and a
+    // cashier who cancels it hits the `NotFoundError` path, gets the
+    // "printer unavailable" warning, and the cart clears.
+    //
+    // Deleting the API models a REAL configuration — a till with no BLE
+    // printer paired — rather than papering over anything: `printReceipt`
+    // then returns `{ ok: false, reason: 'unsupported' }` immediately, which
+    // is the branch that till takes in production too.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'bluetooth', { value: undefined, configurable: true });
+    });
+
+    const api = collectApiFailures(page);
+    await login(page, CREW.kasir);
+    await page.goto('/pos', { waitUntil: 'domcontentloaded' });
+    await page.waitForLoadState('networkidle').catch(() => {});
+
+    // Open the shift only if there isn't one. On a live box a real cashier may
+    // already be trading, and this must use their shift rather than fight it.
+    const float = page.getByLabel(/Modal Awal Kas/i);
+    if ((await float.count()) > 0) {
+      await float.fill('100000');
+      await float.blur();
+      await page.getByRole('button', { name: 'Buka Kasir' }).click();
+      await expect(float).toBeHidden({ timeout: 60_000 });
+    }
+
+    // ── the order ─────────────────────────────────────────────────────────
+    const item = page.getByRole('button', { name: /^Kerupuk/ });
+    await expect(item, 'the product grid never loaded, so nothing can be sold').toBeVisible({
+      timeout: 60_000,
+    });
+    await item.click();
+
+    // The cart has to show the line and a total, or "Lanjut ke Pembayaran"
+    // would be taking an empty basket to the payment screen.
+    await expect(page.getByRole('button', { name: 'Lanjut ke Pembayaran' })).toBeEnabled({
+      timeout: 30_000,
+    });
+    await page.getByRole('button', { name: 'Lanjut ke Pembayaran' }).click();
+
+    // ── the payment ───────────────────────────────────────────────────────
+    await page.getByRole('button', { name: 'Tunai' }).click();
+    const received = page.getByLabel(/Uang Diterima/i);
+    await expect(received).toBeVisible({ timeout: 30_000 });
+    // Exact money, so "Kembalian" is Rp0 and no change has to be accounted for.
+    await received.fill('3000');
+    await received.blur();
+
+    const finish = page.getByRole('button', { name: /Selesaikan/ });
+    await expect(
+      finish,
+      'the sale cannot be completed — the finish button is not usable',
+    ).toBeEnabled({ timeout: 30_000 });
+    await finish.click();
+
+    // ── it went through ───────────────────────────────────────────────────
+    // AN EMPTY BASKET is the cashier's own signal that the sale is done and the
+    // next customer can be served — `handleSubmit` calls `clearCart()` last,
+    // after the fact is committed.
+    //
+    // NOT "the payment button disappeared", which is what this asserted first
+    // and which cost an hour: that button stays rendered and merely goes
+    // disabled once the cart empties, so the assertion failed on a sale that
+    // had actually succeeded. The outbox had the fact in it the whole time.
+    //
+    // NOT "a row appeared in `sales`" either. This till is OFFLINE-FIRST: the
+    // sale is committed to the local IndexedDB outbox and syncs afterwards, so
+    // a database check straight after the click legitimately finds nothing and
+    // would call a working till broken.
+    // The basket is empty, so the payment button has nothing to take forward.
+    // `handleSubmit` clears the cart LAST — after the fact is committed and the
+    // receipt attempted — so an empty basket is the till's own confirmation.
+    await expect(
+      page.getByRole('button', { name: 'Lanjut ke Pembayaran' }),
+      'the basket still holds the sale — the transaction did not complete',
+    ).toBeDisabled({ timeout: 60_000 });
+
+    await assertNoLoadFailure(page, 'kasir after completing a sale');
+    await assertNoTechnicalError(page, 'kasir after completing a sale');
+    expect(api.failures, 'completing a sale called something forbidden or failed').toEqual([]);
+
+    // WHAT THIS HAS AND HAS NOT PROVEN, because the distinction matters when
+    // this is pointed at a live outlet.
+    //
+    // PROVEN: the till accepted the order, took payment, committed a
+    // `sales/completed` fact to its local outbox, and cleared the basket. That
+    // is the cashier's whole interaction and every failure mode they can see.
+    //
+    // NOT PROVEN: that a row reached the server. This POS is offline-first —
+    // the fact sits in IndexedDB until the sync engine pushes it — and each
+    // Playwright run is a FRESH browser profile that is thrown away seconds
+    // later. Run against production on 2026-09-01, the sale was committed
+    // locally and the profile closed before sync; the dashboard's Sales tab
+    // still read "Belum ada penjualan pada periode ini", i.e. nothing entered
+    // the real books. Reassuring for a test, and a real gap in coverage:
+    // asserting the server side needs this spec to wait for the outbox to
+    // drain and then check as the owner. Until it does, do not read a pass
+    // here as "a sale exists".
+    console.log('[e2e] till accepted one cash sale of Rp3.000 (Kerupuk x1) into its local outbox');
+  });
 });

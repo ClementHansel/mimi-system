@@ -410,12 +410,19 @@ jobs:
           E2E_BASE_URL: http://localhost:3000
           # THE WHOLE POINT OF THIS JOB. Safe here and nowhere else: this
           # database was created four steps ago and dies with the runner.
+          #
+          # `form-validation-sweep` is gated for a subtler reason than the
+          # others: it only ever submits an EMPTY form, but a form whose fields
+          # are all optional would accept that and create a row. It cannot know
+          # in advance which forms those are, so it belongs here and never
+          # against a live box. Its read-only sibling `form-sweep` runs in the
+          # post-deploy smokes instead.
           E2E_ALLOW_WRITES: '1'
         run: |
           pnpm --filter @mimi/e2e exec playwright test \
             tests/ops-supply-chain.spec.ts tests/ops-pos-day.spec.ts \
             tests/purchasing.spec.ts tests/outlet-request.spec.ts \
-            tests/ops-role-reality.spec.ts
+            tests/ops-role-reality.spec.ts tests/form-validation-sweep.spec.ts
 
       - name: Server logs when it fails
         if: failure()

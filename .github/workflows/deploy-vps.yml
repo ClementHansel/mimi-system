@@ -419,7 +419,9 @@ jobs:
           pnpm --filter @mimi/e2e exec playwright test \
             tests/hub.spec.ts tests/session-recovery.spec.ts tests/print.spec.ts \
             tests/service-worker.spec.ts tests/surface-sweep.spec.ts \
-            tests/purchasing.spec.ts tests/outlet-request.spec.ts
+            tests/purchasing.spec.ts tests/outlet-request.spec.ts \
+            tests/ops-role-reality.spec.ts tests/ops-supply-chain.spec.ts \
+            tests/ops-pos-day.spec.ts
 
       - name: Upload the report when it fails
         if: failure()

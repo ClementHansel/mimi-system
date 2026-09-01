@@ -17,11 +17,15 @@
 # Caddy already terminates TLS with a real certificate. Keep both workflows —
 # do not try to parameterize one into the other.
 #
-# No post-deploy e2e-smoke job (yet): deploy-vps.yml runs one against
-# VPS_PUBLIC_URL, but the domain for this box (mimichicken.my.id) is still
-# being pointed here and Caddy/TLS is being handled separately, outside this
-# workflow. PROD_PUBLIC_URL is provisioned now so that job can be added later
-# without a fresh round of secret-wiring.
+# There IS a post-deploy e2e-smoke job now (2026-09-01). This header used to
+# say there was not — the domain was still being pointed at this box and TLS
+# was being sorted outside the workflow, with PROD_PUBLIC_URL provisioned ahead
+# of time so the job could be added "later without a fresh round of
+# secret-wiring". Later arrived; see `e2e-smoke` at the bottom of this file.
+#
+# It runs READ-ONLY against production: `E2E_ALLOW_WRITES` is deliberately not
+# set, so every spec that would submit anything skips itself. The demo box
+# (deploy-vps.yml) is where the write paths are exercised.
 name: deploy-prod
 
 on:
@@ -293,12 +297,24 @@ jobs:
           fi
           # The sweep is the load-bearing one: every static route and every tab
           # of every tabbed area, asserting each renders, does not show "Gagal
-          # memuat data", and shows the user no SQL, no `ERR_*` code and no
-          # unresolved i18n key. `purchasing`/`outlet-request` add the specific
-          # regressions; their write halves skip themselves here.
+          # memuat data", and shows the user no SQL, no `ERR_*` code, no bare
+          # UUID and no unresolved i18n key. `purchasing`/`outlet-request` add
+          # the specific regressions; their write halves skip themselves here.
+          #
+          # The `ops-*` suites are the per-ROLE half, added 2026-09-01 after
+          # signing in as each of the nine real jobs found six defects the
+          # owner-run sweep could not see — among them an outlet stock screen
+          # that never loaded for anyone, and every till silently ignoring the
+          # owner's brand. `ops-role-reality` walks each role's own screens and
+          # asserts, on top of the usual checks, that none of them calls an
+          # endpoint that role is forbidden from calling — the assertion that
+          # named two of those six by route. All read-only without
+          # `E2E_ALLOW_WRITES`, which this job deliberately does not set.
           pnpm --filter @mimi/e2e exec playwright test \
             tests/surface-sweep.spec.ts tests/purchasing.spec.ts \
-            tests/outlet-request.spec.ts tests/hub.spec.ts
+            tests/outlet-request.spec.ts tests/hub.spec.ts \
+            tests/ops-role-reality.spec.ts tests/ops-supply-chain.spec.ts \
+            tests/ops-pos-day.spec.ts
 
       - name: Upload the report when it fails
         if: failure()

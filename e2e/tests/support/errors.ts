@@ -44,7 +44,13 @@ export const TECHNICAL_VOCABULARY: readonly RegExp[] = [
   // An unresolved i18n key rendering as itself — `translate()` returns the key
   // on a miss, which puts `errors.byCode.…` on screen. Silent in production
   // builds, so only a browser assertion catches it.
-  /\b(errors|common|purchasing|outlet|finance|hr|pos)\.[a-z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+\b/,
+  // EVERY namespace in `lib/i18n/id.ts`, not the seven this started with. A
+  // dialog leaks whatever prefix its own copy lives under, and the narrow list
+  // would have missed `admin.`, `warehouse.`, `voucher.`, `assets.`, `doc.`
+  // and the rest — which is most of the app's forms. Kept as an explicit
+  // alternation rather than a generic `\w+\.\w+\.\w+` so ordinary prose that
+  // happens to contain two dots does not trip the guard.
+  /\b(shell|nav|auth|role|hub|docs|pos|common|errors|validation|lineImport|exportData|deliveryAssign|importData|chatInternal|table|photo|signature|fileUpload|dateRange|offline|sync|approvalTimeline|permissionGate|approvals|approvalsInbox|approvalCode|approvalDetail|emptyState|status|placeholder|setPin|finance|chat|purchasing|admin|outlet|warehouse|delivery|hr|me|notifications|print|driver|assets|dashboard|topology|doc|brand|voucher)\.[a-z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+\b/,
   // Framework/stack noise
   /Unhandled Runtime Error/i,
   /TypeError:/,

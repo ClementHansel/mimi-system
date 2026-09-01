@@ -190,7 +190,14 @@ export function SupplierPriceHistoryPanel() {
         <DataTable
           columns={columns}
           data={data}
-          keyField={(r) => `${r.itemId}-${r.effectiveDate}-${r.recordedBy}`}
+          // The INDEX is load-bearing. `itemId`+`effectiveDate`+`recordedBy`
+          // collides whenever one person records two prices for the same item
+          // on the same day, which is ordinary — and React's response to a
+          // duplicate key is to duplicate or omit rows, so a price history
+          // could quietly lose an entry. `supplier_price_history` is
+          // append-only and this table is read-only, so an index is a stable
+          // key here; `SupplierDetailDrawer` keys the same data the same way.
+          keyField={(r, idx) => `${r.itemId}-${r.effectiveDate}-${idx}`}
           loading={loading}
           error={listError}
           emptyDescription={t('purchasing.priceHistory.empty')}

@@ -43,7 +43,19 @@ export interface DataTableSort {
 export interface DataTableProps<T> {
   columns: DataTableColumn<T>[];
   data: Paginated<T>;
-  keyField: (row: T) => string;
+  /**
+   * React key for each row. Takes the INDEX as well as the row, because
+   * without it a table whose rows carry no unique id has to invent a composite
+   * key — and a composite key that can collide is worse than an index.
+   *
+   * `SupplierPriceHistoryPanel` keyed on `itemId-effectiveDate-recordedBy`,
+   * which collides the moment one person records two prices for one item on
+   * one day. React then warns "Non-unique keys may cause children to be
+   * duplicated and/or omitted", and a price history with a silently missing
+   * row is a buyer making a decision on the wrong number. Found 2026-09-01 by
+   * the dialog sweep, which reads console errors.
+   */
+  keyField: (row: T, index: number) => string;
   loading?: boolean;
   error?: string;
   emptyTitle?: string;
@@ -174,9 +186,9 @@ export function DataTable<T>({
 
             {!loading &&
               !error &&
-              data.rows.map((row) => (
+              data.rows.map((row, rowIndex) => (
                 <tr
-                  key={keyField(row)}
+                  key={keyField(row, rowIndex)}
                   onClick={() => onRowClick?.(row)}
                   className={cn(
                     'border-b border-border last:border-0',

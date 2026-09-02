@@ -134,7 +134,7 @@ export function SearchableSelect({
   return (
     <div className={cn('relative flex flex-col gap-1.5', wrapperClassName)} ref={rootRef}>
       {label && (
-        <label htmlFor={id} className="text-sm font-medium text-text-primary">
+        <label id={`${id}-label`} htmlFor={id} className="text-sm font-medium text-text-primary">
           {label}
           {required && <span className="ml-0.5 text-danger-600">*</span>}
         </label>
@@ -145,6 +145,16 @@ export function SearchableSelect({
           id={id}
           type="button"
           role="combobox"
+          // NAMED BY ITS OWN LABEL, explicitly. `<label htmlFor>` above is a
+          // valid association for a `button`, but the accessible-name
+          // algorithm does NOT use it for one — a button is named by its
+          // aria-label, its aria-labelledby, or its own text. This control's
+          // text is the placeholder, so every unnamed combobox on a form
+          // announced itself as "Pilih…": the purchase-request dialog had
+          // three of them, indistinguishable to anyone not looking at the
+          // screen. Found 2026-09-02 while driving that form in a test, which
+          // could not tell them apart either.
+          aria-labelledby={label ? `${id}-label` : undefined}
           aria-expanded={open}
           aria-controls={`${id}-listbox`}
           aria-haspopup="listbox"

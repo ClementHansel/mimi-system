@@ -422,7 +422,7 @@ jobs:
           pnpm --filter @mimi/e2e exec playwright test \
             tests/ops-supply-chain.spec.ts tests/ops-pos-day.spec.ts \
             tests/purchasing.spec.ts tests/outlet-request.spec.ts \
-            tests/ops-role-reality.spec.ts tests/form-validation-sweep.spec.ts
+            tests/ops-role-reality.spec.ts tests/form-validation-sweep.spec.ts \n            tests/ops-purchasing.spec.ts
 
       - name: Server logs when it fails
         if: failure()

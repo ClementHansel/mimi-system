@@ -241,3 +241,125 @@ export const DIALOG_ROUTES = [
   '/me/cuti',
   '/me/pinjaman',
 ];
+
+/**
+ * Picks the first real option of a native `<select>`, waiting for its options
+ * to arrive first.
+ *
+ * Every picker in this app is a native `<select>` whose options are FETCHED —
+ * warehouses, items, suppliers. Reading `option` straight after the dialog
+ * appears finds only the placeholder, and `getAttribute` then times out on a
+ * locator that matches nothing. That race has cost this suite a failed run on
+ * four separate specs now, so it lives in one place.
+ *
+ * Returns the chosen value, or null when the select genuinely offers nothing —
+ * which is a finding for the caller to assert on, not something to swallow.
+ */
+export async function selectFirstOption(
+  scope: Locator,
+  label: string | RegExp,
+): Promise<string | null> {
+  const select = scope.getByLabel(label).first();
+  const real = select.locator('option:not([value=""])').first();
+  const appeared = await real
+    .waitFor({ state: 'attached', timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!appeared) return null;
+
+  const value = await real.getAttribute('value');
+  if (!value) return null;
+  await select.selectOption(value);
+  return value;
+}
+
+/**
+ * Picks the first option of a `SearchableSelect` — the app's custom combobox.
+ *
+ * NOT every picker is a native `<select>`. `ui/SearchableSelect.tsx` renders a
+ * `role="combobox"` BUTTON showing "Pilih…" which opens a `role="listbox"` of
+ * `role="option"` items. `selectOption` does nothing to it, and reading
+ * `option[value]` finds nothing — which is how the purchase-request form
+ * reported "offered no warehouse to deliver to" while offering fifteen.
+ *
+ * Returns the chosen option's label, or null when the list is genuinely empty.
+ */
+export async function pickFromCombobox(
+  scope: Locator,
+  label: string | RegExp,
+): Promise<string | null> {
+  const trigger = scope.getByRole('combobox', { name: label }).first();
+  if ((await trigger.count()) === 0) return null;
+
+  // THE PLACEHOLDER IS ITSELF AN OPTION. `SearchableSelect` renders it as the
+  // first `role="option"` in the listbox and clicking it calls `pick('')` —
+  // it CLEARS the field. Taking `.first()` therefore selected nothing, over and
+  // over, while reporting success: the form stayed empty and its Simpan button
+  // stayed disabled for a reason no assertion could see.
+  //
+  // The trigger shows that same placeholder while nothing is chosen, so its
+  // current text identifies the entry to skip — no hardcoded Indonesian, and it
+  // keeps working if the copy changes.
+  const placeholder = ((await trigger.textContent().catch(() => '')) ?? '').trim();
+
+  await trigger.click();
+
+  // SEARCHED INSIDE `scope`, not on the page. The listbox renders within the
+  // dialog, and a page-wide `getByRole('option')` instead resolved to "Semua
+  // Lokasi" — an option belonging to the filter BEHIND the dialog, invisible
+  // under its overlay. Every click then timed out on an element that was never
+  // going to be clickable, and the helper reported "this form offers no such
+  // option" for a picker that had just opened thirty-five of them.
+  const options = scope.getByRole('option');
+  const option = placeholder
+    ? options.filter({ hasNotText: placeholder }).first()
+    : options.first();
+
+  // `click()` and not a manual `waitFor({ state: 'visible' })`: Playwright's
+  // click already waits for visible-stable-enabled and scrolls the option into
+  // view, whereas the explicit visibility wait FAILED on a list that was
+  // demonstrably open with 35 options in it — leaving the popup hanging and
+  // returning "no such option" for a control that was working. Reading the
+  // label first, so the caller learns what was chosen.
+  const text = ((await option.textContent().catch(() => '')) ?? '').trim();
+  const clicked = await option
+    .click({ timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!clicked) return null;
+
+  // The label may be empty for an icon-only option; the pick still happened, so
+  // report success rather than a misleading null.
+  return text || 'selected';
+}
+
+/**
+ * Picks from whichever kind of picker this label happens to be — native
+ * `<select>` or `SearchableSelect`. Forms in this app mix both, and which one
+ * a given field uses is not something a flow spec should have to know.
+ */
+export async function choose(scope: Locator, label: string | RegExp): Promise<string | null> {
+  // FOUND BY ROLE, not by label. Both kinds of picker expose
+  // `role="combobox"` — a native `<select>` implicitly, `SearchableSelect`
+  // explicitly — while `getByLabel` matches only the native one reliably and
+  // returned nothing for the custom control even once it had a proper
+  // accessible name.
+  //
+  // Detected rather than tried-and-waited: the first version called the native
+  // path first and fell through on failure, costing a 20-second wait per
+  // combobox field before the right code even ran.
+  const control = scope.getByRole('combobox', { name: label }).first();
+  // WAIT for it to exist. Counting immediately after the dialog becomes visible
+  // finds zero: the dialog's frame paints before its fields mount, so every
+  // caller got "this form offers no such picker" for a picker that was about to
+  // appear. Third time this suite has been bitten by reading a surface before
+  // it rendered, hence the wait living in the helper rather than each caller.
+  const exists = await control
+    .waitFor({ state: 'attached', timeout: 20_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) return null;
+
+  const tag = await control.evaluate((el) => el.tagName.toLowerCase()).catch(() => '');
+  return tag === 'select' ? selectFirstOption(scope, label) : pickFromCombobox(scope, label);
+}

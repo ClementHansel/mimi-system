@@ -30,7 +30,9 @@ import {
   createOpname,
   putOpnameLines,
   submitOpname,
+  getBalances,
 } from './lib/outlet-api';
+import { buildOpnameSheet, type OpnameSheetRow } from './lib/opname-sheet';
 import {
   computeDiffQty,
   hasVariance,
@@ -59,6 +61,11 @@ export function OpnamePanel() {
   const [loading, setLoading] = useState(true);
   const [areas, setAreas] = useState<StorageArea[]>([]);
   const [active, setActive] = useState<OpnameDetail | null>(null);
+  // The rows on screen are NOT `active.lines`. A line exists only once a
+  // quantity has been recorded, so a fresh count has none and the sheet came up
+  // empty and uncountable. `buildOpnameSheet` puts every item the system
+  // believes is in the area on the sheet and overlays what has been counted.
+  const [sheet, setSheet] = useState<OpnameSheetRow[]>([]);
   const [drafts, setDrafts] = useState<
     Record<string, { countedQty: Qty | null; varianceReason: string }>
   >({});
@@ -82,13 +89,29 @@ export function OpnamePanel() {
 
   async function openSheet(row: Opname) {
     const full = await getOpname(row.id);
+
+    // What the system thinks is in the area being counted. A failure here must
+    // not blank the sheet: any lines already recorded still have to be
+    // editable, so fall back to those rather than showing nothing.
+    const balances = row.locationId
+      ? await getBalances({
+          locationId: row.locationId,
+          storageAreaId: full.storageAreaId ?? undefined,
+        })
+          .then((res) => res.rows)
+          .catch(() => {
+            toast({ title: t('table.error'), variant: 'danger' });
+            return [];
+          })
+      : [];
+
+    const rows = buildOpnameSheet(full.lines, balances);
     setActive(full);
+    setSheet(rows);
+    // KEYED BY ITEM: an uncounted row has no line id to key on.
     setDrafts(
       Object.fromEntries(
-        full.lines.map((l) => [
-          l.id,
-          { countedQty: l.countedQty ?? null, varianceReason: l.varianceReason ?? '' },
-        ]),
+        rows.map((r) => [r.itemId, { countedQty: r.countedQty, varianceReason: r.varianceReason }]),
       ),
     );
   }
@@ -102,11 +125,11 @@ export function OpnamePanel() {
     await openSheet(created);
   }
 
-  const lineDrafts: OpnameLineDraft[] = (active?.lines ?? []).map((l) => ({
-    itemId: l.itemId,
-    systemQty: l.systemQty,
-    countedQty: drafts[l.id]?.countedQty ?? null,
-    varianceReason: drafts[l.id]?.varianceReason ?? '',
+  const lineDrafts: OpnameLineDraft[] = sheet.map((r) => ({
+    itemId: r.itemId,
+    systemQty: r.systemQty,
+    countedQty: drafts[r.itemId]?.countedQty ?? null,
+    varianceReason: drafts[r.itemId]?.varianceReason ?? '',
   }));
   const canSubmit = active
     ? canSubmitOpname(lineDrafts) && lineDrafts.some((l) => l.countedQty !== null)
@@ -116,13 +139,18 @@ export function OpnamePanel() {
     if (!active) return;
     setSavingLines(true);
     try {
-      const payload = active.lines
-        .filter((l) => drafts[l.id]?.countedQty !== null && drafts[l.id]?.countedQty !== undefined)
-        .map((l) => ({
-          storageAreaId: l.storageAreaId,
-          itemId: l.itemId,
-          countedQty: drafts[l.id]!.countedQty as string,
-          varianceReason: drafts[l.id]!.varianceReason || undefined,
+      // Only rows that were actually counted are sent. An untouched row has no
+      // quantity, and inventing one would post a count nobody took.
+      const payload = sheet
+        .filter(
+          (r) =>
+            drafts[r.itemId]?.countedQty !== null && drafts[r.itemId]?.countedQty !== undefined,
+        )
+        .map((r) => ({
+          storageAreaId: r.storageAreaId,
+          itemId: r.itemId,
+          countedQty: drafts[r.itemId]!.countedQty as string,
+          varianceReason: drafts[r.itemId]!.varianceReason || undefined,
         }));
       await putOpnameLines(active.id, payload);
       toast({ title: t('common.saving'), variant: 'success' });
@@ -220,7 +248,7 @@ export function OpnamePanel() {
                 note={t('outlet.opname.importNote')}
                 columns={OPNAME_IMPORT_COLUMNS}
                 templateBase="lembar-hitung"
-                mapRow={makeOpnameCountMapper(active.lines)}
+                mapRow={makeOpnameCountMapper(sheet)}
                 hasExistingLines={Object.values(drafts).some((d) => d.countedQty !== null)}
                 onLines={(fills, mode) =>
                   setDrafts((prev) => {
@@ -237,13 +265,13 @@ export function OpnamePanel() {
                           )
                         : { ...prev };
                     for (const f of fills) {
-                      next[f.lineId] = {
+                      next[f.itemId] = {
                         countedQty: f.countedQty,
                         // A blank reason column keeps whatever was typed on
                         // screen rather than wiping it: the file is filling in
                         // counts, and it should not silently undo a reason the
                         // counter already gave.
-                        varianceReason: f.varianceReason || (next[f.lineId]?.varianceReason ?? ''),
+                        varianceReason: f.varianceReason || (next[f.itemId]?.varianceReason ?? ''),
                       };
                     }
                     return next;
@@ -267,13 +295,16 @@ export function OpnamePanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {active.lines.map((l) => {
-                      const d = drafts[l.id] ?? { countedQty: null, varianceReason: '' };
+                    {sheet.map((l) => {
+                      const d = drafts[l.itemId] ?? { countedQty: null, varianceReason: '' };
                       const diff =
                         d.countedQty !== null ? computeDiffQty(l.systemQty, d.countedQty) : null;
                       const variesNow = diff !== null && hasVariance(diff);
                       return (
-                        <tr key={l.id} className="border-b border-border last:border-0">
+                        <tr
+                          key={`${l.storageAreaId}-${l.itemId}`}
+                          className="border-b border-border last:border-0"
+                        >
                           <td className="px-3 py-2.5">{l.itemName}</td>
                           <td className="px-3 py-2.5 text-right tabular-nums">
                             {formatQty(l.systemQty, l.unitCode)}
@@ -284,7 +315,7 @@ export function OpnamePanel() {
                               onChange={(v) =>
                                 setDrafts((prev) => ({
                                   ...prev,
-                                  [l.id]: { ...prev[l.id]!, countedQty: v },
+                                  [l.itemId]: { ...prev[l.itemId]!, countedQty: v },
                                 }))
                               }
                               unitCode={l.unitCode}
@@ -305,7 +336,10 @@ export function OpnamePanel() {
                                 onChange={(e) =>
                                   setDrafts((prev) => ({
                                     ...prev,
-                                    [l.id]: { ...prev[l.id]!, varianceReason: e.target.value },
+                                    [l.itemId]: {
+                                      ...prev[l.itemId]!,
+                                      varianceReason: e.target.value,
+                                    },
                                   }))
                                 }
                                 placeholder={t('common.reasonPlaceholder')}

@@ -24,7 +24,8 @@ import {
   RETURN_IMPORT_COLUMNS,
   PETTY_CASH_IMPORT_COLUMNS,
 } from './outlet-line-import';
-import type { Item, OpnameLine, StorageArea } from './types';
+import type { Item, StorageArea } from './types';
+import type { OpnameSheetRow } from './opname-sheet';
 
 function item(id: string, sku: string, name: string): Item {
   return {
@@ -58,18 +59,20 @@ function area(id: string, code: string, name: string): StorageArea {
   };
 }
 
-function opnameLine(id: string, itemName: string, areaName: string, areaId = 'a1'): OpnameLine {
+// A row of the count sheet — which is what the mapper takes. It is NOT an
+// `OpnameLine`: the sheet also carries items that have no saved line yet, and
+// those are exactly the rows an import has to be able to fill.
+function opnameLine(id: string, itemName: string, areaName: string, areaId = 'a1'): OpnameSheetRow {
   return {
-    id,
+    lineId: id,
     storageAreaId: areaId,
     storageAreaName: areaName,
     itemId: `i-${id}`,
     itemName,
     unitCode: 'kg',
     systemQty: '10.000',
-    countedQty: '0',
-    diffQty: '0',
-    varianceReason: null,
+    countedQty: null,
+    varianceReason: '',
     disputed: false,
   };
 }
@@ -162,7 +165,7 @@ describe('opname count import', () => {
   it('fills the matching sheet line', () => {
     expect(map(row(H, 'Ayam Utuh,,12.5,'))).toEqual({
       ok: true,
-      line: { lineId: 'l1', countedQty: '12.5', varianceReason: '' },
+      line: { itemId: 'i-l1', countedQty: '12.5', varianceReason: '' },
     });
   });
 
@@ -170,7 +173,7 @@ describe('opname count import', () => {
     const res = map(row(H, 'Ayam Utuh,,0,habis terjual'));
     expect(res).toEqual({
       ok: true,
-      line: { lineId: 'l1', countedQty: '0', varianceReason: 'habis terjual' },
+      line: { itemId: 'i-l1', countedQty: '0', varianceReason: 'habis terjual' },
     });
   });
 
@@ -187,7 +190,7 @@ describe('opname count import', () => {
 
     expect(map(row(H, 'Ayam Potong,Chiller 1,5,'))).toEqual({
       ok: true,
-      line: { lineId: 'l4', countedQty: '5', varianceReason: '' },
+      line: { itemId: 'i-l4', countedQty: '5', varianceReason: '' },
     });
   });
 

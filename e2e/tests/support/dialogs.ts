@@ -149,12 +149,37 @@ export async function isPrefilled(dialog: Locator): Promise<boolean> {
  * As owner — every location in scope — those routes render a location PICKER
  * and no work surface, so a sweep finds nothing to open on six routes.
  */
-export async function chooseOutletIfAsked(page: Page, route: string): Promise<void> {
+export async function chooseOutletIfAsked(
+  page: Page,
+  route: string,
+  ready?: Locator,
+): Promise<void> {
   if (!route.startsWith('/outlet')) return;
   const picker = page.getByRole('button', { name: /^Mimi Chicken / }).first();
+
+  // WAIT FOR THE SCREEN TO PICK A STATE, don't sample it once.
+  //
+  // This used to be a bare `count() > 0`, which asks "is the chooser painted
+  // *right now*". `networkidle` can settle before React commits, so the answer
+  // came back "no", the helper returned, and the caller then waited out its
+  // whole timeout against a chooser that appeared a moment later — the failure
+  // read as "Mulai Opname does not exist" while the screenshot showed twenty
+  // outlet buttons.
+  //
+  // An unbound account (owner, direksi) lands on the chooser; a bound one
+  // (staff, supervisor) goes straight to its outlet. So settle for EITHER: the
+  // chooser, or the `ready` control the caller expects once an outlet is
+  // chosen. Whichever wins, we stop waiting — a bound account pays nothing.
+  const settled = [picker.waitFor({ state: 'visible', timeout: 30_000 })];
+  if (ready) settled.push(ready.waitFor({ state: 'visible', timeout: 30_000 }));
+  await Promise.race(settled).catch(() => {});
+
   if ((await picker.count()) > 0) {
     await picker.click().catch(() => {});
     await page.waitForLoadState('networkidle').catch(() => {});
+    // The chooser must actually go away. Returning while it is still painted
+    // leaves every later click landing on an outlet button.
+    await picker.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => {});
   }
 }
 

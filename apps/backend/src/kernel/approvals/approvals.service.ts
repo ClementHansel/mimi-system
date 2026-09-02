@@ -594,7 +594,17 @@ export class ApprovalService {
         stepNo: s.stepNo,
         approverRole: s.approverRole,
         state: s.state,
+        // `actedBy` stays the USER ID: it is the audit fact, and
+        // `approvals.integration.spec.ts` asserts an auto-approved step still
+        // records a real actor rather than going anonymous.
         actedBy: s.actedBy,
+        // …and the DISPLAY name travels beside it. The timeline renders
+        // "… oleh {x}" directly, and with only the id available it printed
+        // "oleh 640218f4-cdbd-4d65-80ae-8b1c31ececc0" for every decided step
+        // (found 2026-09-02). Null when the caller may not read that user row —
+        // `users_select` hides them from most roles — and the UI shows an em
+        // dash rather than falling back to the id.
+        actedByName: s.actedByName ?? null,
         actedAt: s.actedAt,
         reason: s.reason,
         offlineAuthorized: s.offlineAuthorized,

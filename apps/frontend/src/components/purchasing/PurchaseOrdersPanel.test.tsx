@@ -196,7 +196,11 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
                   stepNo: 1,
                   approverRole: 'manager',
                   state: 'approved',
-                  actedBy: 'Manager Satu',
+                  // `actedBy` is the approver's user ID; `actedByName` is the
+                  // person the timeline shows. This fixture put the name in the
+                  // ID field, which the API never does.
+                  actedBy: '640218f4-cdbd-4d65-80ae-8b1c31ececc0',
+                  actedByName: 'Manager Satu',
                   actedAt: '2026-08-11T00:00:00.000Z',
                   reason: null,
                   offlineAuthorized: false,

@@ -36,7 +36,8 @@
  */
 import type { LineImportColumn, LineImportRowResult } from '@/components/common/LineImportButton';
 import { parseDecimal, type CsvRecord } from '@/lib/import/csv-parse';
-import type { Item, OpnameLine, StorageArea } from './types';
+import type { Item, StorageArea } from './types';
+import type { OpnameSheetRow } from './opname-sheet';
 import type { Qty, Money } from '@/lib/shared-types';
 
 /**
@@ -225,7 +226,13 @@ function oneOf(
  * think is there without the variance that is supposed to flag exactly that.
  */
 export interface OpnameCountFill {
-  lineId: string;
+  /**
+   * KEYED BY ITEM, not by a saved line. A fresh count sheet has no lines at all
+   * (a line exists only once a quantity is recorded), so a fill addressed to a
+   * `lineId` could never reach an uncounted row — which was every row on a new
+   * sheet. `PUT /stock-opname/:id/lines` is itemId-keyed for the same reason.
+   */
+  itemId: string;
   countedQty: Qty;
   varianceReason: string;
 }
@@ -239,10 +246,10 @@ export const OPNAME_IMPORT_COLUMNS: LineImportColumn[] = [
 
 /**
  * Matching is by ITEM NAME (plus area when the sheet spans more than one),
- * because `OpnameLine` carries no SKU on the wire — the count sheet the
+ * because a sheet row carries no SKU on the wire — the count sheet the
  * operator exported shows the name, so that is what they will type back.
  */
-export function makeOpnameCountMapper(lines: OpnameLine[]) {
+export function makeOpnameCountMapper(lines: OpnameSheetRow[]) {
   const multiArea = new Set(lines.map((l) => l.storageAreaId)).size > 1;
   const byNameAndArea = buildIndex(
     lines.map((l) => ({ key: `${l.storageAreaName}${AREA_ITEM_SEP}${l.itemName}`, value: l })),
@@ -254,7 +261,7 @@ export function makeOpnameCountMapper(lines: OpnameLine[]) {
     const area = row.get('area_simpan').trim();
     if (name === '') return { ok: false, error: 'Kolom nama_barang kosong' };
 
-    let line: OpnameLine | 'ambiguous' | undefined;
+    let line: OpnameSheetRow | 'ambiguous' | undefined;
     if (area !== '') {
       line = byNameAndArea.get(fold(`${area}${AREA_ITEM_SEP}${name}`));
       if (line === undefined)
@@ -290,7 +297,7 @@ export function makeOpnameCountMapper(lines: OpnameLine[]) {
     return {
       ok: true,
       line: {
-        lineId: line.id,
+        itemId: line.itemId,
         countedQty: counted,
         varianceReason: row.get('alasan_selisih').trim(),
       },

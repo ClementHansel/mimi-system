@@ -37,6 +37,8 @@ export interface ApprovalRow {
 export interface ApprovalStepRow {
   id: string;
   approvalId: string;
+  /** Display name of whoever acted, or null when this caller may not read that user. */
+  actedByName?: string | null;
   stepNo: number;
   approverRole: string;
   state: ApprovalStepState;
@@ -121,6 +123,7 @@ function mapStep(row: {
   approver_role: string;
   state: string;
   acted_by: string | null;
+  acted_by_name?: string | null;
   acted_at: Date | null;
   reason: string | null;
   offline_authorized: boolean;
@@ -135,6 +138,7 @@ function mapStep(row: {
     approverRole: row.approver_role,
     state: row.state as ApprovalStepState,
     actedBy: row.acted_by,
+    actedByName: row.acted_by_name ?? null,
     actedAt: row.acted_at ? row.acted_at.toISOString() : null,
     reason: row.reason,
     offlineAuthorized: row.offline_authorized,
@@ -293,9 +297,27 @@ export class ApprovalsRepository {
     return res.rows[0] ? mapStep(res.rows[0]) : null;
   }
 
+  /**
+   * The chain's steps, each carrying WHO acted as a NAME.
+   *
+   * `acted_by` is a user id, and the approval timeline rendered it straight
+   * into "1 Sep 2026, 14.28 WITA oleh 640218f4-cdbd-4d65-80ae-8b1c31ececc0"
+   * (found 2026-09-02). Nobody can read that, and it discloses a key — the
+   * same fall-back-to-the-id shape already fixed on Gudang's approval queue
+   * and on Finance's payee column.
+   *
+   * The join is LEFT and the name is nullable on purpose: `users_select`
+   * (migration 263) hides user rows from most roles, so a caller who cannot
+   * read the actor gets `null` and the UI shows an em dash. An unresolvable
+   * name is not a licence to print the id.
+   */
   async listSteps(client: DbClient, approvalId: string): Promise<ApprovalStepRow[]> {
     const res = await client.query(
-      `SELECT * FROM approval_steps WHERE approval_id = $1 ORDER BY step_no`,
+      `SELECT s.*, u.name AS acted_by_name
+         FROM approval_steps s
+         LEFT JOIN users u ON u.id = s.acted_by
+        WHERE s.approval_id = $1
+        ORDER BY s.step_no`,
       [approvalId],
     );
     return res.rows.map(mapStep);

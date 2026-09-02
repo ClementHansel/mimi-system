@@ -48,6 +48,13 @@ export interface ApprovalStepDetail {
   approverRole: string;
   state: ApprovalStepState;
   actedBy: string | null;
+  /**
+   * Display name of whoever acted — `null` when the caller may not read that
+   * user's row. Rendered by `ApprovalTimeline` as "… oleh {name}", which used
+   * to print `actedBy`'s raw UUID at people. A caller that cannot resolve it
+   * shows an em dash; the id is never a substitute for a name.
+   */
+  actedByName?: string | null;
   actedAt: ISODateTime | null;
   reason: string | null;
   offlineAuthorized: boolean;

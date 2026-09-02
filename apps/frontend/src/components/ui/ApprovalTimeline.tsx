@@ -27,7 +27,10 @@ export interface ApprovalStepView {
   /** RoleKey of the approver this step is assigned to. */
   approverRole: string;
   state: 'pending' | 'approved' | 'rejected' | 'skipped';
+  /** The user ID — the audit fact. Never rendered; see `actedByName`. */
   actedBy?: string | null;
+  /** Display name of whoever acted, or null when this caller may not read that user. */
+  actedByName?: string | null;
   actedAt?: ISODateTime | null;
   reason?: string | null;
   offlineAuthorized?: boolean;
@@ -103,10 +106,18 @@ export function ApprovalTimeline({ steps, className }: ApprovalTimelineProps) {
                 </p>
               ) : (
                 <>
-                  {(step.actedBy || step.actedAt) && (
+                  {(step.actedByName || step.actedAt) && (
                     <p className="mt-0.5 text-sm text-text-muted">
                       {step.actedAt && fmtDateTime(step.actedAt)}
-                      {step.actedBy && ` ${t('approvalTimeline.actedBy', { name: step.actedBy })}`}
+                      {/* `actedByName`, NOT `actedBy`. `actedBy` is the user ID
+                          — the audit fact — and rendering it here printed
+                          "oleh 640218f4-cdbd-4d65-80ae-8b1c31ececc0" on every
+                          decided step. When the name cannot be resolved (most
+                          roles cannot read another user's row) the clause is
+                          simply omitted: a timestamp with no name reads fine,
+                          an identifier does not. */}
+                      {step.actedByName &&
+                        ` ${t('approvalTimeline.actedBy', { name: step.actedByName })}`}
                     </p>
                   )}
                   {step.reason && (

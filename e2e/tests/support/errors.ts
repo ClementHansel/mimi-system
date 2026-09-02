@@ -1,4 +1,47 @@
 import { type Page } from '@playwright/test';
+import { PERMISSION_KEYS } from '@mimi/shared';
+
+/**
+ * The app's REAL permission keys — `auth.pin.set`, `purchasing.po.create`,
+ * `delivery.sj.create` — imported rather than guessed at.
+ *
+ * They are shaped exactly like an unresolved i18n key (dotted, lowercase) and
+ * the AUDIT LOG renders them on purpose: "who did what" is the whole point of
+ * that screen. Once the i18n rule below was widened to all 47 namespaces it
+ * began matching them, and `/admin -> Jejak Audit` failed CI and blocked a
+ * production deploy over a screen that was working perfectly.
+ *
+ * Comparing against the real list is exact and self-maintaining: a new
+ * permission key stops being a false positive the moment it joins the matrix,
+ * and a genuine unresolved key is still caught because it is not in it.
+ */
+let permissionKeyCache: ReadonlySet<string> | null = null;
+
+/**
+ * Built LAZILY, and loudly.
+ *
+ * At module-init the imported `PERMISSION_KEYS` was `undefined` here — an
+ * ESM/CJS interop ordering quirk against the built package — and
+ * `new Set(undefined)` returns an EMPTY SET rather than throwing. The excuse
+ * below then silently never applied, so a working audit screen kept failing
+ * while every condition looked correct in isolation. That cost an hour of
+ * bisecting a guard rather than a bug.
+ *
+ * Resolving on first use dodges the ordering, and the emptiness check turns the
+ * silent version of this failure into a sentence that names it.
+ */
+export function permissionKeys(): ReadonlySet<string> {
+  if (permissionKeyCache) return permissionKeyCache;
+  const keys = (PERMISSION_KEYS ?? []) as readonly string[];
+  if (keys.length === 0) {
+    throw new Error(
+      'PERMISSION_KEYS from @mimi/shared is empty — the audit screen will be reported as ' +
+        'leaking technical text. Check that packages/shared is built.',
+    );
+  }
+  permissionKeyCache = new Set(keys);
+  return permissionKeyCache;
+}
 
 /**
  * "Is the user being shown the machine's words?" — as an assertion.
@@ -50,7 +93,7 @@ export const TECHNICAL_VOCABULARY: readonly RegExp[] = [
   // and the rest — which is most of the app's forms. Kept as an explicit
   // alternation rather than a generic `\w+\.\w+\.\w+` so ordinary prose that
   // happens to contain two dots does not trip the guard.
-  /\b(shell|nav|auth|role|hub|docs|pos|common|errors|validation|lineImport|exportData|deliveryAssign|importData|chatInternal|table|photo|signature|fileUpload|dateRange|offline|sync|approvalTimeline|permissionGate|approvals|approvalsInbox|approvalCode|approvalDetail|emptyState|status|placeholder|setPin|finance|chat|purchasing|admin|outlet|warehouse|delivery|hr|me|notifications|print|driver|assets|dashboard|topology|doc|brand|voucher)\.[a-z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+\b/,
+  /\b(shell|nav|auth|role|hub|docs|pos|common|errors|validation|lineImport|exportData|deliveryAssign|importData|chatInternal|table|photo|signature|fileUpload|dateRange|offline|sync|approvalTimeline|permissionGate|approvals|approvalsInbox|approvalCode|approvalDetail|emptyState|status|placeholder|setPin|finance|chat|purchasing|admin|outlet|warehouse|delivery|hr|me|notifications|print|driver|assets|dashboard|topology|doc|brand|voucher)\.[a-z][a-zA-Z0-9]*\.[a-zA-Z0-9._]+/,
   // Framework/stack noise
   /Unhandled Runtime Error/i,
   /TypeError:/,
@@ -68,13 +111,14 @@ export const TECHNICAL_VOCABULARY: readonly RegExp[] = [
  * the check noisy enough to be switched off.
  */
 export async function assertNoTechnicalError(page: Page, context?: string): Promise<void> {
-  const text = await page.locator('body').innerText();
+  const text = withoutPermissionKeys(await page.locator('body').innerText());
   const hits = TECHNICAL_VOCABULARY.filter((pattern) => pattern.test(text));
   if (hits.length === 0) return;
 
   // Quote the offending line, not the whole page: a 200-line dump in the
   // failure output is how a real finding gets skimmed past.
   const lines = text.split('\n').filter((line) => hits.some((h) => h.test(line)));
+
   throw new Error(
     `Technical text on screen${context ? ` (${context})` : ''} — users must never read this:\n` +
       lines.map((l) => `  › ${l.trim()}`).join('\n') +
@@ -186,4 +230,35 @@ export function collectApiFailures(page: Page): { failures: string[] } {
     if (!failures.includes(entry)) failures.push(entry);
   });
   return { failures };
+}
+
+/**
+ * Blanks out the app's REAL permission keys before the vocabulary check runs.
+ *
+ * They are shaped exactly like an unresolved i18n key — dotted and lowercase —
+ * and the AUDIT LOG renders them on purpose: "who did what" is the whole point
+ * of that screen. Once the i18n rule was widened to all 47 namespaces it began
+ * matching `auth.pin.set` and `purchasing.po.create`, and `/admin → Jejak
+ * Audit` failed CI and blocked a production deploy over a screen that was
+ * working perfectly.
+ *
+ * SUBTRACTING them from the text beats deciding per line whether a line is
+ * "really" a leak. The first attempt did the latter — count the matching rules,
+ * extract the dotted tokens, check them all against the key set — and every
+ * input to it verified correct in isolation while it still returned false. An
+ * hour went into bisecting a guard rather than a bug. This version has one
+ * moving part and is obvious: a string that IS a permission key is not a leak,
+ * so remove it and ask the question again.
+ *
+ * Exact, and self-maintaining: a new key stops being a false positive the
+ * moment it joins the matrix, and a genuine unresolved key still matches
+ * because it is not in the list.
+ */
+function withoutPermissionKeys(text: string): string {
+  const keys = permissionKeys();
+  let scrubbed = text;
+  for (const key of keys) {
+    if (scrubbed.includes(key)) scrubbed = scrubbed.split(key).join('«permission»');
+  }
+  return scrubbed;
 }

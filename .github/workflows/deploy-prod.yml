@@ -292,6 +292,16 @@ jobs:
 
       # Chromium only — both Playwright projects are Chromium-based, so
       # installing three browsers to use one wastes minutes on every deploy.
+      # The e2e suite imports `PERMISSION_KEYS` from @mimi/shared, so that
+      # package's `dist/` has to exist — the leak guard subtracts the app's real
+      # permission keys from the page text before checking it, and the audit
+      # screen legitimately renders them. Only that one package: this job runs a
+      # browser against an already-deployed box and needs nothing else built.
+      # Its absence failed the smoke with `Cannot find module .../@mimi/shared/
+      # dist/index.js` on every spec at once.
+      - name: Build the shared package
+        run: pnpm --filter @mimi/shared build
+
       - name: Install Playwright Chromium
         run: pnpm --filter @mimi/e2e exec playwright install --with-deps chromium
 

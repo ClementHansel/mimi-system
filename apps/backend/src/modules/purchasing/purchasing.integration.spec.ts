@@ -27,6 +27,7 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
+  ApprovalDocumentType,
   ERR_CONFLICT,
   ERR_FORBIDDEN,
   ERR_PHOTO_REQUIRED,
@@ -90,7 +91,7 @@ function buildKit() {
   // B-16 JOUT-07/JOUT-08 emits from a petty-cash verify too.
   const pcService = new PettyCashService(pcRepo, ledger, sync, payments, journalEventBus);
 
-  return { prService, poService, pcService, journalEventBus };
+  return { prService, poService, pcService, journalEventBus, approvals };
 }
 
 function actorFor(
@@ -782,8 +783,100 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
     ).rejects.toMatchObject({ response: { code: ERR_PHOTO_REQUIRED } });
   });
 
-  it('a Supervisor creating a PR outside their assigned location gets a real ERR_FORBIDDEN (permission denied pin)', async () => {
+  /**
+   * A PR IS RECEIVED AT THE WAREHOUSE, WHICH IS IN NOBODY'S BRANCH LIST.
+   *
+   * This test used to assert the opposite — that a Supervisor scoped to an
+   * outlet is refused when the destination is the warehouse — as a "permission
+   * denied pin". In production that pin was the bug: a Supervisor Cabang holds
+   * `purchasing.pr.create`, every PR is delivered to the one central warehouse,
+   * and so the only action that permission exists for always answered "Anda
+   * tidak punya akses untuk tindakan ini". Owner's ruling 2026-09-02: keep the
+   * permission and make it work.
+   *
+   * The boundary that actually matters is kept by the test below: a supervisor
+   * still cannot file a request against ANOTHER OUTLET.
+   */
+  /**
+   * THE APPROVER OF A WAREHOUSE DOCUMENT MUST BE ABLE TO SEE IT.
+   *
+   * A PR's first approval step is Manajer, and a PR is received at the central
+   * warehouse. Migration 235 restricts a manager WITH assigned branches to
+   * those branches, and the branches are outlets — so in production a
+   * branch-scoped manager's "Permintaan Pembelian" tab read "Belum ada data"
+   * and their approvals inbox held 67 pending items with not one
+   * `purchase_request` among them. Every submitted PR waited at step 1 forever.
+   *
+   * `locationIds: [fx.outletId]` here is the point: the warehouse is
+   * deliberately NOT in the manager's scope, which is exactly the production
+   * shape (manager1 holds ten outlets and no warehouse).
+   */
+  it('a branch-scoped Manager sees a warehouse PR in their approvals inbox', async () => {
+    const kgd = actorFor(fx, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+    const mgr = actorFor(fx, RoleKey.MANAGER, [fx.outletId]);
+    const kgdSession = {
+      role: 'kepala_gudang' as const,
+      userId: kgd.userId,
+      locationIds: [fx.warehouseId],
+    };
+
+    const created = await withRollbackAs(kgdSession, (client) => {
+      const { prService } = buildKit();
+      return prService.create(client, kgd, {
+        locationId: fx.warehouseId,
+        lines: [{ itemId: fx.itemId, qty: '3.000', unitId: fx.unitId, estPrice: '5000.00' }],
+      });
+    });
+    prIds.push(created.id);
+
+    await withRollbackAs(kgdSession, (client) => {
+      const { prService } = buildKit();
+      return prService.submit(client, kgd, created.id);
+    });
+
+    const inbox = await withRollbackAs(
+      { role: 'manager' as const, userId: mgr.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { approvals } = buildKit();
+        return approvals.getPending(
+          client,
+          { userId: mgr.userId, roleKey: RoleKey.MANAGER, locationIds: [fx.outletId] },
+          { documentType: ApprovalDocumentType.PURCHASE_REQUEST, page: 1, pageSize: 200 },
+        );
+      },
+    );
+
+    expect(
+      inbox.rows.some((r) => r.documentId === created.id),
+      'the manager who must approve this PR cannot see it',
+    ).toBe(true);
+  });
+
+  it('a Supervisor can raise a PR destined for the central warehouse', async () => {
     const spv = actorFor(fx, RoleKey.SUPERVISOR, [fx.outletId]);
+
+    const pr = await withRollbackAs(
+      { role: 'supervisor', userId: spv.userId, locationIds: [fx.outletId] },
+      (client) => {
+        const { prService } = buildKit();
+        return prService.create(client, spv, {
+          locationId: fx.warehouseId,
+          lines: [{ itemId: fx.itemId, qty: '1.000', unitId: fx.unitId }],
+        });
+      },
+    );
+
+    expect(pr.prNumber).toMatch(/^PR\//);
+    expect(pr.locationId).toBe(fx.warehouseId);
+  });
+
+  it('a Supervisor still cannot raise a PR against another outlet', async () => {
+    const spv = actorFor(fx, RoleKey.SUPERVISOR, [fx.outletId]);
+    const other = await cleanupPool.query<{ id: string }>(
+      `SELECT id FROM locations WHERE type = 'outlet' AND id <> $1 LIMIT 1`,
+      [fx.outletId],
+    );
+    const otherOutletId = other.rows[0]!.id;
 
     await expect(
       withRollbackAs(
@@ -791,7 +884,7 @@ describe('Purchasing — live database (PR -> PO -> receiving, petty cash)', () 
         (client) => {
           const { prService } = buildKit();
           return prService.create(client, spv, {
-            locationId: fx.warehouseId,
+            locationId: otherOutletId,
             lines: [{ itemId: fx.itemId, qty: '1.000', unitId: fx.unitId }],
           });
         },

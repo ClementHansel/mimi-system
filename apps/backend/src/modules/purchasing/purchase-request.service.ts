@@ -163,7 +163,7 @@ export class PurchaseRequestService {
     actor: ActorContext,
     dto: CreatePurchaseRequestDto,
   ): Promise<PurchaseRequestDetail> {
-    this.assertLocationInScope(actor, dto.locationId);
+    await this.assertPurchaseDestinationAllowed(client, actor, dto.locationId);
     if (dto.lines.length === 0) {
       throw new BadRequestException({
         code: ERR_VALIDATION,
@@ -216,8 +216,10 @@ export class PurchaseRequestService {
     dto: UpdatePurchaseRequestDto,
   ): Promise<PurchaseRequestDetail> {
     const header = await this.requireHeader(client, id);
-    this.assertLocationInScope(actor, header.location_id);
-    if (dto.locationId) this.assertLocationInScope(actor, dto.locationId);
+    await this.assertPurchaseDestinationAllowed(client, actor, header.location_id);
+    if (dto.locationId) {
+      await this.assertPurchaseDestinationAllowed(client, actor, dto.locationId);
+    }
 
     const editable: string[] = [PurchaseRequestStatus.DRAFT, PurchaseRequestStatus.REJECTED];
     if (!editable.includes(header.status)) {
@@ -303,7 +305,7 @@ export class PurchaseRequestService {
     actor: ActorContext,
     dto: CreatePurchaseRequestFromReplenishmentDto,
   ): Promise<PurchaseRequestDetail> {
-    this.assertLocationInScope(actor, dto.locationId);
+    await this.assertPurchaseDestinationAllowed(client, actor, dto.locationId);
 
     const source = await this.repo.findReplenishmentForConversion(client, dto.replenishmentId);
     if (!source) {
@@ -346,7 +348,7 @@ export class PurchaseRequestService {
 
   async submit(client: PoolClient, actor: ActorContext, id: UUID): Promise<PurchaseRequestDetail> {
     const header = await this.requireHeader(client, id);
-    this.assertLocationInScope(actor, header.location_id);
+    await this.assertPurchaseDestinationAllowed(client, actor, header.location_id);
     if (header.status !== PurchaseRequestStatus.DRAFT) {
       throw new ConflictException({
         code: ERR_CONFLICT,
@@ -444,14 +446,46 @@ export class PurchaseRequestService {
     return header;
   }
 
-  private assertLocationInScope(actor: ActorContext, locationId: UUID): void {
+  /**
+   * A PR's location is the WAREHOUSE the goods are received into, not the
+   * branch that needs them — and the warehouse belongs to no branch, so it is
+   * in nobody's `user_locations`.
+   *
+   * A plain "is this location one of mine" test therefore refused every scoped
+   * user: a Supervisor Cabang holding `purchasing.pr.create` got "Anda tidak
+   * punya akses untuk tindakan ini" on the one action that permission exists
+   * for. Reported from production 2026-09-02.
+   *
+   * A destination that is central (any non-outlet location) is allowed to
+   * anyone who already holds the permission to raise the document; an OUTLET
+   * destination is still held to the actor's own branches, so this cannot be
+   * used to file a request against someone else's outlet. Migration 265 makes
+   * the matching RLS policy agree — without it the insert would pass this check
+   * and then be refused by `WITH CHECK`.
+   */
+  private async assertPurchaseDestinationAllowed(
+    client: PoolClient,
+    actor: ActorContext,
+    locationId: UUID,
+  ): Promise<void> {
     if (actor.locationScope === null) return;
-    if (!actor.locationScope.includes(locationId)) {
-      throw new ForbiddenException({
-        code: ERR_FORBIDDEN,
-        message: `Role '${actor.roleKey}' is not assigned to location ${locationId}`,
-      });
-    }
+    if (actor.locationScope.includes(locationId)) return;
+    if (await this.isCentralLocation(client, locationId)) return;
+
+    throw new ForbiddenException({
+      code: ERR_FORBIDDEN,
+      message: `Role '${actor.roleKey}' is not assigned to location ${locationId}`,
+    });
+  }
+
+  private async isCentralLocation(client: PoolClient, locationId: UUID): Promise<boolean> {
+    const res = await client.query<{ type: string }>(`SELECT type FROM locations WHERE id = $1`, [
+      locationId,
+    ]);
+    const type = res.rows[0]?.type;
+    // An unknown location is NOT treated as central — a missing row must not
+    // become a way past the scope check. The insert's own FK will report it.
+    return type !== undefined && type !== 'outlet';
   }
 
   private async toDetail(

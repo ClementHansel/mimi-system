@@ -460,7 +460,23 @@ export class ApprovalsRepository {
     }
     if (filter.locationIds !== null) {
       params.push(filter.locationIds);
-      conditions.push(`(a.location_id IS NULL OR a.location_id = ANY($${params.length}::uuid[]))`);
+      // A CENTRAL LOCATION IS IN EVERY APPROVER'S INBOX, because it is in
+      // nobody's branch list. A purchase request is received at the warehouse,
+      // and its chain's first step is Manajer — but a manager scoped to
+      // branches (migration 235) has only OUTLETS in `user_locations`, so this
+      // filter dropped every warehouse document. Their inbox held 67 pending
+      // items and not one `purchase_request`, so a submitted PR waited at step
+      // 1 forever. Reported from production 2026-09-02; the matching RLS half
+      // is migration 265.
+      //
+      // This widens the CANDIDATE set only. `resolveEligibleRoles` still has to
+      // name the caller's role as an approver of that step, so what a person
+      // gains here is exactly the documents it is their job to decide.
+      conditions.push(
+        `(a.location_id IS NULL
+           OR a.location_id = ANY($${params.length}::uuid[])
+           OR app_location_is_central(a.location_id))`,
+      );
     }
 
     const where = conditions.join(' AND ');

@@ -132,6 +132,10 @@ const EXTRA_LIVE_DB_SPECS = [
   'test/app-boot.spec.ts',
   'test/no-double-api-prefix.spec.ts',
   'test/rbac-endpoint-sweep.spec.ts',
+  // PREPAREs every static SQL statement in the source against the live schema.
+  // Live-DB, and serialized like the rest: it opens its own owner pool and
+  // holds one connection for ~1000 PREPARE/DEALLOCATE round-trips.
+  'test/sql-parses.spec.ts',
 ];
 
 const INTEGRATION_GLOBS = [

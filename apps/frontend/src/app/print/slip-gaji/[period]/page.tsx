@@ -2,12 +2,12 @@
 
 import { use, useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { EmptyState } from '@/components/ui';
 import { formatMoney } from '@/lib/formatters';
 import { PrintFrame } from '@/components/print/PrintFrame';
 import { getMySlips } from '@/components/me/lib/me-api';
 import type { Payslip, PayslipLine } from '@/components/hr/lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * W5-05 — the printable slip gaji.
@@ -47,7 +47,7 @@ export default function PrintSlipGajiPage({ params }: { params: Promise<{ period
         }
         setSlip(found);
       })
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')));
+      .catch((err: unknown) => setError(errMsg(err, t('table.error'))));
   }, [period, t]);
 
   const earnings = slip?.lines.filter((l) => l.type === 'earning') ?? [];

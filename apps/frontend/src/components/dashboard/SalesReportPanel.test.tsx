@@ -133,9 +133,21 @@ describe('SalesReportPanel', () => {
     );
 
     const { unmount } = render(<SalesReportPanel from="2026-08-01" to="2026-08-27" />);
+    // THE USER-FACING SENTENCE FOR A 500, not the response's `message`.
+    //
+    // This used to assert the panel printed "Terjadi kesalahan server" — the
+    // ApiError's `message`, which CONTRACTS.md §0 defines as a DEVELOPER
+    // fallback that is never user-facing. Rendering it verbatim is how text
+    // like `Opname <uuid> is 'submitted', not 'counting'` reached real users,
+    // and this test was pinning that as correct. `apiErrorText` now maps the
+    // status class to a sentence a person can act on.
     await waitFor(() => {
-      expect(screen.getByText(/Terjadi kesalahan server/)).toBeInTheDocument();
+      expect(screen.getByText(/Server sedang bermasalah/)).toBeInTheDocument();
     });
+    expect(
+      screen.queryByText(/Terjadi kesalahan server/),
+      "the response's developer message is on screen",
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText('Belum ada penjualan pada periode dan filter ini.'),
     ).not.toBeInTheDocument();

@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { formatMoney, formatQty } from '@/lib/formatters';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { ApiError } from '@/lib/api';
 import { dashboardApi } from './lib/dashboard-api';
 import type { ISODate } from '@/lib/shared-types';
 import type { TopProductRow } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /** FR-DASH-03 — top products by outlet/period. `locationId` narrows to one outlet; omitted for the company-wide ranking. */
 export interface TopProductsPanelProps {
@@ -32,7 +32,7 @@ export function TopProductsPanel({ from, to, locationId }: TopProductsPanelProps
         if (!cancelled) setRows(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : t('table.error'));
+        if (!cancelled) setError(errMsg(err, t('table.error')));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

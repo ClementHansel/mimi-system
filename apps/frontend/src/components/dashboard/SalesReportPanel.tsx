@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { usePermissions } from '@/lib/permissions';
-import { ApiError } from '@/lib/api';
 import { formatMoney, formatNumber } from '@/lib/formatters';
 import { sumMoney } from '@/lib/money';
 import { Select, type SelectOption } from '@/components/ui/Select';
@@ -17,6 +16,7 @@ import {
 } from './lib/sales-columns';
 import type { ISODate } from '@/lib/shared-types';
 import type { LocationOption, SalesGroupBy, SalesReportRow } from './lib/report-types';
+import { errMsg } from '@/lib/api-error';
 
 export interface SalesReportPanelProps {
   from: ISODate;
@@ -94,7 +94,7 @@ export function SalesReportPanel({
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          const message = err instanceof ApiError ? err.message : t('table.error');
+          const message = errMsg(err, t('table.error'));
           setError(`${message} — ${t('dashboard.sales.loadErrorHint')}`);
         }
       })

@@ -2,13 +2,13 @@
 
 import { use, useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { EmptyState } from '@/components/ui';
 import { PrintFrame } from '@/components/print/PrintFrame';
 import { DocumentRenderer, DocPageStyle } from '@/components/documents/DocumentRenderer';
 import { docDataFromCopySet } from '@/components/documents/doc-payload';
 import { getDocTemplate, getSuratJalanDocument } from '@/components/documents/doc-api';
 import type { DocData, DocTemplate } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F-DOC print route — the printable Surat Jalan, now TEMPLATE-DRIVEN.
@@ -89,7 +89,7 @@ export default function PrintSuratJalanPage({ params }: { params: Promise<{ id: 
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : t('doc.print.loadFailed'));
+        setError(errMsg(err, t('doc.print.loadFailed')));
       });
     return () => {
       cancelled = true;

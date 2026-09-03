@@ -5,7 +5,8 @@ import { KeyRound, ShieldCheck } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Button, Card, CardContent } from '@/components/ui';
 import { toast } from '@/components/ui/Toast';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { apiErrorText } from '@/lib/api-error';
 
 /**
  * B-15 — the approver's half of the one-time approval code (owner decision Q8,
@@ -54,7 +55,7 @@ export function IssueApprovalCodePanel({ documentType, documentId }: IssueApprov
       );
       setIssued(res);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : undefined;
+      const message = apiErrorText(err);
       toast({ title: t('approvalCode.issueFailed'), description: message, variant: 'danger' });
     } finally {
       setSubmitting(false);

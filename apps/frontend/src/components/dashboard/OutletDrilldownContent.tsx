@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { formatMoney, formatNumber, formatQty } from '@/lib/formatters';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ApiError } from '@/lib/api';
 import { dashboardApi } from './lib/dashboard-api';
 import { ratiosForChart } from './lib/chart-scale';
 import type { ISODate } from '@/lib/shared-types';
 import type { OutletDrilldown } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * FR-DASH-02/04 outlet drill-down body — the tile + hourly trend + top
@@ -39,7 +39,7 @@ export function OutletDrilldownContent({ locationId, date }: OutletDrilldownCont
         if (!cancelled) setData(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : t('table.error'));
+        if (!cancelled) setError(errMsg(err, t('table.error')));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

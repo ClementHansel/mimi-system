@@ -27,7 +27,6 @@ import type { CsvColumn } from '@/lib/export/csv';
 import { parseDecimal, type CsvRecord } from '@/lib/import/csv-parse';
 import { buildNameIndex, resolveNamed } from '@/lib/import/resolve';
 import { formatQty } from '@/lib/formatters';
-import { ApiError } from '@/lib/api';
 import type { Opname, OpnameLine } from '@/lib/shared-types';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import {
@@ -47,6 +46,7 @@ import {
 import type { StorageArea } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
 import { fmtDate } from '@/lib/dates';
+import { errMsg } from '@/lib/api-error';
 
 /** The opname DOCUMENT list — one row per count, for the register/audit trail. */
 const LIST_EXPORT_COLUMNS: CsvColumn<Opname>[] = [
@@ -132,7 +132,7 @@ export function StockOpnamePanel() {
     setError(undefined);
     listOpname(locationId)
       .then((res) => setRows(res.rows))
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch((err: unknown) => setError(errMsg(err, t('table.error'))))
       .finally(() => setLoading(false));
   }
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { fmtDateTime } from '@/lib/dates';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
@@ -23,6 +23,7 @@ import {
 import { formatSettingValue } from './lib/settings-format';
 import { settingIoColumns } from './lib/io-columns';
 import type { Setting } from './types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F10 admin — Settings (CONTRACTS §4.20 M20), redesigned on the owner's
@@ -63,7 +64,7 @@ export function SettingsPanel() {
       .then(setSettings)
       // A failed load used to leave an empty table that looked like "no
       // settings exist" — indistinguishable from a 403.
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch((err: unknown) => setError(errMsg(err, t('table.error'))))
       .finally(() => setLoading(false));
   }
   useEffect(reload, [t]);

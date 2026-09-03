@@ -11,7 +11,6 @@ import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangeP
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { toast } from '@/components/ui/Toast';
-import { ApiError } from '@/lib/api';
 import { ScopeBanner } from './ScopeBanner';
 import { OverviewCards } from './OverviewCards';
 import { TrendPanel } from './TrendPanel';
@@ -25,6 +24,7 @@ import { SalesReportPanel } from './SalesReportPanel';
 import { MarketingReportPanel } from './MarketingReportPanel';
 import { dashboardApi } from './lib/dashboard-api';
 import { useOverview } from './lib/use-overview';
+import { errMsg } from '@/lib/api-error';
 
 function addDays(base: Date, days: number): string {
   const d = new Date(base);
@@ -208,7 +208,7 @@ function CompanyDashboard({
       }
       reload();
     } catch (err) {
-      toast({ title: err instanceof ApiError ? err.message : t('table.error'), variant: 'danger' });
+      toast({ title: errMsg(err, t('table.error')), variant: 'danger' });
     } finally {
       setRefreshing(false);
     }

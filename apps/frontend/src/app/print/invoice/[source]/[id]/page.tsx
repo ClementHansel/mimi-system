@@ -3,7 +3,6 @@
 import { use, useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { Button, EmptyState, Input, MoneyInput, QtyInput, Textarea } from '@/components/ui';
 import { PrintFrame } from '@/components/print/PrintFrame';
 import { DocumentRenderer, DocPageStyle } from '@/components/documents/DocumentRenderer';
@@ -22,6 +21,7 @@ import {
   type Money,
   type Qty,
 } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F-DOC print route — the printable invoice, for THREE different origins of
@@ -96,7 +96,7 @@ function SourcedInvoicePrint({ source, id }: { source: 'sale' | 'purchase_order'
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : t('doc.print.loadFailed'));
+        setError(errMsg(err, t('doc.print.loadFailed')));
       });
     return () => {
       cancelled = true;
@@ -232,7 +232,7 @@ function ManualInvoicePrint() {
       setPayload(created);
       setData(doc);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : t('doc.print.manualFailed'));
+      setFormError(errMsg(err, t('doc.print.manualFailed')));
     } finally {
       setSubmitting(false);
     }

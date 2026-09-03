@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Info, Lock } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/dates';
 import { toast } from '@/components/ui/Toast';
 import { Modal } from '@/components/ui/Modal';
@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { specFor, valueAt, type SettingField } from './lib/settings-registry';
 import type { Setting } from './types';
 import type { Money } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * One setting, explained and edited in its own terms.
@@ -110,7 +111,7 @@ export function SettingDetailModal({
       toast({ title: t('admin.settings.updateSuccess'), variant: 'success' });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('errors.generic'));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }

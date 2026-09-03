@@ -6,11 +6,11 @@ import { fmtDate } from '@/lib/dates';
 import { formatMoney, formatNumber, formatQty } from '@/lib/formatters';
 import { Select } from '@/components/ui/Select';
 import { ChartCard } from '@/components/ui/ChartCard';
-import { ApiError } from '@/lib/api';
 import { dashboardApi } from './lib/dashboard-api';
 import { ratiosForChart } from './lib/chart-scale';
 import type { ISODate } from '@/lib/shared-types';
 import type { TrendGranularity, TrendMetric, TrendPoint } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 export interface TrendPanelProps {
   from: ISODate;
@@ -44,7 +44,7 @@ export function TrendPanel({ from, to, locationId }: TrendPanelProps) {
         if (!cancelled) setPoints(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : t('table.error'));
+        if (!cancelled) setError(errMsg(err, t('table.error')));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

@@ -16,7 +16,6 @@ import {
 } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { formatMoney, formatQty } from '@/lib/formatters';
-import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import {
   getStorageAreas,
@@ -27,6 +26,7 @@ import {
 import { uploadAttachment } from './lib/attachments';
 import type { PurchaseOrder, PurchaseOrderListRow, StorageArea } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 const OPEN_PO_STATUSES = ['issued', 'partially_received'];
 
@@ -64,7 +64,7 @@ export function ReceivingPanel() {
     setError(undefined);
     Promise.all(OPEN_PO_STATUSES.map((status) => listPurchaseOrders({ status })))
       .then((results) => setRows(results.flatMap((r) => r.rows)))
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch((err: unknown) => setError(errMsg(err, t('table.error'))))
       .finally(() => setLoading(false));
   }
 

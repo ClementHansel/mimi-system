@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import type { Paginated } from '@/lib/api';
-import { ApiError } from '@/lib/api';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * Generic `Paginated<T>` list-fetch hook for F10 admin's list screens (Users,
@@ -41,7 +41,7 @@ export function useApiList<T>(
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Gagal memuat data');
+        setError(errMsg(err, 'Gagal memuat data'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

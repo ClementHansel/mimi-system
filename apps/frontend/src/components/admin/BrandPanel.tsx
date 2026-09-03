@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ImageUp, RotateCcw, Save } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import {
   documentPalette,
   isHexColor,
@@ -28,7 +27,7 @@ import {
 } from '@/lib/shared-types';
 import { DocumentRenderer } from '@/components/documents/DocumentRenderer';
 import { sampleDocData } from '@/components/documents/sample-data';
-import { apiErrorDetail } from '@/lib/api-error';
+import { apiErrorDetail, apiErrorText } from '@/lib/api-error';
 
 /**
  * Admin → Merek: the logo, the favicon, and the four colours every printed
@@ -177,7 +176,7 @@ export function BrandPanel() {
     } catch (err) {
       toast({
         title: t('brand.saveFailed'),
-        description: err instanceof ApiError ? err.message : undefined,
+        description: apiErrorText(err),
         variant: 'danger',
       });
     } finally {

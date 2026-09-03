@@ -33,7 +33,6 @@ import {
   resolveNamed,
 } from '@/lib/import/resolve';
 import { fmtDate } from '@/lib/dates';
-import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import {
   getStorageAreas,
@@ -55,6 +54,7 @@ import type {
   SupplierDirectoryEntry,
 } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 const CONDITIONS = ['damaged', 'expired', 'wrong_item', 'other'] as const;
 
@@ -185,9 +185,7 @@ export function ReturnPanel() {
     // ERR_VALIDATION (FIX-LOADS #2).
     listReturns({ direction: 'warehouse_to_supplier' })
       .then((r) => setSupplierRows(r.rows))
-      .catch((err: unknown) =>
-        setSupplierError(err instanceof ApiError ? err.message : t('table.error')),
-      )
+      .catch((err: unknown) => setSupplierError(errMsg(err, t('table.error'))))
       .finally(() => setSupplierLoading(false));
   }
   function reloadOutletReturns() {
@@ -195,9 +193,7 @@ export function ReturnPanel() {
     setOutletError(undefined);
     listReturns({ direction: 'outlet_to_warehouse', status: 'in_transit' })
       .then((r) => setOutletRows(r.rows))
-      .catch((err: unknown) =>
-        setOutletError(err instanceof ApiError ? err.message : t('table.error')),
-      )
+      .catch((err: unknown) => setOutletError(errMsg(err, t('table.error'))))
       .finally(() => setOutletLoading(false));
   }
   useEffect(reloadSupplierReturns, []);

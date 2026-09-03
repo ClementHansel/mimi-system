@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { fmtDateTime } from '@/lib/dates';
 import { toast } from '@/components/ui/Toast';
 import { Drawer } from '@/components/ui/Drawer';
@@ -14,6 +13,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { dismissSyncConflict } from './lib/topology-api';
 import type { SyncConflictRow } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * One sync conflict, opened from the queue — what happened, and what can be
@@ -73,7 +73,7 @@ export function ConflictDetailDrawer({
       toast({ title: t('topology.sync.dismissSuccess'), variant: 'success' });
       onResolved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('errors.generic'));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }

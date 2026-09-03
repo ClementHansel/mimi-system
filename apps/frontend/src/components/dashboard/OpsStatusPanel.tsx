@@ -14,9 +14,9 @@ import {
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { formatNumber } from '@/lib/formatters';
-import { ApiError } from '@/lib/api';
 import { dashboardApi } from './lib/dashboard-api';
 import type { OpsStatusResponse } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /** FR-DASH-04 — operational monitoring counters, each a live (non-matview) read scoped to the caller. */
 export function OpsStatusPanel() {
@@ -33,7 +33,7 @@ export function OpsStatusPanel() {
         if (!cancelled) setData(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : t('table.error'));
+        if (!cancelled) setError(errMsg(err, t('table.error')));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

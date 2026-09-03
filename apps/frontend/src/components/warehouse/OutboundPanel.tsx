@@ -6,10 +6,10 @@ import { Route, ArrowRight, Truck, PackageCheck } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardContent, StatusBadge, EmptyState, Button } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
-import { ApiError } from '@/lib/api';
 import { SuratJalanStatus } from '@/lib/shared-types';
 import { listSuratJalan } from './lib/warehouse-api';
 import type { SuratJalan } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 const STAGED = new Set<string>([
   SuratJalanStatus.DRAFT,
@@ -44,10 +44,7 @@ export function OutboundPanel() {
     setError(undefined);
     listSuratJalan()
       .then((res) => !cancelled && setRows(res.rows))
-      .catch(
-        (err: unknown) =>
-          !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')),
-      )
+      .catch((err: unknown) => !cancelled && setError(errMsg(err, t('table.error'))))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;

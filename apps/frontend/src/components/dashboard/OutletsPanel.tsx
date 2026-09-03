@@ -7,13 +7,13 @@ import { formatMoney, formatNumber } from '@/lib/formatters';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { Drawer } from '@/components/ui/Drawer';
 import { Badge } from '@/components/ui/Badge';
-import { ApiError } from '@/lib/api';
 import { ExportButton } from '@/components/common/ExportButton';
 import type { CsvColumn } from '@/lib/export/csv';
 import { dashboardApi } from './lib/dashboard-api';
 import { OutletDrilldownContent } from './OutletDrilldownContent';
 import type { ISODate } from '@/lib/shared-types';
 import type { OutletTile } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 const EXPORT_COLUMNS: CsvColumn<OutletTile>[] = [
   { key: 'name', header: 'Outlet' },
@@ -51,7 +51,7 @@ export function OutletsPanel() {
         if (!cancelled) setRows(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : t('table.error'));
+        if (!cancelled) setError(errMsg(err, t('table.error')));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

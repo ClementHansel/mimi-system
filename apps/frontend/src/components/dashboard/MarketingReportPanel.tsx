@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { formatMoney, formatNumber, formatPercent } from '@/lib/formatters';
 import { fmtDate } from '@/lib/dates';
 import { sumMoney, moneySharePct } from '@/lib/money';
@@ -22,6 +21,7 @@ import {
 } from './lib/marketing-columns';
 import type { ISODate } from '@/lib/shared-types';
 import type { LocationOption, OnlineOrderReportRow, SalesReportRow } from './lib/report-types';
+import { errMsg } from '@/lib/api-error';
 
 export interface MarketingReportPanelProps {
   from: ISODate;
@@ -115,7 +115,7 @@ export function MarketingReportPanel({
       .catch((err: unknown) => {
         if (!cancelled) {
           setChannelRows([]);
-          setChannelError(err instanceof ApiError ? err.message : t('table.error'));
+          setChannelError(errMsg(err, t('table.error')));
         }
       })
       .finally(() => {
@@ -130,7 +130,7 @@ export function MarketingReportPanel({
       .catch((err: unknown) => {
         if (!cancelled) {
           setProductRows([]);
-          setProductError(err instanceof ApiError ? err.message : t('table.error'));
+          setProductError(errMsg(err, t('table.error')));
         }
       })
       .finally(() => {
@@ -145,7 +145,7 @@ export function MarketingReportPanel({
       .catch((err: unknown) => {
         if (!cancelled) {
           setReconRows([]);
-          setReconError(err instanceof ApiError ? err.message : t('table.error'));
+          setReconError(errMsg(err, t('table.error')));
         }
       })
       .finally(() => {

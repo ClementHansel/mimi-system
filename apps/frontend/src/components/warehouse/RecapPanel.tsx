@@ -16,9 +16,9 @@ import {
 import { ExportButton } from '@/components/common/ExportButton';
 import type { CsvColumn } from '@/lib/export/csv';
 import { formatQty } from '@/lib/formatters';
-import { ApiError } from '@/lib/api';
 import { getDailyRecap } from './lib/warehouse-api';
 import type { DailyRecap, DailyRecapItem } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 const ALL = 'all';
 
@@ -109,10 +109,7 @@ export function RecapPanel() {
     setError(undefined);
     getDailyRecap(date)
       .then((res) => !cancelled && setRecap(res))
-      .catch(
-        (err: unknown) =>
-          !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')),
-      )
+      .catch((err: unknown) => !cancelled && setError(errMsg(err, t('table.error'))))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;

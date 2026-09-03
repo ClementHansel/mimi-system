@@ -5,11 +5,11 @@ import { Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { fmtDateTime } from '@/lib/dates';
 import { toCsv, downloadCsv, businessDateFilename, type CsvColumn } from '@/lib/export/csv';
 import { toPdf, downloadPdf, businessDatePdfFilename } from '@/lib/export/pdf';
 import { useBrand } from '@/lib/brand';
+import { apiErrorText } from '@/lib/api-error';
 
 export interface ExportButtonProps<T> {
   /** Rows already in memory — whatever the screen's current search/filter produced. */
@@ -98,7 +98,7 @@ export function ExportButton<T>({
     } catch (err) {
       toast({
         title: t('exportData.exportError'),
-        description: err instanceof ApiError ? err.message : undefined,
+        description: apiErrorText(err),
         variant: 'danger',
       });
     } finally {

@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
 import { formatMoney, formatNumber, formatPercent } from '@/lib/formatters';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { ApiError } from '@/lib/api';
 import { dashboardApi } from './lib/dashboard-api';
 import type { ISODate } from '@/lib/shared-types';
 import type { StaffKpiRow } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * FR-DASH-03 — cashier performance + attendance. `attendanceRate` is a
@@ -37,7 +37,7 @@ export function StaffKpiPanel({ from, to, locationId }: StaffKpiPanelProps) {
         if (!cancelled) setRows(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : t('table.error'));
+        if (!cancelled) setError(errMsg(err, t('table.error')));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

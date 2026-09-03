@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ExternalLink, Scale } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { fmtDateTime } from '@/lib/dates';
 import { toast } from '@/components/ui/Toast';
 import { Drawer } from '@/components/ui/Drawer';
@@ -15,6 +14,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { resolveReconciliation } from './lib/topology-api';
 import type { ReconciliationRow } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * One stock divergence, opened from the reconciliation queue (D-16).
@@ -69,7 +69,7 @@ export function ReconciliationDetailDrawer({
       toast({ title: t('topology.sync.reconResolveSuccess'), variant: 'success' });
       onResolved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('errors.generic'));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }

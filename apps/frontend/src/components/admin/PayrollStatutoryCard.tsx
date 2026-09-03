@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Textarea';
 import { Badge } from '@/components/ui/Badge';
 import type { StatutoryStatus } from './types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F10 admin — Settings → "Mode Payroll Statutori" (Amendment 1 / D-18).
@@ -74,9 +75,10 @@ export function PayrollStatutoryCard() {
       setError(
         err instanceof ApiError && err.code === 'ERR_STATUTORY_NOT_READY'
           ? t('admin.settings.payrollStatutory.notReadyError')
-          : err instanceof ApiError
-            ? err.message
-            : t('errors.generic'),
+          : // Was `err.message` — the developer string — for every other
+            // ApiError. `errMsg` maps the code, then the status class, and only
+            // then falls back.
+            errMsg(err, t('errors.generic')),
       );
     } finally {
       setBusy(false);
@@ -95,7 +97,7 @@ export function PayrollStatutoryCard() {
       setDisableReason('');
       toast({ title: t('admin.settings.payrollStatutory.disableSuccess'), variant: 'success' });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('errors.generic'));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }

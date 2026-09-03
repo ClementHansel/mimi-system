@@ -2,7 +2,6 @@
 
 import { use, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { EmptyState } from '@/components/ui';
 import { PrintFrame } from '@/components/print/PrintFrame';
 import { DocumentRenderer, DocPageStyle } from '@/components/documents/DocumentRenderer';
@@ -13,6 +12,7 @@ import {
   getVoucherBatchDocument,
 } from '@/components/documents/doc-api';
 import { DOC_PAPER_SIZES, type DocData, type DocTemplate } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F-DOC print route — a voucher BATCH as an N-up A4 sheet with cut guides.
@@ -60,7 +60,7 @@ export default function PrintVoucherBatchPage({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : t('doc.print.loadFailed'));
+        setError(errMsg(err, t('doc.print.loadFailed')));
       });
     return () => {
       cancelled = true;

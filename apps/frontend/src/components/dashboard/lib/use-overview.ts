@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError } from '@/lib/api';
 import { dashboardApi } from './dashboard-api';
 import type { OverviewResponse } from './types';
 import type { ISODate } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 /** `/api/dashboard/overview` fetch, with a `reload()` escape hatch for the manual-refresh button. */
 export function useOverview(from: ISODate, to: ISODate) {
@@ -25,7 +25,7 @@ export function useOverview(from: ISODate, to: ISODate) {
         if (!cancelled) setData(res);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Gagal memuat data');
+        if (!cancelled) setError(errMsg(err, 'Gagal memuat data'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

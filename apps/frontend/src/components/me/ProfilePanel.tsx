@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useSessionStore } from '@/stores/session-store';
 import { getMyEmployee, type EmployeeDetail } from './lib/me-api';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * "Data Pribadi" — the employee's own record, in the `employee` interface
@@ -43,7 +44,7 @@ export function ProfilePanel() {
         // POS account, a service user), not a failure — so it gets its own
         // message instead of a generic error.
         if (err instanceof ApiError && err.statusCode === 404) setNotAnEmployee(true);
-        else setError(err instanceof ApiError ? err.message : t('table.error'));
+        else setError(errMsg(err, t('table.error')));
       })
       .finally(() => setLoading(false));
   }, [t]);

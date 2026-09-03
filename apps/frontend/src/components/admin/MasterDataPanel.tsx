@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, MapPin, ChevronUp, ChevronDown, Image as ImageIcon } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { formatMoney } from '@/lib/formatters';
 import { toast } from '@/components/ui/Toast';
@@ -38,7 +38,7 @@ import type {
   RecipeLine,
   Qty,
 } from './types';
-import { errMsg } from '@/lib/api-error';
+import { apiErrorText, errMsg } from '@/lib/api-error';
 
 // ── Items ────────────────────────────────────────────────────────────────
 /**
@@ -1772,7 +1772,7 @@ function LocationsSection() {
     } catch (err) {
       toast({
         title: t('table.error'),
-        description: err instanceof ApiError ? err.message : undefined,
+        description: apiErrorText(err),
         variant: 'danger',
       });
     } finally {

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Download, Upload, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError, type Paginated } from '@/lib/api';
+import { api, type Paginated } from '@/lib/api';
 import {
   Card,
   CardHeader,
@@ -24,6 +24,7 @@ import type {
   ImportPreviewRow,
   ImportCommitResult,
 } from './types';
+import { apiErrorText } from '@/lib/api-error';
 
 /**
  * F?? `importData` — bulk import with a schema-derived template (owner,
@@ -89,7 +90,7 @@ export function ImportPanel({
       toast({
         variant: 'danger',
         title: t('importData.templateFailed'),
-        description: err instanceof ApiError ? err.message : undefined,
+        description: apiErrorText(err),
       });
     } finally {
       setDownloading(false);
@@ -111,7 +112,7 @@ export function ImportPanel({
       toast({
         variant: 'danger',
         title: t('importData.previewFailed'),
-        description: err instanceof ApiError ? err.message : undefined,
+        description: apiErrorText(err),
       });
       setPreview(null);
       setPreviewedFor(null);
@@ -144,7 +145,7 @@ export function ImportPanel({
       toast({
         variant: 'danger',
         title: t('importData.commitFailed'),
-        description: err instanceof ApiError ? err.message : undefined,
+        description: apiErrorText(err),
       });
     } finally {
       setCommitting(false);

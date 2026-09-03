@@ -30,12 +30,12 @@ import {
 } from '@/lib/import/resolve';
 import { formatQty, formatMoney } from '@/lib/formatters';
 import { fmtDate } from '@/lib/dates';
-import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import { getStorageAreas, getItems, listWaste, createWaste } from './lib/warehouse-api';
 import { uploadAttachment } from './lib/attachments';
 import type { WasteRecord, StorageArea, Item } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 const WASTE_REASONS = ['expired', 'damaged', 'spoiled', 'prep_error', 'other'] as const;
 
@@ -113,7 +113,7 @@ export function WastePanel() {
     setError(undefined);
     listWaste(locationId)
       .then((r) => setRows(r.rows))
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch((err: unknown) => setError(errMsg(err, t('table.error'))))
       .finally(() => setLoading(false));
   }
   useEffect(reload, [locationId]);

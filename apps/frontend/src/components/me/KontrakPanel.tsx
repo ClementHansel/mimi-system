@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { getMyContracts, type EmploymentContract } from './lib/me-api';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * "Kontrak" — the employee's own employment contracts (owner, 2026-08-21: the
@@ -43,7 +44,7 @@ export function KontrakPanel() {
       .then(setContracts)
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.statusCode === 404) setNotAnEmployee(true);
-        else setError(err instanceof ApiError ? err.message : t('table.error'));
+        else setError(errMsg(err, t('table.error')));
       })
       .finally(() => setLoading(false));
   }, [t]);

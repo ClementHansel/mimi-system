@@ -19,10 +19,10 @@ import { ExportButton } from '@/components/common/ExportButton';
 import type { CsvColumn } from '@/lib/export/csv';
 import { formatQty } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/dates';
-import { ApiError } from '@/lib/api';
 import { useWarehouseLocation } from './lib/use-warehouse-location';
 import { getAllBalances, getMovements, getStorageAreas } from './lib/warehouse-api';
 import type { Balance, Movement, StorageArea } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 // Exported as a flat (non-grouped) row list — the on-screen table groups by
 // storage area, but a CSV is read in a spreadsheet where that grouping would
@@ -68,10 +68,7 @@ export function StockPanel() {
         setBalances(res.rows);
         setTruncated(res.truncated);
       })
-      .catch(
-        (err: unknown) =>
-          !cancelled && setError(err instanceof ApiError ? err.message : t('table.error')),
-      )
+      .catch((err: unknown) => !cancelled && setError(errMsg(err, t('table.error'))))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -124,9 +121,7 @@ export function StockPanel() {
     setHistoryError(undefined);
     getMovements({ locationId, itemId: b.itemId, storageAreaId: b.storageAreaId })
       .then((res) => setMovements(res.rows))
-      .catch((err: unknown) =>
-        setHistoryError(err instanceof ApiError ? err.message : t('table.error')),
-      )
+      .catch((err: unknown) => setHistoryError(errMsg(err, t('table.error'))))
       .finally(() => setHistoryLoading(false));
   }
 

@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Mail, CheckCircle2, XCircle } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { toast } from '@/components/ui/Toast';
 import { Button, Card, CardContent, Checkbox, Input, Select } from '@/components/ui';
+import { apiErrorText } from '@/lib/api-error';
 
 interface EmailSettings {
   host: string;
@@ -73,7 +74,7 @@ export function EmailSettingsPanel() {
         }
         // `password` is deliberately NOT populated — see the component note.
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : String(err)))
+      .catch((err) => setError(apiErrorText(err)))
       .finally(() => setLoading(false));
   }
   useEffect(load, []);
@@ -97,7 +98,7 @@ export function EmailSettingsPanel() {
       toast({ title: t('admin.email.saveSuccess'), variant: 'success' });
       load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
+      setError(apiErrorText(err));
     } finally {
       setSaving(false);
     }
@@ -115,7 +116,7 @@ export function EmailSettingsPanel() {
       });
       load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
+      setError(apiErrorText(err));
     } finally {
       setTesting(false);
     }

@@ -2,13 +2,13 @@
 
 import { use, useEffect, useState } from 'react';
 import { useI18n } from '@/lib/i18n';
-import { ApiError } from '@/lib/api';
 import { EmptyState } from '@/components/ui';
 import { PrintFrame } from '@/components/print/PrintFrame';
 import { DocumentRenderer, DocPageStyle } from '@/components/documents/DocumentRenderer';
 import { docDataFromPayload } from '@/components/documents/doc-payload';
 import { getDocTemplate, getReceiptDocument } from '@/components/documents/doc-api';
 import type { DocData, DocTemplate } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F-DOC print route — the printable POS receipt (thermal, template-driven).
@@ -46,7 +46,7 @@ export default function PrintReceiptPage({ params }: { params: Promise<{ saleId:
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : t('doc.print.loadFailed'));
+        setError(errMsg(err, t('doc.print.loadFailed')));
       });
     return () => {
       cancelled = true;

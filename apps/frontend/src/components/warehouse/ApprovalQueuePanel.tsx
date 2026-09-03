@@ -6,7 +6,6 @@ import { useI18n } from '@/lib/i18n';
 import { Modal, DataTable, StatusBadge, toast, Button, PermissionGate } from '@/components/ui';
 import type { DataTableColumn } from '@/components/ui';
 import { fmtDate } from '@/lib/dates';
-import { ApiError } from '@/lib/api';
 import {
   listWarehouseQueue,
   getReplenishment,
@@ -16,6 +15,7 @@ import {
 } from './lib/warehouse-api';
 import { ReplenishmentApproveForm, type AmendmentInput } from './ReplenishmentApproveForm';
 import type { Replenishment } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * The Kepala Gudang approval queue — replenishment requests waiting on the
@@ -42,7 +42,7 @@ export function ApprovalQueuePanel() {
     setError(undefined);
     listWarehouseQueue('awaiting_approval')
       .then((res) => setRows(res.rows))
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : t('table.error')))
+      .catch((err: unknown) => setError(errMsg(err, t('table.error'))))
       .finally(() => setLoading(false));
   }
 
@@ -51,9 +51,7 @@ export function ApprovalQueuePanel() {
     setApprovedError(undefined);
     listWarehouseQueue('approved')
       .then((res) => setApprovedRows(res.rows))
-      .catch((err: unknown) =>
-        setApprovedError(err instanceof ApiError ? err.message : t('table.error')),
-      )
+      .catch((err: unknown) => setApprovedError(errMsg(err, t('table.error'))))
       .finally(() => setApprovedLoading(false));
   }
 

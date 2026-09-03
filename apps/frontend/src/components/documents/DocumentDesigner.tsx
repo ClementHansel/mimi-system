@@ -37,7 +37,7 @@ import {
 import { DocumentRenderer } from './DocumentRenderer';
 import { getDocTemplate, putDocTemplate, resetDocTemplate } from './doc-api';
 import { sampleDocData } from './sample-data';
-import { apiErrorDetail } from '@/lib/api-error';
+import { apiErrorDetail, apiErrorText, errMsg } from '@/lib/api-error';
 
 /**
  * The document designer: drag boxes on a page, see the result live, save it.
@@ -624,7 +624,7 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setLoadError(err instanceof ApiError ? err.message : t('doc.designer.loadFailed'));
+        setLoadError(errMsg(err, t('doc.designer.loadFailed')));
       });
     return () => {
       cancelled = true;
@@ -880,7 +880,11 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
       if (details) setErrors(details.map((d) => String(d)));
       toast({
         title: t('doc.designer.saveFailed'),
-        description: err instanceof ApiError && !details ? err.message : undefined,
+        // The `details` above are shown verbatim on purpose — they name the
+        // element that is off the page. With none to show, this used to fall
+        // back to the response's developer `message`; `apiErrorText` gives the
+        // same person a sentence instead.
+        description: details ? undefined : apiErrorText(err),
         variant: 'danger',
       });
     } finally {
@@ -905,7 +909,7 @@ export function DocumentDesigner({ kind }: { kind: DocKind }) {
       setSelectedId(null);
       toast({
         title: t('doc.designer.saveFailed'),
-        description: err instanceof ApiError ? err.message : undefined,
+        description: apiErrorText(err),
         variant: 'danger',
       });
     }

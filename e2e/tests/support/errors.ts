@@ -150,13 +150,33 @@ export async function assertNoLoadFailure(page: Page, context?: string): Promise
     }
   }
 
-  for (const phrase of ['Gagal memuat data', 'Gagal memuat', 'Terjadi kesalahan']) {
+  for (const phrase of ['Gagal memuat data', 'Gagal memuat']) {
     const count = await page.getByText(phrase, { exact: false }).count();
     if (count > 0) {
       throw new Error(
         `"${phrase}" is on screen${context ? ` (${context})` : ''} — the surface failed to load.`,
       );
     }
+  }
+
+  // "Terjadi kesalahan" IS NOT NECESSARILY A LOAD FAILURE — it is
+  // `errors.generic`, the app's sanctioned last resort, and it can legitimately
+  // reach the screen as a toast after an action. Reporting it as "the surface
+  // failed to load" sent me looking for a broken fetch when the real finding
+  // was a form answering an empty submit with the last-resort sentence while
+  // the server had already named the field.
+  //
+  // Still flagged, because it is a bad answer either way: whoever sees it has
+  // been told that something went wrong and nothing about what to do. The
+  // diagnosis just has to be honest about which of the two it is.
+  if ((await page.getByText('Terjadi kesalahan', { exact: false }).count()) > 0) {
+    throw new Error(
+      `THE LAST-RESORT ERROR IS ON SCREEN${context ? ` (${context})` : ''} — ` +
+        `"Terjadi kesalahan". Either the surface failed to load, or an action was ` +
+        `refused and the code discarded the server's explanation instead of ` +
+        `passing it through \`errMsg()\`. Check the network tab: a response ` +
+        `carrying a \`code\` and \`details.field\` can say which field is wrong.`,
+    );
   }
 }
 

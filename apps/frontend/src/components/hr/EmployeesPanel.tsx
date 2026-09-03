@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { UserPlus } from 'lucide-react';
+import { errMsg } from '@/lib/api-error';
 import { useI18n } from '@/lib/i18n';
 import { toast } from '@/components/ui/Toast';
 import {
@@ -252,8 +253,14 @@ function EmployeeFormModal({
         variant: 'success',
       });
       onSaved();
-    } catch {
-      setError(t('errors.generic'));
+    } catch (err) {
+      // SAY WHAT IS WRONG WITH THE FORM. This used to be a bare `catch` that
+      // threw the error away and showed the last-resort sentence, so an empty
+      // submit answered "Terjadi kesalahan" while the server had already named
+      // the offending field. `errMsg` resolves ERR_VALIDATION + `details.field`
+      // into "<field> belum benar", and keeps the generic line only for a
+      // failure nothing can explain.
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }

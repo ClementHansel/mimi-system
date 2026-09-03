@@ -192,7 +192,16 @@ export enum OpnameStatus {
  * decision somebody has already acted on.
  */
 export function isOpnameEditable(status: OpnameStatus | string): boolean {
-  return status === OpnameStatus.COUNTING || status === OpnameStatus.DRAFT;
+  // COUNTING ONLY. `draft` was included here at first, which was wrong for the
+  // same reason the original defect was wrong: `StockOpnameService.upsertLines`
+  // and `.submit` both refuse anything that is not `counting`, and
+  // CONTRACTS.md §5's table gives `stock_opname` a `submit` rule from
+  // `counting` alone (`draft` gets `cancel` and nothing else). A count is
+  // created directly as `counting`, so a draft does not arise from the app —
+  // but had one appeared, the sheet would have offered inputs and Simpan and
+  // then failed, which is exactly the bug this function exists to prevent.
+  // Caught by `actionsFrom()` disagreeing with it, minutes after writing it.
+  return status === OpnameStatus.COUNTING;
 }
 
 export enum AdjustmentSource {

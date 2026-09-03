@@ -39,7 +39,7 @@ const SRC = join(__dirname, '..');
  * regex pinned to the common form, which is why this matches on the `?` rather
  * than on the `instanceof`.
  */
-const RENDERS_DEVELOPER_MESSAGE = /\?\s*err(?:or)?\.message/;
+const RENDERS_DEVELOPER_MESSAGE = /\?\s*err(?:or)?\.message\b/;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

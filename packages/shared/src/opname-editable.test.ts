@@ -11,10 +11,19 @@ import { isOpnameEditable, OpnameStatus } from './enums';
  * an error the counter could not act on.
  */
 describe('isOpnameEditable', () => {
-  it('accepts a count still being taken', () => {
+  it('accepts a count still being taken, and only that', () => {
     expect(isOpnameEditable(OpnameStatus.COUNTING)).toBe(true);
-    // `draft` is a count opened but not yet started — still the counter's.
-    expect(isOpnameEditable(OpnameStatus.DRAFT)).toBe(true);
+
+    // `draft` WAS accepted here on the reasoning that a count opened but not
+    // started is still the counter's. That was wrong, and `actionsFrom()`
+    // caught it (see `document-actions.test.ts`): CONTRACTS.md §5 gives
+    // `stock_opname` a `submit` rule from `counting` alone, `draft` gets
+    // `cancel` and nothing else, and `upsertLines` refuses anything that is not
+    // `counting`. A count is inserted directly as `counting`, so a draft does
+    // not arise from the app — but accepting it would have put live inputs and
+    // a Simpan button on a document the server rejects, which is the very bug
+    // this function was added to prevent.
+    expect(isOpnameEditable(OpnameStatus.DRAFT)).toBe(false);
   });
 
   it('refuses every state somebody has already acted on', () => {
@@ -22,6 +31,7 @@ describe('isOpnameEditable', () => {
     // each records a decision, and reopening it as a form would let a sheet be
     // changed under the person who approved or posted it.
     for (const status of [
+      OpnameStatus.DRAFT,
       OpnameStatus.SUBMITTED,
       OpnameStatus.APPROVED,
       OpnameStatus.REJECTED,

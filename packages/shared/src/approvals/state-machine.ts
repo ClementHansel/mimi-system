@@ -242,6 +242,41 @@ export function findApplicableRule(lookup: RuleLookup): ApprovalTransitionRule |
 }
 
 /**
+ * Every action the contract permits from a given state — the machine-readable
+ * form of "what can be done to this document right now".
+ *
+ * Exists because the UI kept answering that question on its own and getting it
+ * wrong. Both count sheets rendered their inputs and their Simpan/Ajukan
+ * buttons for ANY status while `StockOpnameService` refuses lines and submits
+ * on anything but `counting`, so a submitted count could be edited and
+ * re-submitted and the person doing it got an error they could not act on
+ * (production, 2026-09-03). The same shape, one screen over: the approvals
+ * detail view offered Setujui on a step belonging to another role.
+ *
+ * `APPROVAL_TRANSITIONS` is CONTRACTS.md §5 written down once. Deriving the
+ * affordances from it means a screen cannot drift from the service that
+ * enforces it — and when the table changes, the screens change with it.
+ *
+ * Variant note: with no `variant` given this returns the union across variants
+ * (waste's outlet and warehouse rules, a return's direction), which is what a
+ * caller asking "is this document still open for entry" wants. Pass the variant
+ * to narrow it.
+ */
+export function actionsFrom(
+  documentType: TransitionDocumentType,
+  currentState: string,
+  variant?: TransitionVariant,
+): readonly string[] {
+  const actions = APPROVAL_TRANSITIONS.filter(
+    (r) =>
+      r.documentType === documentType &&
+      r.from === currentState &&
+      (variant === undefined || r.variant === undefined || r.variant === variant),
+  ).map((r) => r.action);
+  return [...new Set(actions)];
+}
+
+/**
  * Pre-filter helper: would `actorRole` be authorized to perform this action
  * from this state, ignoring reason/offline requirements? Combines
  * `findApplicableRule` + `isRoleAuthorized` so a consumer deciding "should

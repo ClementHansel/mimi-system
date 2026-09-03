@@ -171,7 +171,23 @@ export default function PosPage() {
   return (
     <>
       <TabsContent value="kasir" className="pt-0">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
+        {/*
+          THE MENU SCROLLS; THE CART DOES NOT.
+          Reported 2026-09-04: "scroll nya apakah bisa static di menu nya saja?
+          karena membuat bingung user untuk tombol lanjut pembayaran yg terlalu
+          scroll di bawah". The whole page scrolled as one, so on an outlet with
+          a long menu the cashier had to scroll past every product to reach
+          "Lanjut ke Pembayaran" — the one control they press on every single
+          order.
+
+          `sticky` rather than a fixed-height app shell: POS renders its own
+          layout (no `main`, no sidebar) and re-flowing it into a
+          non-scrolling frame risks the till's whole screen. Sticky keeps the
+          cart, the total and the pay button in view while the grid scrolls
+          underneath, and degrades to normal stacking on a phone where the
+          single column is the right answer.
+        */}
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_360px]">
           <div className="min-h-[50vh]">
             {catalogError && !catalog && (
               <p className="mb-2 text-sm text-warning-700">{t('pos.catalogOfflineNote')}</p>
@@ -189,7 +205,7 @@ export default function PosPage() {
               }
             />
           </div>
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4">
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
             <Cart
               lines={cartLines}
               summary={summary}
@@ -243,9 +259,23 @@ export default function PosPage() {
                 leftIcon={<Printer className="size-4" />}
                 disabled={!lastSaleId}
               >
-                {t('doc.print.receiptTitle')}
+                {t('pos.reprintReceipt')}
               </Button>
             </a>
+            {/*
+              BOTH BUTTONS ABOVE NEED A SALE TO ACT ON, and until 2026-09-04
+              nothing said so. The client's report: "untuk button Struk di cart
+              tidak tau fungsi nya untuk apa krn disabled. Begitu jg untuk
+              button Void transaksi terakhir tidak tau fungsi nya saat kapan
+              karna disabled" — two greyed-out controls with no explanation
+              read as broken, not as unavailable.
+
+              The receipt button is also why "cetak struk double" looked like a
+              duplicate: the payment dialog prints as part of COMPLETING a sale,
+              and this one REPRINTS the last one afterwards. Its label now says
+              which it is.
+            */}
+            {!lastSaleId && <p className="text-xs text-text-muted">{t('pos.needsLastSaleHint')}</p>}
           </div>
         </div>
       </TabsContent>

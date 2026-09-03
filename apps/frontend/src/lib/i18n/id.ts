@@ -276,6 +276,12 @@ export const id = {
     categoryFilter: 'Filter kategori',
     goToPayment: 'Lanjut ke Pembayaran',
     voidLastSale: 'Void Transaksi Terakhir',
+    // Named for what it does, to separate it from the payment dialog's
+    // "Selesaikan & Cetak Struk" — that one prints while finishing a sale,
+    // this one prints the last sale again. The client read the pair as one
+    // feature duplicated ("fitur cetak struk double").
+    reprintReceipt: 'Cetak Ulang Struk',
+    needsLastSaleHint: 'Aktif setelah ada transaksi di perangkat ini.',
     closeShift: 'Tutup Kasir',
     paymentTitle: 'Pembayaran',
 

@@ -225,7 +225,7 @@ function CreatePaymentModal({
       });
       onCreated();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -336,7 +336,7 @@ function PaymentDrawer({
         setPv(row);
         setReferenceNumber(row.referenceNumber ?? '');
       })
-      .catch((err) => setError(errMsg(err, t('auth.genericError'))))
+      .catch((err) => setError(errMsg(err, t('errors.generic'))))
       .finally(() => setLoading(false));
   }
   useEffect(load, [id]);
@@ -381,7 +381,7 @@ function PaymentDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -396,7 +396,7 @@ function PaymentDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -411,7 +411,7 @@ function PaymentDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -427,7 +427,7 @@ function PaymentDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
       setBusy(null);
     }
   }

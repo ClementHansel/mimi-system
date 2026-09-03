@@ -97,7 +97,7 @@ function ItemsSection({ categories, units }: { categories: ItemCategory[]; units
       });
       reload();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setToggling(null);
     }
@@ -300,7 +300,7 @@ function ItemFormModal({
       });
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -414,7 +414,7 @@ function CategoriesUnitsSection({
       toast({ title: t('admin.masterData.categories.createSuccess'), variant: 'success' });
       onReload();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -435,7 +435,7 @@ function CategoriesUnitsSection({
       toast({ title: t('admin.masterData.categories.renameSuccess'), variant: 'success' });
       onReload();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -450,7 +450,7 @@ function CategoriesUnitsSection({
       toast({ title: t('admin.masterData.units.createSuccess'), variant: 'success' });
       onReload();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -640,7 +640,7 @@ function ProductsSection({
       });
       reload();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setToggling(null);
     }
@@ -988,7 +988,7 @@ function ProductFormModal({
       });
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -1142,7 +1142,7 @@ function RecipeModal({
       toast({ title: t('admin.masterData.products.recipeSuccess'), variant: 'success' });
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -1360,7 +1360,7 @@ function PackageModal({
       toast({ title: t('admin.masterData.products.packageSaved'), variant: 'success' });
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -1509,7 +1509,7 @@ function MenuCategoriesSection({
       // The server refuses to retire a category that still has products under it
       // and says how many — surface that message verbatim rather than a generic
       // failure, because the count is the actionable part.
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
       return false;
     } finally {
       setBusy(false);
@@ -2042,7 +2042,7 @@ function LocationFormModal({
       });
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -2217,7 +2217,7 @@ function StorageAreasDrawer({ location, onClose }: { location: Location; onClose
       toast({ title: t('admin.masterData.locations.areaCreateSuccess'), variant: 'success' });
       reload();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(false);
     }

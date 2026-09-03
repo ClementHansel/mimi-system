@@ -58,7 +58,7 @@ export function SupplierPriceHistoryPanel() {
         setSuppliers(r.rows);
         if (r.rows[0]) setSupplierId(r.rows[0].id);
       })
-      .catch((err) => setLoadError(errMsg(err, t('auth.genericError'))));
+      .catch((err) => setLoadError(errMsg(err, t('errors.generic'))));
     getItems()
       .then((r) => setItems(r.rows))
       .catch(() => {});

@@ -272,7 +272,7 @@ function CreateUserModal({
       });
       onCreated();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -418,7 +418,7 @@ function UserDrawer({
       onChanged(updated);
       toast({ title: t('admin.users.updateSuccess'), variant: 'success' });
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -432,7 +432,7 @@ function UserDrawer({
       onChanged(updated);
       toast({ title: t('admin.users.roleUpdateSuccess'), variant: 'success' });
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -446,7 +446,7 @@ function UserDrawer({
       onChanged(updated);
       toast({ title: t('admin.users.locationsUpdateSuccess'), variant: 'success' });
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -460,7 +460,7 @@ function UserDrawer({
       setNewPassword('');
       toast({ title: t('admin.users.passwordResetSuccess'), variant: 'success' });
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -474,7 +474,7 @@ function UserDrawer({
       toast({ title: t('admin.users.deactivateSuccess'), variant: 'success' });
       onDeactivated();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
       setBusy(null);
     }
   }

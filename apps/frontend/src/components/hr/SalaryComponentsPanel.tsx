@@ -294,7 +294,7 @@ function ComponentFormModal({
       });
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -531,7 +531,7 @@ function EmployeeComponentsCard({
       setDraftRows([{ componentId: '', amount: null }]);
       reloadAssignments(employeeId);
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }

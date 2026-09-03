@@ -159,7 +159,7 @@ function RequestLoanModal({ onClose, onCreated }: { onClose: () => void; onCreat
       toast({ title: t('me.pinjaman.requestSuccess'), variant: 'success' });
       onCreated();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }

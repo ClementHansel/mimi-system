@@ -225,7 +225,7 @@ function CorrectionModal({
       toast({ title: t('hr.attendance.correctSuccess'), variant: 'success' });
       onSaved();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setBusy(false);
     }

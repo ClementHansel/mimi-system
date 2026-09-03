@@ -60,7 +60,7 @@ export function CutiPanel() {
       toast({ title: t('me.cuti.cancelSuccess'), variant: 'success' });
       reload();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     }
   }
 
@@ -210,7 +210,7 @@ function NewLeaveModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       toast({ title: t('me.cuti.createSuccess'), variant: 'success' });
       onCreated();
     } catch {
-      setError(t('auth.genericError'));
+      setError(t('errors.generic'));
     } finally {
       setBusy(false);
     }

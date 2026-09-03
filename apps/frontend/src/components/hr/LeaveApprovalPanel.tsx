@@ -199,7 +199,7 @@ function DecisionModal({
       });
       onDone();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setBusy(false);
     }

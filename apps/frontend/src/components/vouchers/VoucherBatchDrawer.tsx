@@ -80,7 +80,7 @@ export function VoucherBatchDrawer({
     setLoadError(null);
     getVoucherBatch(id)
       .then(setBatch)
-      .catch((err: unknown) => setLoadError(errMsg(err, t('auth.genericError'))))
+      .catch((err: unknown) => setLoadError(errMsg(err, t('errors.generic'))))
       .finally(() => setLoading(false));
   }
   useEffect(load, [id]);
@@ -103,7 +103,7 @@ export function VoucherBatchDrawer({
       reloadVouchers();
       onChanged();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(null);
     }
@@ -118,7 +118,7 @@ export function VoucherBatchDrawer({
       load();
       onChanged();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(null);
     }
@@ -135,7 +135,7 @@ export function VoucherBatchDrawer({
       reloadVouchers();
       onChanged();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(null);
     }

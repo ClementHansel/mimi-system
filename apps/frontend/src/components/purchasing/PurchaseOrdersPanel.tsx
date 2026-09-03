@@ -29,6 +29,7 @@ import { ExportButton } from '@/components/common/ExportButton';
 import { LineImportButton } from '@/components/common/LineImportButton';
 import type { CsvColumn } from '@/lib/export/csv';
 import { parseDecimal, type CsvRecord } from '@/lib/import/csv-parse';
+import { fillLinePrices } from './lib/supplier-prices';
 import { buildItemIndex, resolveItem } from '@/lib/import/resolve';
 import { uploadAttachment } from './lib/attachments';
 import {
@@ -38,6 +39,7 @@ import {
   getStorageAreas,
   listPurchaseRequests,
   getPurchaseRequest,
+  getSupplierItems,
   getPurchaseOrder,
   createPurchaseOrder,
   submitPurchaseOrder,
@@ -295,6 +297,21 @@ function CreateOrderModal({
   const [items, setItems] = useState<Item[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  /**
+   * THE SUPPLIER'S OWN PRICE FOR EACH ITEM — what they actually charge.
+   *
+   * Reported from production 2026-09-03: "harga satuan dari supplier yg
+   * dipilih tidak tampil ketika buat PO". Nothing here ever consulted
+   * `supplier_items`, so the only figure that could arrive was the PR's
+   * ESTIMATE — and an outlet request converts to a PR with no estimate at
+   * all (Rp0), so in that flow the buyer retyped every price by hand while
+   * the agreed price sat in the supplier's own list.
+   *
+   * `GET /suppliers/:id/items` requires `supplier.price.read`, the same
+   * permission as `canSeePrice` below, so a role that may not see prices
+   * simply never asks.
+   */
+  const [supplierPrices, setSupplierPrices] = useState<Record<string, Money>>({});
   const [approvedPrs, setApprovedPrs] = useState<PurchaseRequestListRow[]>([]);
   const [prLoading, setPrLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -340,7 +357,7 @@ function CreateOrderModal({
       const suggested = [...new Set(pr.lines.map((l) => l.suggestedSupplierId).filter(Boolean))];
       if (suggested.length === 1) setSupplierId(suggested[0]!);
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setPrLoading(false);
     }
@@ -373,6 +390,38 @@ function CreateOrderModal({
     // render, so depending on it would refetch the PR continuously. The
     // `appliedInitialPr` guard above is what makes that safe.
   }, [initialPrId]);
+
+  // Refetched when the supplier changes, and cleared when there is none, so a
+  // price from a previously-selected supplier can never linger on the form.
+  useEffect(() => {
+    if (!supplierId || !canSeePrice) {
+      setSupplierPrices({});
+      return;
+    }
+    let current = true;
+    getSupplierItems(supplierId)
+      .then((rows) => {
+        if (!current) return;
+        setSupplierPrices(Object.fromEntries(rows.map((r) => [r.itemId, r.currentPrice])));
+      })
+      .catch(() => {
+        // A supplier with no price list is normal, and the buyer can still type
+        // every figure. Nothing to report.
+        if (current) setSupplierPrices({});
+      });
+    return () => {
+      current = false;
+    };
+  }, [supplierId, canSeePrice]);
+
+  /**
+   * Fills in prices this supplier publishes, WITHOUT touching one already
+   * typed: a figure the buyer entered is a decision, and a price list is only a
+   * starting point. Runs when the list arrives and when a line's item changes.
+   */
+  useEffect(() => {
+    setLines((ls) => fillLinePrices(ls, supplierPrices) ?? ls);
+  }, [supplierPrices, lines]);
 
   const itemOptions = items.map((i) => ({ value: i.id, label: `${i.name} (${i.baseUnit.code})` }));
 
@@ -481,7 +530,7 @@ function CreateOrderModal({
       });
       onCreated();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -673,7 +722,7 @@ function OrderDrawer({
     setLoadError(null);
     getPurchaseOrder(id)
       .then(setPo)
-      .catch((err) => setLoadError(errMsg(err, t('auth.genericError'))))
+      .catch((err) => setLoadError(errMsg(err, t('errors.generic'))))
       .finally(() => setLoading(false));
   }
   useEffect(load, [id]);
@@ -694,7 +743,7 @@ function OrderDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -753,7 +802,7 @@ function OrderDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setReceiving(false);
     }

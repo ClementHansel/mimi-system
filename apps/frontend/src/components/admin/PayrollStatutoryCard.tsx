@@ -76,7 +76,7 @@ export function PayrollStatutoryCard() {
           ? t('admin.settings.payrollStatutory.notReadyError')
           : err instanceof ApiError
             ? err.message
-            : t('auth.genericError'),
+            : t('errors.generic'),
       );
     } finally {
       setBusy(false);
@@ -95,7 +95,7 @@ export function PayrollStatutoryCard() {
       setDisableReason('');
       toast({ title: t('admin.settings.payrollStatutory.disableSuccess'), variant: 'success' });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.genericError'));
+      setError(err instanceof ApiError ? err.message : t('errors.generic'));
     } finally {
       setBusy(false);
     }

@@ -110,7 +110,7 @@ export function SettingDetailModal({
       toast({ title: t('admin.settings.updateSuccess'), variant: 'success' });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.genericError'));
+      setError(err instanceof ApiError ? err.message : t('errors.generic'));
     } finally {
       setSubmitting(false);
     }

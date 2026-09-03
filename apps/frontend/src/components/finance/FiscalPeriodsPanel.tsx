@@ -162,7 +162,7 @@ function PeriodActionModal({
       });
       onDone();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }

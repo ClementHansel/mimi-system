@@ -195,6 +195,112 @@ describe('SupplierService — FR-SUP-01..06 with D-20 role-scoped visibility', (
       }
     });
 
+    /**
+     * PRICING A SUPPLIER'S ITEM WAS BROKEN OUTRIGHT.
+     *
+     * `upsertItem`'s `ON CONFLICT ... DO UPDATE SET supplier_sku =
+     * COALESCE($3, supplier_sku)` reads an UNQUALIFIED column on the
+     * right-hand side. Inside a DO UPDATE clause both the target table and
+     * `excluded` are in scope, so Postgres refuses it as ambiguous — and it
+     * does so at PARSE time, which means the plain insert failed too, not just
+     * a genuine conflict. Every attempt to add or reprice a supplier's item
+     * returned 500.
+     *
+     * Reported from production 2026-09-03: "saat klik tambah tidak terjadi apa
+     * apa". The frontend swallowed the 500 into a toast, which is why it read
+     * as nothing happening.
+     */
+    it('adds an item to a supplier with its price (the ambiguous-column 500)', async () => {
+      let supplierId: string | undefined;
+      try {
+        const created = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService().create(
+            client,
+            { code: `TEST-${randomUUID().slice(0, 8)}`, name: 'Priced Supplier' },
+            SYSTEM_USER_ID,
+          ),
+        );
+        supplierId = created.id;
+
+        const added = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService().upsertItem(
+            client,
+            created.id,
+            fx.itemId,
+            { supplierSku: 'SUP-AIF', currentPrice: '60000.00', leadTimeDays: 0 },
+            // A REAL user row: `supplier_price_history.recorded_by` is a FK, and
+            // a price change has to name who made it.
+            fx.kepalaGudangUserId,
+          ),
+        );
+
+        expect(added.itemId).toBe(fx.itemId);
+        expect(added.currentPrice).toBe('60000.00');
+        expect(added.supplierSku).toBe('SUP-AIF');
+      } finally {
+        if (supplierId) {
+          await getOwnerPool().query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [
+            supplierId,
+          ]);
+          await getOwnerPool().query(`DELETE FROM supplier_items WHERE supplier_id = $1`, [
+            supplierId,
+          ]);
+          await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+        }
+      }
+    });
+
+    it('reprices an item already on the supplier, keeping the SKU it was given', async () => {
+      // The DO UPDATE branch — the one the broken SQL was actually written for.
+      // `supplierSku: null` must LEAVE the stored SKU alone (that is what the
+      // COALESCE is for), while the price is replaced outright.
+      let supplierId: string | undefined;
+      try {
+        const created = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService().create(
+            client,
+            { code: `TEST-${randomUUID().slice(0, 8)}`, name: 'Repriced Supplier' },
+            SYSTEM_USER_ID,
+          ),
+        );
+        supplierId = created.id;
+
+        await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService().upsertItem(
+            client,
+            created.id,
+            fx.itemId,
+            { supplierSku: 'KEEP-ME', currentPrice: '1000.00', leadTimeDays: 3 },
+            fx.kepalaGudangUserId,
+          ),
+        );
+
+        const repriced = await withRollback(RoleKey.KEPALA_GUDANG, [], (client) =>
+          new SupplierService().upsertItem(
+            client,
+            created.id,
+            fx.itemId,
+            { supplierSku: null, currentPrice: '1250.00' },
+            fx.kepalaGudangUserId,
+          ),
+        );
+
+        expect(repriced.currentPrice).toBe('1250.00');
+        expect(repriced.supplierSku, 'a null SKU wiped the one already stored').toBe('KEEP-ME');
+        expect(repriced.leadTimeDays, 'an omitted lead time reset the stored one').toBe(3);
+      } finally {
+        if (supplierId) {
+          await getOwnerPool().query(`DELETE FROM supplier_price_history WHERE supplier_id = $1`, [
+            supplierId,
+          ]);
+          await getOwnerPool().query(`DELETE FROM supplier_items WHERE supplier_id = $1`, [
+            supplierId,
+          ]);
+          await getOwnerPool().query(`DELETE FROM suppliers WHERE id = $1`, [supplierId]);
+        }
+      }
+    });
+
     it('should update a supplier — create and update on SEPARATE connections', async () => {
       let supplierId: string | undefined;
       try {

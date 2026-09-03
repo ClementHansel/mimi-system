@@ -175,6 +175,26 @@ export enum OpnameStatus {
   CANCELLED = 'cancelled',
 }
 
+/**
+ * Whether a stock count still accepts entry.
+ *
+ * ONE definition, because there were none and the screens diverged from the
+ * server. `StockOpnameService` refuses `upsertLines` and `submit` unless the
+ * document is `counting`, but both count sheets (outlet and warehouse) rendered
+ * their inputs and their Simpan/Ajukan buttons for ANY status — showing the
+ * status only as a badge. So a submitted count could be edited and re-submitted,
+ * and doing so produced an error the counter could do nothing about. Reported
+ * from production 2026-09-03: "stock opname yg sudah di ajukan, masih bisa
+ * diklik ajukan, dan tampil error message".
+ *
+ * `draft` is included because `cancel` accepts it and a count opened but never
+ * started is still the counter's to fill in; every later state is a record of a
+ * decision somebody has already acted on.
+ */
+export function isOpnameEditable(status: OpnameStatus | string): boolean {
+  return status === OpnameStatus.COUNTING || status === OpnameStatus.DRAFT;
+}
+
 export enum AdjustmentSource {
   OPNAME = 'opname',
   MANUAL = 'manual',

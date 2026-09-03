@@ -105,7 +105,7 @@ function ItemsTab({ supplier }: { supplier: Supplier }) {
       await deleteSupplierItem(supplier.id, itemId);
       reload();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     }
   }
 
@@ -179,7 +179,7 @@ function SupplierItemRow({
       toast({ title: t('purchasing.suppliers.priceUpdated'), variant: 'success' });
       onSaved();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setSaving(false);
     }
@@ -273,7 +273,7 @@ function AddItemForm({
       });
       onSaved();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setSaving(false);
     }

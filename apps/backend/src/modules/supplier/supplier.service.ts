@@ -430,12 +430,23 @@ export class SupplierService {
     return withWrite(client, async () => {
       const res = await client.query(
         `INSERT INTO supplier_items (supplier_id, item_id, supplier_sku, current_price, lead_time_days, is_preferred)
-         VALUES ($1, $2, $3, $4, $5, $6)
+         -- The column defaults live in the DDL (1 day, not preferred) and are
+         -- applied HERE so that a null $5/$6 can mean "leave what is stored"
+         -- in the update branch below.
+         VALUES ($1, $2, $3, $4, COALESCE($5, 1), COALESCE($6, false))
+         -- QUALIFIED, and it has to be. Inside a DO UPDATE clause both the
+         -- target table and EXCLUDED are in scope, so an unqualified
+         -- supplier_sku on the right-hand side is ambiguous -- and Postgres
+         -- decides that at PARSE time, so the plain insert failed too, not
+         -- only a real conflict. Adding or repricing ANY supplier item
+         -- returned 500 (column reference supplier_sku is ambiguous), which
+         -- the UI swallowed into a toast: nothing appeared to happen at all.
+         -- Reported from production 2026-09-03.
          ON CONFLICT (supplier_id, item_id) DO UPDATE SET
-           supplier_sku = COALESCE($3, supplier_sku),
+           supplier_sku = COALESCE($3, supplier_items.supplier_sku),
            current_price = $4,
-           lead_time_days = COALESCE($5, lead_time_days),
-           is_preferred = COALESCE($6, is_preferred),
+           lead_time_days = COALESCE($5, supplier_items.lead_time_days),
+           is_preferred = COALESCE($6, supplier_items.is_preferred),
            updated_at = NOW()
          RETURNING id`,
         [
@@ -443,8 +454,14 @@ export class SupplierService {
           itemId,
           dto.supplierSku ?? null,
           dto.currentPrice,
-          dto.leadTimeDays ?? 1,
-          dto.isPreferred ?? false,
+          // NULL, not a default. These used to substitute 1 and false here,
+          // which made both COALESCEs in the DO UPDATE dead code: repricing an
+          // item reset its lead time to 1 day and cleared its preferred star,
+          // because the caller had simply not resent the fields it was not
+          // changing. Lead time is what the warehouse schedules its stock
+          // against, so quietly rewriting it to 1 is worse than refusing.
+          dto.leadTimeDays ?? null,
+          dto.isPreferred ?? null,
         ],
       );
 

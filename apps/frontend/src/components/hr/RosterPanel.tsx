@@ -246,7 +246,7 @@ export function RosterPanel({ locationId: fixedLocationId }: { locationId?: stri
       toast({ title: t('hr.roster.saveSuccess'), variant: 'success' });
       reload();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setSaving(false);
     }
@@ -460,7 +460,7 @@ function ShiftTemplatesCard({
       toast({ title: t('hr.roster.shiftUpdated'), variant: 'success' });
       onChanged();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setBusyId(null);
     }
@@ -473,7 +473,7 @@ function ShiftTemplatesCard({
       toast({ title: t('hr.roster.shiftDeactivated'), variant: 'success' });
       onChanged();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setBusyId(null);
     }

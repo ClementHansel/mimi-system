@@ -69,7 +69,7 @@ export function ReconciliationDetailDrawer({
       toast({ title: t('topology.sync.reconResolveSuccess'), variant: 'success' });
       onResolved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t('auth.genericError'));
+      setError(err instanceof ApiError ? err.message : t('errors.generic'));
     } finally {
       setBusy(false);
     }

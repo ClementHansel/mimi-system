@@ -441,7 +441,7 @@ function CreateRequestModal({
       }
       onCreated();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -606,7 +606,7 @@ function RequestDrawer({
     setLoadError(null);
     getPurchaseRequest(id)
       .then(setPr)
-      .catch((err) => setLoadError(errMsg(err, t('auth.genericError'))))
+      .catch((err) => setLoadError(errMsg(err, t('errors.generic'))))
       .finally(() => setLoading(false));
   }
   useEffect(load, [id]);
@@ -631,7 +631,7 @@ function RequestDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -646,7 +646,7 @@ function RequestDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(null);
     }
@@ -662,7 +662,7 @@ function RequestDrawer({
       load();
       onChanged();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
       setBusy(null);
     }
   }

@@ -44,7 +44,7 @@ export function MyChatPanel() {
       const sent = await sendMyMessage(body);
       setMessages((prev) => [...prev, sent]);
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     }
   }
 

@@ -161,7 +161,7 @@ export function VoucherBatchModal({
       }
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }

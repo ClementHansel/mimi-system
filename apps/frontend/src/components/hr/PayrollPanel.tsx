@@ -81,7 +81,7 @@ export function PayrollPanel() {
       reloadPeriods();
       setSelectedRunId(calculated.id);
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setCreating(false);
     }
@@ -95,7 +95,7 @@ export function PayrollPanel() {
       reloadPeriods();
       setSelectedRunId(calculated.id);
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -110,7 +110,7 @@ export function PayrollPanel() {
       const refreshed = await getPayrollRun(run.id);
       setRun(refreshed);
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     } finally {
       setBusy(false);
     }

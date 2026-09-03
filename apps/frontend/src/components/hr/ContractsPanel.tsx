@@ -161,7 +161,7 @@ export function ContractsPanel() {
       setDeleting(null);
       refreshAfterWrite();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     }
   }
 
@@ -655,7 +655,7 @@ function ContractFormModal({
       });
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }
@@ -902,7 +902,7 @@ function TerminateContractModal({
       toast({ title: t('hr.contracts.terminate.success'), variant: 'success' });
       onTerminated();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }

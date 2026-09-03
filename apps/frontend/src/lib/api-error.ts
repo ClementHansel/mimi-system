@@ -5,7 +5,7 @@ import { translate } from '@/lib/i18n';
  * ONE function turns a failed request into words a user reads.
  *
  * The bug it closes (owner, 2026-08-31): a dozen screens did
- * `err instanceof Error && err.message ? err.message : t('auth.genericError')`,
+ * `err instanceof Error && err.message ? err.message : t('errors.generic')`,
  * and `ApiErrorShape.message` is a DEVELOPER fallback per CONTRACTS §0 — so
  * the Supplier form's duplicate-code toast read
  * `duplicate key value violates unique constraint "suppliers_code_key"`.

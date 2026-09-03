@@ -44,7 +44,7 @@ export function ChartOfAccountsPanel() {
     api
       .get<Account[]>(`/accounting/accounts${query ? `?${query}` : ''}`)
       .then(setAccounts)
-      .catch((err) => setError(errMsg(err, t('auth.genericError'))))
+      .catch((err) => setError(errMsg(err, t('errors.generic'))))
       .finally(() => setLoading(false));
   }
   useEffect(reload, [type, active, q]);
@@ -201,7 +201,7 @@ function AccountFormModal({
       });
       onSaved();
     } catch (err) {
-      setError(errMsg(err, t('auth.genericError')));
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }

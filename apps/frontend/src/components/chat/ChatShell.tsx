@@ -86,7 +86,7 @@ export function ChatShell() {
       setMessages((prev) => [...prev, sent]);
       await reloadList();
     } catch {
-      toast({ title: t('auth.genericError'), variant: 'danger' });
+      toast({ title: t('errors.generic'), variant: 'danger' });
     }
   }
 

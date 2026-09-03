@@ -283,8 +283,21 @@ test.describe('An approval chain past its first step', () => {
       await page.waitForLoadState('networkidle').catch(() => {});
       // Filter by VALUE — `selectOption({ label })` silently does nothing on a
       // mismatch and leaves every document type in the list.
+      //
+      // AND WAIT FOR IT TO TAKE. The filtered list REPLACES the previous one,
+      // and `networkidle` can settle while the old rows are still painted — a
+      // single read of the first row caught the unfiltered render and failed
+      // against a filter that was working (a probe confirmed the request goes
+      // out as `documentType=replenishment_request` and the row updates a
+      // moment later). Re-selecting the same value cannot help either: an
+      // unchanged value fires no change event, so a retry loop just re-reads
+      // the same stale paint. A polling assertion is the whole fix.
       await page.getByLabel('Filter Jenis Dokumen').selectOption('replenishment_request');
-      await page.waitForLoadState('networkidle').catch(() => {});
+      await expect(
+        page.locator('table tbody tr').first().locator('td').first(),
+        'the document-type filter never applied to the list',
+      ).toHaveText(/^Permintaan Barang/, { timeout: 30_000 });
+
       const row = page.locator('table tbody tr').filter({ hasText: requestNumber }).first();
       await expect(row, `${requestNumber} is not in the approvals inbox`).toBeVisible({
         timeout: 30_000,

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
+import { isOpnameEditable } from '@mimi/shared';
 import { useI18n } from '@/lib/i18n';
 import {
   Button,
@@ -179,9 +180,16 @@ export function StockOpnamePanel() {
     countedQty: drafts[l.id]?.countedQty ?? null,
     varianceReason: drafts[l.id]?.varianceReason ?? '',
   }));
-  const canSubmit = active
-    ? canSubmitOpname(lineDrafts) && lineDrafts.some((l) => l.countedQty !== null)
-    : false;
+  // ONCE SUBMITTED, THE SHEET IS A RECORD, NOT A FORM. The server refuses
+  // lines and a re-submit on anything past `counting`, but this screen showed
+  // the status as a badge only and left the inputs and both buttons live — so a
+  // submitted count could be edited and re-submitted, and doing so produced an
+  // error the counter could do nothing about. Reported 2026-09-03.
+  const editable = active ? isOpnameEditable(active.status) : false;
+  const canSubmit =
+    active && editable
+      ? canSubmitOpname(lineDrafts) && lineDrafts.some((l) => l.countedQty !== null)
+      : false;
 
   /**
    * Count-sheet lines indexed by item name — the join key an imported file uses.
@@ -441,6 +449,7 @@ export function StockOpnamePanel() {
                             </td>
                             <td className="px-3 py-2.5">
                               <QtyInput
+                                disabled={!editable}
                                 value={d.countedQty}
                                 onChange={(v) =>
                                   setDrafts((prev) => ({
@@ -490,21 +499,23 @@ export function StockOpnamePanel() {
               </CardContent>
             </Card>
 
-            {!canSubmit && (
+            {editable && !canSubmit && (
               <div className="flex items-center gap-2 text-sm font-medium text-warning-700">
                 <AlertTriangle className="size-4" aria-hidden />
                 {t('outlet.opname.reasonGateHint')}
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" loading={savingLines} onClick={saveLines}>
-                {t('common.save')}
-              </Button>
-              <Button loading={submitting} disabled={!canSubmit} onClick={submitSheet}>
-                {t('common.submit')}
-              </Button>
-            </div>
+            {editable && (
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" loading={savingLines} onClick={saveLines}>
+                  {t('common.save')}
+                </Button>
+                <Button loading={submitting} disabled={!canSubmit} onClick={submitSheet}>
+                  {t('common.submit')}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

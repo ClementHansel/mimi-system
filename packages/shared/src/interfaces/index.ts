@@ -77,6 +77,30 @@ export interface ApprovalDetail {
    */
   currentStep: number | null;
   steps: ApprovalStepDetail[];
+  /**
+   * Whether THIS caller may decide the step currently awaiting action.
+   *
+   * Answered by the server because the question is not "does this role hold an
+   * approve permission" but "is this role eligible for THIS step", and the two
+   * differ. A replenishment's approve permission is an any-of covering every
+   * step's role (outlet OR warehouse), so a Supervisor who had already cleared
+   * step 1 was still shown the decision panel for step 2 — Kepala Gudang's step
+   * — and clicking Setujui was refused by the backend. Reported from production
+   * 2026-09-03.
+   *
+   * Computed with `resolveEligibleRoles` + `isRoleAuthorized`, the same pair the
+   * pending inbox and the transition itself use, so it carries the §5 rank
+   * override (an owner or manager may act on any step at or below their level)
+   * without a second implementation of that rule — which is precisely what
+   * `isRoleAuthorized`'s own contract asks consumers of this question to do.
+   *
+   * OPTIONAL because only `GET /approvals/:type/:id` knows the caller. The
+   * document endpoints that embed an approval (a PR, a PO, a replenishment)
+   * render a read-only timeline and deliberately do not answer it. A consumer
+   * gating an action must therefore test `=== true` and fail closed, never
+   * treat absence as permission.
+   */
+  viewerCanDecide?: boolean;
 }
 
 export interface AuditRow {

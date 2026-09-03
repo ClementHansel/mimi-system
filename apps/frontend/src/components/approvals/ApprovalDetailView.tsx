@@ -200,7 +200,19 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
   const eligibilityPermission = config.approveSupported
     ? config.approvePermission
     : config.rejectPermission;
-  const canApprove = !finished && can(eligibilityPermission);
+  // THE PERMISSION IS NOT THE WHOLE ANSWER. `approvePermission` is an any-of
+  // over every step's role — replenishment's is "outlet OR warehouse" — so a
+  // Supervisor who had already cleared step 1 passed this check on step 2, was
+  // shown the decision panel for Kepala Gudang's step, and got a refusal from
+  // the server on clicking Setujui (production, 2026-09-03).
+  //
+  // `viewerCanDecide` answers the real question — is this caller eligible for
+  // the step actually waiting — and is resolved server-side with the same
+  // `resolveEligibleRoles` + `isRoleAuthorized` pair the transition itself
+  // uses, so the owner/manager rank override still applies. Tested with
+  // `=== true` so an endpoint that cannot answer it (the document resources
+  // embed a read-only timeline) fails closed rather than open.
+  const canApprove = !finished && can(eligibilityPermission) && detail?.viewerCanDecide === true;
   const documentLabel = t(config.labelKey);
   const title = context?.documentNumber ?? `${documentLabel} #${documentId.slice(0, 8)}`;
 

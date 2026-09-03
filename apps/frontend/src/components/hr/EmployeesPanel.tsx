@@ -253,7 +253,7 @@ function EmployeeFormModal({
       });
       onSaved();
     } catch {
-      setError(t('auth.genericError'));
+      setError(t('errors.generic'));
     } finally {
       setBusy(false);
     }

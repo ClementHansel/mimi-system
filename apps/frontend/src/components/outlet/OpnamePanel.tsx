@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
+import { isOpnameEditable } from '@mimi/shared';
 import { useI18n } from '@/lib/i18n';
 import {
   Button,
@@ -131,9 +132,13 @@ export function OpnamePanel() {
     countedQty: drafts[r.itemId]?.countedQty ?? null,
     varianceReason: drafts[r.itemId]?.varianceReason ?? '',
   }));
-  const canSubmit = active
-    ? canSubmitOpname(lineDrafts) && lineDrafts.some((l) => l.countedQty !== null)
-    : false;
+  // ONCE SUBMITTED, THE SHEET IS A RECORD, NOT A FORM — see the warehouse
+  // panel's note. Same defect, same rule, one definition in `@mimi/shared`.
+  const editable = active ? isOpnameEditable(active.status) : false;
+  const canSubmit =
+    active && editable
+      ? canSubmitOpname(lineDrafts) && lineDrafts.some((l) => l.countedQty !== null)
+      : false;
 
   async function saveLines() {
     if (!active) return;
@@ -311,6 +316,7 @@ export function OpnamePanel() {
                           </td>
                           <td className="px-3 py-2.5">
                             <QtyInput
+                              disabled={!editable}
                               value={d.countedQty}
                               onChange={(v) =>
                                 setDrafts((prev) => ({
@@ -362,21 +368,23 @@ export function OpnamePanel() {
               </CardContent>
             </Card>
 
-            {!canSubmit && (
+            {editable && !canSubmit && (
               <div className="flex items-center gap-2 text-sm font-medium text-warning-700">
                 <AlertTriangle className="size-4" aria-hidden />
                 {t('outlet.opname.reasonGateHint')}
               </div>
             )}
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" loading={savingLines} onClick={saveLines}>
-                {t('common.save')}
-              </Button>
-              <Button loading={submitting} disabled={!canSubmit} onClick={submitSheet}>
-                {t('common.submit')}
-              </Button>
-            </div>
+            {editable && (
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" loading={savingLines} onClick={saveLines}>
+                  {t('common.save')}
+                </Button>
+                <Button loading={submitting} disabled={!canSubmit} onClick={submitSheet}>
+                  {t('common.submit')}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

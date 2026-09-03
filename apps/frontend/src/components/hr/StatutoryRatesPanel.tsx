@@ -103,7 +103,7 @@ function BpjsEditor() {
       setEffectiveFrom('');
       reload();
     } catch {
-      setError(t('auth.genericError'));
+      setError(t('errors.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -230,7 +230,7 @@ function TerEditor() {
       setEffectiveFrom('');
       reload();
     } catch {
-      setError(t('auth.genericError'));
+      setError(t('errors.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -313,7 +313,7 @@ function PtkpEditor() {
       setEffectiveFrom('');
       reload();
     } catch {
-      setError(t('auth.genericError'));
+      setError(t('errors.generic'));
     } finally {
       setSubmitting(false);
     }
@@ -442,7 +442,7 @@ function Article17Editor() {
       setEffectiveFrom('');
       reload();
     } catch {
-      setError(t('auth.genericError'));
+      setError(t('errors.generic'));
     } finally {
       setSubmitting(false);
     }

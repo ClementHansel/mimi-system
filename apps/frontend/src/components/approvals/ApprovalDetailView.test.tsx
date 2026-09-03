@@ -108,6 +108,71 @@ describe('ApprovalDetailView', () => {
     expect(screen.getByText(/menunggu persetujuan pihak lain/)).toBeInTheDocument();
   });
 
+  /**
+   * THE REPORTED BUG: a Supervisor Cabang who had already approved step 1 of an
+   * outlet request was still shown the decision panel for step 2 — Kepala
+   * Gudang's step — and clicking Setujui returned an error.
+   *
+   * The cause was gating on the permission alone. `replenishment`'s approve
+   * permission is an any-of over EVERY step's role (outlet OR warehouse), so
+   * holding the outlet key passes it on a warehouse step. The server now
+   * answers the real question via `viewerCanDecide`, and this pins that holding
+   * the permission is no longer sufficient on its own.
+   */
+  it('withholds the panel from a caller who holds the permission but not the waiting step', async () => {
+    setPermissions(['replenishment.approve.outlet', 'replenishment.approve.warehouse']);
+    mockDetail(
+      {
+        approvalId: 'apr-4',
+        state: 'pending',
+        amount: '750000.00',
+        currentStep: 2,
+        viewerCanDecide: false,
+        steps: [
+          {
+            stepNo: 1,
+            approverRole: 'supervisor',
+            state: 'approved',
+            actedBy: 'user-1',
+            actedByName: 'Dian Ramadhan',
+            actedAt: '2026-09-03T00:06:00.000Z',
+            reason: null,
+            offlineAuthorized: false,
+            reverificationStatus: null,
+          },
+          {
+            stepNo: 2,
+            approverRole: 'kepala_gudang',
+            state: 'pending',
+            actedBy: null,
+            actedAt: null,
+            reason: null,
+            offlineAuthorized: false,
+            reverificationStatus: null,
+          },
+        ],
+      },
+      '/approvals/replenishment_request/doc-2',
+    );
+
+    render(<ApprovalDetailView documentType="replenishment_request" documentId="doc-2" />);
+
+    // The timeline always renders once the detail has loaded — a safer anchor
+    // than the waiting banner, which needs document context this mock does not
+    // stub. Waiting for it is what makes the absence assertions below mean
+    // "the panel is not there", rather than "nothing has rendered yet".
+    await screen.findByText('Riwayat Persetujuan');
+    expect(screen.getByText(/Dian Ramadhan/), 'the cleared step is not shown').toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Setujui' }),
+      'offered a decision on a step belonging to another role',
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Tolak' }),
+      'offered a rejection on a step belonging to another role',
+    ).not.toBeInTheDocument();
+  });
+
   it("renders the action panel once the caller holds the current step's permission", async () => {
     setPermissions(['purchasing.pr.approve']);
     mockDetail({
@@ -115,6 +180,10 @@ describe('ApprovalDetailView', () => {
       state: 'pending',
       amount: '750000.00',
       currentStep: 1,
+      // The server's answer to "is this caller eligible for the step that is
+      // actually waiting". Without it the gate fails closed — which is the
+      // point, and is what the new test below pins.
+      viewerCanDecide: true,
       steps: [
         {
           stepNo: 1,
@@ -186,6 +255,7 @@ describe('ApprovalDetailView', () => {
         state: 'pending',
         amount: '100000.00',
         currentStep: 1,
+        viewerCanDecide: true,
         steps: [
           {
             stepNo: 1,

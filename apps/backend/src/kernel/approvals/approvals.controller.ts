@@ -2,6 +2,7 @@ import { Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req } from '
 import type { Request } from 'express';
 import {
   ApprovalDocumentType,
+  isRoleAuthorized,
   type ApprovalDetail,
   type Paginated,
   type RoleKey,
@@ -11,6 +12,7 @@ import { Audited, RequirePermission } from '../../common/decorators';
 import type { RequestWithDbContext } from '../../common/guards/rls-context.guard';
 import { ApprovalCodeService, type IssuedCode } from './approval-code.service';
 import { ApprovalService } from './approvals.service';
+import { resolveDocumentContextsBatch, resolveEligibleRoles } from './document-context.resolver';
 import { ListPendingApprovalsQueryDto } from './dto/list-pending-approvals.query';
 import type { PendingApprovalRow } from './types';
 
@@ -65,7 +67,33 @@ export class ApprovalsController {
     @Param('documentId') documentId: string,
   ): Promise<ApprovalDetail> {
     const row = await this.approvals.getDetail(req.dbClient!, documentType, documentId);
+
+    // CAN THIS CALLER DECIDE THE STEP THAT IS ACTUALLY WAITING?
+    //
+    // Not "do they hold an approve permission" — a replenishment's is an any-of
+    // over every step's role, so a Supervisor who had already cleared step 1
+    // still saw the decision panel for the warehouse's step 2 and got a refusal
+    // on clicking Setujui (production, 2026-09-03). Resolved here with the same
+    // pair the inbox and the transition use, so the §5 rank override comes along
+    // for free and this rule keeps exactly one implementation.
+    const currentStep =
+      row.currentStep === null ? undefined : row.steps.find((s) => s.stepNo === row.currentStep);
+    let viewerCanDecide = false;
+    if (currentStep) {
+      const contexts = await resolveDocumentContextsBatch(req.dbClient!, documentType, [
+        documentId,
+      ]);
+      const eligible = resolveEligibleRoles(
+        documentType,
+        currentStep.stepNo,
+        currentStep.approverRole as RoleKey,
+        contexts.get(documentId) ?? {},
+      );
+      viewerCanDecide = isRoleAuthorized(eligible, req.user!.roleKey as RoleKey);
+    }
+
     return {
+      viewerCanDecide,
       approvalId: row.approvalId,
       state: row.state,
       amount: row.amount,

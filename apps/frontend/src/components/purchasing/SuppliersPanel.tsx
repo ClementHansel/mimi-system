@@ -71,7 +71,7 @@ export function SuppliersPanel() {
       toast({ title: t('purchasing.suppliers.deactivated'), variant: 'success' });
       reload();
     } catch (err) {
-      toast({ title: errMsg(err, t('auth.genericError')), variant: 'danger' });
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     }
   }
 

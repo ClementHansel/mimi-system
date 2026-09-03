@@ -31,6 +31,7 @@ import {
 } from './lib/hr-api';
 import { PAYROLL_PERIOD_EXPORT_COLUMNS, PAYSLIP_EXPORT_COLUMNS } from './lib/io-columns';
 import type { PayrollPeriod, PayrollRunDetail } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F08 `hr` — payroll runs (§4.15, PIN/POUT-*): calculate → review lines →
@@ -80,8 +81,8 @@ export function PayrollPanel() {
       setPeriodCode('');
       reloadPeriods();
       setSelectedRunId(calculated.id);
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setCreating(false);
     }
@@ -94,8 +95,8 @@ export function PayrollPanel() {
       toast({ title: t('hr.payroll.calculateSuccess'), variant: 'success' });
       reloadPeriods();
       setSelectedRunId(calculated.id);
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -109,8 +110,8 @@ export function PayrollPanel() {
       toast({ title: t(successKey), variant: 'success' });
       const refreshed = await getPayrollRun(run.id);
       setRun(refreshed);
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(false);
     }

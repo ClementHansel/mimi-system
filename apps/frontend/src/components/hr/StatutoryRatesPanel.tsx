@@ -25,6 +25,7 @@ import {
   TER_EXPORT_COLUMNS,
 } from './lib/io-columns';
 import type { Article17BracketRow, BpjsRow, PtkpRow, TerBracketRow } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 const BPJS_PROGRAMS = ['kesehatan', 'jht', 'jkk', 'jkm', 'jp'] as const;
 const TER_CATEGORIES = ['A', 'B', 'C'] as const;
@@ -102,8 +103,8 @@ function BpjsEditor() {
       toast({ title: t('hr.statutory.saveSuccess'), variant: 'success' });
       setEffectiveFrom('');
       reload();
-    } catch {
-      setError(t('errors.generic'));
+    } catch (err) {
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -229,8 +230,8 @@ function TerEditor() {
       toast({ title: t('hr.statutory.saveSuccess'), variant: 'success' });
       setEffectiveFrom('');
       reload();
-    } catch {
-      setError(t('errors.generic'));
+    } catch (err) {
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -312,8 +313,8 @@ function PtkpEditor() {
       toast({ title: t('hr.statutory.saveSuccess'), variant: 'success' });
       setEffectiveFrom('');
       reload();
-    } catch {
-      setError(t('errors.generic'));
+    } catch (err) {
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }
@@ -441,8 +442,8 @@ function Article17Editor() {
       toast({ title: t('hr.statutory.saveSuccess'), variant: 'success' });
       setEffectiveFrom('');
       reload();
-    } catch {
-      setError(t('errors.generic'));
+    } catch (err) {
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setSubmitting(false);
     }

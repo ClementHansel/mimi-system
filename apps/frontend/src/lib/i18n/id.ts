@@ -2740,7 +2740,7 @@ export const id = {
       position: 'Jabatan',
       joinDate: 'Tanggal Masuk',
       locationId: 'ID Lokasi',
-      locationIdHint: 'Salin ID lokasi dari layar Administrasi → Data Master → Lokasi.',
+      locationIdHint: 'Lokasi penempatan pegawai ini.',
       baseSalary: 'Gaji Pokok',
       createSuccess: 'Pegawai berhasil ditambahkan.',
       updateSuccess: 'Data pegawai berhasil diperbarui.',

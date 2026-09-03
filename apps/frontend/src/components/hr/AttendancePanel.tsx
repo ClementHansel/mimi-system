@@ -25,6 +25,7 @@ import { correctAttendance, listAttendance } from './lib/hr-api';
 import { ATTENDANCE_EXPORT_COLUMNS } from './lib/io-columns';
 import type { AttendanceRow } from './lib/types';
 import type { Paginated } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * F08 `hr` — attendance review (`hr.attendance.read`/`.correct`, FR-HR-03).
@@ -224,8 +225,8 @@ function CorrectionModal({
       await correctAttendance(row.id, { status, correctionReason: reason });
       toast({ title: t('hr.attendance.correctSuccess'), variant: 'success' });
       onSaved();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(false);
     }

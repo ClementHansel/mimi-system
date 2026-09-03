@@ -124,6 +124,15 @@ function outcomeFor(status: string): ApprovalOutcome {
   switch (status) {
     case 'draft':
       return null; // never submitted — correctly has no approval
+    // A count still being taken, or abandoned, was NEVER decided. The default
+    // branch below used to catch both and hand them an APPROVED chain, so the
+    // demo database carried 154 counting and 92 cancelled opnames each showing
+    // a fabricated approval with a plausible actor and timestamp. §5.4 gives
+    // stock_opname its `submit` rule from `counting`, which is precisely the
+    // state that has not been submitted yet.
+    case 'counting':
+    case 'cancelled':
+      return null;
     case 'submitted':
     case 'awaiting_approval':
     case 'pending':
@@ -518,6 +527,27 @@ export async function seedGaps(client: pg.Client): Promise<void> {
                      FROM return_lines l JOIN items i ON i.id = l.item_id
                     WHERE l.return_id = d.id)`,
     },
+    // ── Added 2026-09-04 ──────────────────────────────────────────────────
+    // These three were missing, and a client found out the way clients do:
+    // "gagal approve cuti" on a document whose Setujui button could never
+    // work, because there was no chain behind it. Every other decidable
+    // document got one here; waste, void/refund and the cash-variance
+    // proposal simply were not on the list, so the seed shipped landmines —
+    // 1 waste record, 3 void/refunds and 3 proposals, all `pending`, all
+    // offering a decision that 404s.
+    //
+    // `test/decidable-documents-have-chains.spec.ts` now fails on any such
+    // row, so a table added to the app without being added here is caught
+    // before it reaches a demo.
+    { table: 'waste_records', docType: 'waste', amountSql: 'd.qty * COALESCE(d.unit_cost, 0)' },
+    { table: 'void_refunds', docType: 'void_refund', amountSql: 'd.amount' },
+    {
+      table: 'cash_variance_proposals',
+      docType: 'cash_variance_proposal',
+      // The shortfall itself is what §5.9 routes on; it is signed, and a
+      // threshold compares magnitude.
+      amountSql: 'ABS(d.amount)',
+    },
   ];
 
   let approvalsMade = 0;
@@ -532,12 +562,19 @@ export async function seedGaps(client: pg.Client): Promise<void> {
     const locationExpr = hasLocation ? 'd.location_id' : 'NULL::uuid';
     const requesterExpr = await requesterColumn(client, doc.table);
 
+    // KEYED ON THE CHAIN, not on `d.approval_id`. That column is denormalised
+    // and several services never write it — `ReplenishmentService.submit`
+    // creates the approval and leaves it null — so filtering on it would build
+    // a SECOND chain for documents that already have one.
     const docRows = await rows(
       client,
       `SELECT d.id, d.status, ${locationExpr} AS location_id, ${requesterExpr} AS requested_by,
               ${doc.amountSql} AS amount
          FROM ${doc.table} d
-        WHERE d.approval_id IS NULL`,
+        WHERE NOT EXISTS (
+          SELECT 1 FROM approvals a
+           WHERE a.document_type = '${doc.docType}' AND a.document_id = d.id
+        )`,
     );
 
     for (const row of docRows) {

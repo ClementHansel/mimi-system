@@ -93,8 +93,8 @@ export function InternalChatShell() {
       const sent = await sendInternalMessage(selectedId, body);
       setMessages((prev) => [...prev, sent]);
       await reloadList();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     }
   }
 
@@ -106,8 +106,8 @@ export function InternalChatShell() {
       setSelectedId(null);
       setMessages([]);
       await reloadList();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     }
   }
 

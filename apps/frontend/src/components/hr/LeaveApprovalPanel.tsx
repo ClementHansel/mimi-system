@@ -22,6 +22,7 @@ import { LEAVE_EXPORT_COLUMNS } from './lib/io-columns';
 import type { Leave } from './lib/types';
 import { LeaveAttachmentLink } from './LeaveAttachmentLink';
 import type { Paginated } from '@/lib/shared-types';
+import { errMsg } from '@/lib/api-error';
 
 const LEAVE_TYPES = ['annual', 'marriage', 'sick', 'permission', 'unpaid'];
 
@@ -198,8 +199,8 @@ function DecisionModal({
         variant: 'success',
       });
       onDone();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusy(false);
     }

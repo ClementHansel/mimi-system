@@ -30,6 +30,7 @@ import {
 import { MasterDataIo } from '@/components/admin/MasterDataIo';
 import { rosterExportColumns, workShiftIoColumns } from './lib/io-columns';
 import type { RosterRow, WorkShift } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 function startOfWeek(d: Date): Date {
   const copy = new Date(d);
@@ -245,8 +246,8 @@ export function RosterPanel({ locationId: fixedLocationId }: { locationId?: stri
       await putRoster({ locationId, assignments });
       toast({ title: t('hr.roster.saveSuccess'), variant: 'success' });
       reload();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setSaving(false);
     }
@@ -459,8 +460,8 @@ function ShiftTemplatesCard({
       });
       toast({ title: t('hr.roster.shiftUpdated'), variant: 'success' });
       onChanged();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusyId(null);
     }
@@ -472,8 +473,8 @@ function ShiftTemplatesCard({
       await updateShift(shift.id, { isActive: false });
       toast({ title: t('hr.roster.shiftDeactivated'), variant: 'success' });
       onChanged();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setBusyId(null);
     }

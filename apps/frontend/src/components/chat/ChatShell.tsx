@@ -85,8 +85,8 @@ export function ChatShell() {
       const sent = await sendMessage(selectedId, body);
       setMessages((prev) => [...prev, sent]);
       await reloadList();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     }
   }
 

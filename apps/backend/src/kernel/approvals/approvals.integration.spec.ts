@@ -1050,6 +1050,11 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
           locationId: fx.warehouseId,
         });
 
+        // FILTERED BY TYPE, and paged generously. `getPending` sorts oldest
+        // first, so a document created by the test is always LAST — and the
+        // seeded backlog is 174 pending items across nine document types, of
+        // which 142 are opnames. Both of these tests were asserting
+        // eligibility but failing on page size the moment the fixtures grew.
         const kgdView = await svc.getPending(
           client,
           {
@@ -1057,7 +1062,7 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
             roleKey: RoleKey.KEPALA_GUDANG,
             locationIds: [fx.warehouseId],
           },
-          { page: 1, pageSize: 50 },
+          { documentType: ApprovalDocumentType.STOCK_OPNAME, page: 1, pageSize: 200 },
         );
         expect(kgdView.rows.some((r) => r.documentId === opnameId)).toBe(true);
 
@@ -1190,7 +1195,11 @@ describe('ApprovalService — live DB (mimi_app, real RLS), all 12 ApprovalDocum
             roleKey: RoleKey.KEPALA_GUDANG,
             locationIds: [fx.warehouseId, fx.outletId],
           },
-          { page: 1, pageSize: 50 },
+          // By type, and paged generously: oldest-first ordering puts a
+          // document this test just created at the END of a 174-item seeded
+          // backlog, so a 50-row page made this assertion about page size
+          // rather than about resolving the requester's name.
+          { documentType: ApprovalDocumentType.REPLENISHMENT_REQUEST, page: 1, pageSize: 200 },
         );
         const row = inbox.rows.find((r) => r.documentId === documentId);
         expect(row).toBeDefined();

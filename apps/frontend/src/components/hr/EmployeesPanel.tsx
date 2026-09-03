@@ -13,6 +13,7 @@ import {
   Modal,
   Input,
   MoneyInput,
+  Select,
   StatusBadge,
   PermissionGate,
 } from '@/components/ui';
@@ -33,6 +34,25 @@ import type { Employee } from './lib/types';
  * scoping doesn't apply here: an export needs every location's code, not
  * just the ones this user is assigned to).
  */
+/**
+ * The locations a person can be assigned to, for the form's picker.
+ *
+ * The field used to be a free-text box for a UUID, with a hint telling the user
+ * to "Salin ID lokasi dari layar Administrasi → Data Master → Lokasi". A client
+ * did the sensible thing instead and typed the code they could see — `BPP01` —
+ * and got "gagal menambahkan employee" (2026-09-04), because `locationId` is
+ * `@IsUUID()`. Asking a person to copy a UUID between screens is the defect;
+ * the validation was working.
+ */
+function loadLocationOptions(): Promise<{ id: string; code: string; name: string }[]> {
+  return api
+    .get<{ rows: { id: string; code: string; name: string }[] }>(
+      '/locations?active=true&pageSize=200',
+    )
+    .then((res) => res.rows)
+    .catch(() => []);
+}
+
 function loadLocationCodes(): Promise<Map<string, string>> {
   return api
     .get<{ rows: { id: string; code: string }[] }>('/locations?active=true&pageSize=200')
@@ -222,6 +242,11 @@ function EmployeeFormModal({
   const [baseSalary, setBaseSalary] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [locations, setLocations] = useState<{ id: string; code: string; name: string }[]>([]);
+
+  useEffect(() => {
+    loadLocationOptions().then(setLocations);
+  }, []);
 
   async function submit() {
     setBusy(true);
@@ -327,10 +352,15 @@ function EmployeeFormModal({
               onChange={(e) => setForm((f) => ({ ...f, joinDate: e.target.value }))}
               required
             />
-            <Input
+            {/* A PICKER, not a box to paste a UUID into. The id still goes on
+                the wire — `locationId` is `@IsUUID()` — but nobody has to
+                carry it between screens to get there. */}
+            <Select
               label={t('hr.employees.locationId')}
               value={form.locationId}
-              onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
+              onValueChange={(v) => setForm((f) => ({ ...f, locationId: v }))}
+              options={locations.map((l) => ({ value: l.id, label: `${l.name} (${l.code})` }))}
+              placeholder={t('common.selectPlaceholder')}
               required
               hint={t('hr.employees.locationIdHint')}
             />

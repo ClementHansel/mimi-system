@@ -136,6 +136,9 @@ const EXTRA_LIVE_DB_SPECS = [
   // Live-DB, and serialized like the rest: it opens its own owner pool and
   // holds one connection for ~1000 PREPARE/DEALLOCATE round-trips.
   'test/sql-parses.spec.ts',
+  // Reads the seeded database and asserts no document sits in a decidable
+  // state without an approval chain — the "gagal approve cuti" class.
+  'test/decidable-documents-have-chains.spec.ts',
 ];
 
 const INTEGRATION_GLOBS = [

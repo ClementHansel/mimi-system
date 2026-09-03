@@ -22,6 +22,7 @@ import type {
   SupplierItem,
   SupplierTransaction,
 } from './lib/types';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * One supplier in depth: what we buy from them and at what price (FR-SUP-03),
@@ -104,8 +105,8 @@ function ItemsTab({ supplier }: { supplier: Supplier }) {
     try {
       await deleteSupplierItem(supplier.id, itemId);
       reload();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     }
   }
 
@@ -178,8 +179,8 @@ function SupplierItemRow({
       });
       toast({ title: t('purchasing.suppliers.priceUpdated'), variant: 'success' });
       onSaved();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setSaving(false);
     }
@@ -272,8 +273,8 @@ function AddItemForm({
         leadTimeDays: Number.parseInt(leadTime, 10) || 0,
       });
       onSaved();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     } finally {
       setSaving(false);
     }

@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n';
 import { Card, EmptyState, toast } from '@/components/ui';
 import { MessageThread } from './MessageThread';
 import { getMyChat, sendMyMessage, type ChatMessage } from './lib/chat-api';
+import { errMsg } from '@/lib/api-error';
 
 /**
  * The CLIENT side of chat: one staff member's own thread with head office.
@@ -43,8 +44,8 @@ export function MyChatPanel() {
     try {
       const sent = await sendMyMessage(body);
       setMessages((prev) => [...prev, sent]);
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     }
   }
 

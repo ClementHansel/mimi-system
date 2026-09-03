@@ -22,6 +22,7 @@ import { createLeaveRequest, cancelLeaveRequest, getMyLeaves } from './lib/me-ap
 import type { Leave, LeaveQuota } from '@/components/hr/lib/types';
 import { uploadLeaveAttachment } from '@/components/hr/lib/attachments';
 import { LeaveAttachmentLink } from '@/components/hr/LeaveAttachmentLink';
+import { errMsg } from '@/lib/api-error';
 
 const currentYear = new Date().getFullYear();
 const LEAVE_TYPES = ['annual', 'marriage', 'sick', 'permission', 'unpaid'];
@@ -59,8 +60,8 @@ export function CutiPanel() {
       await cancelLeaveRequest(id);
       toast({ title: t('me.cuti.cancelSuccess'), variant: 'success' });
       reload();
-    } catch {
-      toast({ title: t('errors.generic'), variant: 'danger' });
+    } catch (err) {
+      toast({ title: errMsg(err, t('errors.generic')), variant: 'danger' });
     }
   }
 
@@ -209,8 +210,8 @@ function NewLeaveModal({ onClose, onCreated }: { onClose: () => void; onCreated:
       });
       toast({ title: t('me.cuti.createSuccess'), variant: 'success' });
       onCreated();
-    } catch {
-      setError(t('errors.generic'));
+    } catch (err) {
+      setError(errMsg(err, t('errors.generic')));
     } finally {
       setBusy(false);
     }

@@ -139,6 +139,9 @@ const EXTRA_LIVE_DB_SPECS = [
   // Reads the seeded database and asserts no document sits in a decidable
   // state without an approval chain — the "gagal approve cuti" class.
   'test/decidable-documents-have-chains.spec.ts',
+  // Pure source scan, no database — but it lives here so a single `pnpm test`
+  // reports it alongside the suites it exists to protect.
+  'test/write-endpoint-inventory.spec.ts',
 ];
 
 const INTEGRATION_GLOBS = [

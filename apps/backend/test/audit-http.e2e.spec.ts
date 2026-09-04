@@ -351,3 +351,61 @@ describe.skipIf(!hasDb)('a permission denial must not leak a pooled connection',
     ).toBe(before);
   }, 120_000);
 });
+
+/**
+ * MUTATING ENDPOINTS MUST COMMIT.
+ *
+ * `RlsCleanupInterceptor` issues an unconditional ROLLBACK, so a handler that
+ * writes on the request client and returns without committing loses the write.
+ * The BE-TXN-ROLLBACK guard turns that into a 500 rather than losing it
+ * quietly — which is the only reason this was visible at all.
+ *
+ * `POST /notifications/read-all` had it, and answered 500 for every caller.
+ * Nothing had ever called the endpoint: it was one of 35 write endpoints that
+ * no spec so much as named (see `write-endpoint-inventory.spec.ts`). Found
+ * 2026-09-04 by walking that list against a running server.
+ *
+ * This is the fourth time this project has shipped the trap, so the test is
+ * over HTTP deliberately: the interceptor only runs in the request pipeline,
+ * and a service-level test cannot see it.
+ */
+describe.skipIf(!hasDb)('notifications — writes are committed', () => {
+  it('marks every unread notification read, and stays marked', async () => {
+    // SEED AN UNREAD ROW FIRST. Without one the UPDATE touches nothing, the
+    // BE-TXN-ROLLBACK guard never fires (it only trips when a write actually
+    // happened), and the whole test passes with the fix reverted — which is
+    // exactly what it did on its first run. A guard that cannot fail is worse
+    // than no guard.
+    // `ownerPool` is created in `beforeAll` and typed as possibly undefined for
+    // the no-database case, which `describe.skipIf(!hasDb)` already excludes.
+    const pool = ownerPool!;
+    const owner = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = 'owner'`);
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, title, body, payload)
+       VALUES ($1, 'system', 'commit-trap regression', 'unread on purpose', '{}'::jsonb)`,
+      [owner.rows[0]!.id],
+    );
+
+    const first = await api('/api/notifications/read-all', {
+      method: 'POST',
+      token: accessToken,
+      body: {},
+    });
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(first.body.updated, 'nothing was unread, so this proves nothing').toBeGreaterThan(0);
+
+    // The SECOND call is what proves the first COMMITTED. An uncommitted
+    // update reports the same rowCount every time, because the rollback puts
+    // the rows back.
+    const second = await api('/api/notifications/read-all', {
+      method: 'POST',
+      token: accessToken,
+      body: {},
+    });
+    expect(second.status).toBe(201);
+    expect(
+      second.body.updated,
+      'the first call did not persist — its transaction was rolled back',
+    ).toBe(0);
+  }, 60_000);
+});

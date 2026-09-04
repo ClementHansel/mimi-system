@@ -2,6 +2,7 @@ import { Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import type { Paginated } from '@mimi/shared';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { RequestWithDbContext } from '../../common/guards/rls-context.guard';
+import { withWrite } from './db-tx';
 import { NotificationQueryDto } from './notification-query.dto';
 import { InAppNotificationRow } from './channels/in-app-channel.service';
 
@@ -62,10 +63,17 @@ export class NotificationController {
     @Param('id') id: string,
   ): Promise<{ id: string; readAt: string }> {
     const client = req.dbClient!;
-    const result = await client.query(
-      `UPDATE notifications SET read_at = NOW() WHERE id = $1 AND user_id = $2 AND read_at IS NULL
+    // COMMITTED, like every other write in this codebase. `RlsCleanupInterceptor`
+    // issues an unconditional ROLLBACK, so a handler that writes on the request
+    // client and returns without committing loses the write — the guard now
+    // turns that into a 500 rather than losing it silently, which is how this
+    // was found: "mark all as read" answered 500 for every caller.
+    const result = await withWrite(client, () =>
+      client.query(
+        `UPDATE notifications SET read_at = NOW() WHERE id = $1 AND user_id = $2 AND read_at IS NULL
        RETURNING id, read_at`,
-      [id, req.user!.sub],
+        [id, req.user!.sub],
+      ),
     );
     if (result.rows.length > 0) {
       return { id: result.rows[0].id, readAt: result.rows[0].read_at.toISOString() };
@@ -84,9 +92,11 @@ export class NotificationController {
   @RequirePermission('notification.read.own')
   async markAllRead(@Req() req: RequestWithDbContext): Promise<{ updated: number }> {
     const client = req.dbClient!;
-    const result = await client.query(
-      `UPDATE notifications SET read_at = NOW() WHERE user_id = $1 AND read_at IS NULL`,
-      [req.user!.sub],
+    const result = await withWrite(client, () =>
+      client.query(
+        `UPDATE notifications SET read_at = NOW() WHERE user_id = $1 AND read_at IS NULL`,
+        [req.user!.sub],
+      ),
     );
     return { updated: result.rowCount ?? 0 };
   }

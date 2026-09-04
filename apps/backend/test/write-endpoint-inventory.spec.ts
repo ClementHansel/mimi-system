@@ -98,8 +98,28 @@ function specCorpus(): string {
  * Write endpoints no spec mentions, as of 2026-09-04.
  *
  * This is DEBT, recorded so it cannot grow. Shrinking it is the work; every
- * line removed is an endpoint somebody proved runs. Two entries were removed on
- * the day this file was written, because walking them found a 500 in each.
+ * line removed is an endpoint somebody proved runs.
+ *
+ * ── HAND-WALKED 2026-09-04, STILL UNAUTOMATED ───────────────────────────────
+ * Fifteen of these were driven by hand against a running server while the
+ * client was testing, to find what they were about to hit. They stay on this
+ * list because a manual walk is not a test — nothing re-runs it — but they are
+ * marked so the next reader can tell "nobody has ever run this" from "ran once,
+ * on this date, and worked":
+ *
+ *   walked OK   items/categories (POST, PATCH), locations storage-areas (POST,
+ *               PATCH, DELETE), products/categories (POST), products/categories
+ *               /order (PUT), suppliers items (DELETE), users reset-password,
+ *               settings/email (PUT, and re-read on a fresh request to prove
+ *               the commit), hr/contracts/sweep-expired, approvals code (POST),
+ *               pos shifts close, pos cash-variances approve, pos void-refunds
+ *               approve
+ *
+ * The walk found two defects the client had not reached yet: the void/refund
+ * chain collided on its first decision (every seeded multi-step document did),
+ * and shift close raises a cash-variance proposal only for a SHORTFALL, never
+ * an overage — which is correct per D-19 and worth knowing before someone
+ * reports it as a bug.
  */
 const KNOWN_UNEXERCISED: ReadonlySet<string> = new Set([
   'POST /approvals/:documentType/:documentId/code',

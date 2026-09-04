@@ -153,6 +153,38 @@ describe('documents awaiting a decision have an approval chain', () => {
     ).toEqual([]);
   }, 60_000);
 
+  it('has no pending step beyond the one its chain has reached', async () => {
+    // `ApprovalService.approve` INSERTS the next pending step as it advances,
+    // and `approval_steps` is UNIQUE on (approval_id, step_no). So a chain that
+    // already carries step 2 as `pending` cannot be advanced INTO step 2: the
+    // first approval dies on 23505, which reaches the user as "Data ini sudah
+    // ada." on a document they are simply trying to approve.
+    //
+    // `seed-gaps.ts` pre-created every configured step, so this had always been
+    // true of seeded multi-step documents — replenishments, POs, opnames above
+    // the threshold, void/refunds, kasbon. Found 2026-09-04 by driving the void
+    // flow end to end: the supervisor's code minted fine and the cashier's
+    // redemption failed. The seeder and migration 266 now write only the step
+    // the document has actually reached.
+    const res = await pool.query<{ document_type: string; n: string }>(
+      `SELECT a.document_type, COUNT(*)::text AS n
+         FROM approvals a
+         JOIN approval_steps s ON s.approval_id = a.id
+        WHERE a.state = 'pending'
+          AND s.state = 'pending'
+          AND a.current_step IS NOT NULL
+          AND s.step_no > a.current_step
+        GROUP BY a.document_type`,
+    );
+
+    const offenders = res.rows.map(
+      (r) =>
+        `${r.document_type}: ${r.n} step rows sit beyond current_step — approving these ` +
+        `will fail with a duplicate key`,
+    );
+    expect(offenders, offenders.join('; ')).toEqual([]);
+  }, 60_000);
+
   it('has no chain pointing at a document that no longer exists', async () => {
     // THE MIRROR OF THE INVARIANT ABOVE, and it bites just as hard. A local
     // database had 106 chains for `employee_loan` documents that had been

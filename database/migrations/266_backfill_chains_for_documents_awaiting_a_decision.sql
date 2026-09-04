@@ -108,13 +108,20 @@ BEGIN
       RETURNING id INTO new_approval_id;
       chains_added := chains_added + 1;
 
-      -- Only the steps this document's amount actually triggers: a Rp2 juta
-      -- order must not acquire the owner step that begins at Rp10 juta.
+      -- ONLY THE FIRST STEP, because that is the only one this document has
+      -- reached. `ApprovalService.approve` INSERTS the next pending step as it
+      -- advances, and `approval_steps` is UNIQUE on (approval_id, step_no) —
+      -- so pre-creating step 2 makes the first approval fail with 23505, which
+      -- reaches the user as "Data ini sudah ada". The amount filter still
+      -- applies: a Rp2 juta order must not acquire a step that begins at
+      -- Rp10 juta, and with it gone step 1 may be a later step_no.
       INSERT INTO approval_steps (approval_id, step_no, approver_role, state)
       SELECT new_approval_id, s.step_no, s.approver_role, 'pending'
         FROM approval_chain_steps s
        WHERE s.document_type = spec.doc_type
-         AND (s.min_amount IS NULL OR (doc.amount IS NOT NULL AND doc.amount >= s.min_amount));
+         AND (s.min_amount IS NULL OR (doc.amount IS NOT NULL AND doc.amount >= s.min_amount))
+       ORDER BY s.step_no
+       LIMIT 1;
       GET DIAGNOSTICS step_rows = ROW_COUNT;
       steps_added := steps_added + step_rows;
     END LOOP;

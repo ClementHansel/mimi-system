@@ -617,20 +617,28 @@ export async function seedGaps(client: pg.Client): Promise<void> {
       if (!approval) continue;
       approvalsMade++;
 
-      for (const step of steps) {
+      // ONLY THE STEPS THAT WERE ACTUALLY REACHED.
+      //
+      // `ApprovalService.approve` INSERTS the next pending step as it advances
+      // (`insertStep`, approvals.service.ts), and `approval_steps` has a UNIQUE
+      // key on (approval_id, step_no). Pre-creating later steps as `pending`
+      // therefore made the FIRST approval of any seeded multi-step document
+      // fail with 23505 — replenishments, POs, opnames above the threshold,
+      // void/refunds, kasbon. The client saw "Data ini sudah ada."
+      //
+      // A pending chain has reached step 1 and no further; a rejected one
+      // stopped at the step that rejected it. Only a fully approved chain has
+      // legitimately touched every step.
+      const reached = outcome === 'approved' ? steps : steps.slice(0, 1);
+
+      for (const step of reached) {
         const stepNo = Number(step.step_no);
         const role = step.approver_role as string;
         const actor = userByRole.get(role) ?? owner;
         // A pending chain has step 1 waiting and later steps untouched; a
         // rejected chain stops AT the step that rejected it.
         const stepState =
-          outcome === 'pending'
-            ? 'pending'
-            : outcome === 'rejected'
-              ? stepNo === 1
-                ? 'rejected'
-                : 'pending'
-              : 'approved';
+          outcome === 'pending' ? 'pending' : outcome === 'rejected' ? 'rejected' : 'approved';
         const acted = stepState === 'pending' ? null : daysAgo(2);
         await client.query(
           `INSERT INTO approval_steps (approval_id, step_no, approver_role, state, acted_by, acted_at, reason)

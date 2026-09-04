@@ -11,6 +11,7 @@ import type {
   UUID,
 } from '@mimi/shared';
 import type { CashVarianceProposal, OnlineOrder, Sale, Shift } from '@mimi/shared';
+import { formatDateOnly } from '../../../common/date-only.util';
 
 /** Row-to-DTO mappers — one place that knows the `snake_case` DB shape vs the `camelCase` wire shape (CONTRACTS.md §0). */
 
@@ -131,8 +132,17 @@ export interface OnlineOrderRow {
 }
 
 export function mapOnlineOrder(r: OnlineOrderRow): OnlineOrder {
-  const orderDate =
-    typeof r.order_date === 'string' ? r.order_date : r.order_date.toISOString().slice(0, 10);
+  // `formatDateOnly`, NOT `.toISOString().slice(0, 10)`. node-pg parses a
+  // Postgres DATE with the LOCAL-timezone constructor, so re-reading it as UTC
+  // shifts the calendar day by the server's offset — under Asia/Makassar
+  // (UTC+8, D-11's mandated timezone) every online order displayed ONE DAY
+  // EARLY. Found 2026-09-04 by recording a GoFood order dated the 4th and
+  // reading back the 3rd, while the row in the database said the 4th.
+  //
+  // That is revenue attributed to the wrong day on a platform the outlets
+  // reconcile against GoFood's own statements. `common/date-only.util.ts`
+  // exists for exactly this and names five modules that hit it before this one.
+  const orderDate = formatDateOnly(r.order_date);
   return {
     id: r.id,
     locationId: r.location_id,

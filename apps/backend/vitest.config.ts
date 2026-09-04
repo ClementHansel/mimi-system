@@ -142,6 +142,9 @@ const EXTRA_LIVE_DB_SPECS = [
   // Pure source scan, no database — but it lives here so a single `pnpm test`
   // reports it alongside the suites it exists to protect.
   'test/write-endpoint-inventory.spec.ts',
+  // Source scan for the DATE-through-UTC shift; no database needed, but it
+  // belongs with the suites that protect the same class of defect.
+  'test/date-only-through-utc.spec.ts',
 ];
 
 const INTEGRATION_GLOBS = [

@@ -266,7 +266,13 @@ export class JournalService {
       credit: l.debit,
       memo: l.memo,
     }));
-    const entryDate = new Date().toISOString().slice(0, 10);
+    // TODAY IN THE BUSINESS'S TIMEZONE, not in UTC. `.toISOString()` on a fresh
+    // Date yields the UTC calendar day, which under Asia/Makassar (UTC+8) is
+    // YESTERDAY until 08:00 local — so a reversal posted at 07:00 would carry
+    // the previous day's date, and could land in a fiscal period that has
+    // already been closed. `formatDateOnly` reads the local calendar day, which
+    // is what "today" means to whoever pressed the button.
+    const entryDate = formatDateOnly(new Date());
 
     return withWrite(client, async () => {
       // First actual write is `findOrCreateForDate` below (may auto-open the reversal's calendar

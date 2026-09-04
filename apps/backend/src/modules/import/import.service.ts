@@ -31,6 +31,7 @@ import {
   type ImportEntityName,
   type ValidatedRow,
 } from './import-schema';
+import { formatDateOnly } from '../../common/date-only.util';
 
 export type RowOutcome = 'would-create' | 'would-update' | 'error';
 
@@ -687,7 +688,10 @@ export class ImportService {
                     baseSalary,
                     // No effective-date column on the sheet — recorded as effective TODAY,
                     // the same "date of the action" convention `PUT .../roster` already uses.
-                    startDate: new Date().toISOString().slice(0, 10),
+                    // Local calendar day, not the UTC one — see
+                    // `common/date-only.util.ts`. Under WITA a contract
+                    // imported before 08:00 would start "yesterday".
+                    startDate: formatDateOnly(new Date()),
                   },
                 }
               : {}),

@@ -93,6 +93,28 @@ export const supervisorOutletManual: DocManual = {
           text: 'Setiap baris yang selisih wajib diisi alasannya sebelum diajukan — tombol Ajukan tidak aktif sampai semua terisi.',
         },
         {
+          type: 'callout',
+          kind: 'rule',
+          text: 'Setelah diajukan, lembar hitung menjadi **catatan, bukan formulir** — kolom isian dan tombol Simpan/Ajukan tidak lagi muncul. Untuk memperbaiki hitungan yang sudah diajukan, minta penyetuju menolaknya lalu buat opname baru.',
+        },
+        {
+          type: 'p',
+          text: 'Setelah **Ajukan**, sistem memeriksa tiga hal: tidak ada sengketa hitung-ganda yang terbuka, setiap baris yang selisih sudah ada alasannya, dan minimal satu baris terhitung.',
+        },
+        {
+          type: 'steps',
+          items: [
+            '**Langkah 1 — Supervisor Cabang** (untuk opname gudang: Kepala Gudang). Selalu ada.',
+            '**Langkah 2 — Manajer**, hanya jika total nilai selisih **Rp2.000.000 atau lebih**. Ambang ini diatur di Administrasi → Pengaturan (`approval.threshold.opname`).',
+            'Setelah disetujui penuh, sistem memposting koreksi stok ke buku besar dan status menjadi **Sudah Disesuaikan**.',
+          ],
+        },
+        {
+          type: 'callout',
+          kind: 'rule',
+          text: 'Stok TIDAK berubah sampai persetujuan selesai. Itulah gunanya ambang batas: selisih kecil cukup disetujui Supervisor, selisih besar wajib dilihat Manajer.',
+        },
+        {
           type: 'p',
           text: 'Status opname: Draft, Sedang Menghitung, Diajukan, Disetujui, Ditolak, Sudah Disesuaikan, Dibatalkan.',
         },

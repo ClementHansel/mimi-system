@@ -2011,6 +2011,46 @@ _Six false-green failures have been caught by this, including two blind spots in
 
 ---
 
+## 6b. Defect classes found in production, and what now catches them
+
+Written 2026-09-04, after a fortnight in which a client found roughly twenty
+defects by using the system normally. They were not twenty independent bugs.
+They fall into seven classes, and a class fixed once kept coming back in a new
+place — three separate "an id where a name belongs", two "SQL that never
+parsed", three "wrong error copy". That repetition is the thing worth
+engineering against, because it is what makes a demo embarrassing.
+
+The pattern behind almost all of them: **every test began from a fresh document
+as an all-access user.** The client does not. They approve as one role and look
+as another, they open a document that is already submitted, and their manager
+account is scoped to branches.
+
+| Class                                        | How it reached a user                                                                                                                                         | What catches it now                                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| SQL that never parses                        | Supplier search built `$0`; the supplier-item upsert read an unqualified column inside `ON CONFLICT`. Both 500'd on every call, so the whole feature was dead | `test/sql-parses.spec.ts` — `PREPARE`s all ~980 static statements against the live schema, ~4 seconds, no fixtures |
+| Wrong or technical user-facing text          | Raw SQL in a toast; a raw i18n key; "Gagal masuk" as the app-wide fallback; `ApiError.message` rendered at 49 sites                                           | Four source-scanning guards, incl. `no-developer-message` and `generic-error-copy`                                 |
+| A screen offers an action the server refuses | Submitted opname still editable; Setujui shown on another role's step                                                                                         | `actionsFrom()` derives affordances from the §5 table; `document-actions.test.ts` checks each UI gate against it   |
+| An id where a name belongs                   | Gudang queue, Finance payee, approval timeline                                                                                                                | `actedByName` on the wire; guards assert the id is ABSENT, not just that a name is present                         |
+| A role/scope combination never exercised     | Supervisor could not raise a PR; a branch-scoped manager saw NO purchase request at all                                                                       | Migration 265 + integration tests for the central-warehouse case                                                   |
+| A document that cannot be actioned           | Seeded leaves, wastes, void/refunds and cash-variance proposals with no approval chain; seeded multi-step chains that collide on the first decision           | `test/decidable-documents-have-chains.spec.ts` — three invariants, derived from `actionsFrom()`                    |
+| An endpoint nobody ever called               | `PUT /suppliers/:id/items/:itemId` (500); `POST /notifications/read-all` (500, the commit trap's fourth appearance)                                           | `test/write-endpoint-inventory.spec.ts` — 35 of 241 write endpoints are named by no spec; the set may not grow     |
+
+**What none of this catches: a feature that was never wired.** Nothing asserts
+the absence of a price field the PO form never read. That class only surfaces
+when somebody walks the real sequence — buy, receive, ship, count, pay — as
+each role. Doing that before a handover is the only version that is not
+embarrassing; doing it after is what the last fortnight was.
+
+**A guard that cannot fail is worse than none.** The commit-trap regression test
+passed on its first run with the fix reverted, because nothing was unread and
+the UPDATE touched no rows. Two of these guards were verified red before being
+kept, and the orphan-chain check is a hard failure only on CI, where the
+database is freshly seeded — on a dev box it prints a warning, because
+yesterday's test debris is indistinguishable from a seeded defect and a check
+that flickers teaches people to ignore red.
+
+---
+
 ## 7. Risks needing a human decision
 
 | ID          | Risk                                                                                                                                                                                                     | Needs                   |

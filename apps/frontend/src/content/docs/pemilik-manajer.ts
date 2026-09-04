@@ -84,6 +84,15 @@ export const pemilikManajerManual: DocManual = {
           text: 'Buka **Persetujuan Menunggu** (`/approvals`) — daftar ini sudah disaring server sehingga Anda hanya melihat dokumen yang memang wewenang Anda: Permintaan Barang, Permintaan Pembelian, Pesanan Pembelian, Stock Opname, Retur, Proses Payroll, Pengajuan Cuti, Pinjaman Karyawan, Selisih Kas, dan Waste.',
         },
         {
+          type: 'callout',
+          kind: 'rule',
+          text: 'Tombol **Setujui/Tolak** hanya muncul bila langkah yang sedang menunggu memang milik Anda. Bila dokumen sudah Anda setujui dan kini menunggu peran lain, panel keputusan tidak ditampilkan lagi — riwayatnya tetap terlihat.',
+        },
+        {
+          type: 'p',
+          text: 'Manajer yang dibatasi ke cabang tertentu tetap melihat **Permintaan Pembelian** dan **Pesanan Pembelian**, walaupun dokumen itu bermuara di Gudang Pusat. Gudang bukan milik satu cabang, jadi pembatasan cabang tidak menyembunyikannya.',
+        },
+        {
           type: 'p',
           text: 'Menolak selalu wajib mengisi **Alasan Penolakan** sebelum **Konfirmasi Tolak** aktif. Menyetujui butuh Catatan opsional — kecuali untuk **Selisih Kas**, di mana catatan wajib diisi bahkan untuk menyetujui.',
         },

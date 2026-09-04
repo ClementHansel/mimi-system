@@ -55,6 +55,15 @@ export const kepalaGudangManual: DocManual = {
         },
         {
           type: 'p',
+          text: 'Saat membuat PO, memilih **Supplier** akan mengisi **Harga Satuan** tiap baris dari daftar harga supplier tersebut. Harga yang sudah Anda ketik sendiri tidak akan ditimpa — daftar harga hanya mengisi yang masih kosong.',
+        },
+        {
+          type: 'callout',
+          kind: 'rule',
+          text: 'Lembar hitung stock opname menjadi **hanya-baca** begitu diajukan: kolom isian dan tombol Simpan/Ajukan hilang. Untuk memperbaiki hitungan yang sudah diajukan, minta penyetuju menolaknya lalu buat opname baru.',
+        },
+        {
+          type: 'p',
           text: 'Untuk setiap baris: **Dipesan** dan **Sudah Diterima** hanya untuk ditinjau (tidak bisa diubah); isi **Diterima Sekarang**, pilih **Area Penyimpanan**, dan tambahkan **Catatan Kondisi** bila barang tidak dalam kondisi sempurna.',
         },
         {

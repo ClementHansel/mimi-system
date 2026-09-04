@@ -111,6 +111,15 @@ export const kasirManual: DocManual = {
         },
         {
           type: 'callout',
+          kind: 'rule',
+          text: 'Ada DUA tombol struk dan keduanya berbeda. **Selesaikan & Cetak Struk** di jendela pembayaran mencetak sambil MENYELESAIKAN transaksi. **Cetak Ulang Struk** di keranjang mencetak ULANG struk transaksi terakhir — untuk pelanggan yang minta salinan, atau saat kertas printer habis. Bukan fitur ganda.',
+        },
+        {
+          type: 'p',
+          text: 'Keranjang, total, dan tombol **Lanjut ke Pembayaran** tetap terlihat saat Anda menggulir daftar menu — hanya daftar menunya yang bergulir.',
+        },
+        {
+          type: 'callout',
           kind: 'warning',
           text: 'Saat koneksi tidak sepenuhnya online, muncul peringatan "Transaksi belum terlihat di tablet lain — akan muncul setelah tersambung kembali." Transaksi offline tetap sah, tapi jangan kaget bila tidak langsung muncul di tablet lain sebelum sinkron.',
         },
@@ -123,6 +132,10 @@ export const kasirManual: DocManual = {
         {
           type: 'p',
           text: 'Tombol **Void Transaksi Terakhir** hanya aktif untuk transaksi yang baru saja diselesaikan di sesi layar ini — bila halaman di-refresh setelah transaksi selesai, tombol ini kembali nonaktif dan void harus ditangani lewat jalur lain (mis. Finance/Approval).',
+        },
+        {
+          type: 'p',
+          text: 'Sebelum ada transaksi di perangkat ini, **Void Transaksi Terakhir** dan **Cetak Ulang Struk** keduanya abu-abu, dengan keterangan **"Aktif setelah ada transaksi di perangkat ini."** di bawahnya. Itu normal, bukan tanda rusak.',
         },
         {
           type: 'callout',

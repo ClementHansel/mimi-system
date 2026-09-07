@@ -89,9 +89,29 @@ export function getDailyRecap(date: string) {
   return api.get<DailyRecap>(`/delivery/recap/daily?date=${date}`);
 }
 
-/** The warehouse work queue (§4.9) filtered to `approved` — the SJ-create picker's request source, same endpoint `warehouse`'s own builder reads. */
-export function listApprovedRequests() {
-  return api.get<Paginated<Replenishment>>(`/replenishment/queue/warehouse?status=approved`);
+/**
+ * The requests a Surat Jalan may be built from: `approved` AND `processing`.
+ *
+ * BOTH, deliberately. `ReplenishmentRepository.listWarehouseQueue` says it in
+ * its own header — "`approved`+`processing` feed SJ building (M10)" — and this
+ * asked for `approved` alone, so the moment a Kepala Gudang pressed "Mulai
+ * Pemrosesan" in their own approval queue (the obvious next thing to do, and
+ * the only button that row offers) the request vanished from this picker and
+ * could never be put on a truck. `approved → processing → shipped` is the
+ * documented order; picking the stock is not supposed to make it unshippable.
+ *
+ * Two calls rather than one, because `WarehouseQueueQueryDto.status` takes a
+ * single value — a repeated query parameter would be a contract change, and
+ * this needs none. Merged by id in case the statuses ever overlap.
+ */
+export async function listApprovedRequests(): Promise<Paginated<Replenishment>> {
+  const [approved, processing] = await Promise.all([
+    api.get<Paginated<Replenishment>>(`/replenishment/queue/warehouse?status=approved`),
+    api.get<Paginated<Replenishment>>(`/replenishment/queue/warehouse?status=processing`),
+  ]);
+  const byId = new Map([...approved.rows, ...processing.rows].map((r) => [r.id, r]));
+  const rows = [...byId.values()];
+  return { rows, total: rows.length, page: 1, pageSize: rows.length };
 }
 
 // ── Route planning (gudang) + live tracking, migration 221 ──────────────────

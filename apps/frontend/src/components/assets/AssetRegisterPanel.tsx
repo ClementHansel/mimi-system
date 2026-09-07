@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Save } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { useSessionStore } from '@/stores/session-store';
+import { api } from '@/lib/api';
 import {
   Button,
   Modal,
@@ -60,7 +61,33 @@ const STATUSES = ['active', 'in_maintenance', 'retired', 'lost'] as const;
 export function AssetRegisterPanel() {
   const { t } = useI18n();
   const { can } = usePermissions();
-  const locations = useSessionStore((s) => s.user?.locations ?? []);
+  // THE SESSION'S OWN BINDINGS ARE NOT THE ANSWER HERE. `user.locations` holds
+  // the locations a user is explicitly bound to, and an ALL-LOCATIONS account
+  // (owner, superadmin) is bound to none — `user_locations` is empty for them
+  // by design. Reading only the session therefore left the required "Lokasi"
+  // picker with nothing in it for exactly the two roles that hold
+  // `asset.manage`, so neither could register an asset at all.
+  //
+  // `/locations` is the same source `EmployeesPanel` uses for its own location
+  // picker, and it is RLS-scoped — a bound user still sees only theirs — so
+  // this widens nothing while fixing the unbound case.
+  const sessionLocations = useSessionStore((s) => s.user?.locations ?? []);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>(sessionLocations);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ rows: { id: string; name: string }[] }>('/locations?active=true&pageSize=200')
+      .then((res) => {
+        if (!cancelled && res.rows.length > 0) setLocations(res.rows);
+      })
+      // A failed fetch leaves whatever the session knew, which for a bound
+      // user is still correct — never worse than before.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [rows, setRows] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');

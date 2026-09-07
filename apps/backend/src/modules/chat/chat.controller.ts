@@ -25,6 +25,7 @@ import { Inject } from '@nestjs/common';
 import type { Pool } from 'pg';
 import { ChatService, type ChatConversation, type ChatMessage } from './chat.service';
 import { requireDbClient } from './request-db-client';
+import { withWrite } from './db-tx';
 import {
   InboundWebhookDto,
   OpenConversationDto,
@@ -66,11 +67,14 @@ export class ChatController {
   @RequirePermission('chat.send')
   @Audited({ entityType: 'chat_conversations', action: 'chat.send' })
   open(@Req() req: Request, @Body() dto: OpenConversationDto): Promise<ChatConversation> {
-    return this.service.openConversation(requireDbClient(req), {
-      phone: dto.phone,
-      name: dto.name ?? null,
-      supplierId: (dto.supplierId as UUID | undefined) ?? null,
-    });
+    const client = requireDbClient(req);
+    return withWrite(client, () =>
+      this.service.openConversation(client, {
+        phone: dto.phone,
+        name: dto.name ?? null,
+        supplierId: (dto.supplierId as UUID | undefined) ?? null,
+      }),
+    );
   }
 
   @Post(':id/messages')
@@ -82,13 +86,17 @@ export class ChatController {
     @Param('id') id: UUID,
     @Body() dto: SendMessageDto,
   ): Promise<ChatMessage> {
-    return this.service.sendMessage(requireDbClient(req), id, user.sub as UUID, dto.body);
+    const client = requireDbClient(req);
+    return withWrite(client, () =>
+      this.service.sendMessage(client, id, user.sub as UUID, dto.body),
+    );
   }
 
   @Post(':id/read')
   @RequirePermission('chat.read')
   markRead(@Req() req: Request, @Param('id') id: UUID): Promise<{ read: number }> {
-    return this.service.markRead(requireDbClient(req), id);
+    const client = requireDbClient(req);
+    return withWrite(client, () => this.service.markRead(client, id));
   }
 
   @Post(':id/status')
@@ -99,7 +107,8 @@ export class ChatController {
     @Param('id') id: UUID,
     @Body() dto: SetStatusDto,
   ): Promise<ChatConversation> {
-    return this.service.setStatus(requireDbClient(req), id, dto.status);
+    const client = requireDbClient(req);
+    return withWrite(client, () => this.service.setStatus(client, id, dto.status));
   }
 }
 
@@ -122,7 +131,12 @@ export class MyChatController {
     @Req() req: Request,
     @CurrentUser() user: JwtAccessPayload,
   ): Promise<{ conversation: ChatConversation; messages: ChatMessage[] }> {
-    return this.service.getOwnConversation(requireDbClient(req), user.sub as UUID);
+    // COMMITTED even though this is a GET: `getOwnConversation` CREATES the
+    // thread on first use, so without this the very first person to open Mail
+    // has their thread rolled back — and the `BE-TXN-ROLLBACK` tripwire turns
+    // the read into a 500.
+    const client = requireDbClient(req);
+    return withWrite(client, () => this.service.getOwnConversation(client, user.sub as UUID));
   }
 
   @Post('messages')
@@ -134,11 +148,18 @@ export class MyChatController {
     @Body() dto: SendMessageDto,
   ): Promise<ChatMessage> {
     const client = requireDbClient(req);
-    // Resolved from the SESSION, never from a body parameter: accepting a
-    // conversation id here would let any authenticated user post into someone
-    // else's thread, which is the same class of hole as B-15's PIN oracle.
-    const { conversation } = await this.service.getOwnConversation(client, user.sub as UUID);
-    return this.service.sendMessage(client, conversation.id, user.sub as UUID, dto.body);
+    // ONE transaction for the whole handler, not one per service call. Both
+    // steps write (the thread is created on first use), and committing the
+    // first separately would end the request's transaction — taking
+    // `SET LOCAL ROLE app_user` with it (D-21/D-22), so the second write then
+    // runs as the grant-less pool role and fails with SQLSTATE 42501.
+    return withWrite(client, async () => {
+      // Resolved from the SESSION, never from a body parameter: accepting a
+      // conversation id here would let any authenticated user post into someone
+      // else's thread, which is the same class of hole as B-15's PIN oracle.
+      const { conversation } = await this.service.getOwnConversation(client, user.sub as UUID);
+      return this.service.sendMessage(client, conversation.id, user.sub as UUID, dto.body);
+    });
   }
 }
 

@@ -232,6 +232,25 @@ export function listReturns(locationId: string, direction?: string) {
   return api.get<Paginated<ReturnDoc>>(`/returns?${qs.toString()}`);
 }
 
+/**
+ * The warehouse an outlet returns stock TO.
+ *
+ * `ReturnService` rejects an `outlet_to_warehouse` return that carries no
+ * `toLocationId` ("toLocationId is required for outlet_to_warehouse returns"),
+ * and the outlet's Retur form never collected one — so every retur raised from
+ * an outlet 400'd. The destination is not a choice the outlet makes: the model
+ * has exactly one `warehouse` location, and "Retur ke Gudang" means that one.
+ * Resolved rather than asked for, and reported as missing if it ever is.
+ */
+export function getReturnDestination(): Promise<{ id: string; name: string } | null> {
+  return api
+    .get<Paginated<{ id: string; name: string; type: string }>>(
+      '/locations?type=warehouse&active=true&pageSize=50',
+    )
+    .then((res) => res.rows[0] ?? null)
+    .catch(() => null);
+}
+
 export function createReturn(body: {
   direction: string;
   fromLocationId: string;

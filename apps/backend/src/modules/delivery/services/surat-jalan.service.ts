@@ -62,6 +62,31 @@ const SJ_TRANSITIONS: Record<string, string[]> = {
   cancel: ['draft', 'ready', 'loading'],
 };
 
+/**
+ * One SJ line, with its unit DERIVED FROM THE ITEM rather than taken from the request.
+ *
+ * `CreateSjLineDto.unitId` is a field no honest client can fill: the line comes
+ * from a replenishment request, and `ReplenishmentLine` carries `unitCode`
+ * ("kg") and no unit id at all. `SjCreateForm` therefore sent `unitId:
+ * l.itemId` — an ITEM id in a column with a foreign key to `units` — so every
+ * create failed on `sj_lines_unit_id_fkey` (23503, surfaced as a 409
+ * ERR_REFERENCED reading "Data ini masih terpakai di dokumen lain"). No Surat
+ * Jalan could be created through the UI at all.
+ *
+ * An SJ line ships an item in that item's own base unit — there is no per-line
+ * unit choice anywhere in the product — so the unit is not the caller's to
+ * supply. Deriving it here makes the bug unrepeatable by ANY client, rather
+ * than fixing one form and leaving the field as a trap. `unitId` stays on the
+ * DTO (still validated) so existing callers keep working; it is simply no
+ * longer trusted.
+ */
+const SJ_LINE_INSERT = `
+  INSERT INTO sj_lines (sj_id, drop_id, item_id, unit_id, qty, request_line_id)
+  SELECT $1, $2, $3, i.base_unit_id, $4, $5
+    FROM items i
+   WHERE i.id = $3
+`;
+
 /** Hard ceiling on `my-jobs`. A driver never legitimately has this many open jobs; the cap exists so a data problem cannot turn one phone request into an unbounded fan-out. */
 const MY_JOBS_MAX_ROWS = 200;
 
@@ -83,9 +108,16 @@ export class SuratJalanService {
     const pageSize = query.pageSize ?? 50;
     const where: string[] = [];
     const params: unknown[] = [];
+    // `replaceAll`, not `replace`. A clause may name the SAME bound value more
+    // than once — `locationId` below matches either the origin or a drop — and
+    // `String.replace` with a STRING pattern substitutes only the first
+    // occurrence. The survivor reached Postgres as a literal `$$`, which is a
+    // dollar-quote opener, so every filtered list died on `unterminated
+    // dollar-quoted string` (500 on `GET /api/delivery/surat-jalan`, which is
+    // the outlet's Terima Barang screen — its only query is by location).
     const push = (sql: string, value: unknown) => {
       params.push(value);
-      where.push(sql.replace('$$', `$${params.length}`));
+      where.push(sql.replaceAll('$$', `$${params.length}`));
     };
     if (query.status) push('sj.status = $$', query.status);
     if (query.date) push('sj.planned_date = $$::date', query.date);
@@ -294,10 +326,13 @@ export class SuratJalanService {
           [dropId, sjId, dropSeq, drop.locationId, drop.replenishmentRequestId ?? null],
         );
         for (const line of drop.lines) {
-          await client.query(
-            `INSERT INTO sj_lines (sj_id, drop_id, item_id, unit_id, qty, request_line_id) VALUES ($1, $2, $3, $4, $5, $6)`,
-            [sjId, dropId, line.itemId, line.unitId, line.qty, line.requestLineId ?? null],
-          );
+          await client.query(SJ_LINE_INSERT, [
+            sjId,
+            dropId,
+            line.itemId,
+            line.qty,
+            line.requestLineId ?? null,
+          ]);
         }
         if (drop.replenishmentRequestId) {
           await this.replenishment.linkSuratJalan(client, drop.replenishmentRequestId, sjId);
@@ -433,10 +468,13 @@ export class SuratJalanService {
             [dropId, id, dropSeq, drop.locationId, drop.replenishmentRequestId ?? null],
           );
           for (const line of drop.lines) {
-            await client.query(
-              `INSERT INTO sj_lines (sj_id, drop_id, item_id, unit_id, qty, request_line_id) VALUES ($1, $2, $3, $4, $5, $6)`,
-              [id, dropId, line.itemId, line.unitId, line.qty, line.requestLineId ?? null],
-            );
+            await client.query(SJ_LINE_INSERT, [
+              id,
+              dropId,
+              line.itemId,
+              line.qty,
+              line.requestLineId ?? null,
+            ]);
           }
           if (drop.replenishmentRequestId) {
             await this.replenishment.linkSuratJalan(client, drop.replenishmentRequestId, id);

@@ -34,10 +34,19 @@ import { useWarehouseLocation } from './lib/use-warehouse-location';
 import { getStorageAreas, getItems, listWaste, createWaste } from './lib/warehouse-api';
 import { uploadAttachment } from './lib/attachments';
 import type { WasteRecord, StorageArea, Item } from './lib/types';
+import { WasteReason } from '@/lib/shared-types';
 import type { Qty } from '@/lib/shared-types';
 import { errMsg } from '@/lib/api-error';
 
-const WASTE_REASONS = ['expired', 'damaged', 'spoiled', 'prep_error', 'other'] as const;
+/**
+ * THE SHARED ENUM, not a local list. This was five hand-written strings that
+ * had drifted from `WasteReason` in both directions: `spoiled` and
+ * `prep_error` are not in it (so the API rejected them — two of the five
+ * options on this form could never be saved), while `lost`, `contaminated`,
+ * `cold_chain_breach` and `production_error` are, and had no label here, so a
+ * record carrying one rendered its raw i18n key on screen.
+ */
+const WASTE_REASONS = Object.values(WasteReason);
 
 /**
  * The CSV shape, shared by the export and the line import ON PURPOSE (same

@@ -213,7 +213,13 @@ export class SyncEngine {
   async start(): Promise<void> {
     const state = await this.selector.tick();
     this.reportUpstreamState(state); // unconditional — see reportUpstreamState's doc comment
-    this.probeTimer = setInterval(() => void this.selector.tick(), UPSTREAM_PROBE_INTERVAL_MS);
+    this.probeTimer = setInterval(() => {
+      void this.selector.tick();
+      // The backlog is republished on the SAME cadence as the upstream probe,
+      // independently of whether a sync cycle can run — see
+      // `publishQueueDepth` for why that independence matters.
+      void this.publishQueueDepth();
+    }, UPSTREAM_PROBE_INTERVAL_MS);
     this.heartbeatTimer = setInterval(() => void this.sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
     await this.syncNow();
   }
@@ -228,6 +234,13 @@ export class SyncEngine {
   /** Runs one push+pull cycle right now against the current upstream, if any. Safe to call concurrently — reentrant calls no-op while one is already running (§4.3's "one outstanding batch" applied at the cycle level too). */
   async syncNow(): Promise<SyncCycleResult | null> {
     const state = this.selector.getState();
+    // BEFORE the early returns, deliberately. The only other place the queue
+    // depth was ever published sits at the END of a SUCCESSFUL cycle — so in
+    // the one situation the user most needs to be told about (nothing can be
+    // sent, and work is piling up locally) it was never published at all, and
+    // `SyncPill` rendered a depth of 0 as "Tersinkron". A till with an
+    // undrainable outbox told the cashier every sale was safely synced.
+    await this.publishQueueDepth();
     if (!state.current || this.syncing) return null;
     // No credential -> push/pull can only 401. The tier is already correct
     // (the selector's own unauthenticated health probe set it), so skipping
@@ -257,6 +270,22 @@ export class SyncEngine {
     } finally {
       this.syncing = false;
       this.connectivity.setSyncing(false);
+    }
+  }
+
+  /**
+   * Pushes the CURRENT outbox depth to the connectivity store.
+   *
+   * Separate from the sync cycle on purpose: "how much work is waiting" is
+   * true and worth showing whether or not a cycle can run, and it is precisely
+   * when one CANNOT run — no upstream, or no device credential — that a stale
+   * zero is dangerous. Best-effort: a failed read must never break a cycle.
+   */
+  private async publishQueueDepth(): Promise<void> {
+    try {
+      this.connectivity.setQueueDepth(await getOutboxDepth(this.db));
+    } catch {
+      // An unreadable outbox is not something the pill can usefully say.
     }
   }
 

@@ -559,8 +559,18 @@ export async function applyOrgModel(client: pg.Client): Promise<OrgModelResult> 
     );
     // A driver who was stood down and is back in the model must be drivable
     // again, or the delivery screen has nobody to assign.
-    await client.query(`UPDATE drivers SET is_active = true WHERE employee_id = $1`, [
+    //
+    // THE NAME IS RE-ASSERTED HERE, not only on insert. `seed.ts` creates the
+    // driver row first, with a name off its own list; this pass then reshapes
+    // the org and renames the person — and because the INSERT above is guarded
+    // on `NOT EXISTS`, it never ran, so `drivers.name` kept the old one. The
+    // result was a `drivers` row reading "Cahyo Setiawan" whose `user_id` and
+    // `employee_id` both resolve to Ayu Rahayu, which is the name the dispatch
+    // screen offers and the name PRINTED ON THE SURAT JALAN — a legal shipping
+    // document naming a driver who is not the one holding the phone.
+    await client.query(`UPDATE drivers SET is_active = true, name = $2 WHERE employee_id = $1`, [
       employeeIdByUsername[username],
+      nameFor(username),
     ]);
   }
   await client.query(

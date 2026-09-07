@@ -66,6 +66,16 @@ export type { SjPosition, LiveDelivery } from '@mimi/shared';
 export { OpnameStatus } from '@mimi/shared';
 export type { Opname, OpnameLine } from '@mimi/shared';
 
+// M09 waste (CONTRACTS §4.9). Imported rather than transcribed: both waste
+// panels used to hardcode their own five-value list, which had drifted from
+// this enum in BOTH directions — it offered `spoiled` and `prep_error`, which
+// the API's `@IsIn(Object.values(WasteReason))` rejects, and it had no label
+// for `lost`, `contaminated`, `cold_chain_breach` or `production_error`, all
+// of which the database stores and the screen therefore printed as raw i18n
+// keys. The enum, the DB CHECK (migration 080) and the DTO already agreed;
+// only the UI's copy did not.
+export { WasteReason } from '@mimi/shared';
+
 // Stable machine error codes (CONTRACTS §0 `code` field) actually branched on
 // in `lib/api.ts`/`lib/auth.ts`. The rest of the ~60-code vocabulary lives in
 // `@mimi/shared`'s `error-codes.ts` for Wave 3–5 modules to import directly.

@@ -148,6 +148,15 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-mimi_minio}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-mimi_minio_secret}
       MINIO_BUCKET: ${MINIO_BUCKET:-mimi-storage}
+      # The host a BROWSER must use to follow a presigned upload URL. Without
+      # it every presign signs `http://minio:9000`, which resolves only inside
+      # this network — so `presign` answers 201 and the upload that follows can
+      # never connect, which silently breaks every photo-evidence flow (waste,
+      # retur, PO receiving, attendance selfie) on any dev or LAN stack.
+      # `docker-compose.prod.yml` sets its own from ${DOMAIN}; this passes
+      # through whatever `.env` defines and falls back to the internal endpoint
+      # when unset, so nothing changes for a setup that never sets it.
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
       # Seals tenant SMTP passwords at rest (migration 264). Without it the
       # email settings screen refuses to store a password rather than saving
       # one in the clear — a deliberate hard failure, since "encrypted" that

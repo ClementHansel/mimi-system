@@ -47,6 +47,7 @@ function parsePercentInput(raw: string): string | null {
 }
 
 const EMPTY_FORM = {
+  code: '',
   name: '',
   type: VoucherType.Fixed,
   valueDraft: '',
@@ -101,6 +102,7 @@ export function VoucherBatchModal({
       return;
     }
     setForm({
+      code: batch.code,
       name: batch.name,
       type: batch.type,
       valueDraft: batch.value,
@@ -119,7 +121,13 @@ export function VoucherBatchModal({
       ? form.valueDraft || null // MoneyInput already hands back a canonical Money string
       : parsePercentInput(form.valueDraft);
 
+  // `CreateBatchDto` matches `code` against /^[A-Z0-9_-]+$/ and rejects
+  // anything else. Checking it here turns a 400 nobody could act on into a
+  // disabled button next to the field that is wrong.
+  const codeIsValid = /^[A-Z0-9_-]+$/.test(form.code.trim());
+
   const canSubmit =
+    codeIsValid &&
     form.name.trim() !== '' &&
     parsedValue !== null &&
     form.minSubtotal !== null &&
@@ -143,6 +151,7 @@ export function VoucherBatchModal({
     setSubmitting(true);
     setError(null);
     const body: VoucherBatchInput = {
+      code: form.code.trim(),
       name: form.name.trim(),
       type: form.type,
       value: parsedValue,
@@ -186,6 +195,19 @@ export function VoucherBatchModal({
     >
       <div className="flex flex-col gap-4">
         {error && <p className="text-sm text-danger-600">{error}</p>}
+
+        <Input
+          label={t('voucher.columnCode')}
+          value={form.code}
+          // UPPERCASED AS THEY TYPE rather than validated after the fact: the
+          // server's rule is uppercase-only, and a form that accepts "promo-a"
+          // and then refuses it is a worse experience than one that cannot
+          // produce an invalid value in the first place.
+          onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+          hint={t('voucher.codeHint')}
+          maxLength={20}
+          required
+        />
 
         <Input
           label={t('voucher.name')}

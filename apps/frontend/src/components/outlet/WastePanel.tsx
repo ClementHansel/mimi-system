@@ -41,12 +41,25 @@ import {
   listReturns,
   createReturn,
   submitReturn,
+  getReturnDestination,
 } from './lib/outlet-api';
 import { uploadAttachment } from './lib/attachments';
 import type { WasteRecord, ReturnDoc, StorageArea, Item } from './lib/types';
+import { WasteReason } from '@/lib/shared-types';
 import type { Qty } from '@/lib/shared-types';
 
-const WASTE_REASONS = ['expired', 'damaged', 'spoiled', 'prep_error', 'other'] as const;
+/** A refused fetch is not a crash: swallow it so it cannot become an unhandled rejection. */
+const noop = () => {};
+
+/**
+ * THE SHARED ENUM, not a local list. This was five hand-written strings that
+ * had drifted from `WasteReason` in both directions: `spoiled` and
+ * `prep_error` are not in it (so the API rejected them — two of the five
+ * options on this form could never be saved), while `lost`, `contaminated`,
+ * `cold_chain_breach` and `production_error` are, and had no label here, so a
+ * record carrying one rendered its raw i18n key on screen.
+ */
+const WASTE_REASONS = Object.values(WasteReason);
 
 interface WasteLineDraft {
   storageAreaId: string;
@@ -94,17 +107,30 @@ export function WastePanel({ only }: { only?: 'waste' | 'return' } = {}) {
   const [returnSaving, setReturnSaving] = useState(false);
 
   useEffect(() => {
-    getStorageAreas(locationId).then(setAreas);
-    getItems().then((r) => setItems(r.rows));
+    getStorageAreas(locationId).then(setAreas).catch(noop);
+    getItems()
+      .then((r) => setItems(r.rows))
+      .catch(noop);
   }, [locationId]);
 
   function reloadWaste() {
+    if (only === 'return') return;
     setWasteLoading(true);
     listWaste(locationId)
       .then((r) => setWasteRows(r.rows))
+      // A refused or failed list must not become an UNHANDLED REJECTION. With
+      // only `.finally`, a 403 here surfaced as a browser `pageerror` — the
+      // whole-page crash signal — for a screen that was otherwise fine.
+      .catch(() => setWasteRows([]))
       .finally(() => setWasteLoading(false));
   }
   function reloadReturns() {
+    // DO NOT FETCH WHAT THIS VIEW DOES NOT RENDER. `only="waste"` is the
+    // `/outlet/waste` route, whose `PermissionGate` asks for `waste.read`
+    // alone — a Juru Masak holds that and NOT `return.read`, so fetching
+    // returns anyway earned them a 403 on every visit to a screen they are
+    // entitled to. The retur list is `/outlet/retur`'s, and is loaded there.
+    if (only === 'waste') return;
     setReturnLoading(true);
     // `ReturnDirection` (`@mimi/shared`) is `outlet_to_warehouse` |
     // `warehouse_to_supplier` — the Indonesian-slang value here never
@@ -112,6 +138,7 @@ export function WastePanel({ only }: { only?: 'waste' | 'return' } = {}) {
     // call (same root cause as FIX-LOADS #2's warehouse-side Retur bug).
     listReturns(locationId, 'outlet_to_warehouse')
       .then((r) => setReturnRows(r.rows))
+      .catch(() => setReturnRows([]))
       .finally(() => setReturnLoading(false));
   }
   useEffect(reloadWaste, [locationId]);
@@ -174,9 +201,20 @@ export function WastePanel({ only }: { only?: 'waste' | 'return' } = {}) {
         mimeType: returnPhoto.type || 'image/jpeg',
         kind: 'return_proof',
       });
+      // WHERE IT IS GOING. `ReturnService` refuses an `outlet_to_warehouse`
+      // return with no `toLocationId`, and this form never sent one, so every
+      // retur an outlet raised came back 400 and the dialog simply stayed
+      // open. It is not a choice to put in front of the supervisor — there is
+      // one warehouse and "Retur ke Gudang" means it — so it is resolved here.
+      const destination = await getReturnDestination();
+      if (!destination) {
+        toast({ title: t('outlet.return.noDestination'), variant: 'danger' });
+        return;
+      }
       const created = await createReturn({
         direction: 'outlet_to_warehouse',
         fromLocationId: locationId,
+        toLocationId: destination.id,
         lines: valid.map((l) => ({
           itemId: l.itemId,
           storageAreaId: l.storageAreaId,

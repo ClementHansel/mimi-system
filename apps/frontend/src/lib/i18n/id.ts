@@ -2394,11 +2394,19 @@ export const id = {
       photoLabel: 'Foto Waste',
       created: 'Waste berhasil dicatat',
       empty: 'Belum ada catatan waste',
+      // ONE LABEL PER `WasteReason` (@mimi/shared) — the same seven the
+      // database's CHECK constraint allows (migration 080). `spoiled` and
+      // `prep_error` were invented here and are not in the enum, so the two
+      // options they rendered were rejected by the API on submit; the four
+      // real reasons below had no label, so a stored record printed its raw
+      // key ("outlet.waste.reason.cold_chain_breach") on the warehouse screen.
       reason: {
         expired: 'Kedaluwarsa',
         damaged: 'Rusak',
-        spoiled: 'Busuk',
-        prep_error: 'Salah Olah',
+        lost: 'Hilang',
+        contaminated: 'Terkontaminasi',
+        cold_chain_breach: 'Rantai Dingin Terputus',
+        production_error: 'Salah Olah',
         other: 'Lainnya',
       },
     },
@@ -2409,6 +2417,7 @@ export const id = {
       photoLabel: 'Foto Bukti',
       created: 'Retur berhasil diajukan',
       empty: 'Belum ada retur',
+      noDestination: 'Gudang tujuan tidak ditemukan — hubungi kantor pusat.',
       importNote: 'Impor mengisi baris retur. Foto bukti tetap wajib dan diunggah di bawah.',
     },
     pettyCash: {
@@ -4389,6 +4398,8 @@ export const id = {
     saveFailed: 'Batch gagal disimpan',
     name: 'Nama Batch',
     nameHint: 'Nama yang dibaca kasir saat voucher diterima, mis. "Promo Pembukaan Samarinda".',
+    codeHint:
+      'Huruf kapital, angka, garis bawah atau strip — kode ini tercetak pada kartu voucher.',
     value: 'Nilai Potongan',
     percentHint: 'Isi angka persen, mis. 10 untuk 10%. Maksimal dua angka di belakang koma.',
     maxDiscount: 'Potongan Maksimal',

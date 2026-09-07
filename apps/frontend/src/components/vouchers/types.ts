@@ -68,6 +68,10 @@ export interface Voucher {
  * field-by-field before it is issued.
  */
 export interface VoucherBatchInput {
+  /** Printed on the card. `CreateBatchDto` requires it and matches it against
+   *  `/^[A-Z0-9_-]+$/`, so a batch cannot be created without one — the form
+   *  never collected it, and every create 400'd on a field the user never saw. */
+  code: string;
   name: string;
   type: VoucherType;
   value: string;

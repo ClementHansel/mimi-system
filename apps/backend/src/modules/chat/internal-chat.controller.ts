@@ -18,6 +18,7 @@ import { Audited } from '../../common/decorators/audited.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import { requireDbClient } from './request-db-client';
+import { withWrite } from './db-tx';
 import type { ChatMessage } from './chat.service';
 import {
   InternalChatService,
@@ -86,7 +87,10 @@ export class InternalChatController {
     @CurrentUser() user: JwtAccessPayload,
     @Body() dto: OpenDirectDto,
   ): Promise<InternalConversation> {
-    return this.service.openDirect(requireDbClient(req), user.sub as UUID, dto.userId as UUID);
+    const client = requireDbClient(req);
+    return withWrite(client, () =>
+      this.service.openDirect(client, user.sub as UUID, dto.userId as UUID),
+    );
   }
 
   @Post('groups')
@@ -97,11 +101,9 @@ export class InternalChatController {
     @CurrentUser() user: JwtAccessPayload,
     @Body() dto: CreateGroupDto,
   ): Promise<InternalConversation> {
-    return this.service.createGroup(
-      requireDbClient(req),
-      user.sub as UUID,
-      dto.name,
-      dto.memberIds as UUID[],
+    const client = requireDbClient(req);
+    return withWrite(client, () =>
+      this.service.createGroup(client, user.sub as UUID, dto.name, dto.memberIds as UUID[]),
     );
   }
 
@@ -114,7 +116,10 @@ export class InternalChatController {
     @Param('id') id: UUID,
     @Body() dto: RenameGroupDto,
   ): Promise<InternalConversation> {
-    return this.service.renameGroup(requireDbClient(req), user.sub as UUID, id, dto.name);
+    const client = requireDbClient(req);
+    return withWrite(client, () =>
+      this.service.renameGroup(client, user.sub as UUID, id, dto.name),
+    );
   }
 
   @Post('groups/:id/members')
@@ -126,7 +131,10 @@ export class InternalChatController {
     @Param('id') id: UUID,
     @Body() dto: AddMemberDto,
   ): Promise<{ ok: true }> {
-    await this.service.addMember(requireDbClient(req), user.sub as UUID, id, dto.userId as UUID);
+    const client = requireDbClient(req);
+    await withWrite(client, () =>
+      this.service.addMember(client, user.sub as UUID, id, dto.userId as UUID),
+    );
     return { ok: true };
   }
 
@@ -139,7 +147,10 @@ export class InternalChatController {
     @Param('id') id: UUID,
     @Param('userId') userId: UUID,
   ): Promise<{ ok: true }> {
-    await this.service.removeMember(requireDbClient(req), user.sub as UUID, id, userId as UUID);
+    const client = requireDbClient(req);
+    await withWrite(client, () =>
+      this.service.removeMember(client, user.sub as UUID, id, userId as UUID),
+    );
     return { ok: true };
   }
 
@@ -151,7 +162,8 @@ export class InternalChatController {
     @CurrentUser() user: JwtAccessPayload,
     @Param('id') id: UUID,
   ): Promise<{ ok: true }> {
-    await this.service.leaveGroup(requireDbClient(req), user.sub as UUID, id);
+    const client = requireDbClient(req);
+    await withWrite(client, () => this.service.leaveGroup(client, user.sub as UUID, id));
     return { ok: true };
   }
 
@@ -184,7 +196,10 @@ export class InternalChatController {
     @Param('id') id: UUID,
     @Body() dto: SendMessageDto,
   ): Promise<ChatMessage> {
-    return this.service.sendMessage(requireDbClient(req), user.sub as UUID, id, dto.body);
+    const client = requireDbClient(req);
+    return withWrite(client, () =>
+      this.service.sendMessage(client, user.sub as UUID, id, dto.body),
+    );
   }
 
   @Post(':id/read')
@@ -194,7 +209,8 @@ export class InternalChatController {
     @CurrentUser() user: JwtAccessPayload,
     @Param('id') id: UUID,
   ): Promise<{ ok: true }> {
-    await this.service.markRead(requireDbClient(req), user.sub as UUID, id);
+    const client = requireDbClient(req);
+    await withWrite(client, () => this.service.markRead(client, user.sub as UUID, id));
     return { ok: true };
   }
 }

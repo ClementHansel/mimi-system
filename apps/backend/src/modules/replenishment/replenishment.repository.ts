@@ -34,6 +34,7 @@ export interface ReplenishmentLineRow {
   itemId: UUID;
   itemName: string;
   unitCode: string;
+  storageType: 'frozen' | 'chilled' | 'dry';
   qtyRequested: Qty;
   qtyApproved: Qty | null;
   qtyShipped: Qty | null;
@@ -96,6 +97,7 @@ interface RawLineRow {
   item_id: string;
   item_name: string;
   unit_code: string;
+  storage_type: 'frozen' | 'chilled' | 'dry';
   qty_requested: string;
   qty_approved: string | null;
   qty_shipped: string | null;
@@ -130,6 +132,7 @@ function mapLineRow(r: RawLineRow): ReplenishmentLineRow {
     itemId: r.item_id,
     itemName: r.item_name,
     unitCode: r.unit_code,
+    storageType: r.storage_type,
     qtyRequested: r.qty_requested,
     qtyApproved: r.qty_approved,
     qtyShipped: r.qty_shipped,
@@ -266,7 +269,7 @@ export class ReplenishmentRepository {
 
   async findLines(client: PoolClient, requestId: UUID): Promise<ReplenishmentLineRow[]> {
     const res = await client.query(
-      `SELECT rl.id, rl.item_id, i.name AS item_name, u.code AS unit_code,
+      `SELECT rl.id, rl.item_id, i.name AS item_name, u.code AS unit_code, i.storage_type,
               rl.qty_requested, rl.qty_approved, rl.qty_shipped, rl.qty_received, rl.amend_reason
          FROM replenishment_request_lines rl
          JOIN items i ON i.id = rl.item_id
@@ -339,7 +342,7 @@ export class ReplenishmentRepository {
     const byRequest = new Map<string, ReplenishmentLineRow[]>();
     if (requestIds.length === 0) return byRequest;
     const res = await client.query(
-      `SELECT rl.request_id, rl.id, rl.item_id, i.name AS item_name, u.code AS unit_code,
+      `SELECT rl.request_id, rl.id, rl.item_id, i.name AS item_name, u.code AS unit_code, i.storage_type,
               rl.qty_requested, rl.qty_approved, rl.qty_shipped, rl.qty_received, rl.amend_reason
          FROM replenishment_request_lines rl
          JOIN items i ON i.id = rl.item_id

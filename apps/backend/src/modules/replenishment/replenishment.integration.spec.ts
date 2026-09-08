@@ -58,6 +58,7 @@ import {
   ReplenishmentStatus,
   RoleKey,
   transition,
+  type Replenishment,
 } from '@mimi/shared';
 
 import { ApprovalsRepository } from '../../kernel/approvals/approvals.repository';
@@ -941,5 +942,115 @@ describe('ReplenishmentService.list — lines come back with the rows (live DB)'
         }),
     );
     expect(page.rows.every((r) => Array.isArray(r.lines))).toBe(true);
+  });
+});
+
+/**
+ * FR-LOG-02's truck split needs `storageType` ON THE LINE, and §4.9 did not
+ * carry it until 2026-09-08.
+ *
+ * The Surat Jalan picker (`SjCreateForm`) decides which requests it will offer
+ * for a `frozen` vs a `dry` truck by reading `line.storageType` — and while the
+ * field was absent from this response it read `undefined` on every line, took
+ * its "unknown storage type is compatible" branch, and offered the entire open
+ * queue on BOTH trucks. Ayam beku on the ambient truck was refusable only by
+ * `POST /delivery/surat-jalan` (`ERR_SHIPMENT_TYPE_MIX`), after the dispatcher
+ * had filled in the whole document. The form's own unit tests always set
+ * `storageType` in their fixtures, so a green suite proved nothing about it.
+ *
+ * Asserted against `items.storage_type` READ BACK FROM THE DATABASE rather
+ * than a literal, because the fixture picks whichever items the box happens to
+ * have: a hardcoded `'frozen'` would either be a tautology or break on a
+ * different seed. This pins the real requirement — the line reports the storage
+ * class of ITS OWN item — and it covers BOTH line reads, `findLines` (detail)
+ * and `findLinesForRequests` (every list, including the picker's warehouse
+ * queue), which are separate SELECTs that have drifted apart before.
+ */
+describe('ReplenishmentService — every line carries its item storage type (live DB)', () => {
+  it('reports each line`s real items.storage_type in the detail read, the office list and the warehouse queue', async () => {
+    const { service } = buildServices();
+    const ldr = callerFor(fx.outletA.leaderUserId, RoleKey.LEADER_OUTLET, [fx.outletA.locationId]);
+    const spv = callerFor(fx.outletA.supervisorUserId, RoleKey.SUPERVISOR, [fx.outletA.locationId]);
+    const kgd = callerFor(fx.kepalaGudangUserId, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+    const owner = callerFor(fx.ownerUserId, RoleKey.OWNER, null);
+
+    // Two DIFFERENT items, so a query that joined the storage type once and
+    // stamped it on every line would fail here rather than pass by coincidence.
+    const expected = await withRollback(
+      { userId: owner.userId, roleKey: owner.roleKey, locationIds: owner.locationIds },
+      async (client) => {
+        const res = await client.query<{ id: string; storage_type: string }>(
+          `SELECT id, storage_type FROM items WHERE id = ANY($1::uuid[])`,
+          [[fx.itemId, fx.itemId2]],
+        );
+        return new Map(res.rows.map((r) => [r.id, r.storage_type]));
+      },
+    );
+    expect(expected.size).toBe(2);
+
+    const created = await withRollback(
+      { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+      (client) =>
+        service.create(client, ldr, {
+          locationId: fx.outletA.locationId,
+          lines: [
+            { itemId: fx.itemId, qtyRequested: '4.000', unitId: fx.unitId },
+            { itemId: fx.itemId2, qtyRequested: '6.000', unitId: fx.unitId },
+          ],
+        }),
+    );
+    createdRequestIds.push(created.id);
+
+    const assertLinesTyped = (lines: readonly Replenishment['lines'][number][], where: string) => {
+      expect(lines, `${where}: wrong number of lines`).toHaveLength(2);
+      for (const line of lines) {
+        expect(
+          line.storageType,
+          `${where}: line for item ${line.itemId} carries no storage type — FR-LOG-02's picker cannot filter on it`,
+        ).toBe(expected.get(line.itemId));
+        expect(['frozen', 'chilled', 'dry']).toContain(line.storageType);
+      }
+    };
+
+    // 1. `findLines` — the detail read, behind the drawer.
+    assertLinesTyped(created.lines, 'create/detail');
+
+    // 2. `findLinesForRequests` — every LIST read shares this one query.
+    const officeList = await withRollback(
+      { userId: owner.userId, roleKey: owner.roleKey, locationIds: owner.locationIds },
+      (client) => service.list(client, { locationId: fx.outletA.locationId, pageSize: 100 }),
+    );
+    const listed = officeList.rows.find((r) => r.id === created.id);
+    expect(listed).toBeDefined();
+    assertLinesTyped(listed!.lines, 'office list');
+
+    // 3. And the read the Surat Jalan picker actually makes: the warehouse
+    //    queue, which only shows a request once the chain has approved it.
+    await withRollback(
+      { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+      (client) => service.submit(client, ldr, created.id),
+    );
+    await withRollback(
+      { userId: spv.userId, roleKey: spv.roleKey, locationIds: spv.locationIds },
+      (client) => service.approve(client, spv, created.id, {}),
+    );
+    const approved = await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) => service.approve(client, kgd, created.id, {}),
+    );
+    expect(approved.status).toBe(ReplenishmentStatus.APPROVED);
+
+    const queue = await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) =>
+        service.warehouseQueue(client, {
+          status: ReplenishmentStatus.APPROVED,
+          page: 1,
+          pageSize: 200,
+        }),
+    );
+    const queued = queue.rows.find((r) => r.id === created.id);
+    expect(queued, 'the approved request is not in the warehouse queue at all').toBeDefined();
+    assertLinesTyped(queued!.lines, 'warehouse queue (the SJ picker`s own read)');
   });
 });

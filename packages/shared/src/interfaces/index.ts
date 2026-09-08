@@ -438,6 +438,24 @@ export interface ReplenishmentLine {
   itemId: UUID;
   itemName: string;
   unitCode: string;
+  /**
+   * The item's `storage_type`, carried on the LINE so a reader can tell which
+   * truck this request may ride without a second lookup — the same field
+   * `DropLine` below already publishes for exactly that reason.
+   *
+   * Added 2026-09-08, and it closes a rule that was never actually enforced.
+   * FR-LOG-02 (frozen/chilled and dry may never share a truck) is checked
+   * client-side by the Surat Jalan picker, which filters the requests it offers
+   * by the chosen `shipmentType` — but this field was absent from the response,
+   * so every line read `undefined`, the filter's "unknown storage type is
+   * compatible" fallback fired for all of them, and BOTH truck tabs listed
+   * every open request. A dispatcher could load ayam beku onto the ambient
+   * truck, and only `POST /delivery/surat-jalan` said no
+   * (`ERR_SHIPMENT_TYPE_MIX`) — after the whole document had been filled in.
+   * `SjCreateForm`'s own unit tests pass `storageType` in their fixtures, which
+   * is why a green suite never noticed the real response did not.
+   */
+  storageType: 'frozen' | 'chilled' | 'dry';
   qtyRequested: Qty;
   qtyApproved: Qty | null;
   qtyShipped: Qty | null;

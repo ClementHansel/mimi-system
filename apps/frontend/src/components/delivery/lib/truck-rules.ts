@@ -50,9 +50,13 @@ export function partitionLinesByShipmentType<T extends { storageType?: StorageTy
   const compatible: T[] = [];
   const excluded: T[] = [];
   for (const line of lines) {
-    // A line with no declared storage type (defensive — every real `items` row has one) is treated as
-    // compatible rather than silently dropped, matching `SjCreateForm.isCompatible`'s own `!storageType` case.
-    if (!line.storageType || isStorageTypeAllowed(shipmentType, line.storageType)) {
+    // A line with NO declared storage type is EXCLUDED, not waved through —
+    // matching `SjCreateForm.isCompatible` (see its doc comment for the bug
+    // the old "unknown is compatible" reading caused: §4.9 shipped no
+    // `storageType` until 2026-09-08, so that branch swallowed every line and
+    // the split was never applied). An excluded line is reported to the caller
+    // rather than dropped, so a screen can say which line it set aside and why.
+    if (line.storageType && isStorageTypeAllowed(shipmentType, line.storageType)) {
       compatible.push(line);
     } else {
       excluded.push(line);

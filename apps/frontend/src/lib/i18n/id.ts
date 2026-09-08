@@ -2518,6 +2518,16 @@ export const id = {
       vehicleNeedsFreezer:
         'Kendaraan ini tidak punya freezer — tidak bisa untuk pengiriman beku/dingin',
       plannedDate: 'Tanggal Rencana Kirim',
+      // Why "Buat Surat Jalan" is still greyed out. The button has always been
+      // `disabled` until every prerequisite is met, and it never said which one
+      // was missing — so a dispatcher with three of the four filled in read it
+      // as a dead button rather than an unfinished form.
+      cannotSubmitYet: 'Lengkapi dulu sebelum Surat Jalan dapat dibuat:',
+      missingRequest: 'pilih minimal satu permintaan yang cocok dengan tipe truk ini',
+      missingDriver: 'pilih driver',
+      missingVehicle: 'pilih kendaraan',
+      missingFreezer: 'pilih kendaraan berfreezer untuk pengiriman beku/dingin',
+      missingPlannedDate: 'isi tanggal rencana kirim',
       dropsCount: 'Jumlah Drop',
       markReady: 'Tandai Siap Kirim',
       load: 'Muat Barang',
@@ -2697,6 +2707,9 @@ export const id = {
     truckSplitNotice:
       'Barang beku/dingin selalu satu truk chiller; barang kering selalu truk terpisah — tidak boleh digabung (aturan gudang, FR-LOG-02).',
     createdSuccess: 'Surat Jalan berhasil dibuat',
+    createLoadFailed:
+      'Gagal memuat data untuk Surat Jalan (permintaan yang disetujui, driver, atau kendaraan). Daftar di bawah mungkin belum lengkap.',
+    createLoading: 'Memuat permintaan yang disetujui…',
     detail: {
       title: 'Detail Surat Jalan',
       timeline: 'Linimasa',

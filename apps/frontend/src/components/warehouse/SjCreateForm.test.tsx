@@ -219,3 +219,65 @@ describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
     expect(payload.drops[0].lines[0].itemId).toBe('item-frozen');
   });
 });
+
+/**
+ * `docs/FUNCTIONAL-TEST-2026-09-07.md` §2d — "the create button cannot submit
+ * and does not say why". The button has always carried `disabled={!canSubmit}`;
+ * what was missing is the sentence naming the piece that is not filled in. With
+ * three of four prerequisites done, a greyed-out button is indistinguishable
+ * from a broken one, and that is what stopped a dispatcher (and the simulation)
+ * from getting a Surat Jalan out of this form.
+ */
+describe('SjCreateForm — a disabled create button says what is missing', () => {
+  it('names every unmet prerequisite, and clears them off the list as they are met', () => {
+    const onSubmit = vi.fn();
+    render(
+      <SjCreateForm
+        requests={[frozenRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    const create = screen.getByRole('button', { name: 'Buat Surat Jalan' });
+    expect(create).toBeDisabled();
+    // Nothing chosen yet: all four, in the order they appear on the form.
+    expect(screen.getByText(/pilih minimal satu permintaan/)).toBeInTheDocument();
+    expect(screen.getByText(/pilih driver/)).toBeInTheDocument();
+    expect(screen.getByText(/pilih kendaraan/)).toBeInTheDocument();
+    expect(screen.getByText(/isi tanggal rencana kirim/)).toBeInTheDocument();
+
+    // Ticking the request takes exactly that reason away and leaves the rest.
+    fireEvent.click(screen.getByLabelText(/REQ-001/));
+    expect(screen.queryByText(/pilih minimal satu permintaan/)).not.toBeInTheDocument();
+    expect(screen.getByText(/pilih driver/)).toBeInTheDocument();
+    expect(create).toBeDisabled();
+  });
+
+  it('asks for a freezer truck by name once a non-freezer vehicle is chosen for a frozen run', () => {
+    render(
+      <SjCreateForm
+        requests={[frozenRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText(/REQ-001/));
+    fireEvent.change(screen.getByLabelText('Driver'), { target: { value: 'drv-1' } });
+    fireEvent.change(screen.getByLabelText('Kendaraan'), { target: { value: 'veh-plain' } });
+    fireEvent.change(screen.getByLabelText('Tanggal Rencana Kirim'), {
+      target: { value: '2026-09-10' },
+    });
+
+    // "pick a vehicle" is satisfied; the freezer rule is what is left.
+    expect(screen.getByText(/pilih kendaraan berfreezer/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buat Surat Jalan' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Kendaraan'), { target: { value: 'veh-freezer' } });
+    expect(screen.queryByText(/Lengkapi dulu/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buat Surat Jalan' })).toBeEnabled();
+  });
+});

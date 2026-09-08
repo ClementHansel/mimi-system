@@ -523,6 +523,12 @@ export class ReplenishmentService {
         itemId: l.itemId,
         itemName: l.itemName,
         unitCode: l.unitCode,
+        // Load-bearing for FR-LOG-02, not decoration: the Surat Jalan picker
+        // filters the requests it offers by the chosen truck's storage types,
+        // and while this field was missing every line looked "unknown" and
+        // therefore compatible with both trucks. See `ReplenishmentLine` in
+        // @mimi/shared for the whole failure.
+        storageType: l.storageType,
         qtyRequested: l.qtyRequested,
         qtyApproved: l.qtyApproved,
         qtyShipped: l.qtyShipped,

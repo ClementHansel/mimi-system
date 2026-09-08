@@ -3236,6 +3236,8 @@ interface ReplenishmentLine {
   itemId: UUID;
   itemName: string;
   unitCode: string;
+  /** The item's storage class, on the line — FR-LOG-02's truck split is decided from it (added 2026-09-08; `DropLine` §4.10 already carried it). */
+  storageType: 'frozen' | 'chilled' | 'dry';
   qtyRequested: Qty;
   qtyApproved: Qty | null;
   qtyShipped: Qty | null;

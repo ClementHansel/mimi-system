@@ -71,8 +71,27 @@ export function SjCreateForm({
   const [plannedDate, setPlannedDate] = useState('');
   const [notes, setNotes] = useState('');
 
+  /**
+   * FR-LOG-02, per line. An UNDECLARED storage type is NOT compatible with
+   * either truck — the opposite of what this used to do, and the change is the
+   * point of the 2026-09-08 fix.
+   *
+   * §4.9's `ReplenishmentLine` did not carry `storageType` at all until that
+   * date, so this read `undefined` for every line ever fetched, took the old
+   * `if (!storageType) return true` branch, and declared the whole queue
+   * compatible with whichever truck was selected. Both tabs listed every open
+   * request; a dispatcher could put ayam beku on the ambient truck and the only
+   * refusal came from `POST /delivery/surat-jalan` after the form was complete.
+   * The fixtures in this file's own tests always set `storageType`, which is
+   * why the suite stayed green over a filter that never filtered anything.
+   *
+   * Defaulting the unknown case to "incompatible" cannot hide a request: a row
+   * with no compatible line still RENDERS below, disabled, carrying
+   * `warehouse.sj.noCompatibleLines` — visible and explained, rather than
+   * loaded onto a truck that may not legally carry it.
+   */
   function isCompatible(storageType: string | undefined): boolean {
-    if (!storageType) return true;
+    if (!storageType) return false;
     return shipmentType === 'frozen'
       ? storageType === 'frozen' || storageType === 'chilled'
       : storageType === 'dry';
@@ -123,7 +142,29 @@ export function SjCreateForm({
   const chosenVehicle = vehicles.find((v) => v.id === vehicleId);
   const vehicleOk = !!chosenVehicle && (!freezerRequired || chosenVehicle.hasFreezer);
 
-  const canSubmit = drops.length > 0 && !!driverId && !!vehicleId && vehicleOk && !!plannedDate;
+  /**
+   * WHY the create button is greyed out, in the dispatcher's own words.
+   *
+   * `disabled={!canSubmit}` has been on that button since the first commit, and
+   * nothing ever said which of the four prerequisites was missing. The inline
+   * error on the vehicle field covered exactly one cause (a `frozen` shipment
+   * on a truck with no freezer); for the other three the screen simply refused,
+   * silently, which reads as a dead button rather than an unfinished form —
+   * `docs/FUNCTIONAL-TEST-2026-09-07.md` §2d, reported after a run that could
+   * not submit this form reliably.
+   *
+   * Derived from the SAME expression that gates the button, deliberately: a
+   * separate list of reasons is a second source of truth that drifts into
+   * saying "everything is filled in" over a disabled control.
+   */
+  const missing: string[] = [];
+  if (drops.length === 0) missing.push(t('warehouse.sj.missingRequest'));
+  if (!driverId) missing.push(t('warehouse.sj.missingDriver'));
+  if (!vehicleId) missing.push(t('warehouse.sj.missingVehicle'));
+  else if (!vehicleOk) missing.push(t('warehouse.sj.missingFreezer'));
+  if (!plannedDate) missing.push(t('warehouse.sj.missingPlannedDate'));
+
+  const canSubmit = missing.length === 0;
 
   function submit() {
     if (!canSubmit) return;
@@ -271,7 +312,12 @@ export function SjCreateForm({
         disabled={submitting}
       />
 
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-2">
+        {!canSubmit && (
+          <p className="text-right text-xs text-text-muted">
+            {t('warehouse.sj.cannotSubmitYet')} {missing.join('; ')}
+          </p>
+        )}
         <Button type="button" loading={submitting} disabled={!canSubmit} onClick={submit}>
           {t('warehouse.sj.create')}
         </Button>

@@ -103,14 +103,62 @@ export function getDailyRecap(date: string) {
  * Two calls rather than one, because `WarehouseQueueQueryDto.status` takes a
  * single value — a repeated query parameter would be a contract change, and
  * this needs none. Merged by id in case the statuses ever overlap.
+ *
+ * EVERY PAGE OF EACH, and NEWEST FIRST. Both parts are load-bearing:
+ *
+ *  - This used to send no `page`/`pageSize`, so it got the endpoint's defaults:
+ *    page 1, fifty rows, `ORDER BY submitted_at ASC NULLS LAST` — the OLDEST
+ *    fifty. That ordering is right for the queue it was written for (the Kepala
+ *    Gudang's approval list is FIFO work), and wrong for this one. A request
+ *    leaves `approved`/`processing` only when its Surat Jalan is dispatched, so
+ *    the open set is a backlog that grows; the first time it passed fifty rows,
+ *    every NEWLY approved request would have sorted past the cut and simply not
+ *    appeared in this picker — approve it, come here, and it is not on the list.
+ *    Paging to the end is the only honest fix: this picker may not silently show
+ *    a subset of what can be shipped.
+ *  - Sorted newest-first for DISPLAY, because the request a dispatcher is
+ *    looking for is almost always the one just approved. The server's order is
+ *    left alone; this is a client-side presentation choice for one screen.
  */
+const SJ_PICKER_PAGE_SIZE = 200; // `WarehouseQueueQueryDto.pageSize`'s own @Max.
+/**
+ * A hard stop, not a limit anyone should reach: 40,000 simultaneously open
+ * replenishment requests means something upstream is broken, and a runaway
+ * loop against the API is a worse way to find that out than a short list.
+ */
+const SJ_PICKER_MAX_PAGES = 200;
+
+async function fetchWholeWarehouseQueue(status: string): Promise<Replenishment[]> {
+  const collected: Replenishment[] = [];
+  for (let page = 1; page <= SJ_PICKER_MAX_PAGES; page += 1) {
+    const res = await api.get<Paginated<Replenishment>>(
+      `/replenishment/queue/warehouse?status=${status}&page=${page}&pageSize=${SJ_PICKER_PAGE_SIZE}`,
+    );
+    collected.push(...res.rows);
+    // A short page is the end. `total` is checked too so a server that returns
+    // a full last page still terminates on the next-to-nothing round trip.
+    if (res.rows.length < SJ_PICKER_PAGE_SIZE || collected.length >= res.total) break;
+  }
+  return collected;
+}
+
+/** Newest request first — `submittedAt` descending, never-submitted last, request number as the tie-break. */
+function newestFirst(a: Replenishment, b: Replenishment): number {
+  if (a.submittedAt !== b.submittedAt) {
+    if (!a.submittedAt) return 1;
+    if (!b.submittedAt) return -1;
+    return a.submittedAt < b.submittedAt ? 1 : -1;
+  }
+  return b.requestNumber.localeCompare(a.requestNumber);
+}
+
 export async function listApprovedRequests(): Promise<Paginated<Replenishment>> {
   const [approved, processing] = await Promise.all([
-    api.get<Paginated<Replenishment>>(`/replenishment/queue/warehouse?status=approved`),
-    api.get<Paginated<Replenishment>>(`/replenishment/queue/warehouse?status=processing`),
+    fetchWholeWarehouseQueue('approved'),
+    fetchWholeWarehouseQueue('processing'),
   ]);
-  const byId = new Map([...approved.rows, ...processing.rows].map((r) => [r.id, r]));
-  const rows = [...byId.values()];
+  const byId = new Map([...approved, ...processing].map((r) => [r.id, r]));
+  const rows = [...byId.values()].sort(newestFirst);
   return { rows, total: rows.length, page: 1, pageSize: rows.length };
 }
 

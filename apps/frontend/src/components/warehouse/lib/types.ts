@@ -110,7 +110,17 @@ export interface ReplenishmentLine {
   itemId: UUID;
   itemName: string;
   unitCode: string;
-  storageType?: 'frozen' | 'chilled' | 'dry';
+  /**
+   * REQUIRED as of 2026-09-08, and the change matters. It was declared
+   * optional here while `GET /replenishment/*` never sent it at all, so
+   * `SjCreateForm`'s FR-LOG-02 filter read `undefined` on every line, took its
+   * "unknown storage type is compatible" branch, and offered every open
+   * request on BOTH trucks — the rule the form's doc comment claims to make
+   * "structurally impossible to break" was not being applied to a single row.
+   * The field is now part of §4.9's contract; optionality here was what let
+   * the gap go unnoticed.
+   */
+  storageType: 'frozen' | 'chilled' | 'dry';
   qtyRequested: Qty;
   qtyApproved: Qty | null;
   qtyShipped: Qty | null;

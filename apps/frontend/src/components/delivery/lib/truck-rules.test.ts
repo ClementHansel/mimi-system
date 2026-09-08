@@ -58,9 +58,14 @@ describe('partitionLinesByShipmentType', () => {
     expect(excluded.map((l) => l.id)).toEqual(['a', 'b']);
   });
 
-  it('treats an undeclared storage type as compatible (defensive default, never silently dropped)', () => {
+  // Was the opposite assertion until 2026-09-08 ("undeclared is compatible"),
+  // and that reading is what made the whole rule inert: §4.9 sent no
+  // `storageType` on a replenishment line, so EVERY line hit this branch and
+  // both trucks accepted the entire queue. Unknown goods do not board a truck;
+  // they are handed back as `excluded` so the screen can name them.
+  it('excludes a line with no declared storage type, reporting it rather than loading it', () => {
     const { compatible, excluded } = partitionLinesByShipmentType([{ id: 'x' }], 'dry');
-    expect(compatible.map((l) => l.id)).toEqual(['x']);
-    expect(excluded).toEqual([]);
+    expect(compatible).toEqual([]);
+    expect(excluded.map((l) => l.id)).toEqual(['x']);
   });
 });

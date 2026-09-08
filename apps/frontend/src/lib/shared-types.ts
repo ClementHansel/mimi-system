@@ -10,6 +10,14 @@
 // never JS numbers. UUID/ISODate/ISODateTime are branded-in-spirit aliases.
 export type { Money, Qty, Temp, UUID, ISODate, ISODateTime } from '@mimi/shared';
 
+// EXACT decimal arithmetic on those strings — `@mimi/shared/qty` works in
+// scaled bigints, so it is safe where `Number(a) - Number(b)` is not. Needed
+// the moment a screen has to compute with a quantity rather than print it: the
+// Surat Jalan picker subtracts `qtyCommitted` from the approved quantity to get
+// what is still shippable, and a float there would mis-round a three-decimal
+// kilo figure. Use `formatQty` (`@/lib/formatters`) for DISPLAY, these for MATH.
+export { addQty, subQty, sumQty, compareQty, maxQty, minQty, isZeroQty } from '@mimi/shared';
+
 // Standard list envelope + exception-filter error shape (CONTRACTS §0)
 export type { Paginated, ApiErrorShape } from '@mimi/shared';
 

@@ -23,6 +23,7 @@ const frozenRequest: Replenishment = {
       itemName: 'Ayam Fillet Beku',
       unitCode: 'kg',
       storageType: 'frozen',
+      qtyCommitted: '0.000',
       qtyRequested: '10.000',
       qtyApproved: '10.000',
       qtyShipped: null,
@@ -52,6 +53,7 @@ const mixedRequest: Replenishment = {
       itemName: 'Ayam Mentah Berbumbu',
       unitCode: 'kg',
       storageType: 'frozen',
+      qtyCommitted: '0.000',
       qtyRequested: '5.000',
       qtyApproved: '5.000',
       qtyShipped: null,
@@ -64,6 +66,7 @@ const mixedRequest: Replenishment = {
       itemName: 'Beras',
       unitCode: 'kg',
       storageType: 'dry',
+      qtyCommitted: '0.000',
       qtyRequested: '20.000',
       qtyApproved: '20.000',
       qtyShipped: null,
@@ -279,5 +282,114 @@ describe('SjCreateForm — a disabled create button says what is missing', () =>
     fireEvent.change(screen.getByLabelText('Kendaraan'), { target: { value: 'veh-freezer' } });
     expect(screen.queryByText(/Lengkapi dulu/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Buat Surat Jalan' })).toBeEnabled();
+  });
+});
+
+/**
+ * Per-LINE remainder, 2026-09-09. A request stays `approved` until some Surat
+ * Jalan is marked ready, so it legitimately remains in this picker after one
+ * has been built from it — and FR-LOG-02 makes that necessary, since a
+ * frozen+dry request must go on two trucks. Hiding the request would break the
+ * split; offering it unchanged is what let the same goods ship twice. Filtering
+ * per line is what satisfies both.
+ */
+const partlyAssigned: Replenishment = {
+  ...frozenRequest,
+  id: 'req-partly',
+  requestNumber: 'OR-900',
+  lines: [
+    {
+      ...frozenRequest.lines[0]!,
+      id: 'line-partly',
+      qtyRequested: '10.000',
+      qtyApproved: '10.000',
+      // 4 of the 10 are already on another Surat Jalan.
+      qtyCommitted: '4.000',
+    },
+  ],
+};
+
+const fullyAssigned: Replenishment = {
+  ...frozenRequest,
+  id: 'req-full',
+  requestNumber: 'OR-901',
+  lines: [
+    {
+      ...frozenRequest.lines[0]!,
+      id: 'line-full',
+      qtyRequested: '10.000',
+      qtyApproved: '10.000',
+      qtyCommitted: '10.000',
+    },
+  ],
+};
+
+describe('SjCreateForm — a line already on another Surat Jalan is not offered again', () => {
+  function renderWith(requests: Replenishment[], onSubmit = vi.fn()) {
+    render(
+      <SjCreateForm
+        requests={requests}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={onSubmit}
+      />,
+    );
+    return onSubmit;
+  }
+
+  it('offers only the REMAINDER of a partly-assigned line, never the whole approved quantity', () => {
+    const onSubmit = renderWith([partlyAssigned]);
+
+    fireEvent.click(screen.getByLabelText(/OR-900/));
+    fireEvent.change(screen.getByLabelText('Driver'), { target: { value: 'drv-1' } });
+    fireEvent.change(screen.getByLabelText('Kendaraan'), { target: { value: 'veh-freezer' } });
+    fireEvent.change(screen.getByLabelText('Tanggal Rencana Kirim'), {
+      target: { value: '2026-09-10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Buat Surat Jalan' }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const line = onSubmit.mock.calls[0]![0].drops[0]!.lines[0]!;
+    // 10 approved - 4 already committed = 6. Shipping 10 again is the double-ship.
+    expect(line.qty).toBe('6.000');
+    // And the request line is named, so dispatch can record the shipment at all.
+    expect(line.requestLineId).toBe('line-partly');
+  });
+
+  it('says how many lines are already spoken for instead of quietly offering fewer', () => {
+    renderWith([partlyAssigned]);
+    expect(screen.queryByText(/sudah masuk Surat Jalan lain/)).not.toBeInTheDocument();
+
+    // A line with NOTHING left is dropped from the offer and explained.
+    render(
+      <SjCreateForm
+        requests={[fullyAssigned]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/1 barang sudah masuk Surat Jalan lain/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Semua barang yang cocok sudah masuk Surat Jalan lain/),
+    ).toBeInTheDocument();
+  });
+
+  it('cannot be selected at all once every compatible line is fully assigned', () => {
+    renderWith([fullyAssigned]);
+    expect(screen.getByLabelText(/OR-901/)).toBeDisabled();
+  });
+
+  it('still sends requestLineId on an untouched line — the field the UI used to drop', () => {
+    const onSubmit = renderWith([frozenRequest]);
+    fireEvent.click(screen.getByLabelText(/REQ-001/));
+    fireEvent.change(screen.getByLabelText('Driver'), { target: { value: 'drv-1' } });
+    fireEvent.change(screen.getByLabelText('Kendaraan'), { target: { value: 'veh-freezer' } });
+    fireEvent.change(screen.getByLabelText('Tanggal Rencana Kirim'), {
+      target: { value: '2026-09-10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Buat Surat Jalan' }));
+
+    expect(onSubmit.mock.calls[0]![0].drops[0]!.lines[0]!.requestLineId).toBe('line-1');
   });
 });

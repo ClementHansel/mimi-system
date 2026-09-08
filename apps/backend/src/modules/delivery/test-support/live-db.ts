@@ -1,5 +1,5 @@
 import { Pool, type PoolClient } from 'pg';
-import { RoleKey } from '@mimi/shared';
+import { DocumentPrefix, RoleKey } from '@mimi/shared';
 import { randomUUID } from 'node:crypto';
 
 /**
@@ -420,12 +420,16 @@ export async function createReplenishmentRequestFixture(
 ): Promise<{ requestId: string; lineId: string }> {
   const owner = getOwnerPool();
   const period = new Date().toISOString().slice(0, 7).replace('-', '');
+  // Prefix from the enum, never a literal — this fixture minted `RR/…` from a
+  // copy of the string and would have silently kept doing so through the
+  // 2026-09-09 rename to `OR`, producing fixtures whose numbers no real code
+  // path can issue any more.
   const numRes = await owner.query<{ last_number: number }>(
-    `INSERT INTO document_counters (doc_type, period, last_number) VALUES ('RR', $1, 1)
+    `INSERT INTO document_counters (doc_type, period, last_number) VALUES ($2, $1, 1)
      ON CONFLICT (doc_type, period) DO UPDATE SET last_number = document_counters.last_number + 1 RETURNING last_number`,
-    [period],
+    [period, DocumentPrefix.REPLENISHMENT_REQUEST],
   );
-  const requestNumber = `RR/${period}/${String(numRes.rows[0]!.last_number).padStart(4, '0')}`;
+  const requestNumber = `${DocumentPrefix.REPLENISHMENT_REQUEST}/${period}/${String(numRes.rows[0]!.last_number).padStart(4, '0')}`;
   const reqRes = await owner.query<{ id: string }>(
     `INSERT INTO replenishment_requests (request_number, location_id, status, source, requested_by)
      VALUES ($1, $2, 'approved', 'manual', $3) RETURNING id`,

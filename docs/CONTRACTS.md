@@ -196,7 +196,7 @@ CREATE TABLE settings (                          -- M20 reads/writes; namespaced
 );
 
 CREATE TABLE document_counters (                 -- cloud-only numbering; offline docs use device-local numbers (§0)
-  doc_type VARCHAR(30) NOT NULL,                 -- 'SJ','PO','PR','PC','OPN','RET','WST','JE','PRUN','PV','RR','GR'
+  doc_type VARCHAR(30) NOT NULL,                 -- 'SJ','PO','PR','PC','OPN','RET','WST','JE','PRUN','PV','OR','GR' ('RR' also present: pre-2026-09-09 outlet requests, see below)
   period VARCHAR(6) NOT NULL,                    -- 'YYYYMM'
   last_number INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (doc_type, period)
@@ -554,7 +554,7 @@ CREATE TABLE stock_reconciliations (
 -- 030: replenishment requests (FR-LOG-06..13)
 CREATE TABLE replenishment_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  request_number VARCHAR(30) UNIQUE NOT NULL,    -- 'RR/YYYYMM/nnnn' or device-local
+  request_number VARCHAR(30) UNIQUE NOT NULL,    -- 'OR/YYYYMM/nnnn' (Outlet Request) or device-local; renamed from 'RR' on 2026-09-09, FORWARD-ONLY — numbers already issued keep 'RR/…' and are never rewritten, so both prefixes legitimately coexist
   location_id UUID NOT NULL REFERENCES locations(id),  -- requesting outlet
   status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN (
     'draft','submitted','awaiting_approval','approved','rejected',
@@ -3240,6 +3240,8 @@ interface ReplenishmentLine {
   storageType: 'frozen' | 'chilled' | 'dry';
   qtyRequested: Qty;
   qtyApproved: Qty | null;
+  /** Already placed on a live (non-cancelled) Surat Jalan. Remaining = (qtyApproved ?? qtyRequested) - qtyCommitted (added 2026-09-09; cancelling an SJ releases its share). */
+  qtyCommitted: Qty;
   qtyShipped: Qty | null;
   qtyReceived: Qty | null;
   amendReason: string | null;

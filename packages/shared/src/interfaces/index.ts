@@ -458,6 +458,28 @@ export interface ReplenishmentLine {
   storageType: 'frozen' | 'chilled' | 'dry';
   qtyRequested: Qty;
   qtyApproved: Qty | null;
+  /**
+   * How much of this line is ALREADY placed on a live Surat Jalan — the sum of
+   * `sj_lines.qty` over every non-cancelled SJ referencing it.
+   *
+   * Added 2026-09-09. It is what makes "how much of this line is still
+   * shippable" answerable, which `qtyShipped` cannot do: `qtyShipped` is only
+   * written at DISPATCH, so between building an SJ and dispatching it a line
+   * looked completely unshipped and the create picker kept offering it. Two
+   * Surat Jalan for one request were both accepted, and because stock leaves at
+   * dispatch, both trucks posted `transfer_out` for the same goods.
+   *
+   * Remaining is `(qtyApproved ?? qtyRequested) - qtyCommitted`; use
+   * `subQty`/`compareQty` from `@mimi/shared`, never float arithmetic.
+   *
+   * CANCELLING an SJ releases its share automatically, because the sum ignores
+   * `status = 'cancelled'`. That is deliberate and it is why this is a computed
+   * total rather than a flag: `Replenishment.sjId` is a single column that
+   * cannot express "the frozen half is on SJ-A and the dry half on SJ-B", and
+   * `cancel()` never clears it, so anything keyed on that column would strand a
+   * cancelled SJ's request as permanently unshippable.
+   */
+  qtyCommitted: Qty;
   qtyShipped: Qty | null;
   qtyReceived: Qty | null;
   amendReason: string | null;

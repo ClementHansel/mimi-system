@@ -173,7 +173,22 @@ export enum DocumentPrefix {
   JOURNAL_ENTRY = 'JE',
   PAYROLL_RUN = 'PRUN',
   PAYMENT_VERIFICATION = 'PV',
-  REPLENISHMENT_REQUEST = 'RR',
+  /**
+   * `OR` — Outlet Request. Renamed from `RR` on 2026-09-09 (owner's wording:
+   * the document IS an outlet's request, and `RR` read as nothing in
+   * particular to the people using it).
+   *
+   * FORWARD-ONLY, deliberately. Numbers already issued keep their `RR/…`
+   * prefix and are NOT rewritten: `RR/202609/0004` is the request the owner
+   * spent 2026-09-08 chasing, and renumbering issued documents breaks every
+   * printout, screenshot and WhatsApp message that quotes one. `document_counters`
+   * therefore keeps its `RR` row untouched and grows a new `OR` row, whose
+   * sequence starts at 1 for the current period — so a database legitimately
+   * holds both series, and the prefix tells you which side of the rename a
+   * document was raised on. There is no collision: `(doc_type, period)` is the
+   * counter's key and `request_number` is UNIQUE across a different prefix.
+   */
+  REPLENISHMENT_REQUEST = 'OR',
   GOODS_RECEIPT = 'GR',
 }
 

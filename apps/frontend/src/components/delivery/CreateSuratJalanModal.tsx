@@ -117,7 +117,18 @@ export function CreateSuratJalanModal({
         drops: payload.drops.map((d) => ({
           locationId: d.locationId,
           replenishmentRequestId: d.replenishmentRequestId,
-          lines: d.lines.map((l) => ({ itemId: l.itemId, qty: l.qty, unitId: l.unitId })),
+          // `requestLineId` is forwarded, and its absence was a real defect:
+          // this mapping used to drop it, so every Surat Jalan built through
+          // the UI stored `sj_lines.request_line_id = NULL`. Dispatch then
+          // recorded no line shipments (`qty_shipped` stayed NULL forever) and
+          // nothing could tell how much of a request line was already on a
+          // truck — which is what allowed two Surat Jalan for one request.
+          lines: d.lines.map((l) => ({
+            itemId: l.itemId,
+            qty: l.qty,
+            unitId: l.unitId,
+            requestLineId: l.requestLineId,
+          })),
         })),
       });
       toast({ title: t('delivery.createdSuccess'), variant: 'success' });

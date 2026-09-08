@@ -1703,4 +1703,191 @@ describe('M10 delivery — live DB integration', () => {
       }
     });
   });
+
+  /**
+   * ONE REQUEST LINE MAY NOT BE LOADED ONTO TWO TRUCKS.
+   *
+   * Reproduced by hand on 2026-09-09 before this guard existed: `SJ/202609/0471`
+   * and `SJ/202609/0472` were both created from `RR/202609/0132`, both accepted,
+   * both `draft`. A request keeps status `approved` until some SJ is marked
+   * ready, so it stayed in the create picker the whole time, and
+   * `linkSuratJalan`'s `WHERE sj_id IS NULL` was no defence — it protects the
+   * COLUMN, so the second SJ simply left `sj_id` pointing at the first and
+   * became invisible from the request side. Stock leaves at DISPATCH, so both
+   * trucks would post `transfer_out` for the same goods and both raise a
+   * GUDANG_GOODS_OUT_TO_OUTLET journal event; `uq_stock_movements_natural_key`
+   * does not catch it, keying on `ref_id = drop_id` with two different drops.
+   *
+   * The check is PER LINE, not per request, and these tests pin both halves of
+   * that: a second SJ for an already-loaded line is refused, while splitting a
+   * line across two trucks up to the approved quantity is allowed — which is
+   * what FR-LOG-02 forces on any request holding both frozen and dry goods.
+   */
+  describe('create — a request line cannot be over-committed across Surat Jalan', () => {
+    const APPROVED = '10.000';
+
+    /** A fresh approved request with one frozen line, plus its own teardown. */
+    async function freshRequest(): Promise<{ requestId: string; lineId: string }> {
+      return createReplenishmentRequestFixture(
+        fixtures.outletId,
+        await fixtures.outletAssignedUserId(RoleKey.LEADER_OUTLET),
+        fixtures.frozenItemId,
+        fixtures.frozenItemUnitId,
+        APPROVED,
+      );
+    }
+
+    /**
+     * `replenishment_requests.sj_id` and `sj_drops.replenishment_request_id`
+     * reference each other with plain RESTRICT (migrations 030/033/034), so
+     * neither row deletes while the other still points at it — null both link
+     * columns first. Same dance as the drop-execution block above.
+     */
+    async function cleanup(requestId: string, sjIds: readonly string[]): Promise<void> {
+      const owner = getOwnerPool();
+      await owner.query(`UPDATE replenishment_requests SET sj_id = NULL WHERE id = $1`, [
+        requestId,
+      ]);
+      for (const id of sjIds) {
+        await owner.query(`UPDATE sj_drops SET replenishment_request_id = NULL WHERE sj_id = $1`, [
+          id,
+        ]);
+        await owner.query(`UPDATE sj_lines SET request_line_id = NULL WHERE sj_id = $1`, [id]);
+      }
+      await deleteReplenishmentRequest(requestId);
+      for (const id of sjIds) await deleteSuratJalan(id);
+    }
+
+    /** One frozen SJ carrying `qty` of `lineId`, as the Kepala Gudang. */
+    function buildSj(requestId: string, lineId: string, qty: string) {
+      return withRollback((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'frozen' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.frozenVehicleId,
+            plannedDate: new Date().toISOString().slice(0, 10),
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                replenishmentRequestId: requestId,
+                lines: [
+                  {
+                    itemId: fixtures.frozenItemId,
+                    qty,
+                    unitId: fixtures.frozenItemUnitId,
+                    requestLineId: lineId,
+                  },
+                ],
+              },
+            ],
+          },
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+    }
+
+    it('refuses a second Surat Jalan for a line that is already fully loaded', async () => {
+      const req = await freshRequest();
+      const made: string[] = [];
+      try {
+        const first = await buildSj(req.requestId, req.lineId, APPROVED);
+        made.push(first.id);
+
+        await expect(
+          buildSj(req.requestId, req.lineId, APPROVED),
+          'the same request line was accepted onto a second truck',
+        ).rejects.toMatchObject({ response: { code: 'ERR_REQUEST_LINE_OVERCOMMITTED' } });
+      } finally {
+        await cleanup(req.requestId, made);
+      }
+    });
+
+    it('allows a line to be split across two trucks up to the approved quantity, then refuses the overflow', async () => {
+      const req = await freshRequest();
+      const made: string[] = [];
+      try {
+        // 6 + 4 = the 10 approved. Both must be accepted: a partial fulfilment
+        // and a frozen/dry split are the same shape as far as this rule goes.
+        made.push((await buildSj(req.requestId, req.lineId, '6.000')).id);
+        made.push((await buildSj(req.requestId, req.lineId, '4.000')).id);
+
+        // The eleventh unit has nowhere to go.
+        await expect(
+          buildSj(req.requestId, req.lineId, '1.000'),
+          'the approved quantity was exceeded',
+        ).rejects.toMatchObject({ response: { code: 'ERR_REQUEST_LINE_OVERCOMMITTED' } });
+      } finally {
+        await cleanup(req.requestId, made);
+      }
+    });
+
+    it('refuses a single payload whose two drops together exceed the line', async () => {
+      // Each drop asks for 6 — individually under the 10 approved, together 12.
+      // A per-line check that did not SUM the payload would let this through.
+      const req = await freshRequest();
+      try {
+        const oneDrop = {
+          locationId: fixtures.outletId,
+          replenishmentRequestId: req.requestId,
+          lines: [
+            {
+              itemId: fixtures.frozenItemId,
+              qty: '6.000',
+              unitId: fixtures.frozenItemUnitId,
+              requestLineId: req.lineId,
+            },
+          ],
+        };
+        await expect(
+          withRollback((client) =>
+            sjService.create(
+              client,
+              {
+                shipmentType: 'frozen' as never,
+                driverId: fixtures.driverId,
+                vehicleId: fixtures.frozenVehicleId,
+                plannedDate: new Date().toISOString().slice(0, 10),
+                drops: [oneDrop, { ...oneDrop }],
+              },
+              fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+            ),
+          ),
+          'two drops in one payload were allowed to double-book a line',
+        ).rejects.toMatchObject({ response: { code: 'ERR_REQUEST_LINE_OVERCOMMITTED' } });
+      } finally {
+        await cleanup(req.requestId, []);
+      }
+    });
+
+    it('cancelling a Surat Jalan releases its share, so the line can be shipped again', async () => {
+      const req = await freshRequest();
+      const made: string[] = [];
+      try {
+        const first = await buildSj(req.requestId, req.lineId, APPROVED);
+        made.push(first.id);
+
+        // Cancelled, so its 10 stop counting against the line. This is the
+        // whole reason the commitment is a SUM over live Surat Jalan rather
+        // than a flag or the `sj_id` column: `cancel()` never clears `sj_id`,
+        // so anything keyed on that column would strand this request as
+        // permanently unshippable — the very bug this work started from.
+        await withRollback((client) =>
+          sjService.cancel(
+            client,
+            first.id,
+            'wrong truck',
+            fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+          ),
+        );
+
+        const replacement = await buildSj(req.requestId, req.lineId, APPROVED);
+        made.push(replacement.id);
+        expect(replacement.id).not.toBe(first.id);
+      } finally {
+        await cleanup(req.requestId, made);
+      }
+    });
+  });
 });

@@ -96,27 +96,79 @@ export class ReplenishmentAdvancementService implements ReplenishmentFulfillment
     if (!row) return this.skip(requestId, 'dispatch', 'request not found');
     const next = this.tryTransition(requestId, row.status, 'dispatch', actorRole);
 
+    // The quantities land FIRST and unconditionally — they are the physical
+    // fact this method exists to record (class header: a fact applies even
+    // when the document transition does not). `addLineShipped` accumulates,
+    // so a second truck adds to the first instead of replacing it.
     for (const line of lineShipments) {
-      await this.repo.setLineShipped(client, line.requestLineId, line.qtyShipped);
+      await this.repo.addLineShipped(client, line.requestLineId, line.qtyShipped);
     }
     if (!next) return;
 
+    // ONLY NOW is the request allowed to become `shipped`, and only if every
+    // line is fully out. FR-LOG-02 splits any mixed frozen/dry request across
+    // two Surat Jalan, and this used to write `shipped` the moment the FIRST
+    // one left — the other half's lines still unshipped, the request no longer
+    // in a status the create picker offers, and therefore no way left to put
+    // the rest on a truck. Staying at `processing` keeps it pickable until the
+    // request is genuinely complete; no new state is introduced, and the
+    // `processing --dispatch--> shipped` edge is simply not taken yet.
+    //
+    // EXCEPT when this dispatch reported NO line shipments at all, which means
+    // the Surat Jalan's lines carry no `request_line_id` to measure against.
+    // Every SJ built through the UI before 2026-09-09 is in that state — the
+    // create form never sent the field — including `SJ/202609/0001`, which was
+    // live on production when this shipped. For those, completeness is not
+    // merely unknown, it is UNKNOWABLE: `qty_shipped` can never be written, so
+    // the gate below would read "nothing shipped" forever and strand the
+    // request at `processing` with no way out. Falling through to the old
+    // unconditional transition is the honest reading of "we cannot tell", and
+    // it confines the new strictness to Surat Jalan that actually carry the
+    // linkage. Do not "simplify" this away: it is the compatibility seam for
+    // documents that were already in flight.
+    if (lineShipments.length === 0) {
+      this.logger.warn(
+        `replenishment_requests/${requestId}: dispatched by a Surat Jalan with no request-line linkage — cannot verify line completeness, advancing to '${next}' as pre-2026-09-09 behaviour did`,
+      );
+      await this.repo.updateStatus(client, requestId, next);
+      await this.emitShipped(client, row, requestId, actorUserId);
+      return;
+    }
+
+    const unshipped = await this.repo.countUnshippedLines(client, requestId);
+    if (unshipped > 0) {
+      this.logger.log(
+        `replenishment_requests/${requestId}: partially dispatched, ${unshipped} line(s) still short — staying '${row.status}' so the remainder can still be put on a Surat Jalan`,
+      );
+      return;
+    }
+
     await this.repo.updateStatus(client, requestId, next);
+    await this.emitShipped(client, row, requestId, actorUserId);
+  }
+
+  /** The `shipped` wire event, shared by both paths above so they cannot drift. */
+  private async emitShipped(
+    client: PoolClient,
+    row: { locationId: UUID; sjId: UUID | null },
+    requestId: UUID,
+    actorUserId: UUID,
+  ): Promise<void> {
     const sjId = row.sjId;
-    if (sjId) {
-      await this.syncEmit.emit(client, {
-        entity: 'replenishment_requests',
-        op: 'shipped',
-        entityId: requestId,
-        locationId: row.locationId,
-        actorUserId,
-        data: { id: requestId, sjId },
-      });
-    } else {
+    if (!sjId) {
       this.logger.warn(
         `replenishment_requests/${requestId} marked shipped with no sj_id set — linkSuratJalan should have run at SJ creation`,
       );
+      return;
     }
+    await this.syncEmit.emit(client, {
+      entity: 'replenishment_requests',
+      op: 'shipped',
+      entityId: requestId,
+      locationId: row.locationId,
+      actorUserId,
+      data: { id: requestId, sjId },
+    });
   }
 
   async markReceived(

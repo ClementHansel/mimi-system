@@ -26,7 +26,7 @@
 import pg from 'pg';
 import bcrypt from 'bcrypt';
 import { createHash } from 'node:crypto';
-import { businessDateOf } from '@mimi/shared';
+import { DocumentPrefix, businessDateOf } from '@mimi/shared';
 import { seedExtended } from './seed-extended.js';
 import { legacyRenames } from './org-model.js';
 import { seedGaps } from './seed-gaps.js';
@@ -1724,7 +1724,7 @@ async function main(): Promise<void> {
         [clientId],
       );
       if (already.rows.length > 0) continue;
-      const requestNumber = await nextDocNumber(client, 'RR');
+      const requestNumber = await nextDocNumber(client, DocumentPrefix.REPLENISHMENT_REQUEST);
       const res = await client.query(
         `INSERT INTO replenishment_requests (request_number, location_id, status, requested_by, submitted_at, needed_by, client_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7)

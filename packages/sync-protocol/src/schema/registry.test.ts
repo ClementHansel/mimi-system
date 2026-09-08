@@ -175,7 +175,7 @@ describe('validatePayloadData — spot checks against realistic payloads', () =>
   it('accepts a replenishment_requests.submitted payload with embedded lines', () => {
     const result = validatePayloadData('replenishment_requests', 'submitted', {
       id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-      requestNumber: 'RR/202608/0001',
+      requestNumber: 'OR/202608/0001',
       locationId: 'b1b2c3d4-e5f6-7890-abcd-ef1234567890',
       neededBy: null,
       source: 'manual',

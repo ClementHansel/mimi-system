@@ -8,15 +8,20 @@ import {
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
 import {
+  ERR_REQUEST_LINE_OVERCOMMITTED,
   ERR_SHIPMENT_TYPE_MIX,
   ERR_VALIDATION,
   JournalEventType,
   MovementType,
   RoleKey,
+  addQty,
   businessDateOf,
+  compareQty,
   formatCloudDocNumber,
   isNegativeQty,
   isZeroQty,
+  maxQty,
+  subQty,
   mulMoneyByQty,
   sumMoney,
   type Money,
@@ -278,6 +283,8 @@ export class SuratJalanService {
         );
 
       await this.assertLinesMatchShipmentType(client, dto.drops, dto.shipmentType);
+      // No SJ exists yet, so nothing of this document's own is on the line.
+      await this.assertRequestLinesNotOvercommitted(client, dto.drops, null);
       for (const drop of dto.drops) {
         const locRes = await client.query<{ id: string }>(
           `SELECT id FROM locations WHERE id = $1 AND is_active = true`,
@@ -456,6 +463,10 @@ export class SuratJalanService {
 
       if (dto.drops) {
         await this.assertLinesMatchShipmentType(client, dto.drops, header.shipment_type);
+        // EXCLUDING this SJ's own lines: the rows below are about to be deleted
+        // and re-inserted, so counting them would make an SJ collide with
+        // itself and refuse every edit that keeps a line unchanged.
+        await this.assertRequestLinesNotOvercommitted(client, dto.drops, id);
         // Replace the route wholesale — draft/ready only, so nothing downstream (stock, replenishment
         // status) has happened against the old drops/lines yet.
         await client.query(`DELETE FROM sj_drops WHERE sj_id = $1`, [id]); // ON DELETE CASCADE clears sj_lines
@@ -816,6 +827,102 @@ export class SuratJalanService {
         })),
       },
     });
+  }
+
+  /**
+   * FR-LOG: a Surat Jalan may not carry more of an outlet-request line than
+   * was approved, counting what every OTHER live Surat Jalan already carries.
+   *
+   * The hole this closes, reproduced on the dev box 2026-09-09: a request stays
+   * `approved` until an SJ is marked ready, so it kept appearing in the create
+   * picker after an SJ had been built from it — and two Surat Jalan for the
+   * same request were both accepted (`SJ/202609/0471` and `SJ/202609/0472`).
+   * `ReplenishmentAdvancementService.linkSuratJalan` was no defence: its
+   * `WHERE sj_id IS NULL` protects the COLUMN, so the second SJ simply left
+   * `sj_id` pointing at the first and became invisible from the request side.
+   * Stock leaves at DISPATCH, so both trucks would post `transfer_out` for the
+   * same goods and both raise a GUDANG_GOODS_OUT_TO_OUTLET journal event; the
+   * `uq_stock_movements_natural_key` index does not catch it because it keys on
+   * `ref_id = drop_id` and the two drops are different rows.
+   *
+   * Measured PER LINE, not per request, because that is the only unit that
+   * survives FR-LOG-02: a mixed frozen/dry request MUST go on two Surat Jalan,
+   * so "this request already has one" is not an error — "this line is already
+   * fully assigned" is. A partial fulfilment (send 6 of 10 now, 4 later) works
+   * for the same reason.
+   *
+   * `status <> 'cancelled'` releases a cancelled SJ's share automatically, so
+   * cancelling and rebuilding needs no reset step.
+   */
+  private async assertRequestLinesNotOvercommitted(
+    client: PoolClient,
+    drops: readonly { lines: readonly { requestLineId?: UUID; qty: Qty }[] }[],
+    excludeSjId: UUID | null,
+  ): Promise<void> {
+    // Summed across the whole payload: two drops naming the same request line
+    // would each pass a per-line check and together exceed the approval.
+    const wanted = new Map<string, Qty>();
+    for (const drop of drops) {
+      for (const line of drop.lines) {
+        if (!line.requestLineId) continue;
+        const prev = wanted.get(line.requestLineId);
+        wanted.set(line.requestLineId, prev ? addQty(prev, line.qty) : line.qty);
+      }
+    }
+    if (wanted.size === 0) return;
+
+    const ids = [...wanted.keys()];
+    const res = await client.query<{
+      id: string;
+      item_name: string;
+      approved: string;
+      committed: string;
+    }>(
+      `SELECT rl.id,
+              i.name AS item_name,
+              COALESCE(rl.qty_approved, rl.qty_requested) AS approved,
+              COALESCE((
+                SELECT SUM(sl.qty)
+                  FROM sj_lines sl
+                  JOIN surat_jalan sj ON sj.id = sl.sj_id
+                 WHERE sl.request_line_id = rl.id
+                   AND sj.status <> 'cancelled'
+                   AND ($2::uuid IS NULL OR sj.id <> $2::uuid)
+              ), 0) AS committed
+         FROM replenishment_request_lines rl
+         JOIN items i ON i.id = rl.item_id
+        WHERE rl.id = ANY($1::uuid[])`,
+      [ids, excludeSjId],
+    );
+
+    // A line the caller named that does not resolve is refused rather than
+    // waved through — an unreadable line is exactly the case where a silent
+    // skip would let the over-ship it is meant to prevent straight past.
+    if (res.rows.length !== wanted.size) {
+      const found = new Set(res.rows.map((r) => r.id));
+      throw new NotFoundException({
+        code: 'ERR_NOT_FOUND',
+        message: `Replenishment request line(s) not found: ${ids.filter((i) => !found.has(i)).join(', ')}`,
+      });
+    }
+
+    for (const row of res.rows) {
+      const asked = wanted.get(row.id)!;
+      if (compareQty(addQty(row.committed as Qty, asked), row.approved as Qty) <= 0) continue;
+      const remaining = maxQty('0', subQty(row.approved as Qty, row.committed as Qty));
+      throw new ConflictException({
+        code: ERR_REQUEST_LINE_OVERCOMMITTED,
+        message: `${row.item_name}: this Surat Jalan asks for ${asked} but only ${remaining} of ${row.approved} is still unassigned (${row.committed} is already on another Surat Jalan)`,
+        details: {
+          requestLineId: row.id,
+          itemName: row.item_name,
+          approved: row.approved,
+          committed: row.committed,
+          remaining,
+          requested: asked,
+        },
+      });
+    }
   }
 
   private async assertLinesMatchShipmentType(

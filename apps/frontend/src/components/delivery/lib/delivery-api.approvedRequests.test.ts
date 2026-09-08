@@ -29,7 +29,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 function requestAt(n: number, status: string): Replenishment {
   return {
     id: `req-${status}-${n}`,
-    requestNumber: `RR/202609/${String(n).padStart(4, '0')}`,
+    requestNumber: `OR/202609/${String(n).padStart(4, '0')}`,
     locationId: 'loc-1',
     locationName: 'Outlet Kemang',
     status,
@@ -49,6 +49,7 @@ function requestAt(n: number, status: string): Replenishment {
         itemName: 'Ayam Fillet Beku',
         unitCode: 'kg',
         storageType: 'frozen',
+        qtyCommitted: '0.000',
         qtyRequested: '1.000',
         qtyApproved: '1.000',
         qtyShipped: null,
@@ -104,7 +105,7 @@ describe('listApprovedRequests — the SJ picker sees every shippable request', 
 
     // Every request the warehouse could ship is offered — including the newest,
     // which is precisely the one the old single-page-of-fifty read dropped.
-    expect(res.rows.map((r) => r.requestNumber)).toContain('RR/202609/0260');
+    expect(res.rows.map((r) => r.requestNumber)).toContain('OR/202609/0260');
 
     // And within the endpoint's own limits while doing it.
     for (const [path] of vi.mocked(api.get).mock.calls) {

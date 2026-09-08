@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Pool, PoolClient } from 'pg';
 import {
+  DocumentPrefix,
   businessDateOf,
   formatCloudDocNumber,
   type ISODate,
@@ -35,6 +36,7 @@ export interface ReplenishmentLineRow {
   itemName: string;
   unitCode: string;
   storageType: 'frozen' | 'chilled' | 'dry';
+  qtyCommitted: Qty;
   qtyRequested: Qty;
   qtyApproved: Qty | null;
   qtyShipped: Qty | null;
@@ -98,6 +100,7 @@ interface RawLineRow {
   item_name: string;
   unit_code: string;
   storage_type: 'frozen' | 'chilled' | 'dry';
+  qty_committed: string;
   qty_requested: string;
   qty_approved: string | null;
   qty_shipped: string | null;
@@ -133,6 +136,7 @@ function mapLineRow(r: RawLineRow): ReplenishmentLineRow {
     itemName: r.item_name,
     unitCode: r.unit_code,
     storageType: r.storage_type,
+    qtyCommitted: r.qty_committed,
     qtyRequested: r.qty_requested,
     qtyApproved: r.qty_approved,
     qtyShipped: r.qty_shipped,
@@ -141,18 +145,72 @@ function mapLineRow(r: RawLineRow): ReplenishmentLineRow {
   };
 }
 
+/**
+ * How much of a request line is already loaded onto a LIVE Surat Jalan.
+ *
+ * A correlated sum rather than a column, because the answer changes when an SJ
+ * is created, edited or cancelled and a denormalised counter would have to be
+ * kept in step by four code paths in two modules. `status <> 'cancelled'` is
+ * the whole release mechanism: cancel an SJ and its share of the line becomes
+ * shippable again, with nothing to reset.
+ *
+ * Why not `replenishment_requests.sj_id` — the column that already exists:
+ * it holds ONE id, so it cannot express a request split across a frozen truck
+ * and a dry one (which FR-LOG-02 forces for any mixed request), and
+ * `SuratJalanService.cancel()` never clears it. Keying "already shipped" on
+ * that column would therefore both mis-handle the legitimate split and strand
+ * a cancelled SJ's request as permanently unshippable.
+ *
+ * The `::numeric(14,3)` cast is not cosmetic. `COALESCE(SUM(...), 0)` falls back
+ * to an INTEGER zero, so a line with nothing committed serialised as `'0'` while
+ * every other Qty on the same object read `'0.000'` — CONTRACTS §0 says these
+ * travel as decimal strings, and a client comparing them as strings (or showing
+ * them raw) would see the two spellings disagree. Matching `sj_lines.qty`'s own
+ * scale keeps one spelling on the wire.
+ *
+ * RLS: this runs on the CALLER's client, and that is correct rather than
+ * convenient. `surat_jalan_scope`/`sj_lines_parent` (migration 201) admit a
+ * row through its origin location or any of its drop locations. Every SJ
+ * originates at the one central warehouse (D-14), so a KEPALA GUDANG — the
+ * only role that can create one — sees all of them and can never under-count;
+ * an outlet's supervisor sees any SJ with a drop at their own outlet, which is
+ * every SJ that could carry their own request's lines. A caller who cannot see
+ * the SJ cannot see the request either.
+ */
+const COMMITTED_QTY_SQL = `COALESCE((
+         SELECT SUM(sl.qty)
+           FROM sj_lines sl
+           JOIN surat_jalan sj ON sj.id = sl.sj_id
+          WHERE sl.request_line_id = rl.id
+            AND sj.status <> 'cancelled'
+       ), 0)::numeric(14,3) AS qty_committed`;
+
 @Injectable()
 export class ReplenishmentRepository {
-  /** `RR/YYYYMM/nnnn`, atomic per period (CONTRACTS.md §0 doc-numbering; D-11 WITA business date for the period). */
+  /**
+   * `OR/YYYYMM/nnnn` — Outlet Request, atomic per period (CONTRACTS.md §0
+   * doc-numbering; D-11 WITA business date for the period).
+   *
+   * The prefix comes from `DocumentPrefix.REPLENISHMENT_REQUEST`, NOT a literal.
+   * It was `'RR'` written out twice here — and the enum for it already existed
+   * and was simply not used, so the 2026-09-09 rename to `OR` would have
+   * changed the enum and nothing else. Three other call sites had the same
+   * copy (`database/seed.ts`, `modules/delivery/test-support/live-db.ts`); all
+   * now read the enum. Do not reintroduce the string.
+   */
   async nextRequestNumber(client: PoolClient): Promise<string> {
     const period = businessDateOf(new Date().toISOString()).slice(0, 7).replace('-', '');
     const res = await client.query<{ last_number: number }>(
-      `INSERT INTO document_counters (doc_type, period, last_number) VALUES ('RR', $1, 1)
+      `INSERT INTO document_counters (doc_type, period, last_number) VALUES ($2, $1, 1)
        ON CONFLICT (doc_type, period) DO UPDATE SET last_number = document_counters.last_number + 1
        RETURNING last_number`,
-      [period],
+      [period, DocumentPrefix.REPLENISHMENT_REQUEST],
     );
-    return formatCloudDocNumber('RR', period, res.rows[0]!.last_number);
+    return formatCloudDocNumber(
+      DocumentPrefix.REPLENISHMENT_REQUEST,
+      period,
+      res.rows[0]!.last_number,
+    );
   }
 
   async insertRequest(
@@ -270,6 +328,7 @@ export class ReplenishmentRepository {
   async findLines(client: PoolClient, requestId: UUID): Promise<ReplenishmentLineRow[]> {
     const res = await client.query(
       `SELECT rl.id, rl.item_id, i.name AS item_name, u.code AS unit_code, i.storage_type,
+              ${COMMITTED_QTY_SQL},
               rl.qty_requested, rl.qty_approved, rl.qty_shipped, rl.qty_received, rl.amend_reason
          FROM replenishment_request_lines rl
          JOIN items i ON i.id = rl.item_id
@@ -343,6 +402,7 @@ export class ReplenishmentRepository {
     if (requestIds.length === 0) return byRequest;
     const res = await client.query(
       `SELECT rl.request_id, rl.id, rl.item_id, i.name AS item_name, u.code AS unit_code, i.storage_type,
+              ${COMMITTED_QTY_SQL},
               rl.qty_requested, rl.qty_approved, rl.qty_shipped, rl.qty_received, rl.amend_reason
          FROM replenishment_request_lines rl
          JOIN items i ON i.id = rl.item_id
@@ -460,11 +520,48 @@ export class ReplenishmentRepository {
     );
   }
 
-  async setLineShipped(client: PoolClient, lineId: UUID, qtyShipped: Qty): Promise<void> {
-    await client.query(`UPDATE replenishment_request_lines SET qty_shipped = $2 WHERE id = $1`, [
-      lineId,
-      qtyShipped,
-    ]);
+  /**
+   * ADDS to `qty_shipped` — it used to overwrite it.
+   *
+   * One request line can legitimately be dispatched more than once: FR-LOG-02
+   * forces a frozen/dry request onto two Surat Jalan, and a partial fulfilment
+   * can send the rest on a later truck. An assignment therefore reported the
+   * LAST dispatch instead of the total, so a line sent 10 then 5 read 5 and the
+   * request looked under-shipped while more than the approved quantity had
+   * physically gone out.
+   *
+   * `COALESCE` because the column starts NULL, and NULL is meaningful here:
+   * "nothing has been dispatched yet" is different from "0 was dispatched".
+   */
+  async addLineShipped(client: PoolClient, lineId: UUID, qtyShipped: Qty): Promise<void> {
+    await client.query(
+      `UPDATE replenishment_request_lines
+          SET qty_shipped = COALESCE(qty_shipped, 0) + $2
+        WHERE id = $1`,
+      [lineId, qtyShipped],
+    );
+  }
+
+  /**
+   * Lines of this request that are not yet fully dispatched, measured against
+   * the APPROVED quantity (falling back to the requested one, which is what
+   * `fillDefaultApprovedQuantities` guarantees once the chain finishes).
+   *
+   * This is the completeness gate `markShipped` needs: dispatching one truck
+   * used to write `shipped` on the whole request unconditionally, so a mixed
+   * frozen/dry request went `shipped` the moment either half left — and
+   * `shipped` is not a status the create picker offers, which stranded the
+   * other half with no way to put it on a truck.
+   */
+  async countUnshippedLines(client: PoolClient, requestId: UUID): Promise<number> {
+    const res = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count
+         FROM replenishment_request_lines
+        WHERE request_id = $1
+          AND COALESCE(qty_shipped, 0) < COALESCE(qty_approved, qty_requested)`,
+      [requestId],
+    );
+    return Number.parseInt(res.rows[0]?.count ?? '0', 10);
   }
 
   async setLineReceived(client: PoolClient, lineId: UUID, qtyReceived: Qty): Promise<void> {

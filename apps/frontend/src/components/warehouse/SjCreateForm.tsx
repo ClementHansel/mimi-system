@@ -14,7 +14,8 @@ import {
   Textarea,
 } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
-import type { Replenishment, Driver, Vehicle } from './lib/types';
+import { compareQty, maxQty, subQty, type Qty } from '@/lib/shared-types';
+import type { Replenishment, Driver, Vehicle, ReplenishmentLine } from './lib/types';
 
 export interface CreateSjPayload {
   shipmentType: 'frozen' | 'dry';
@@ -26,7 +27,23 @@ export interface CreateSjPayload {
     locationId: string;
     locationName: string;
     replenishmentRequestId?: string;
-    lines: { itemId: string; itemName: string; unitCode: string; qty: string; unitId: string }[];
+    lines: {
+      itemId: string;
+      itemName: string;
+      unitCode: string;
+      qty: string;
+      unitId: string;
+      /**
+       * The `replenishment_request_lines.id` this line fulfils. LOAD-BEARING,
+       * and it was missing: this form never sent it, so every Surat Jalan built
+       * through the UI landed with `sj_lines.request_line_id = NULL` (verified
+       * on `SJ/202609/0397`). With it null, dispatch records no line shipments
+       * at all — `qty_shipped` stays NULL forever — and nothing can tell how
+       * much of a request line is already on a truck, which is what let two
+       * Surat Jalan be built from one request.
+       */
+      requestLineId: string;
+    }[];
   }[];
 }
 
@@ -97,15 +114,42 @@ export function SjCreateForm({
       : storageType === 'dry';
   }
 
+  /**
+   * What is still shippable on a line: approved (or, before the chain fills it
+   * in, requested) minus whatever live Surat Jalan already carry.
+   *
+   * `subQty`, not `Number(a) - Number(b)` — these are three-decimal strings and
+   * float subtraction mis-rounds them. Floored at zero so a line that is
+   * somehow over-committed reads "nothing left" rather than a negative offer.
+   */
+  function remainingOf(l: ReplenishmentLine): Qty {
+    return maxQty('0', subQty(l.qtyApproved ?? l.qtyRequested, l.qtyCommitted));
+  }
+
+  /**
+   * A line is offerable only if it fits this truck AND has something left.
+   *
+   * The second half is the 2026-09-09 fix. A request keeps status `approved`
+   * until some Surat Jalan is marked ready, so it legitimately stays in this
+   * picker after one has been built from it — which is REQUIRED for a mixed
+   * frozen/dry request (FR-LOG-02 forces it onto two trucks) and was also what
+   * allowed the same request to be shipped twice. Filtering per LINE rather
+   * than hiding the request resolves both: the frozen half disappears from the
+   * frozen truck once it is assigned, while the dry half is still offered on
+   * the dry one.
+   */
   const requestRows = useMemo(
     () =>
       requests.map((r) => {
-        const compatibleLines = r.lines.filter((l) => isCompatible(l.storageType));
-        const excludedCount = r.lines.length - compatibleLines.length;
+        const fitsTruck = r.lines.filter((l) => isCompatible(l.storageType));
+        const compatibleLines = fitsTruck.filter((l) => compareQty(remainingOf(l), '0') > 0);
+        const excludedCount = r.lines.length - fitsTruck.length;
+        const assignedCount = fitsTruck.length - compatibleLines.length;
         return {
           request: r,
           compatibleLines,
           excludedCount,
+          assignedCount,
           selectable: compatibleLines.length > 0,
         };
       }),
@@ -129,8 +173,12 @@ export function SjCreateForm({
           itemId: l.itemId,
           itemName: l.itemName,
           unitCode: l.unitCode,
-          qty: (l.qtyApproved ?? l.qtyRequested) as string,
+          // The REMAINDER, not the full approved quantity — otherwise a second
+          // truck for a partially-assigned line would re-ship what the first
+          // one is already carrying.
+          qty: remainingOf(l),
           unitId: l.itemId,
+          requestLineId: l.id,
         });
       }
       byLocation.set(key, existing);
@@ -220,35 +268,49 @@ export function SjCreateForm({
         {requestRows.length === 0 && (
           <p className="text-sm text-text-muted">{t('warehouse.sj.noApprovedRequests')}</p>
         )}
-        {requestRows.map(({ request, compatibleLines, excludedCount, selectable }) => (
-          <Card key={request.id} className={!selectable ? 'opacity-50' : undefined}>
-            <CardContent className="flex flex-col gap-2 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <Checkbox
-                  label={`${request.requestNumber} — ${request.locationName}`}
-                  checked={!!selected[request.id]}
-                  disabled={!selectable || submitting}
-                  onCheckedChange={(checked) =>
-                    setSelected((prev) => ({ ...prev, [request.id]: checked }))
-                  }
-                />
-                <Badge variant={selectable ? 'info' : 'default'} size="sm">
-                  {compatibleLines.length} item
-                </Badge>
-              </div>
-              {excludedCount > 0 && (
-                <p className="pl-6 text-xs text-warning-700">
-                  {t('warehouse.sj.excludedLines', { count: excludedCount })}
-                </p>
-              )}
-              {!selectable && (
-                <p className="pl-6 text-xs text-text-muted">
-                  {t('warehouse.sj.noCompatibleLines')}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+        {requestRows.map(
+          ({ request, compatibleLines, excludedCount, assignedCount, selectable }) => (
+            <Card key={request.id} className={!selectable ? 'opacity-50' : undefined}>
+              <CardContent className="flex flex-col gap-2 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Checkbox
+                    label={`${request.requestNumber} — ${request.locationName}`}
+                    checked={!!selected[request.id]}
+                    disabled={!selectable || submitting}
+                    onCheckedChange={(checked) =>
+                      setSelected((prev) => ({ ...prev, [request.id]: checked }))
+                    }
+                  />
+                  <Badge variant={selectable ? 'info' : 'default'} size="sm">
+                    {compatibleLines.length} item
+                  </Badge>
+                </div>
+                {excludedCount > 0 && (
+                  <p className="pl-6 text-xs text-warning-700">
+                    {t('warehouse.sj.excludedLines', { count: excludedCount })}
+                  </p>
+                )}
+                {/* Lines that fit this truck but are already fully loaded onto
+                  another Surat Jalan. Said out loud, because a row quietly
+                  offering fewer items than the request asked for is how a
+                  dispatcher ends up building a second truck for goods that are
+                  already on the first. */}
+                {assignedCount > 0 && (
+                  <p className="pl-6 text-xs text-info-700">
+                    {t('warehouse.sj.alreadyOnAnotherSj', { count: assignedCount })}
+                  </p>
+                )}
+                {!selectable && (
+                  <p className="pl-6 text-xs text-text-muted">
+                    {assignedCount > 0
+                      ? t('warehouse.sj.fullyAssigned')
+                      : t('warehouse.sj.noCompatibleLines')}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ),
+        )}
       </div>
 
       {drops.length > 0 && (

@@ -9,16 +9,32 @@ import {
 } from './error-codes';
 
 describe('ErrorCode — closed literal union, same discipline as PermissionKey/SettingsKey', () => {
-  it('lists 52 codes with no duplicates', () => {
-    // 37 + ERR_NODE_QUEUE_PENDING + ERR_NODE_UNREACHABLE (BUILD-PLAN D-26, node-gateway drain-before-off)
-    // + the four B-15 approval-code outcomes (INVALID / EXPIRED / LOCKED / NOT_ISSUED)
-    // + 7 voucher rejection codes + ERR_DOC_SOURCE_NOT_FOUND (concurrent Wave-3 work)
-    // + ERR_NODE_SHIFT_OPEN (W3-10, node-gateway remote-command hardening)
-    // + ERR_DUPLICATE / ERR_REFERENCED (SQLSTATE 23505/23503 mapping in the exception filter).
-    // NOTE: this count is a moving target under concurrent agents — re-derive it from
-    // the actual ERROR_CODES object length rather than trusting this comment's arithmetic.
-    expect(ERROR_CODE_LIST).toHaveLength(54);
-    expect(new Set(ERROR_CODE_LIST).size).toBe(54);
+  it('has no duplicates, and the exported list matches the object it is derived from', () => {
+    // NO HARDCODED TOTAL. This assertion used to pin an exact count, and the
+    // count is the one thing here with no information in it: the title said
+    // "52" while the body asserted 54, and its own comment already warned that
+    // the number is "a moving target under concurrent agents". Adding a
+    // legitimate code (`ERR_REQUEST_LINE_OVERCOMMITTED`, 2026-09-09) then fails
+    // a test that is not about that code, which teaches everyone to bump the
+    // number without reading why it moved.
+    //
+    // What actually needs guarding is the INVARIANT the closed union depends
+    // on: no code appears twice, and the list and its type guard agree in both
+    // directions. Those break the derived literal type; a changed total does
+    // not, and they are caught below at any size.
+    expect(new Set(ERROR_CODE_LIST).size, 'ERROR_CODE_LIST contains a duplicate').toBe(
+      ERROR_CODE_LIST.length,
+    );
+    // Every listed code is recognised by the guard derived from the same
+    // object, and nothing outside it is — the two directions that keep
+    // `ErrorCode` a genuinely closed union rather than documentation.
+    for (const code of ERROR_CODE_LIST) {
+      expect(isErrorCode(code), `${code} is listed but not recognised`).toBe(true);
+    }
+    expect(isErrorCode('ERR_NOT_A_REAL_CODE')).toBe(false);
+    // Non-empty, so a refactor that empties the list fails loudly instead of
+    // making every assertion above vacuously true.
+    expect(ERROR_CODE_LIST.length).toBeGreaterThan(50);
   });
 
   it('includes the two codes swept in from CONTRACTS.md/W1-D that were missing before this sweep', () => {

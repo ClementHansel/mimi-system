@@ -65,6 +65,20 @@ const ERROR_CODES = {
   ERR_AREA_HAS_STOCK: 'ERR_AREA_HAS_STOCK',
   /** Frozen+dry sharing one SJ (FR-LOG-02). */
   ERR_SHIPMENT_TYPE_MIX: 'ERR_SHIPMENT_TYPE_MIX',
+  /**
+   * A Surat Jalan would ship more of an outlet-request line than was approved,
+   * counting what other live Surat Jalan already carry.
+   *
+   * The hole it closes (found 2026-09-09, reproduced on the dev box): a
+   * request stays `approved` until some SJ is marked ready, so it kept
+   * appearing in the create picker after an SJ had already been built from it —
+   * and two SJs for the same request were both accepted. Stock leaves at
+   * DISPATCH, so both trucks then posted `transfer_out` for the same goods and
+   * both raised a GUDANG_GOODS_OUT_TO_OUTLET journal event. The natural-key
+   * index on `stock_movements` does not catch it: it keys on `ref_id = drop_id`
+   * and the two drops are different rows.
+   */
+  ERR_REQUEST_LINE_OVERCOMMITTED: 'ERR_REQUEST_LINE_OVERCOMMITTED',
 
   // ── HR / attendance (FR-HR-01) ────────────────────────────────────────────
   ERR_GEOFENCE_OUT_OF_RANGE: 'ERR_GEOFENCE_OUT_OF_RANGE',
@@ -206,6 +220,7 @@ export const {
   ERR_STOCK_INSUFFICIENT,
   ERR_AREA_HAS_STOCK,
   ERR_SHIPMENT_TYPE_MIX,
+  ERR_REQUEST_LINE_OVERCOMMITTED,
   ERR_GEOFENCE_OUT_OF_RANGE,
   ERR_STATUTORY_NOT_READY,
   ERR_USE_WIZARD,

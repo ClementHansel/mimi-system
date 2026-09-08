@@ -529,6 +529,10 @@ export class ReplenishmentService {
         // therefore compatible with both trucks. See `ReplenishmentLine` in
         // @mimi/shared for the whole failure.
         storageType: l.storageType,
+        // What other live Surat Jalan already carry of this line — the field
+        // the create picker subtracts to get "still shippable". See
+        // `ReplenishmentLine` in @mimi/shared for why `sjId` cannot do this job.
+        qtyCommitted: l.qtyCommitted,
         qtyRequested: l.qtyRequested,
         qtyApproved: l.qtyApproved,
         qtyShipped: l.qtyShipped,

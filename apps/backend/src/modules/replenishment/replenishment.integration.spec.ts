@@ -1054,3 +1054,212 @@ describe('ReplenishmentService — every line carries its item storage type (liv
     assertLinesTyped(queued!.lines, 'warehouse queue (the SJ picker`s own read)');
   });
 });
+
+/**
+ * A PARTIAL DISPATCH MUST NOT MARK THE WHOLE REQUEST SHIPPED.
+ *
+ * Reproduced on the dev box 2026-09-09, before this fix: a request holding one
+ * frozen and one dry line (which FR-LOG-02 forces onto two separate Surat
+ * Jalan) went to `shipped` the moment the FIRST truck left. `qty_shipped` was
+ * set on the dry line and still NULL on the frozen one, yet the request read
+ * `shipped` — and `shipped` is not a status `listWarehouseQueue` offers, so the
+ * frozen half could no longer be put on a truck through the picker at all.
+ *
+ * Two defects, one symptom:
+ *   - `markShipped` wrote `result.nextState` unconditionally, with no check
+ *     that every line was actually out;
+ *   - `setLineShipped` ASSIGNED `qty_shipped`, so a second dispatch of the same
+ *     line replaced the first instead of adding to it — a line sent 6 then 4
+ *     reported 4, and the total that physically left was unrecoverable.
+ *
+ * Driven through `ReplenishmentAdvancementService` (M10's real entry point for
+ * this, per its own port contract) rather than by writing statuses by hand, so
+ * the state machine and the completeness gate are both exercised.
+ */
+describe('ReplenishmentAdvancementService.markShipped — partial dispatch (live DB)', () => {
+  it('stays `processing` while any line is short, becomes `shipped` only once every line is out, and ACCUMULATES qty_shipped', async () => {
+    const { service, advancement } = buildServices();
+    const ldr = callerFor(fx.outletA.leaderUserId, RoleKey.LEADER_OUTLET, [fx.outletA.locationId]);
+    const spv = callerFor(fx.outletA.supervisorUserId, RoleKey.SUPERVISOR, [fx.outletA.locationId]);
+    const kgd = callerFor(fx.kepalaGudangUserId, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+
+    // TWO lines, because one line can never show the difference between "this
+    // request is done" and "this LINE is done".
+    const created = await withRollback(
+      { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+      (client) =>
+        service.create(client, ldr, {
+          locationId: fx.outletA.locationId,
+          lines: [
+            { itemId: fx.itemId, qtyRequested: '10.000', unitId: fx.unitId },
+            { itemId: fx.itemId2, qtyRequested: '4.000', unitId: fx.unitId },
+          ],
+        }),
+    );
+    createdRequestIds.push(created.id);
+    const lineA = created.lines.find((l) => l.itemId === fx.itemId)!;
+    const lineB = created.lines.find((l) => l.itemId === fx.itemId2)!;
+
+    // Nothing is on a truck yet, so nothing is committed.
+    expect(lineA.qtyCommitted).toBe('0.000');
+    expect(lineB.qtyCommitted).toBe('0.000');
+
+    await withRollback(
+      { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+      (client) => service.submit(client, ldr, created.id),
+    );
+    await withRollback(
+      { userId: spv.userId, roleKey: spv.roleKey, locationIds: spv.locationIds },
+      (client) => service.approve(client, spv, created.id, {}),
+    );
+    await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) => service.approve(client, kgd, created.id, {}),
+    );
+    await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) => service.process(client, kgd, created.id),
+    );
+
+    // FIRST TRUCK: all of line A, and only PART of line B.
+    await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      async (client) => {
+        await advancement.markShipped(
+          client,
+          created.id,
+          [
+            { requestLineId: lineA.id, qtyShipped: '10.000' },
+            { requestLineId: lineB.id, qtyShipped: '1.000' },
+          ],
+          kgd.userId,
+          RoleKey.KEPALA_GUDANG,
+        );
+        await client.query('COMMIT');
+      },
+    );
+
+    const afterFirst = await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) => service.getById(client, created.id),
+    );
+    expect(
+      afterFirst.status,
+      'a request with 3 of 4 units still in the warehouse was marked shipped, which removes it from the SJ picker',
+    ).toBe(ReplenishmentStatus.PROCESSING);
+    expect(afterFirst.lines.find((l) => l.id === lineB.id)!.qtyShipped).toBe('1.000');
+
+    // SECOND TRUCK: the remaining 3 of line B.
+    await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      async (client) => {
+        await advancement.markShipped(
+          client,
+          created.id,
+          [{ requestLineId: lineB.id, qtyShipped: '3.000' }],
+          kgd.userId,
+          RoleKey.KEPALA_GUDANG,
+        );
+        await client.query('COMMIT');
+      },
+    );
+
+    const afterSecond = await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) => service.getById(client, created.id),
+    );
+    // ACCUMULATED — 1 + 3, not overwritten to 3.
+    expect(
+      afterSecond.lines.find((l) => l.id === lineB.id)!.qtyShipped,
+      'the second dispatch replaced the first instead of adding to it',
+    ).toBe('4.000');
+    expect(afterSecond.lines.find((l) => l.id === lineA.id)!.qtyShipped).toBe('10.000');
+    // …and only NOW is the whole request out.
+    expect(afterSecond.status).toBe(ReplenishmentStatus.SHIPPED);
+  });
+});
+
+/**
+ * A SURAT JALAN WITH NO REQUEST-LINE LINKAGE MUST STILL BE ABLE TO COMPLETE.
+ *
+ * The compatibility seam for documents that were already in flight when the
+ * per-line completeness gate shipped (2026-09-09). Every Surat Jalan built
+ * through the UI before that date has `sj_lines.request_line_id = NULL`,
+ * because the create form never sent the field — `SJ/202609/0001` was live on
+ * production, in `draft`, carrying `RR/202609/0007`, at the moment this went
+ * out.
+ *
+ * For such a document `dispatch()` can report no line shipments at all, so
+ * `qty_shipped` is never written and the gate would read "nothing shipped"
+ * forever: the request would sit at `processing` with no path to `shipped` and
+ * no way to be re-picked either. Completeness there is not unknown, it is
+ * UNKNOWABLE, and the honest answer is to advance exactly as the old code did
+ * rather than invent a verdict.
+ *
+ * This test is the reason not to "tidy up" that branch: delete it and the
+ * client's in-flight paperwork stops moving.
+ */
+describe('ReplenishmentAdvancementService.markShipped — a Surat Jalan with no line linkage (live DB)', () => {
+  it('still advances the request to `shipped` when the dispatch reports no line shipments', async () => {
+    const { service, advancement } = buildServices();
+    const ldr = callerFor(fx.outletA.leaderUserId, RoleKey.LEADER_OUTLET, [fx.outletA.locationId]);
+    const spv = callerFor(fx.outletA.supervisorUserId, RoleKey.SUPERVISOR, [fx.outletA.locationId]);
+    const kgd = callerFor(fx.kepalaGudangUserId, RoleKey.KEPALA_GUDANG, [fx.warehouseId]);
+
+    const created = await withRollback(
+      { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+      (client) =>
+        service.create(client, ldr, {
+          locationId: fx.outletA.locationId,
+          lines: [{ itemId: fx.itemId, qtyRequested: '5.000', unitId: fx.unitId }],
+        }),
+    );
+    createdRequestIds.push(created.id);
+
+    for (const step of [
+      () =>
+        withRollback(
+          { userId: ldr.userId, roleKey: ldr.roleKey, locationIds: ldr.locationIds },
+          (client) => service.submit(client, ldr, created.id),
+        ),
+      () =>
+        withRollback(
+          { userId: spv.userId, roleKey: spv.roleKey, locationIds: spv.locationIds },
+          (client) => service.approve(client, spv, created.id, {}),
+        ),
+      () =>
+        withRollback(
+          { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+          (client) => service.approve(client, kgd, created.id, {}),
+        ),
+      () =>
+        withRollback(
+          { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+          (client) => service.process(client, kgd, created.id),
+        ),
+    ]) {
+      await step();
+    }
+
+    // EMPTY line shipments — exactly what `dispatch()` passes for a Surat Jalan
+    // whose `sj_lines` carry no `request_line_id`.
+    await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      async (client) => {
+        await advancement.markShipped(client, created.id, [], kgd.userId, RoleKey.KEPALA_GUDANG);
+        await client.query('COMMIT');
+      },
+    );
+
+    const after = await withRollback(
+      { userId: kgd.userId, roleKey: kgd.roleKey, locationIds: kgd.locationIds },
+      (client) => service.getById(client, created.id),
+    );
+    expect(
+      after.status,
+      'a pre-2026-09-09 Surat Jalan can no longer complete its request — the in-flight documents are stranded',
+    ).toBe(ReplenishmentStatus.SHIPPED);
+    // Nothing is claimed about the quantities, because nothing was reported.
+    expect(after.lines[0]!.qtyShipped).toBeNull();
+  });
+});

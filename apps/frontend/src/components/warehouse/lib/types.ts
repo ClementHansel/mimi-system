@@ -123,6 +123,12 @@ export interface ReplenishmentLine {
   storageType: 'frozen' | 'chilled' | 'dry';
   qtyRequested: Qty;
   qtyApproved: Qty | null;
+  /**
+   * Already on a live (non-cancelled) Surat Jalan. The picker subtracts this to
+   * get what is still shippable — see `ReplenishmentLine` in @mimi/shared for
+   * why `sjId` cannot answer that and what went wrong while nothing did.
+   */
+  qtyCommitted: Qty;
   qtyShipped: Qty | null;
   qtyReceived: Qty | null;
   amendReason: string | null;

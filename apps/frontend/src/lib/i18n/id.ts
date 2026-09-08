@@ -2510,6 +2510,12 @@ export const id = {
       pickRequests: 'Pilih Permintaan yang Disetujui',
       noApprovedRequests: 'Belum ada permintaan yang disetujui dan siap dikirim',
       noCompatibleLines: 'Tidak ada barang yang cocok dengan tipe pengiriman ini',
+      // 2026-09-09: a request legitimately stays in this picker after a Surat
+      // Jalan has been built from it (a frozen+kering request needs two), so
+      // the picker filters per LINE. These two say why a row is short or
+      // unavailable, instead of it silently offering fewer items.
+      alreadyOnAnotherSj: '{{count}} barang sudah masuk Surat Jalan lain',
+      fullyAssigned: 'Semua barang yang cocok sudah masuk Surat Jalan lain',
       excludedLines: '{{count}} baris tidak disertakan karena beda tipe pengiriman',
       routePreview: 'Rute Multi-Drop',
       dropSeq: 'Drop {{seq}}',

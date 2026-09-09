@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import { NoShowWorklist } from './NoShowWorklist';
 import { useSessionStore } from '@/stores/session-store';
 import * as hrApi from './lib/hr-api';
+import { toDateInput } from '@/lib/dates';
 
 /**
  * THE ONLY WAY TO RECORD A NO-SHOW — AND THE FRICTION IT HAS TO CARRY.
@@ -93,7 +94,11 @@ describe('NoShowWorklist', () => {
 
     await waitFor(() => expect(hrApi.listNoShows).toHaveBeenCalled());
     const { from, to } = vi.mocked(hrApi.listNoShows).mock.calls[0]![0];
-    const today = new Date().toISOString().slice(0, 10);
+    // `toDateInput`, not `toISOString()`. The component works in WITA
+    // (Asia/Makassar) and so must this comparison — a UTC "today" agrees with
+    // a WITA one only during WITA daytime, and this assertion duly failed the
+    // moment the suite ran just after local midnight.
+    const today = toDateInput(new Date());
     // A shift still in progress is not a missed one — and the server refuses
     // `>= CURRENT_DATE`, so asking for today could only ever return nothing.
     expect(to < today, `to=${to} must be before today=${today}`).toBe(true);

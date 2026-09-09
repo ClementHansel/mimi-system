@@ -478,6 +478,18 @@ export const id = {
     conflict: 'Data ini bentrok dengan data lain. Muat ulang lalu coba lagi.',
     server: 'Server sedang bermasalah. Coba lagi beberapa saat.',
 
+    // MA-190 — `app/error.tsx`. Before this the app had NO error boundary at
+    // all, so any client-side exception showed Next's own English last-resort
+    // sentence on a white page with no retry and no sign-out.
+    boundary: {
+      title: 'Halaman ini gagal dimuat',
+      description:
+        'Terjadi kesalahan saat menampilkan halaman ini. Data Anda tidak terpengaruh. Coba lagi, atau keluar dan masuk kembali bila masih gagal.',
+      retry: 'Coba Lagi',
+      signOut: 'Keluar',
+      reference: 'Kode kesalahan: {{digest}} — sebutkan kode ini saat melaporkan.',
+    },
+
     byCode: {
       ERR_DUPLICATE: 'Data ini sudah ada. Gunakan nilai yang berbeda.',
       ERR_DUPLICATE_FIELD: '{{field}} "{{value}}" sudah dipakai. Gunakan yang lain.',

@@ -58,6 +58,38 @@ function isUsableSession(s: Pick<SessionState, 'accessToken' | 'user'>): boolean
   );
 }
 
+/**
+ * THE ONLY SHAPE THE REST OF THE APP IS ALLOWED TO SEE.
+ *
+ * `isUsableSession` below guards HYDRATION — a blob read back from
+ * localStorage. Nothing guarded `setSession`, which stores whatever
+ * `/auth/login` returned verbatim, so the two paths disagreed about what a
+ * usable `Me` is.
+ *
+ * That asymmetry produces the crash this file already describes: "`app/page.tsx`
+ * reads `user.locations.length` and `usePermissions` reads `user.permissions`,
+ * so a `Me` missing either throws during render and Next replaces the page with
+ * its client-side-exception screen" — which is precisely the screen MA-190
+ * reported, on `/`, right after a newly added employee set their PIN. It could
+ * not be reached by RELOADING into a bad session (hydration discards those); it
+ * could be reached by LOGGING IN to one.
+ *
+ * Coerce rather than reject. These two fields are a UI-visibility cache whose
+ * enforcement authority is the server (`PermissionsGuard` + RLS, CONTRACTS §3),
+ * so an empty array is a safe, meaningful value — it shows fewer cards, and any
+ * action it wrongly reveals is still refused server-side. Refusing the login
+ * instead would turn a cosmetic gap into a lockout, and refusing it here would
+ * also be a second, divergent definition of "valid" for the same data.
+ */
+function normalizeUser(user: SessionUser): SessionUser {
+  if (Array.isArray(user?.permissions) && Array.isArray(user?.locations)) return user;
+  return {
+    ...user,
+    permissions: Array.isArray(user?.permissions) ? user.permissions : [],
+    locations: Array.isArray(user?.locations) ? user.locations : [],
+  };
+}
+
 export const useSessionStore = create<SessionState>()(
   persist(
     (set) => ({
@@ -65,10 +97,13 @@ export const useSessionStore = create<SessionState>()(
       refreshToken: null,
       user: null,
       isHydrated: false,
-      setSession: ({ accessToken, refreshToken, user }) => set({ accessToken, refreshToken, user }),
+      setSession: ({ accessToken, refreshToken, user }) =>
+        set({ accessToken, refreshToken, user: normalizeUser(user) }),
       setTokens: ({ accessToken, refreshToken }) => set({ accessToken, refreshToken }),
       updateUser: (partial) =>
-        set((state) => ({ user: state.user ? { ...state.user, ...partial } : state.user })),
+        set((state) => ({
+          user: state.user ? normalizeUser({ ...state.user, ...partial }) : state.user,
+        })),
       clearSession: () => set({ accessToken: null, refreshToken: null, user: null }),
     }),
     {

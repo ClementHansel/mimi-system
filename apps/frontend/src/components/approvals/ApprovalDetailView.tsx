@@ -214,7 +214,13 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
   // embed a read-only timeline) fails closed rather than open.
   const canApprove = !finished && can(eligibilityPermission) && detail?.viewerCanDecide === true;
   const documentLabel = t(config.labelKey);
-  const title = context?.documentNumber ?? `${documentLabel} #${documentId.slice(0, 8)}`;
+  // Same reason as the summary fields below: the number now travels on the
+  // detail resource, so the title survives the document being decided.
+  const title =
+    detail?.documentNumber ??
+    context?.documentNumber ??
+    `${documentLabel} #${documentId.slice(0, 8)}`;
+  const requestedAt = detail?.requestedAt ?? context?.requestedAt ?? null;
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -247,20 +253,25 @@ export function ApprovalDetailView({ documentType, documentId }: ApprovalDetailV
             </CardHeader>
             <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryField label={t('approvalDetail.amount')} value={formatMoney(detail.amount)} />
+              {/* FROM `detail`, NOT from the pending list. These three read
+                  `context?.…` before 2026-09-09 — a row looked up in
+                  `/approvals/pending` — so the instant a Supervisor Cabang
+                  pressed Setujui the document stopped being pending, the lookup
+                  missed, and all three blanked to an em dash on the screen they
+                  were still looking at (MA-195). `context` remains only as a
+                  fallback for a server that predates the new fields. */}
               <SummaryField
                 label={t('approvalDetail.requestedBy')}
-                value={context?.requestedBy ?? '—'}
+                value={detail.requestedByName ?? context?.requestedBy ?? '—'}
               />
               <SummaryField
                 label={t('approvalDetail.location')}
-                value={context?.locationName ?? '—'}
+                value={detail.locationName ?? context?.locationName ?? '—'}
               />
               <SummaryField
                 label={t('approvalDetail.waiting')}
                 value={
-                  context
-                    ? `${fmtRelative(context.requestedAt)} (${fmtDateTime(context.requestedAt)})`
-                    : '—'
+                  requestedAt ? `${fmtRelative(requestedAt)} (${fmtDateTime(requestedAt)})` : '—'
                 }
               />
             </CardContent>

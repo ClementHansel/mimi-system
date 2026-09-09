@@ -2336,6 +2336,9 @@ export const id = {
       qty: 'Jumlah',
       qtyRequested: 'Diminta',
       qtyApproved: 'Disetujui',
+      // MA-196: an un-amended line has no approved qty until Gudang decides,
+      // and a bare em dash there read as missing data rather than a pending step.
+      qtyApprovedPending: 'menunggu gudang',
       amendReason: 'Alasan Perubahan Jumlah',
       new: 'Buat Permintaan',
       addLine: 'Tambah Baris',

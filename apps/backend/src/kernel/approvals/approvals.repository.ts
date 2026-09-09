@@ -562,7 +562,14 @@ export class ApprovalsRepository {
    * block from seeing another user's row at all) because it runs with the function owner's
    * privileges, not the calling session's `app.role`.
    */
-  private async loadUserDisplayNames(
+  /**
+   * PUBLIC as of 2026-09-09 (MA-195): the approval DETAIL read needs the
+   * requester's name too, for the same reason the pending list does — a
+   * client-side join cannot get it, because `users_select` hides most user rows
+   * from most roles. Keeping it private would have meant a second copy of the
+   * `app_user_display()` call in the service.
+   */
+  async loadUserDisplayNames(
     client: DbClient,
     userIds: readonly string[],
   ): Promise<Map<string, string>> {

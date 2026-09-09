@@ -583,7 +583,26 @@ export class ApprovalService {
         message: `No approval found for ${documentType}/${documentId}`,
       });
     const steps = await this.repo.listSteps(client, approval.id);
+
+    // The document's own identity, resolved HERE rather than left for the
+    // client to hunt for in the pending list (MA-195 — see `ApprovalDetail` in
+    // @mimi/shared for what that cost). All three reads are by-id and cheap.
+    const numbers = await this.repo.loadDocumentNumbers(client, documentType, [documentId]);
+    const names = await this.repo.loadUserDisplayNames(client, [approval.requestedBy]);
+    let locationName: string | null = null;
+    if (approval.locationId) {
+      // `locations_select` is world-readable (migration 009), so this needs no
+      // system context — unlike the user lookup above.
+      const loc = await client.query<{ name: string }>(`SELECT name FROM locations WHERE id = $1`, [
+        approval.locationId,
+      ]);
+      locationName = loc.rows[0]?.name ?? null;
+    }
+
     return {
+      documentNumber: numbers.get(documentId) ?? null,
+      requestedByName: names.get(approval.requestedBy) ?? null,
+      locationName,
       approvalId: approval.id,
       documentType: approval.documentType,
       documentId: approval.documentId,

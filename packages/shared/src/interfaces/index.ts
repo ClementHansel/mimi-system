@@ -76,6 +76,37 @@ export interface ApprovalDetail {
    * frontend surfaces are written against this resource.
    */
   currentStep: number | null;
+  /**
+   * WHO asked, WHERE from, WHEN, and the document's own number.
+   *
+   * Added 2026-09-09 (MA-195). The detail screen renders "Diajukan Oleh",
+   * "Lokasi" and "Menunggu Sejak", and none of it was on this resource — so it
+   * fetched `/approvals/pending` and searched that list for a matching row. A
+   * decided document is not pending, so the moment a Supervisor Cabang pressed
+   * Setujui the row left their pending list and all three fields blanked to an
+   * em dash on the very screen they were looking at. The old behaviour was
+   * documented in the frontend as "expected degradation"; the client reported it
+   * as a bug, and they were right — deriving a document's own identity from a
+   * work QUEUE is backwards, and it was additionally capped at 200 rows.
+   *
+   * `requestedByName` and `locationName` are DISPLAY strings, resolved
+   * server-side: `requestedBy` is a user id and `users_select` hides most user
+   * rows from most roles, so a client-side join could not do it (the same
+   * reason `ApprovalStepDetail.actedByName` exists). Null when unresolvable —
+   * the UI shows an em dash rather than falling back to an id.
+   *
+   * OPTIONAL, for the same reason `viewerCanDecide` below is: only
+   * `GET /approvals/:type/:id` is ABOUT the approval. The document endpoints
+   * that embed one (a PR, a PO, a replenishment) render a read-only timeline
+   * inside a screen that already shows its own number, requester and location,
+   * so repeating them there would be duplication the caller has to keep in
+   * step. A consumer that needs them must handle `undefined`, not assume the
+   * embedding endpoints will start sending them.
+   */
+  documentNumber?: string | null;
+  requestedByName?: string | null;
+  locationName?: string | null;
+  requestedAt?: ISODateTime;
   steps: ApprovalStepDetail[];
   /**
    * Whether THIS caller may decide the step currently awaiting action.

@@ -94,6 +94,12 @@ export class ApprovalsController {
 
     return {
       viewerCanDecide,
+      // The document's own identity, so the screen stops deriving it from the
+      // pending list — see `ApprovalDetail` in @mimi/shared (MA-195).
+      documentNumber: row.documentNumber,
+      requestedByName: row.requestedByName,
+      locationName: row.locationName,
+      requestedAt: row.requestedAt,
       approvalId: row.approvalId,
       state: row.state,
       amount: row.amount,

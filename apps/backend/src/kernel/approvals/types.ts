@@ -150,6 +150,15 @@ export interface ApprovalDetailRow {
   locationId: UUID | null;
   requestedBy: UUID;
   requestedAt: string;
+  /**
+   * Display strings resolved alongside the ids above, so the detail SCREEN does
+   * not have to hunt for them in the pending list — which is what it used to do,
+   * and which blanked them out the instant the document stopped being pending
+   * (MA-195). See `ApprovalDetail` in @mimi/shared.
+   */
+  documentNumber: string | null;
+  requestedByName: string | null;
+  locationName: string | null;
   decidedAt: string | null;
   /** `null` once `state` is terminal — mirrors `approvals.current_step`'s nullability (migration 216). */
   currentStep: number | null;

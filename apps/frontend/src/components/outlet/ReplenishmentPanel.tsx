@@ -59,6 +59,19 @@ export function ReplenishmentPanel() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [detail, setDetail] = useState<Replenishment | null>(null);
+  /**
+   * True while the request has not yet reached Gudang's decision.
+   *
+   * `qty_approved` is written per line when an approver AMENDS it, and
+   * otherwise only when the whole chain finishes
+   * (`fillDefaultApprovedQuantities` runs on the final step). So between the
+   * outlet's own approval and the warehouse's, an un-amended line genuinely has
+   * no approved figure — and the detail table rendered a bare em dash for it,
+   * which reads as missing data on a request the outlet had just approved
+   * (MA-196). This is what lets the cell say "waiting" instead.
+   */
+  const awaitingWarehouse =
+    !!detail && ['draft', 'submitted', 'awaiting_approval'].includes(detail.status);
   const [items, setItems] = useState<Item[]>([]);
   const [lines, setLines] = useState<DraftLine[]>([{ itemId: '', qtyRequested: null }]);
   const [neededBy, setNeededBy] = useState('');
@@ -284,7 +297,22 @@ export function ReplenishmentPanel() {
                       {formatQty(l.qtyRequested, l.unitCode)}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">
-                      {formatQty(l.qtyApproved, l.unitCode)}
+                      {/* SAY WHY IT IS EMPTY. `qty_approved` is filled per line
+                          when an approver amends it, and otherwise only once the
+                          WHOLE chain finishes (`fillDefaultApprovedQuantities`
+                          runs on the final step). So between the outlet's own
+                          approval and Gudang's, an un-amended line legitimately
+                          has no approved figure — and the cell rendered a bare
+                          em dash on a request the outlet had just approved,
+                          which reads as data missing rather than a decision
+                          pending (MA-196). */}
+                      {l.qtyApproved === null && awaitingWarehouse ? (
+                        <span className="text-xs font-normal text-text-muted">
+                          {t('outlet.replenishment.qtyApprovedPending')}
+                        </span>
+                      ) : (
+                        formatQty(l.qtyApproved, l.unitCode)
+                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       {l.amendReason ? (

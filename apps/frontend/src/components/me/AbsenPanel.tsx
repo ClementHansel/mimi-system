@@ -22,7 +22,7 @@ import { evaluateGeofence } from '@/components/hr/lib/geofence';
 import type { LocationGeo, AttendanceRow } from '@/components/hr/lib/types';
 import { getLocationGeo, getMyAttendance } from './lib/me-api';
 import { getMeRuntime, mintId, useActorMeta } from './lib/me-runtime';
-import { useMeAttendanceStore } from './lib/attendance-store';
+import { useMeAttendanceStore, myLocalAttendance } from './lib/attendance-store';
 import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 
 /**
@@ -77,7 +77,10 @@ export function AbsenPanel() {
   const [selfie, setSelfie] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const localToday = useMeAttendanceStore((s) => s.today);
+  const persistedToday = useMeAttendanceStore((s) => s.today);
+  // Only this employee's own record counts as a local fact — the blob is
+  // per-browser and an outlet shares one machine. See `TodayAttendance.userId`.
+  const localToday = myLocalAttendance(persistedToday, user?.id);
   const recordCheckIn = useMeAttendanceStore((s) => s.recordCheckIn);
   const recordCheckOut = useMeAttendanceStore((s) => s.recordCheckOut);
   const resetIfStale = useMeAttendanceStore((s) => s.resetIfStale);
@@ -158,7 +161,7 @@ export function AbsenPanel() {
   const mode: 'in' | 'out' | 'done' = !hasCheckedIn ? 'in' : !hasCheckedOut ? 'out' : 'done';
 
   async function submit() {
-    if (!location || !coords || !selfie || !runtime || !actor) return;
+    if (!location || !coords || !selfie || !runtime || !actor || !user) return;
     setBusy(true);
     try {
       const evidence = await runtime.captureEvidence(selfie, selfie.type, 'selfie');
@@ -176,7 +179,7 @@ export function AbsenPanel() {
       if (mode === 'in') {
         const attendanceId = mintId();
         await runtime.commitAttendanceCheckIn(attendanceId, body, actor);
-        recordCheckIn(todayDate, attendanceId, occurredAt);
+        recordCheckIn(todayDate, user.id, attendanceId, occurredAt);
       } else {
         const attendanceId = serverToday?.id ?? localToday?.attendanceId;
         if (!attendanceId) throw new Error('missing attendanceId for check-out');

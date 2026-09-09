@@ -10,6 +10,7 @@ const actor = { actorUserId: 'u1', actorRole: 'kasir', appVersion: 'test' };
 const shift: OpenShift = {
   shiftId: 's1',
   locationId: 'loc1',
+  kasirUserId: 'u1',
   openingCash: '100000.00',
   openedAt: new Date().toISOString(),
   kasirName: 'Kasir Satu',

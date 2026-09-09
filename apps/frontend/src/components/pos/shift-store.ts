@@ -12,10 +12,29 @@ import type { Money, UUID } from '@/lib/shared-types';
  * decide what screen to show — persisted so a refresh/reload mid-shift
  * doesn't lose track of it and re-prompt "buka kasir" over an already-open
  * shift.
+ *
+ * Persisted per BROWSER PROFILE, which is the whole reason `kasirUserId`
+ * below is not optional: an outlet till is a shared machine that three
+ * cashiers log into across a day, and this blob outlives every one of their
+ * sessions (`logout()` clears `mimi-session`, nothing else).
  */
 export interface OpenShift {
   shiftId: UUID;
   locationId: UUID;
+  /**
+   * WHOSE shift this is — `actor.actorUserId`, the same identity stamped on
+   * the `pos_shifts.opened` fact this record accompanies.
+   *
+   * MA-191: without it, the record was a DEVICE-level fact standing in for a
+   * per-cashier one. The morning cashier opened a shift; the till persisted
+   * it; they went home. The afternoon cashier logged into the same browser
+   * and the POS surface — which gates purely on this slot being truthy —
+   * skipped "Buka Kasir" entirely and dropped them straight into a shift that
+   * was not theirs, with the morning cashier's name on the Shift tab. Every
+   * sale they rang went onto that `shiftId`, and closing it counted their
+   * drawer against someone else's opening cash.
+   */
+  kasirUserId: UUID;
   openingCash: Money;
   openedAt: string;
   kasirName: string;
@@ -72,3 +91,21 @@ export const usePosShiftStore = create<ShiftState>()(
     { name: 'mimi-pos-shift' },
   ),
 );
+
+/**
+ * Is the persisted shift the cashier who is logged in RIGHT NOW?
+ *
+ * The one question every reader of `current` has to ask before treating it as
+ * "my open shift" (MA-191 — see `OpenShift.kasirUserId`). Lives here rather
+ * than inline at each gate because there are three of them (`app/pos/page.tsx`
+ * decides which screen to show, `PosTopBar` decides whether the till is
+ * operational, `ShiftOpenForm` decides between opening and handing over) and
+ * they must never disagree about whose shift is on screen.
+ *
+ * A record written before `kasirUserId` existed has none, so it reads as
+ * somebody else's. That is the right answer for a blob whose owner cannot be
+ * established: it gets offered for handover rather than silently adopted.
+ */
+export function shiftBelongsTo(shift: OpenShift | null, userId: string | undefined): boolean {
+  return !!shift && !!userId && shift.kasirUserId === userId;
+}

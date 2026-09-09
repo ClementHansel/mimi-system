@@ -7,7 +7,7 @@ import { Button, TabsList, TabsTrigger } from '@/components/ui';
 import { SyncStatusPill } from '@/components/ui/SyncStatusPill';
 import { logout } from '@/lib/auth';
 import { useSessionStore } from '@/stores/session-store';
-import { usePosShiftStore } from './shift-store';
+import { usePosShiftStore, shiftBelongsTo } from './shift-store';
 import { usePosShell } from './PosShellContext';
 import { ChannelToggle } from './ChannelToggle';
 
@@ -35,7 +35,9 @@ import { ChannelToggle } from './ChannelToggle';
  * would just be dead links over a picker/shift-open screen. Gating on the
  * exact same `posLocation`/`currentShift` state `PosPage` gates its own
  * content on keeps the two from ever disagreeing about "are we operational
- * yet".
+ * yet" — including the "whose shift is it" half of that question, which is
+ * why this reads `shiftBelongsTo` and not the raw slot (MA-191): a shift the
+ * previous cashier left open must not put the tabs up for this one.
  *
  * F-POS-3: GoFood/ShopeeFood used to be their own tab (`OnlineOrderForm`).
  * They're retired — same POS surface, priced per channel — so the tab row
@@ -48,10 +50,10 @@ export function PosTopBar() {
   const { t } = useI18n();
   const { posLocation, catalog } = usePosShell();
   const user = useSessionStore((s) => s.user);
-  const currentShift = usePosShiftStore((s) => s.current);
+  const persistedShift = usePosShiftStore((s) => s.current);
 
   const locationName = posLocation.status === 'ready' ? posLocation.location.name : null;
-  const operational = posLocation.status === 'ready' && !!currentShift;
+  const operational = posLocation.status === 'ready' && shiftBelongsTo(persistedShift, user?.id);
 
   return (
     <header className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-raised px-4 py-2.5">

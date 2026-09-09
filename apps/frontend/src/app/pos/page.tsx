@@ -17,7 +17,7 @@ import { usePosShell } from '@/components/pos/PosShellContext';
 import { PosLocationPicker } from '@/components/pos/PosLocationPicker';
 import { releaseProductPhotoUrls } from '@/components/pos/product-photo-cache';
 import { usePosCartStore, applyVoucherToSummary } from '@/components/pos/cart-store';
-import { usePosShiftStore } from '@/components/pos/shift-store';
+import { usePosShiftStore, shiftBelongsTo } from '@/components/pos/shift-store';
 import { usePosChannelStore } from '@/components/pos/channel-store';
 import { priceForChannel } from '@/components/pos/channel-pricing';
 import { useSessionStore } from '@/stores/session-store';
@@ -49,7 +49,7 @@ export default function PosPage() {
   const { t } = useI18n();
   const { actor, posLocation, catalog, catalogError } = usePosShell();
   const kasirName = useSessionStore((s) => s.user?.name ?? '');
-  const currentShift = usePosShiftStore((s) => s.current);
+  const persistedShift = usePosShiftStore((s) => s.current);
   const cartLines = usePosCartStore((s) => s.lines);
   const saleDiscount = usePosCartStore((s) => s.saleDiscount);
   const setSaleDiscount = usePosCartStore((s) => s.setSaleDiscount);
@@ -84,6 +84,17 @@ export default function PosPage() {
   }, [runtimeAttempt]);
 
   const location = posLocation.status === 'ready' ? posLocation.location : null;
+
+  /**
+   * "A shift is open" is not the same question as "MY shift is open" — the
+   * persisted slot outlives the session that wrote it, and an outlet till is
+   * a shared browser (MA-191). Whatever is in there belongs to the logged-in
+   * cashier or it does not, and only the first case is this till's own shift;
+   * the second is a handover `ShiftOpenForm` has to offer, not a shift to
+   * ring sales into.
+   */
+  const currentShift = shiftBelongsTo(persistedShift, actor?.actorUserId) ? persistedShift : null;
+  const openByOtherCashier = currentShift ? null : persistedShift;
 
   // Menu photos are resolved to `blob:` urls that live as long as this surface
   // does (the grid re-mounts tiles constantly as the cashier flicks between
@@ -164,6 +175,7 @@ export default function PosPage() {
         actor={actor}
         locationId={location.id}
         kasirName={kasirName}
+        openByOtherCashier={openByOtherCashier}
       />
     );
   }

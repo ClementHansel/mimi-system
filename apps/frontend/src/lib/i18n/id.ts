@@ -227,6 +227,15 @@ export const id = {
     shiftOpenedTitle: 'Kasir dibuka',
     shiftOpenFailed: 'Gagal membuka kasir',
 
+    // MA-191 — the shift handover. Reached when the previous cashier left a
+    // shift open on this browser: the till used to hand it to whoever logged
+    // in next, under the previous cashier's name.
+    handoverTitle: 'Shift Sebelumnya Belum Ditutup',
+    handoverDescription: 'Shift atas nama {{name}} masih terbuka di perangkat ini.',
+    handoverBody:
+      'Satu laci kasir hanya boleh punya satu shift terbuka. Hitung uang tunai di laci, tutup shift tersebut, lalu buka shift Anda sendiri.',
+    handoverCloseSubmit: 'Tutup Shift {{name}}',
+
     closeShiftTitle: 'Tutup Kasir',
     closeShiftDescription: 'Hitung uang tunai di laci sebelum menutup shift.',
     localCashEstimate: 'Perkiraan Kas (lokal)',

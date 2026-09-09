@@ -225,10 +225,13 @@ export class AssetsService {
       assigned_to_name: string | null;
       completed_at: unknown;
       cost: string | null;
+      schedule_name: string | null;
     }>(
-      `SELECT j.id, j.job_number, j.type, j.status, j.due_date, e.name AS assigned_to_name, j.completed_at, j.cost
+      `SELECT j.id, j.job_number, j.type, j.status, j.due_date, e.name AS assigned_to_name,
+              j.completed_at, j.cost, ms.name AS schedule_name
          FROM maintenance_jobs j
          LEFT JOIN employees e ON e.id = j.assigned_to
+         LEFT JOIN maintenance_schedules ms ON ms.id = j.schedule_id
         WHERE j.asset_id = $1 AND j.status IN ('scheduled','due','in_progress')
         ORDER BY j.due_date ASC NULLS LAST`,
       [id],
@@ -251,6 +254,7 @@ export class AssetsService {
         jobNumber: j.job_number,
         assetName: dto.name,
         type: j.type as 'scheduled' | 'corrective',
+        scheduleName: j.schedule_name ?? null,
         status: j.status as JobDto['status'],
         dueDate: pgDateToIsoOrNull(j.due_date),
         assignedToName: j.assigned_to_name,

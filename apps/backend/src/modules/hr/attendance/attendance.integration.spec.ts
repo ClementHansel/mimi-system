@@ -513,12 +513,32 @@ describe('AttendanceService (integration, live Postgres)', () => {
    * the NOT EXISTS clauses and the roster join, none of which a typecheck sees.
    */
   describe('no-shows (MA-200) — the rostered days nobody recorded', () => {
-    /** Three days back in WITA: safely `< CURRENT_DATE` whatever time the suite runs. */
-    function pastDateWita(daysBack: number): string {
-      return new Date(Date.now() + 8 * 60 * 60_000 - daysBack * 24 * 60 * 60_000)
-        .toISOString()
-        .slice(0, 10);
-    }
+    /**
+     * A settled past date the seed cannot reach into — one per test, so they
+     * cannot collide.
+     *
+     * These were `Date.now() - 3..7 days` at first, and CI failed the very
+     * first assertion while the same test passed locally. The seed's own data
+     * is the reason: approved `leave_requests` span 2026-08-27..2026-09-08 and
+     * `shift_assignments` span 2026-08-15..2026-09-13, so a date "a few days
+     * back" lands inside both. Whether the fixture employee happened to have
+     * an approved leave covering the chosen day then decided the outcome — and
+     * `listNoShows` excludes approved leave BY DESIGN, so the query was right
+     * and the test was flaky.
+     *
+     * 2019 has no seeded roster (verified: zero `shift_assignments` before
+     * 2020), no leave, and no attendance — so nothing here can be excluded by
+     * a rule it is not testing, and nothing here can trample seed rows.
+     * `2019-05-10` is the same choice `payroll.integration.spec.ts`'s POUT-05
+     * test made, for the same reason.
+     */
+    const DATES = {
+      marked: '2019-03-04',
+      twice: '2019-03-05',
+      noReason: '2019-03-06',
+      onLeave: '2019-03-07',
+      libur: '2019-03-08',
+    } as const;
 
     /**
      * A rostered working day for the test employee with the attendance slot
@@ -550,7 +570,7 @@ describe('AttendanceService (integration, live Postgres)', () => {
 
     it('lists a rostered day with no attendance, then stops listing it once it is marked', async () => {
       if (!dbAvailable) return;
-      const date = pastDateWita(3);
+      const date = DATES.marked;
       await withRosteredDay(date, async ({ employeeId }) => {
         const rls = hrRls();
         const user = toJwtPayload(rls);
@@ -600,7 +620,7 @@ describe('AttendanceService (integration, live Postgres)', () => {
 
     it('refuses to mark the same day twice, naming what is already there', async () => {
       if (!dbAvailable) return;
-      const date = pastDateWita(4);
+      const date = DATES.twice;
       await withRosteredDay(date, async ({ employeeId }) => {
         const rls = hrRls();
         const user = toJwtPayload(rls);
@@ -635,7 +655,7 @@ describe('AttendanceService (integration, live Postgres)', () => {
 
     it('will not mark a day without a reason — it costs the employee a day of pay', async () => {
       if (!dbAvailable) return;
-      const date = pastDateWita(5);
+      const date = DATES.noReason;
       await withRosteredDay(date, async ({ employeeId }) => {
         const rls = hrRls();
         const user = toJwtPayload(rls);
@@ -650,7 +670,7 @@ describe('AttendanceService (integration, live Postgres)', () => {
 
     it('leaves APPROVED LEAVE alone — an authorised absence is not an unexplained one', async () => {
       if (!dbAvailable) return;
-      const date = pastDateWita(6);
+      const date = DATES.onLeave;
       const self = selfEmployee();
       const owner = fixtures.usersByRole[RoleKey.OWNER] ?? self;
       let leaveId: string | undefined;
@@ -699,7 +719,7 @@ describe('AttendanceService (integration, live Postgres)', () => {
 
     it('ignores a LIBUR assignment — a scheduled day off is not a day anybody missed', async () => {
       if (!dbAvailable) return;
-      const date = pastDateWita(7);
+      const date = DATES.libur;
       await withRosteredDay(date, async ({ employeeId }) => {
         const rls = hrRls();
         const owner = fixtures.usersByRole[RoleKey.OWNER] ?? selfEmployee();

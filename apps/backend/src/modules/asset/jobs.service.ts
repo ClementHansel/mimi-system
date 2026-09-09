@@ -27,6 +27,17 @@ export interface JobDto {
   jobNumber: string;
   assetName: string;
   type: 'scheduled' | 'corrective';
+  /**
+   * The maintenance schedule this job belongs to, when it has one. Always null
+   * for a corrective job.
+   *
+   * MA-189, item 2: with only "Jenis: perbaikan" on screen the client could
+   * not tell a preventive cycle from a breakdown repair. The type now
+   * distinguishes them (see `SchedulesService.ensureDueJob` for the data bug
+   * that made every job corrective), and naming the schedule says WHICH cycle
+   * — "Ganti Oli 3 bulan" is the answer to "which Jadwal Perawatan is this?".
+   */
+  scheduleName: string | null;
   status: JobStatus;
   dueDate: string | null;
   assignedToName: string | null;
@@ -42,6 +53,7 @@ interface JobJoinRow {
   asset_name: string;
   asset_location_id: string;
   schedule_id: string | null;
+  schedule_name: string | null;
   schedule_interval_type: string | null;
   schedule_interval_value: number | null;
   type: string;
@@ -56,7 +68,8 @@ interface JobJoinRow {
 
 const JOB_SELECT = `
   SELECT j.id, j.job_number, j.asset_id, a.name AS asset_name, a.location_id AS asset_location_id,
-         j.schedule_id, ms.interval_type AS schedule_interval_type, ms.interval_value AS schedule_interval_value,
+         j.schedule_id, ms.name AS schedule_name,
+         ms.interval_type AS schedule_interval_type, ms.interval_value AS schedule_interval_value,
          j.type, j.status, j.due_date, e.name AS assigned_to_name, j.completed_at, j.cost, j.notes,
          j.payment_verification_id
     FROM maintenance_jobs j
@@ -121,6 +134,7 @@ export class JobsService {
       jobNumber: row.job_number,
       assetName: row.asset_name,
       type: row.type as 'scheduled' | 'corrective',
+      scheduleName: row.schedule_name ?? null,
       status: row.status as JobStatus,
       dueDate: pgDateToIsoOrNull(row.due_date),
       assignedToName: row.assigned_to_name,
@@ -145,6 +159,8 @@ export class JobsService {
     query: {
       locationId?: string;
       status?: string;
+      /** `scheduled` (a maintenance schedule's cycle) or `corrective` (a repair) — MA-189. */
+      type?: string;
       assetId?: string;
       page?: number;
       pageSize?: number;
@@ -176,6 +192,10 @@ export class JobsService {
     if (query.status) {
       params.push(query.status);
       where.push(`j.status = $${params.length}`);
+    }
+    if (query.type) {
+      params.push(query.type);
+      where.push(`j.type = $${params.length}`);
     }
     if (query.assetId) {
       params.push(query.assetId);

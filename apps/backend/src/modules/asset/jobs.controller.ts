@@ -28,6 +28,7 @@ export class JobsController {
     @Req() req: RequestWithDbContext,
     @Query('locationId') locationId?: string,
     @Query('status') status?: string,
+    @Query('type') type?: string,
     @Query('assetId') assetId?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
@@ -37,6 +38,7 @@ export class JobsController {
       {
         locationId,
         status,
+        type,
         assetId,
         page: page ? parseInt(page, 10) : undefined,
         pageSize: pageSize ? parseInt(pageSize, 10) : undefined,

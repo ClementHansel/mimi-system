@@ -15,12 +15,27 @@ import type { Job } from './lib/types';
 
 const STATUSES = ['scheduled', 'due', 'in_progress', 'done', 'verified', 'skipped'] as const;
 
+/**
+ * MA-189, item 2: "di sub menu Tugas Maintenance ini Jenis nya perbaikan dan
+ * tidak tau mana yang Jadwal Perawatan". Both routes into this list produced
+ * `corrective` jobs — the data bug is fixed in
+ * `SchedulesService.ensureDueJob`, and this is the filter that makes the
+ * distinction usable now that it is real.
+ */
+const TYPES = ['scheduled', 'corrective'] as const;
+
 /** Tab 3 — every maintenance job (FR-PMS-02/04): filter, start, complete (proof photo wajib), and Supervisor/Manager verify. */
 export function MaintenanceJobsPanel() {
   const { t } = useI18n();
-  const locations = useSessionStore((s) => s.user?.locations ?? []);
+  // Falling back INSIDE the selector returns a fresh `[]` on every call once
+  // `user` is null, and zustand compares with `Object.is` — that shape
+  // re-renders forever. Select the user, fall back outside (as
+  // `hr/AttendancePanel` does).
+  const sessionUser = useSessionStore((s) => s.user);
+  const locations = sessionUser?.locations ?? [];
   const [locationId, setLocationId] = useState('');
   const [status, setStatus] = useState('');
+  const [type, setType] = useState('');
   const [rows, setRows] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<Job | null>(null);
@@ -28,12 +43,16 @@ export function MaintenanceJobsPanel() {
 
   function reload() {
     setLoading(true);
-    getJobs({ locationId: locationId || undefined, status: status || undefined })
+    getJobs({
+      locationId: locationId || undefined,
+      status: status || undefined,
+      type: type || undefined,
+    })
       .then((r) => setRows(r.rows))
       .catch(() => toast({ title: t('table.error'), variant: 'danger' }))
       .finally(() => setLoading(false));
   }
-  useEffect(reload, [locationId, status]);
+  useEffect(reload, [locationId, status, type]);
 
   /**
    * Every job for the current filters — `getJobs` caps a page at 100, the
@@ -50,6 +69,7 @@ export function MaintenanceJobsPanel() {
       const res = await getJobs({
         locationId: locationId || undefined,
         status: status || undefined,
+        type: type || undefined,
         page,
       });
       all.push(...res.rows);
@@ -89,7 +109,14 @@ export function MaintenanceJobsPanel() {
     {
       key: 'type',
       header: t('assets.jobs.columnType'),
-      render: (r) => t(`assets.jobType.${r.type}`),
+      // The type alone answers "preventive or repair"; the schedule name
+      // answers "WHICH Jadwal Perawatan" — the actual question in MA-189.
+      render: (r) => (
+        <div className="flex flex-col">
+          <span>{t(`assets.jobType.${r.type}`)}</span>
+          {r.scheduleName && <span className="text-xs text-text-muted">{r.scheduleName}</span>}
+        </div>
+      ),
     },
     { key: 'dueDate', header: t('assets.due.dueDate'), render: (r) => fmtDate(r.dueDate) },
     {
@@ -167,6 +194,14 @@ export function MaintenanceJobsPanel() {
           options={STATUSES.map((s) => ({ value: s, label: t(`status.maintenanceJob.${s}`) }))}
           placeholder={t('common.all')}
           wrapperClassName="w-44"
+        />
+        <Select
+          label={t('assets.jobs.columnType')}
+          value={type}
+          onValueChange={setType}
+          options={TYPES.map((v) => ({ value: v, label: t(`assets.jobType.${v}`) }))}
+          placeholder={t('common.all')}
+          wrapperClassName="w-52"
         />
         <ExportButton
           rows={rows}

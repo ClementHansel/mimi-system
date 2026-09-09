@@ -16,7 +16,7 @@ import {
 import { fmtDate } from '@/lib/dates';
 import { cn } from '@/lib/utils';
 import { ExportButton } from '@/components/common/ExportButton';
-import { getMaintenanceDue, startJob, createJob } from './lib/assets-api';
+import { getMaintenanceDue, startJob, ensureScheduleJob } from './lib/assets-api';
 import { CompleteJobModal } from './CompleteJobModal';
 import { MAINTENANCE_DUE_EXPORT_COLUMNS } from './lib/io-columns';
 import type { DueItem, Job } from './lib/types';
@@ -26,14 +26,23 @@ const WINDOW_OPTIONS = [7, 14, 30, 60, 90];
 /**
  * Tab 2 — due reminders (FR-PMS-02/03): the scheduler-created list of
  * what's coming due or already overdue. A `dueItem` with no `jobId` yet has
- * no job row on the server — starting it here creates the corrective/
- * scheduled job first, then immediately opens `CompleteJobModal` so a
- * technician standing in front of the asset finishes the whole thing in
+ * no job row on the server — starting it here materialises the SCHEDULE's own
+ * job first (`ensureScheduleJob`), then immediately opens `CompleteJobModal`
+ * so a technician standing in front of the asset finishes the whole thing in
  * one pass instead of two trips.
+ *
+ * "the corrective/scheduled job" is how that used to read, and the hedge was
+ * the bug: it created a CORRECTIVE one for a preventive schedule. See
+ * `handleStart` (MA-189).
  */
 export function MaintenanceDuePanel() {
   const { t } = useI18n();
-  const locations = useSessionStore((s) => s.user?.locations ?? []);
+  // Falling back INSIDE the selector returns a fresh `[]` on every call once
+  // `user` is null, and zustand compares with `Object.is` — that shape
+  // re-renders forever. Select the user, fall back outside (as
+  // `hr/AttendancePanel` does).
+  const sessionUser = useSessionStore((s) => s.user);
+  const locations = sessionUser?.locations ?? [];
   const [windowDays, setWindowDays] = useState(30);
   const [locationId, setLocationId] = useState('');
   const [rows, setRows] = useState<DueItem[]>([]);
@@ -50,13 +59,31 @@ export function MaintenanceDuePanel() {
   }
   useEffect(reload, [windowDays, locationId]);
 
+  /**
+   * MA-189: this used to be
+   * `item.jobId ? startJob(item.jobId) : startJob((await createJob(...)).id)`.
+   *
+   * `jobId` is null whenever `MaintenanceDueSweepService` has not yet created
+   * the schedule's job — it only does so inside `reminder_days_before` and only
+   * when its 6-hour timer has fired, while this list shows everything due
+   * within the chosen window. The fallback filled that gap with `createJob`,
+   * which can only produce a CORRECTIVE job (its DTO is
+   * `@IsIn(['corrective'])`: "scheduled jobs are scheduler-born"). So starting
+   * work on a preventive schedule minted a repair job with `schedule_id` NULL
+   * — wrong type, no link back — and in Tugas Maintenance it was
+   * indistinguishable from a genuine breakdown. That is exactly what the
+   * client reported: "Jenis nya perbaikan dan tidak tau mana yang Jadwal
+   * Perawatan".
+   *
+   * `ensureScheduleJob` is the endpoint that was missing: the schedule is the
+   * argument, so the type and the link follow from it instead of being
+   * asserted here, and it is idempotent on the schedule's open job.
+   */
   async function handleStart(item: DueItem) {
     setStarting(item.scheduleId);
     try {
-      const job = item.jobId
-        ? await startJob(item.jobId)
-        : await startJob((await createJob(item.assetId, item.name)).id);
-      setPendingJob(job);
+      const jobId = item.jobId ?? (await ensureScheduleJob(item.scheduleId)).jobId;
+      setPendingJob(await startJob(jobId));
     } catch {
       toast({ title: t('table.error'), variant: 'danger' });
     } finally {

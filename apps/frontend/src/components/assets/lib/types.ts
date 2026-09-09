@@ -31,6 +31,13 @@ export interface Job {
   assetId?: UUID;
   assetName: string;
   type: MaintenanceJobType;
+  /**
+   * The maintenance schedule behind a `scheduled` job; null for a corrective
+   * one. MA-189 — "Jenis: perbaikan" alone could not tell a preventive cycle
+   * from a breakdown repair, and naming the schedule answers "which Jadwal
+   * Perawatan is this?".
+   */
+  scheduleName: string | null;
   status: MaintenanceJobStatus;
   dueDate: ISODate | null;
   assignedToName: string | null;

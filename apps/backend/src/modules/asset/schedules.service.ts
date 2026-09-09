@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
-import { ERR_FORBIDDEN, ERR_NOT_FOUND, type UUID } from '@mimi/shared';
+import { ERR_FORBIDDEN, ERR_NOT_FOUND, formatCloudDocNumber, type UUID } from '@mimi/shared';
 import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
 import { withWrite } from './db-tx';
@@ -212,6 +212,107 @@ export class SchedulesService {
    * explicit `locationId` filter is restricted here to their own
    * `locationScope`; an explicit `locationId` outside that scope 403s.
    */
+  /**
+   * Materialise the CURRENT CYCLE's job for a maintenance schedule, or return
+   * the one that already exists.
+   *
+   * MA-189, item 1: "Saat menambahkan Jadwal Perawatan, akan masuk ke sub menu
+   * jatuh tempo. Ketika klik mulai kerjakan … di sub menu Tugas Maintenance
+   * ini Jenis nya perbaikan dan tidak tau mana yang Jadwal Perawatan."
+   *
+   * Exactly right, and it was a data defect rather than a labelling one.
+   * `MaintenanceDueSweepService` creates a schedule's job as
+   * `type='scheduled'` with `schedule_id` set, but only for schedules inside
+   * their `reminder_days_before` window and only when its 6-hour timer has
+   * fired. `GET maintenance/due` lists everything due within the chosen window
+   * and "never creates a job itself" — so a schedule can legitimately appear
+   * there with `jobId: null`.
+   *
+   * The Due panel papered over that by calling `POST /assets/:id/jobs`, whose
+   * DTO is `@IsIn(['corrective'])` because "scheduled jobs are scheduler-born,
+   * only corrective is client-created". Starting work on a PREVENTIVE schedule
+   * therefore minted a CORRECTIVE job with `schedule_id` NULL: the wrong type,
+   * and no link back to the schedule it came from. In the Tugas Maintenance
+   * list it was then indistinguishable from a genuine breakdown repair.
+   *
+   * This is the missing endpoint. Same INSERT shape as the sweep's
+   * `createDueJobAndNotify` (type, status, schedule_id, due date from
+   * `next_due_at`), so a job started early by hand and one the sweep created
+   * are the same row — the sweep stays the notification path, this stays the
+   * on-demand one.
+   *
+   * Idempotent on the same key `due()` reports: a schedule's open
+   * (`due`/`in_progress`) job. That makes double-tapping "Mulai Kerjakan"
+   * safe, and it means this can never produce a second job for one cycle.
+   */
+  async ensureDueJob(
+    client: PoolClient,
+    scheduleId: string,
+    getAssetLocationId: (assetId: string) => Promise<string>,
+    user: JwtAccessPayload,
+    locationScope: string[] | null,
+    actorUserId: UUID,
+  ): Promise<{ jobId: UUID; created: boolean }> {
+    const schedRes = await client.query<{
+      id: string;
+      asset_id: string;
+      next_due_at: unknown;
+      is_active: boolean;
+    }>(`SELECT id, asset_id, next_due_at, is_active FROM maintenance_schedules WHERE id = $1`, [
+      scheduleId,
+    ]);
+    const sched = schedRes.rows[0];
+    if (!sched) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'Schedule not found' });
+
+    const assetLocationId = await getAssetLocationId(sched.asset_id);
+    assertAssetLocationScope(user, locationScope, assetLocationId);
+
+    const existing = await client.query<{ id: UUID }>(
+      `SELECT id FROM maintenance_jobs
+        WHERE schedule_id = $1 AND status IN ('due','in_progress')
+        ORDER BY created_at DESC LIMIT 1`,
+      [scheduleId],
+    );
+    if (existing.rows[0]) return { jobId: existing.rows[0].id, created: false };
+
+    return withWrite(client, async () => {
+      const period = new Date().toISOString().slice(0, 7).replace('-', '');
+      const counter = await client.query<{ last_number: number }>(
+        `INSERT INTO document_counters (doc_type, period, last_number) VALUES ('MJ', $1, 1)
+         ON CONFLICT (doc_type, period) DO UPDATE SET last_number = document_counters.last_number + 1
+         RETURNING last_number`,
+        [period],
+      );
+      const jobNumber = formatCloudDocNumber('MJ', period, counter.rows[0]!.last_number);
+      const dueDate = pgDateToIso(sched.next_due_at);
+
+      const jobRes = await client.query<{ id: UUID }>(
+        `INSERT INTO maintenance_jobs (job_number, asset_id, schedule_id, type, status, due_date)
+         VALUES ($1,$2,$3,'scheduled','due',$4)
+         RETURNING id`,
+        [jobNumber, sched.asset_id, scheduleId, dueDate],
+      );
+      const jobId = jobRes.rows[0]!.id;
+
+      await this.syncEmit.emit(client, {
+        entity: 'maintenance_jobs',
+        op: 'created',
+        entityId: jobId,
+        locationId: assetLocationId,
+        actorUserId,
+        data: {
+          id: jobId,
+          assetId: sched.asset_id,
+          scheduleId,
+          type: 'scheduled',
+          dueDate,
+        },
+      });
+
+      return { jobId, created: true };
+    });
+  }
+
   async due(
     client: PoolClient,
     windowDays: number,

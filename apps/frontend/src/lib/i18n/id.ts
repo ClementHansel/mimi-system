@@ -3585,7 +3585,10 @@ export const id = {
       poor: 'Buruk',
     },
     jobType: {
-      scheduled: 'Terjadwal',
+      // MA-189 — named in the client's own vocabulary. "Terjadwal" alone did
+      // not connect the job back to the "Jadwal Perawatan" that produced it,
+      // which is the pairing they were looking for.
+      scheduled: 'Perawatan Terjadwal',
       corrective: 'Perbaikan',
     },
     register: {
@@ -3646,6 +3649,12 @@ export const id = {
       verifyButton: 'Verifikasi',
       verifySuccess: 'Tugas maintenance berhasil diverifikasi.',
       empty: 'Belum ada tugas maintenance.',
+
+      // MA-188 — this section of the asset-detail dialog used to be headed
+      // with `newCorrective`, the label of the button next to it, and had no
+      // list underneath at all.
+      assetSectionTitle: 'Tugas Maintenance & Perbaikan',
+      assetSectionEmpty: 'Belum ada tugas maintenance atau perbaikan untuk aset ini.',
     },
     history: {
       title: 'Riwayat Servis',

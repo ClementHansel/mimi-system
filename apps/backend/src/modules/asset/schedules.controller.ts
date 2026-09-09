@@ -85,6 +85,35 @@ export class SchedulesController {
     );
   }
 
+  /**
+   * Materialise (or find) the current cycle's job for a due schedule — what
+   * "Mulai Kerjakan" in the Jatuh Tempo list needs before it can start work
+   * (MA-189). `asset.job.execute`, because that is what the caller is about to
+   * do; creating the row is incidental to starting it.
+   *
+   * Deliberately NOT folded into `POST /assets/:id/jobs`: that endpoint's DTO
+   * is `@IsIn(['corrective'])` on purpose, and widening it would let any
+   * client declare a job "scheduled" with no schedule behind it. Here the
+   * schedule IS the argument, so the type and the `schedule_id` link both
+   * follow from it rather than being asserted by the caller.
+   */
+  @Post('schedules/:scheduleId/job')
+  @RequirePermission('asset.job.execute')
+  @Audited({ module: 'asset', entityType: 'maintenance_jobs', action: 'asset.job.execute' })
+  async ensureDueJob(
+    @Req() req: RequestWithDbContext,
+    @Param('scheduleId') scheduleId: string,
+  ): Promise<{ jobId: string; created: boolean }> {
+    return this.service.ensureDueJob(
+      req.dbClient!,
+      scheduleId,
+      (assetId) => this.assets.getAssetLocationId(req.dbClient!, assetId),
+      req.user!,
+      req.locationScope ?? null,
+      req.user!.sub,
+    );
+  }
+
   @Get('maintenance/due')
   @RequirePermission('asset.read')
   async due(

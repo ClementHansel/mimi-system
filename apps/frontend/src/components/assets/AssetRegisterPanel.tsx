@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Save } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { useSessionStore } from '@/stores/session-store';
@@ -10,6 +10,7 @@ import {
   Modal,
   DataTable,
   StatusBadge,
+  Badge,
   Select,
   Input,
   MoneyInput,
@@ -32,13 +33,14 @@ import {
   getSchedules,
   createSchedule,
   getAssetHistory,
+  getJobs,
   createJob,
   listLocationCodesByName,
   listEmployeeNumbersByName,
 } from './lib/assets-api';
 import { uploadAttachment } from './lib/attachments';
 import { assetIoColumns } from './lib/io-columns';
-import type { Asset, Schedule, ServiceHistoryRow } from './lib/types';
+import type { Asset, Job, Schedule, ServiceHistoryRow } from './lib/types';
 import type { Money } from '@/lib/shared-types';
 
 const CATEGORIES = [
@@ -71,7 +73,11 @@ export function AssetRegisterPanel() {
   // `/locations` is the same source `EmployeesPanel` uses for its own location
   // picker, and it is RLS-scoped — a bound user still sees only theirs — so
   // this widens nothing while fixing the unbound case.
-  const sessionLocations = useSessionStore((s) => s.user?.locations ?? []);
+  // Falling back INSIDE the selector returns a fresh `[]` on every call once
+  // `user` is null, and zustand compares with `Object.is` — that shape
+  // re-renders forever. Select the user, fall back outside.
+  const sessionUser = useSessionStore((s) => s.user);
+  const sessionLocations = sessionUser?.locations ?? [];
   const [locations, setLocations] = useState<{ id: string; name: string }[]>(sessionLocations);
 
   useEffect(() => {
@@ -391,12 +397,31 @@ function AssetDetailModal({
 }) {
   const { t } = useI18n();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [history, setHistory] = useState<ServiceHistoryRow[]>([]);
   const [condition, setCondition] = useState(asset.condition);
   const [status, setStatus] = useState(asset.status);
   const [savingStatus, setSavingStatus] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [jobOpen, setJobOpen] = useState(false);
+
+  /**
+   * MA-188: "data tugas perbaikan tidak tampil di popup detail aset". It never
+   * did — the jobs section of this dialog was a heading and a button with no
+   * list under it at all, and the heading reused the button's own label
+   * ("Buat Tugas Perbaikan"), so the section read as a duplicated button.
+   * `getJobs({ assetId })` has always existed and the backend has always
+   * honoured the filter (`jobs.service.ts`); nothing here called it.
+   *
+   * Hoisted into a named function because creating a job has to re-read it —
+   * `CreateJobModal.onCreated` only called `onChanged()`, which reloads the
+   * asset TABLE behind this dialog, so even a list would not have updated.
+   */
+  const loadJobs = useCallback(() => {
+    getJobs({ assetId: asset.id })
+      .then((r) => setJobs(r.rows))
+      .catch(() => setJobs([]));
+  }, [asset.id]);
 
   useEffect(() => {
     getSchedules(asset.id)
@@ -405,7 +430,8 @@ function AssetDetailModal({
     getAssetHistory(asset.id)
       .then((r) => setHistory(r.rows))
       .catch(() => setHistory([]));
-  }, [asset.id]);
+    loadJobs();
+  }, [asset.id, loadJobs]);
 
   async function saveConditionStatus() {
     setSavingStatus(true);
@@ -488,8 +514,11 @@ function AssetDetailModal({
 
         <div>
           <div className="mb-2 flex items-center justify-between">
+            {/* Named for the LIST, not for the button beside it. Reusing
+                "Buat Tugas Perbaikan" as the heading is what made this section
+                read as a duplicated button with nothing in it (MA-188). */}
             <h3 className="font-display text-base font-semibold text-text-primary">
-              {t('assets.jobs.newCorrective')}
+              {t('assets.jobs.assetSectionTitle')}
             </h3>
             <PermissionGate permission="asset.job.execute">
               <Button
@@ -502,6 +531,41 @@ function AssetDetailModal({
               </Button>
             </PermissionGate>
           </div>
+          {jobs.length === 0 ? (
+            <p className="text-sm text-text-muted">{t('assets.jobs.assetSectionEmpty')}</p>
+          ) : (
+            <ul className="flex flex-col gap-1.5 text-sm">
+              {jobs.map((j) => (
+                <li
+                  key={j.id}
+                  className="flex flex-col gap-0.5 rounded-md border border-border px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-text-primary">{j.jobNumber}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="neutral" size="sm">
+                        {t(`assets.jobType.${j.type}`)}
+                      </Badge>
+                      <StatusBadge domain="maintenanceJob" status={j.status} size="sm" />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 text-text-secondary">
+                    {j.dueDate && (
+                      <span>
+                        {t('assets.due.dueDate')}: {fmtDate(j.dueDate)}
+                      </span>
+                    )}
+                    {j.assignedToName && (
+                      <span>
+                        {t('assets.register.columnAssignedTo')}: {j.assignedToName}
+                      </span>
+                    )}
+                    {j.cost && <span className="tabular-nums">{formatMoney(j.cost)}</span>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div>
@@ -545,6 +609,9 @@ function AssetDetailModal({
           onClose={() => setJobOpen(false)}
           onCreated={() => {
             setJobOpen(false);
+            // Both: the list in THIS dialog (the reported symptom) and the
+            // table behind it, whose status column the new job can change.
+            loadJobs();
             onChanged();
           }}
         />

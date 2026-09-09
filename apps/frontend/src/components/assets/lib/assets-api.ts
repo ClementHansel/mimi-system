@@ -112,6 +112,8 @@ export function getMaintenanceDue(windowDays = 30, locationId?: string) {
 export interface JobListParams {
   locationId?: string;
   status?: string;
+  /** `scheduled` (a maintenance schedule's cycle) or `corrective` (a repair) — MA-189. */
+  type?: string;
   assetId?: string;
   /** Defaults to 1 — see `AssetListParams.page`. */
   page?: number;
@@ -121,6 +123,7 @@ export function getJobs(params: JobListParams) {
   const qs = new URLSearchParams({ page: String(params.page ?? 1), pageSize: '100' });
   if (params.locationId) qs.set('locationId', params.locationId);
   if (params.status) qs.set('status', params.status);
+  if (params.type) qs.set('type', params.type);
   if (params.assetId) qs.set('assetId', params.assetId);
   return api.get<Paginated<Job>>(`/assets/jobs?${qs.toString()}`);
 }
@@ -131,6 +134,21 @@ export function createJob(assetId: string, description: string, assignedToEmploy
     description,
     assignedToEmployeeId,
   });
+}
+
+/**
+ * Materialise (or find) the current cycle's job for a due maintenance
+ * schedule — a `scheduled` job linked to that schedule.
+ *
+ * MA-189: the Jatuh Tempo list used to call `createJob` when a due schedule
+ * had no job yet, and `createJob` can only make a CORRECTIVE one (the DTO is
+ * `@IsIn(['corrective'])` by design). Starting a preventive schedule therefore
+ * produced a repair job with no link to its schedule — indistinguishable in
+ * Tugas Maintenance from a real breakdown. Idempotent, so a double tap on
+ * "Mulai Kerjakan" cannot open two jobs for one cycle.
+ */
+export function ensureScheduleJob(scheduleId: string) {
+  return api.post<{ jobId: string; created: boolean }>(`/assets/schedules/${scheduleId}/job`, {});
 }
 
 export function startJob(jobId: string) {

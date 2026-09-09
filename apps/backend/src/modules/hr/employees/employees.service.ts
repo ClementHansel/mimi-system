@@ -1,6 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import {
+  ERR_DUPLICATE,
   EmploymentStatus,
   type Employee,
   type Money,
@@ -229,6 +235,9 @@ export class EmployeesService {
     if (dto.bankName !== undefined) set('bank_name', dto.bankName);
     if (dto.bankAccountNumber !== undefined) set('bank_account_number', dto.bankAccountNumber);
     if (dto.bankAccountName !== undefined) set('bank_account_name', dto.bankAccountName);
+    // `null` is a real value here — it UNLINKS — so this tests `!== undefined`
+    // rather than truthiness. See `UpdateEmployeeDto.userId`.
+    if (dto.userId !== undefined) set('user_id', dto.userId);
 
     if (dto.employmentChange) {
       set('position', dto.employmentChange.position);
@@ -236,6 +245,27 @@ export class EmployeesService {
     }
 
     return withWrite(client, async () => {
+      // Checked BEFORE the UPDATE so the refusal can name the employee already
+      // holding the account. `employees_user_id_key` would catch it anyway, but
+      // as SQLSTATE 23505 -> a generic ERR_DUPLICATE ("Data ini sudah ada"),
+      // which tells an HR admin nothing about WHERE the account went. Linking to
+      // an account someone else already has is the mistake most likely to be
+      // made from a picker, so it gets the sentence that resolves it.
+      if (dto.userId) {
+        const taken = await client.query<{ name: string; employee_number: string }>(
+          `SELECT name, employee_number FROM employees WHERE user_id = $1 AND id <> $2`,
+          [dto.userId, id],
+        );
+        const holder = taken.rows[0];
+        if (holder) {
+          throw new ConflictException({
+            code: ERR_DUPLICATE,
+            message: `Akun ini sudah terhubung ke karyawan ${holder.name} (${holder.employee_number}). Lepaskan tautannya di sana terlebih dahulu.`,
+            details: { field: 'userId', employeeNumber: holder.employee_number },
+          });
+        }
+      }
+
       if (sets.length > 0) {
         params.push(id);
         const res = await client.query(

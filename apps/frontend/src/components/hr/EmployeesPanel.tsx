@@ -22,7 +22,13 @@ import { fmtDate } from '@/lib/dates';
 import { api } from '@/lib/api';
 import type { Paginated } from '@/lib/shared-types';
 import { MasterDataIo } from '@/components/admin/MasterDataIo';
-import { createEmployee, getEmployee, listEmployees, updateEmployee } from './lib/hr-api';
+import {
+  createEmployee,
+  getEmployee,
+  listEmployees,
+  loadLinkableUsers,
+  updateEmployee,
+} from './lib/hr-api';
 import { employeeIoColumns, type EmployeeExportRow } from './lib/io-columns';
 import type { Employee } from './lib/types';
 
@@ -243,9 +249,19 @@ function EmployeeFormModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [locations, setLocations] = useState<{ id: string; code: string; name: string }[]>([]);
+  /**
+   * The login this employee owns. `''` means "no account", and on save that is
+   * sent as an explicit `null` so the field can UNLINK as well as link —
+   * otherwise a mis-linked account could only be corrected in SQL.
+   */
+  const [userId, setUserId] = useState<string>(employee?.userId ?? '');
+  const [linkableUsers, setLinkableUsers] = useState<
+    { id: string; username: string; name: string; roleName: string }[]
+  >([]);
 
   useEffect(() => {
     loadLocationOptions().then(setLocations);
+    loadLinkableUsers().then(setLinkableUsers);
   }, []);
 
   async function submit() {
@@ -259,6 +275,9 @@ function EmployeeFormModal({
           phone: form.phone,
           email: form.email,
           position: form.position,
+          // `null`, not `undefined`, when cleared: omitting the key would leave
+          // the existing link in place and make the field look broken.
+          userId: userId || null,
         });
       } else {
         await createEmployee({
@@ -271,6 +290,7 @@ function EmployeeFormModal({
           position: form.position,
           locationId: form.locationId,
           baseSalary: baseSalary ?? '0.00',
+          userId: userId || undefined,
         });
       }
       toast({
@@ -336,6 +356,22 @@ function EmployeeFormModal({
           label={t('hr.employees.email')}
           value={form.email}
           onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+        />
+        {/* THE LINK THAT MAKES `/me` WORK. Without a row here the person's own
+            Akun Saya is dead — absensi, slip gaji, cuti, pinjaman and kontrak
+            all read the employee behind their account — and until 2026-09-09
+            there was no screen anywhere that could set it, while the empty
+            screen told them to "minta Admin SDM" to do exactly this. */}
+        <Select
+          label={t('hr.employees.linkedUser')}
+          value={userId}
+          onValueChange={setUserId}
+          options={linkableUsers.map((u) => ({
+            value: u.id,
+            label: `${u.name} — ${u.username} (${u.roleName})`,
+          }))}
+          placeholder={t('hr.employees.linkedUserNone')}
+          hint={t('hr.employees.linkedUserHint')}
         />
         <Input
           label={t('hr.employees.position')}

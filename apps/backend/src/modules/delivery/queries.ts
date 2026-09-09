@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import type { Drop, DropLine, Seal, SuratJalan, TempLog, UUID } from '@mimi/shared';
 import { formatDateOnly } from '../../common/date-only.util';
+import { userDisplayNameSql } from '../../common/database/user-display-name.sql';
 
 /**
  * Shared read-side SQL + row->DTO mapping for `surat-jalan.service.ts` and
@@ -30,7 +31,7 @@ export interface SuratJalanHeaderRow {
 
 const HEADER_SELECT = `
   SELECT sj.id, sj.sj_number, sj.origin_location_id, st.key AS shipment_type,
-         sj.driver_id, dr.name AS driver_name, dr.phone AS driver_phone,
+         sj.driver_id, ${userDisplayNameSql('dr')} AS driver_name, dr.phone AS driver_phone,
          sj.vehicle_id, v.plate_number AS vehicle_plate, v.has_freezer AS vehicle_has_freezer,
          sj.status, sj.planned_date, sj.dispatched_at, sj.completed_at,
          cu.name AS created_by_name

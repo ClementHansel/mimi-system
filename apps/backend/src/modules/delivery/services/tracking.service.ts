@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import type { LiveDelivery, SjPosition, UUID } from '@mimi/shared';
 import { withWrite } from '../db-tx';
 import type { RecordPositionsDto } from '../dto/tracking.dto';
+import { userDisplayNameSql } from '../../../common/database/user-display-name.sql';
 
 interface PositionRow {
   latitude: string;
@@ -163,7 +164,7 @@ export class TrackingService {
         has_position: boolean;
       }
     >(
-      `SELECT sj.id AS sj_id, sj.sj_number, sj.driver_id, dr.name AS driver_name,
+      `SELECT sj.id AS sj_id, sj.sj_number, sj.driver_id, ${userDisplayNameSql('dr')} AS driver_name,
               v.plate_number, sj.status, sj.dispatched_at,
               (SELECT COUNT(*) FROM sj_drops d WHERE d.sj_id = sj.id) AS total_drops,
               (SELECT COUNT(*) FROM sj_drops d WHERE d.sj_id = sj.id

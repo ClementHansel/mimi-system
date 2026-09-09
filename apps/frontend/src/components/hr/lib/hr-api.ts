@@ -90,9 +90,38 @@ export function updateEmployee(
       baseSalary: string;
       startDate: string;
     };
+    /**
+     * The login this employee owns — `null` unlinks. `Partial<>` above makes the
+     * key omittable, and omitting it leaves the link alone; only an explicit
+     * `null` clears it. This is what makes `/me` (absensi, slip gaji, cuti,
+     * pinjaman, kontrak) reachable for an account created after its employee
+     * record, which was impossible before 2026-09-09.
+     */
+    userId: string | null;
   }>,
 ) {
   return api.patch<Employee>(`/hr/employees/${id}`, body);
+}
+
+/**
+ * Candidate logins for the employee form's "linked account" picker.
+ *
+ * Every ACTIVE user, not just the unlinked ones: `employees.user_id` is UNIQUE
+ * and the API refuses a taken account by NAMING the employee already holding it
+ * ("Akun ini sudah terhubung ke karyawan X (#EMPnnnn)"), which is more useful
+ * than an account silently missing from a list. `pageSize` is at the endpoint's
+ * own 200 cap; a tenant past that needs a searchable picker rather than a
+ * bigger page, and the field's hint says as much.
+ */
+export function loadLinkableUsers(): Promise<
+  { id: string; username: string; name: string; roleName: string }[]
+> {
+  return api
+    .get<{
+      rows: { id: string; username: string; name: string; roleName: string }[];
+    }>('/users?active=true&pageSize=200')
+    .then((res) => res.rows)
+    .catch(() => []);
 }
 
 // ── attendance (§4.14) ───────────────────────────────────────────────────────

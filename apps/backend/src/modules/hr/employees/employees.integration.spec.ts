@@ -8,7 +8,14 @@ import { ConflictDetectorService } from '../../../kernel/sync/conflict-detector.
 import { SyncConflictsRepository } from '../../../kernel/sync/sync-conflicts.repository';
 import { EmployeesService } from './employees.service';
 import type { CreateEmployeeDto, UpdateEmployeeDto } from '../dto/employee.dto';
-import { asRequest, closePool, loadHrFixtures, type HrFixtures } from '../test-support/live-db';
+import {
+  asRequest,
+  closePool,
+  deleteMintedUser,
+  loadHrFixtures,
+  mintUnlinkedUser,
+  type HrFixtures,
+} from '../test-support/live-db';
 
 /**
  * Integration proof for `EmployeesService` (M14, CONTRACTS.md §1.7 block
@@ -134,6 +141,169 @@ describe('EmployeesService (integration, live Postgres)', () => {
       expect(reread.employments.some((e) => e.position === 'Kasir' && e.endDate !== null)).toBe(
         true,
       );
+    });
+  });
+
+  /**
+   * LINKING AN EMPLOYEE TO A LOGIN, AFTER THE FACT.
+   *
+   * `employees.user_id` is the only thing that makes `/me` work — Absen, Slip
+   * Gaji, Cuti, Pinjaman and Kontrak all resolve the employee behind the
+   * caller's account. `CreateEmployeeDto` has always carried `userId`;
+   * `UpdateEmployeeDto` never did, so the link was write-once and only at
+   * creation, and the frontend form never sent it at all.
+   *
+   * What that cost, reported from production 2026-09-09: an account created
+   * through Administrasi → Tambah Pengguna had a permanently empty Akun Saya,
+   * and the empty screen's own advice — "Minta Admin SDM menghubungkan akun
+   * Anda dengan data karyawan" — named a repair that no screen and no endpoint
+   * could perform. 258 of 263 users on that box were linked ONLY because the
+   * seed created the pair together; 37 employees had no login and could not be
+   * given one either. `GET /hr/employees/me` answered
+   * `404 ERR_NOT_FOUND "This account is not linked to an employee record"` with
+   * no way out.
+   *
+   * The read-back goes through a SEPARATE connection on purpose (this file's
+   * standing pattern): `update` is `withWrite`-wrapped, and a link that only
+   * existed inside its own uncommitted transaction would pass a same-connection
+   * assertion and still leave Akun Saya dead.
+   */
+  describe('userId — linking and unlinking a login', () => {
+    it('links an existing employee to an existing login, and a separate connection sees it', async () => {
+      if (!dbAvailable) return;
+      const rls = actorRls();
+      const spare = await mintUnlinkedUser(RoleKey.KASIR);
+      try {
+        const dto: CreateEmployeeDto = {
+          employeeNumber: `LINK-${randomUUID().slice(0, 8)}`,
+          name: 'Link Test Employee',
+          joinDate: '2026-01-05',
+          position: 'Kasir',
+          locationId: fixtures.outletId,
+          baseSalary: '3000000.00',
+        };
+        const created = await asRequest(rls, (client) => service.create(client, rls.userId, dto));
+        expect(created.userId, 'a new employee should start with no login').toBeNull();
+
+        const patch: UpdateEmployeeDto = { userId: spare.userId };
+        await asRequest(rls, (client) => service.update(client, rls.userId, created.id, patch));
+
+        const reread = await asRequest(rls, (client) => service.getById(client, created.id, true));
+        expect(
+          reread.userId,
+          'the link did not survive its own request — Akun Saya stays dead',
+        ).toBe(spare.userId);
+
+        // And the reverse lookup `/me` actually uses.
+        const byUser = await asRequest(rls, (client) => service.findByUserId(client, spare.userId));
+        expect(byUser.id).toBe(created.id);
+      } finally {
+        await deleteMintedUser(spare.userId);
+      }
+    });
+
+    it('refuses a login another employee already holds, naming that employee', async () => {
+      if (!dbAvailable) return;
+      const rls = actorRls();
+      const spare = await mintUnlinkedUser(RoleKey.KASIR);
+      try {
+        const mk = (n: string): CreateEmployeeDto => ({
+          employeeNumber: `LINK-${randomUUID().slice(0, 8)}`,
+          name: n,
+          joinDate: '2026-01-05',
+          position: 'Kasir',
+          locationId: fixtures.outletId,
+          baseSalary: '3000000.00',
+        });
+        const first = await asRequest(rls, (client) =>
+          service.create(client, rls.userId, mk('Link Holder')),
+        );
+        const second = await asRequest(rls, (client) =>
+          service.create(client, rls.userId, mk('Link Contender')),
+        );
+
+        await asRequest(rls, (client) =>
+          service.update(client, rls.userId, first.id, { userId: spare.userId }),
+        );
+
+        // `employees_user_id_key` would catch this anyway, but as a bare 23505 →
+        // a generic "Data ini sudah ada", which does not tell an HR admin WHERE
+        // the account went. The message has to carry the holder.
+        await expect(
+          asRequest(rls, (client) =>
+            service.update(client, rls.userId, second.id, { userId: spare.userId }),
+          ),
+          'a login was quietly handed to a second employee',
+        ).rejects.toMatchObject({ response: { code: 'ERR_DUPLICATE' } });
+
+        await expect(
+          asRequest(rls, (client) =>
+            service.update(client, rls.userId, second.id, { userId: spare.userId }),
+          ),
+        ).rejects.toMatchObject({ response: { message: expect.stringContaining('Link Holder') } });
+      } finally {
+        await deleteMintedUser(spare.userId);
+      }
+    });
+
+    it('unlinks on an explicit null, so a mis-link is fixable without SQL', async () => {
+      if (!dbAvailable) return;
+      const rls = actorRls();
+      const spare = await mintUnlinkedUser(RoleKey.KASIR);
+      try {
+        const created = await asRequest(rls, (client) =>
+          service.create(client, rls.userId, {
+            employeeNumber: `LINK-${randomUUID().slice(0, 8)}`,
+            name: 'Unlink Test Employee',
+            joinDate: '2026-01-05',
+            position: 'Kasir',
+            locationId: fixtures.outletId,
+            baseSalary: '3000000.00',
+            userId: spare.userId,
+          }),
+        );
+        expect(created.userId).toBe(spare.userId);
+
+        await asRequest(rls, (client) =>
+          service.update(client, rls.userId, created.id, { userId: null }),
+        );
+
+        const reread = await asRequest(rls, (client) => service.getById(client, created.id, true));
+        expect(reread.userId, 'null must UNLINK, not be ignored as "no change"').toBeNull();
+      } finally {
+        await deleteMintedUser(spare.userId);
+      }
+    });
+
+    it('leaves the link untouched when userId is omitted', async () => {
+      if (!dbAvailable) return;
+      const rls = actorRls();
+      const spare = await mintUnlinkedUser(RoleKey.KASIR);
+      try {
+        const created = await asRequest(rls, (client) =>
+          service.create(client, rls.userId, {
+            employeeNumber: `LINK-${randomUUID().slice(0, 8)}`,
+            name: 'Keep Link Employee',
+            joinDate: '2026-01-05',
+            position: 'Kasir',
+            locationId: fixtures.outletId,
+            baseSalary: '3000000.00',
+            userId: spare.userId,
+          }),
+        );
+
+        // An ordinary edit that says nothing about the account. `undefined` and
+        // `null` mean different things here and this is the pair that proves it.
+        await asRequest(rls, (client) =>
+          service.update(client, rls.userId, created.id, { phone: '08123456789' }),
+        );
+
+        const reread = await asRequest(rls, (client) => service.getById(client, created.id, true));
+        expect(reread.userId, 'an unrelated edit dropped the login link').toBe(spare.userId);
+        expect(reread.phone).toBe('08123456789');
+      } finally {
+        await deleteMintedUser(spare.userId);
+      }
     });
   });
 });

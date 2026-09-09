@@ -19,6 +19,7 @@
  * no writes, so `withWrite`/`db-tx.ts` has no part in this file.
  */
 import type { PoolClient } from 'pg';
+import { userDisplayNameSql } from '../../common/database/user-display-name.sql';
 
 // ── Receipt / invoice-from-sale ─────────────────────────────────────────────
 
@@ -237,7 +238,7 @@ export async function selectSjHeader(
 ): Promise<SjHeaderRow | null> {
   const res = await client.query<SjHeaderRow>(
     `SELECT sj.id, sj.sj_number, sj.origin_location_id, ol.name AS origin_name, ol.address AS origin_address,
-            st.key AS shipment_type_key, sj.driver_id, dr.name AS driver_name,
+            st.key AS shipment_type_key, sj.driver_id, ${userDisplayNameSql('dr')} AS driver_name,
             sj.vehicle_id, v.plate_number AS vehicle_plate,
             sj.status, sj.planned_date, sj.dispatched_at, sj.completed_at,
             cu.name AS created_by_name, sj.notes

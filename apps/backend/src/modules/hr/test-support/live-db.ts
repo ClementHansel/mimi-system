@@ -289,6 +289,46 @@ export async function loadOtherOutletKasir(
  * header comment, applied to a same-owner module's own shift tables instead
  * of a foreign one. Always paired with the matching `deleteX` in a `finally`.
  */
+/**
+ * A login with NO employee record — the state every UI-created account is in.
+ *
+ * Every seeded user is already linked (`org-model.ts` creates the pair), so a
+ * test for the user<->employee link cannot borrow one from the fixtures: doing
+ * so trips the very "this account is already taken" guard it means to test
+ * around. Minted rather than picked, per this repo's fixture rule — take a
+ * seeded row and the next suite to run finds it consumed.
+ *
+ * The password hash is copied from an existing user of the same role rather
+ * than invented: nothing here logs in, and hashing a throwaway password would
+ * add a bcrypt round to every run for no assertion.
+ */
+export async function mintUnlinkedUser(
+  roleKey: string,
+): Promise<{ userId: string; username: string; name: string }> {
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const username = `zztest_link_${suffix}`;
+  const name = `ZZ Unlinked ${suffix}`;
+  const res = await getOwnerPool().query<{ id: string }>(
+    `INSERT INTO users (username, name, password_hash, role_id, tenant_id)
+     SELECT $1, $2, u.password_hash, r.id, app_the_only_tenant()
+       FROM roles r JOIN users u ON u.role_id = r.id
+      WHERE r.key = $3 LIMIT 1
+     RETURNING id`,
+    [username, name, roleKey],
+  );
+  const userId = res.rows[0]?.id;
+  if (!userId)
+    throw new Error(`mintUnlinkedUser: no seeded user with role '${roleKey}' to model on`);
+  return { userId, username, name };
+}
+
+export async function deleteMintedUser(userId: string): Promise<void> {
+  // Detach first: `employees.user_id` is a plain FK with no ON DELETE, so a
+  // linked employee would block the delete outright.
+  await getOwnerPool().query('UPDATE employees SET user_id = NULL WHERE user_id = $1', [userId]);
+  await getOwnerPool().query('DELETE FROM users WHERE id = $1', [userId]);
+}
+
 export async function createWorkShift(
   locationId: string,
   startTime: string,

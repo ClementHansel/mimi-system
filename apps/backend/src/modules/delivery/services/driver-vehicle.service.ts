@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import type { UUID } from '@mimi/shared';
 import { SyncEmitService } from '../../../kernel/sync/sync-emit.service';
+import { userDisplayNameSql } from '../../../common/database/user-display-name.sql';
 import { withWrite } from '../db-tx';
 import {
   CreateDriverDto,
@@ -30,7 +31,12 @@ export interface VehicleDto {
 function mapDriver(r: Record<string, any>): DriverDto {
   return {
     id: r.id,
-    name: r.name,
+    // `display_name` comes from the driver's USER ACCOUNT when they have one and
+    // falls back to `drivers.name` when they do not — see
+    // `common/database/user-display-name.sql.ts` for the drift this closes.
+    // `?? r.name` covers the reads that do not select it (none today, but a new
+    // `SELECT *` call site should degrade to the old behaviour, not to blank).
+    name: r.display_name ?? r.name,
     phone: r.phone,
     licenseNumber: r.license_number,
     userId: r.user_id,
@@ -55,7 +61,11 @@ export class DriverVehicleService {
 
   async listDrivers(client: PoolClient, active?: boolean): Promise<DriverDto[]> {
     const where = active === undefined ? '' : `WHERE is_active = ${active ? 'true' : 'false'}`;
-    const res = await client.query(`SELECT * FROM drivers ${where} ORDER BY name ASC`);
+    const res = await client.query(
+      `SELECT d.*, ${userDisplayNameSql('d')} AS display_name
+         FROM drivers d ${where}
+        ORDER BY display_name ASC`,
+    );
     return res.rows.map(mapDriver);
   }
 
@@ -118,7 +128,10 @@ export class DriverVehicleService {
           throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Driver ${id} not found` });
       }
 
-      const fresh = await client.query(`SELECT * FROM drivers WHERE id = $1`, [id]);
+      const fresh = await client.query(
+        `SELECT d.*, ${userDisplayNameSql('d')} AS display_name FROM drivers d WHERE d.id = $1`,
+        [id],
+      );
       if (fresh.rows.length === 0)
         throw new NotFoundException({ code: 'ERR_NOT_FOUND', message: `Driver ${id} not found` });
       const driver = mapDriver(fresh.rows[0]);

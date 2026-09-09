@@ -57,6 +57,7 @@ import { GoodsReceiptService } from './services/goods-receipt.service';
 import { DeliverySyncProjector } from './services/delivery-sync-projector.service';
 import { RecapService } from './services/recap.service';
 import { RouteService } from './services/route.service';
+import { DriverVehicleService } from './services/driver-vehicle.service';
 
 import {
   closePool,
@@ -123,6 +124,7 @@ describe('M10 delivery — live DB integration', () => {
   const dropService = new DropService(syncEmit, stockLedger, eventBus, coldChain, replenishment);
   const goodsReceiptService = new GoodsReceiptService(stockLedger, syncEmit);
   const routeService = new RouteService();
+  const driverVehicleService = new DriverVehicleService(syncEmit);
 
   /**
    * MA-107 / MA-112 — the GL *wiring*, as distinct from the posting engine.
@@ -1888,6 +1890,97 @@ describe('M10 delivery — live DB integration', () => {
       } finally {
         await cleanup(req.requestId, made);
       }
+    });
+  });
+
+  /**
+   * A DRIVER'S NAME COMES FROM THEIR ACCOUNT, NOT FROM THE COPY IN `drivers`.
+   *
+   * The production condition, 2026-09-09: `drivers.name` said "Dian Santoso" and
+   * "Yanto Hidayat" for the two active drivers while their `users` and
+   * `employees` rows both said "Ayu Rahayu" (#EMP0090) and "Bagus Rahayu"
+   * (#EMP0091). `seed.ts` wrote one name, `org-model.ts` renamed the person, and
+   * its INSERT is guarded on `NOT EXISTS` so the `drivers` row never caught up.
+   *
+   * What that cost: the client read a name off the dispatcher screen, searched the
+   * user list for it, found nothing, and reported two drivers as MISSING from the
+   * system — they had been there all along under a different name. The same stale
+   * copy also printed on the Surat Jalan (functional test 2026-09-07, finding
+   * #10). Re-asserting the name in the seed was the first attempt and it only ever
+   * helps a box that gets re-seeded; production does not.
+   *
+   * Resolved through `app_user_display()` rather than a `LEFT JOIN users`, and
+   * that part is load-bearing: `users_select` admits only central roles and self,
+   * so a plain join returns NULL for a KEPALA GUDANG or a DRIVER — precisely the
+   * roles reading these screens — and NULL would fall back to the stale copy,
+   * fixing nothing where it matters. The second case below is the one that keeps
+   * the fallback honest: a driver with no login has no account name, and the
+   * stored one is then the only name there is.
+   */
+  describe('listDrivers — the display name follows the user account (live DB)', () => {
+    const madeUserIds: string[] = [];
+    const madeDriverIds: string[] = [];
+
+    afterAll(async () => {
+      const owner = getOwnerPool();
+      for (const id of madeDriverIds) await owner.query(`DELETE FROM drivers WHERE id = $1`, [id]);
+      for (const id of madeUserIds) await owner.query(`DELETE FROM users WHERE id = $1`, [id]);
+    });
+
+    /** A driver whose `drivers.name` deliberately disagrees with their user's. */
+    async function mintDriverWithMismatchedName(): Promise<{ driverId: string; userName: string }> {
+      const owner = getOwnerPool();
+      const suffix = randomUUID().slice(0, 8);
+      const userName = `ZZ Account Name ${suffix}`;
+      const user = await owner.query<{ id: string }>(
+        `INSERT INTO users (username, name, password_hash, role_id, tenant_id)
+       SELECT $1, $2, u.password_hash, r.id, app_the_only_tenant()
+         FROM roles r JOIN users u ON u.role_id = r.id
+        WHERE r.key = 'driver' LIMIT 1
+       RETURNING id`,
+        [`zzname_${suffix}`, userName],
+      );
+      const userId = user.rows[0]!.id;
+      madeUserIds.push(userId);
+      const driver = await owner.query<{ id: string }>(
+        `INSERT INTO drivers (user_id, name, is_active) VALUES ($1, $2, true) RETURNING id`,
+        [userId, `ZZ Stale Drivers Row ${suffix}`],
+      );
+      madeDriverIds.push(driver.rows[0]!.id);
+      return { driverId: driver.rows[0]!.id, userName };
+    }
+
+    it('returns the USER account name for a driver whose drivers.name has drifted', async () => {
+      const { driverId, userName } = await mintDriverWithMismatchedName();
+
+      const listed = await withRollback((client) => driverVehicleService.listDrivers(client, true));
+      const row = listed.find((d) => d.id === driverId);
+
+      expect(row, 'the minted driver is not in the active list at all').toBeDefined();
+      expect(
+        row!.name,
+        'the dispatcher screen is still showing the stale `drivers.name` copy',
+      ).toBe(userName);
+      expect(row!.name).not.toMatch(/Stale Drivers Row/);
+    });
+
+    it('falls back to drivers.name for a driver with no user account', async () => {
+      // A casual or third-party driver: `drivers.user_id` is nullable by design,
+      // and for that row the stored name is the ONLY name there is. Blanking it
+      // would be a worse bug than the one being fixed.
+      const owner = getOwnerPool();
+      const standaloneName = `ZZ No Login Driver ${randomUUID().slice(0, 8)}`;
+      const driver = await owner.query<{ id: string }>(
+        `INSERT INTO drivers (user_id, name, is_active) VALUES (NULL, $1, true) RETURNING id`,
+        [standaloneName],
+      );
+      madeDriverIds.push(driver.rows[0]!.id);
+
+      const listed = await withRollback((client) => driverVehicleService.listDrivers(client, true));
+      const row = listed.find((d) => d.id === driver.rows[0]!.id);
+
+      expect(row, 'a driver without a login vanished from the list').toBeDefined();
+      expect(row!.name).toBe(standaloneName);
     });
   });
 });

@@ -2772,6 +2772,14 @@ export const id = {
       phone: 'No. Telepon',
       email: 'Email',
       position: 'Jabatan',
+      // The user<->employee link. Added 2026-09-09: nothing in the product
+      // could set it, so any account created after its employee record had a
+      // permanently empty Akun Saya while that screen advised asking the HR
+      // admin to do the one thing no screen offered.
+      linkedUser: 'Akun Login Terhubung',
+      linkedUserNone: 'Belum terhubung ke akun login',
+      linkedUserHint:
+        'Hubungkan karyawan ini ke akun login-nya agar Absen, Slip Gaji, Cuti, Pinjaman, dan Kontrak muncul di menu Akun Saya milik mereka. Kosongkan untuk melepas tautan.',
       joinDate: 'Tanggal Masuk',
       locationId: 'ID Lokasi',
       locationIdHint: 'Lokasi penempatan pegawai ini.',

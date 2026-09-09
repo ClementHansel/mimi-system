@@ -405,6 +405,9 @@ export const id = {
     deactivate: 'Nonaktifkan',
     create: 'Tambah',
     submit: 'Ajukan',
+    // MA-193 — the shared `CheckboxGroup`'s select-all row.
+    selectAll: 'Pilih Semua',
+    selectedOfTotal: '{{n}} dari {{total}} dipilih',
     approve: 'Setujui',
     reject: 'Tolak',
     amend: 'Ubah Jumlah',

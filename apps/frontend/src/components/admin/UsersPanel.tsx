@@ -13,7 +13,7 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Drawer } from '@/components/ui/Drawer';
-import { Checkbox } from '@/components/ui/Checkbox';
+import { CheckboxGroup } from '@/components/ui/CheckboxGroup';
 import { PermissionGate } from '@/components/ui/PermissionGate';
 import { ExportButton } from '@/components/common/ExportButton';
 import { useApiList } from './useApiList';
@@ -340,29 +340,24 @@ function CreateUserModal({
             hint={t('admin.users.rankWarning')}
           />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-text-primary">
-            {t('admin.users.locations')}
-          </span>
-          <span className="text-sm text-text-muted">{t('admin.users.selectLocationsHint')}</span>
-          {role === RoleKey.MANAGER && (
-            <span className="text-sm text-text-muted">{t('admin.users.managerScopeHint')}</span>
-          )}
-          <div className="max-h-40 overflow-y-auto rounded-md border border-border-strong p-2">
-            {locations.map((loc) => (
-              <Checkbox
-                key={loc.id}
-                label={`${loc.name} (${loc.code})`}
-                checked={locationIds.includes(loc.id)}
-                onCheckedChange={(checked) =>
-                  setLocationIds((ids) =>
-                    checked ? [...ids, loc.id] : ids.filter((id) => id !== loc.id),
-                  )
-                }
-              />
-            ))}
-          </div>
-        </div>
+        {/* MA-193 — twenty-two branches on production, so assigning someone
+            to the whole company was twenty-two clicks. `CheckboxGroup` carries
+            the select-all and the running count. */}
+        <CheckboxGroup
+          label={t('admin.users.locations')}
+          hint={
+            <>
+              {t('admin.users.selectLocationsHint')}
+              {role === RoleKey.MANAGER && ` ${t('admin.users.managerScopeHint')}`}
+            </>
+          }
+          options={locations.map((loc) => ({
+            value: loc.id,
+            label: `${loc.name} (${loc.code})`,
+          }))}
+          value={locationIds}
+          onChange={setLocationIds}
+        />
       </div>
     </Modal>
   );
@@ -553,20 +548,14 @@ function UserDrawer({
             {user.roleKey === RoleKey.MANAGER && (
               <span className="text-sm text-text-muted">{t('admin.users.managerScopeHint')}</span>
             )}
-            <div className="max-h-40 overflow-y-auto rounded-md border border-border-strong p-2">
-              {locations.map((loc) => (
-                <Checkbox
-                  key={loc.id}
-                  label={`${loc.name} (${loc.code})`}
-                  checked={locationIds.includes(loc.id)}
-                  onCheckedChange={(checked) =>
-                    setLocationIds((ids) =>
-                      checked ? [...ids, loc.id] : ids.filter((id) => id !== loc.id),
-                    )
-                  }
-                />
-              ))}
-            </div>
+            <CheckboxGroup
+              options={locations.map((loc) => ({
+                value: loc.id,
+                label: `${loc.name} (${loc.code})`,
+              }))}
+              value={locationIds}
+              onChange={setLocationIds}
+            />
             <Button
               size="sm"
               onClick={saveLocations}

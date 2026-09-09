@@ -8,6 +8,7 @@ export * from './Textarea';
 export * from './Select';
 export * from './SearchableSelect';
 export * from './Checkbox';
+export * from './CheckboxGroup';
 export * from './RadioGroup';
 export * from './Card';
 export * from './Badge';

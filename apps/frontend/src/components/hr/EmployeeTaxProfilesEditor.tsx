@@ -12,7 +12,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Checkbox,
+  CheckboxGroup,
   DataTable,
   Input,
   Modal,
@@ -352,16 +352,24 @@ function TaxProfileModal({
             <legend className="mb-1 text-sm font-medium text-text-primary">
               {t('hr.statutory.taxProfileBpjsLegend')}
             </legend>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {BPJS_PROGRAMS.map((p) => (
-                <Checkbox
-                  key={p}
-                  label={t(`hr.statutory.bpjsProgram.${p}`)}
-                  checked={enrolled[p]}
-                  onCheckedChange={(v) => setEnrolled((prev) => ({ ...prev, [p]: v }))}
-                />
-              ))}
-            </div>
+            {/* MA-193 — all five programmes is the normal enrolment, so it is
+                one click rather than five. */}
+            <CheckboxGroup
+              options={BPJS_PROGRAMS.map((p) => ({
+                value: p,
+                label: t(`hr.statutory.bpjsProgram.${p}`),
+              }))}
+              value={BPJS_PROGRAMS.filter((p) => enrolled[p])}
+              onChange={(next) =>
+                setEnrolled(
+                  Object.fromEntries(BPJS_PROGRAMS.map((p) => [p, next.includes(p)])) as Record<
+                    BpjsProgram,
+                    boolean
+                  >,
+                )
+              }
+              scrollable={false}
+            />
             <Input
               type="date"
               label={t('hr.statutory.taxProfileEnrolledSinceLabel')}

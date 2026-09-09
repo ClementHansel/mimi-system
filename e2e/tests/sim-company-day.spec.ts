@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
-import { login } from './support/app';
+import { login, NEW_REQUEST_NUMBER, ANY_REQUEST_NUMBER } from './support/app';
 import { ALLOW_WRITES, CREW, CREW_OUTLET } from './support/crew';
 import { assertNoLoadFailure, assertNoTechnicalError } from './support/errors';
 import { Journal } from './support/journal';
@@ -567,7 +567,7 @@ test.describe('A working day at Mimi Chicken', () => {
         await expect(d).toBeHidden({ timeout: 30_000 });
 
         const number = await cellText(page.locator('table tbody tr').first(), 0);
-        if (!/^RR\//.test(number))
+        if (!NEW_REQUEST_NUMBER.test(number))
           throw new Error(`the new request has no number (read "${number}")`);
         await screenIsHealthy(page, 'after raising a replenishment');
         console.log(`[sim] replenishment ${number} for ${item}`);
@@ -750,10 +750,14 @@ test.describe('A working day at Mimi Chicken', () => {
           // that is the cold-chain rule working, not a broken picker, so skip
           // it and try the other type rather than timing out on it.
           const box = state.replenishment
-            ? // An RR number carries no regex metacharacters — a forward slash
-              // needs no escaping inside a `RegExp` — so it is safe as a pattern.
+            ? // A request number carries no regex metacharacters — a forward
+              // slash needs no escaping inside a `RegExp` — so it is safe as a
+              // pattern.
               d.getByLabel(new RegExp(state.replenishment))
-            : d.getByLabel(/^RR\//).first();
+            : // FALLBACK: any request already in the picker will do here, and on
+              // a box with history that legitimately includes pre-rename `RR/…`
+              // rows alongside new `OR/…` ones.
+              d.getByLabel(ANY_REQUEST_NUMBER).first();
           if ((await box.count()) > 0 && (await box.first().isEnabled())) {
             // CLICK THE LABEL, which is what a person clicks. `check({force})`
             // on the `sr-only` input can set the property without React's

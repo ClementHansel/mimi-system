@@ -21,6 +21,27 @@ export const DEMO_PIN = process.env.E2E_PIN ?? '123456';
  * `seed.ts`'s raw output (`kepalagudang1`) and the whole suite failed the first
  * time the org was reshaped — against a perfectly healthy box.
  */
+/**
+ * Outlet-request document numbers, and why there are two patterns.
+ *
+ * The prefix was renamed `RR` -> `OR` (Outlet Request) on 2026-09-09, and the
+ * rename is FORWARD-ONLY: numbers already issued keep `RR/...` and are never
+ * rewritten, so any box with history legitimately holds BOTH series. Which
+ * pattern a spec wants therefore depends on what it is asserting:
+ *
+ *   - `NEW_REQUEST_NUMBER` for a request this spec just raised. It must carry
+ *     the current prefix; accepting `RR` there would let a regression in
+ *     document numbering pass unnoticed.
+ *   - `ANY_REQUEST_NUMBER` for picking an EXISTING row out of a list, where a
+ *     pre-rename request is a perfectly valid thing to find.
+ *
+ * Hard-coding `/^RR\//` in four specs is what broke CI on the rename commit,
+ * and it is worth noting HOW it survived review: the source reads `RR\/`, so a
+ * search for the literal `RR/` does not match it. Import these instead.
+ */
+export const NEW_REQUEST_NUMBER = /^OR\//;
+export const ANY_REQUEST_NUMBER = /^(OR|RR)\//;
+
 export const USERS = {
   superadmin: 'superadmin',
   owner: 'owner',

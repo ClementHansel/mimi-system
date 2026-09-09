@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, USERS } from './support/app';
+import { login, USERS, NEW_REQUEST_NUMBER } from './support/app';
 import { assertNoLoadFailure, assertNoTechnicalError } from './support/errors';
 
 /**
@@ -152,9 +152,16 @@ test.describe('Outlet to office: one request, two interfaces', () => {
       // that created it.
       await expect(dialog).toBeHidden({ timeout: 30_000 });
       const newRow = page.locator('table tbody tr').first();
-      await expect(newRow).toBeVisible();
-      const requestNumber = (await newRow.locator('td').nth(0).innerText()).trim();
-      expect(requestNumber).toMatch(/^RR\//);
+      const numberCell = newRow.locator('td').nth(0);
+      // A RETRYING assertion, not a bare `innerText()` read. The row turns
+      // visible before its cells have painted, so reading straight through
+      // returned `""` and failed against a number that was on screen a moment
+      // later — a flake, and this suite runs with `retries: 0` on purpose
+      // (playwright.config.ts: a retry "converts a real intermittent defect
+      // into a green run"), so it has to be waited out rather than re-run.
+      // `ops-owner-flows.spec.ts` already reads the same cell this way.
+      await expect(numberCell).toHaveText(NEW_REQUEST_NUMBER, { timeout: 30_000 });
+      const requestNumber = (await numberCell.innerText()).trim();
 
       // …and then the same row, read by the OFFICE, must agree about the count.
       //

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, USERS } from './support/app';
+import { login, USERS, NEW_REQUEST_NUMBER } from './support/app';
 import { ALLOW_WRITES } from './support/crew';
 import { assertNoLoadFailure, assertNoTechnicalError, collectApiFailures } from './support/errors';
 import { choose, chooseOutletIfAsked, closeDialog } from './support/dialogs';
@@ -274,7 +274,7 @@ test.describe('An approval chain past its first step', () => {
       before.trim(),
       { timeout: 60_000 },
     );
-    await expect(topCell).toHaveText(/^RR\//, { timeout: 30_000 });
+    await expect(topCell).toHaveText(NEW_REQUEST_NUMBER, { timeout: 30_000 });
     const requestNumber = (await topCell.innerText()).trim();
 
     // ── Step 1: the supervisor's decision ──────────────────────────────────

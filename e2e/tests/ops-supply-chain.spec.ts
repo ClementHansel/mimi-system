@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
-import { login } from './support/app';
+import { login, NEW_REQUEST_NUMBER } from './support/app';
 import { ALLOW_WRITES, CREW, CREW_OUTLET } from './support/crew';
 import { assertNoLoadFailure, assertNoTechnicalError } from './support/errors';
 
@@ -171,7 +171,7 @@ test.describe('One request, handed from the outlet to the warehouse', () => {
       // number is the only way for a person to find what it created and cancel
       // it — a replenishment request has no notes field to mark in the UI.
       console.log(`[e2e] created replenishment request ${requestNumber}`);
-      expect(requestNumber, 'the new request has no number').toMatch(/^RR\//);
+      expect(requestNumber, 'the new request has no number').toMatch(NEW_REQUEST_NUMBER);
 
       // Submitted, not draft: an outlet request that never leaves the outlet is
       // not a handoff, and the rest of this test would be asserting nothing.

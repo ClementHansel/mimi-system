@@ -2523,6 +2523,14 @@ export const id = {
       vehicle: 'Kendaraan',
       vehicleNeedsFreezer:
         'Kendaraan ini tidak punya freezer — tidak bisa untuk pengiriman beku/dingin',
+      // The other half of the rule (owner, 2026-09-09: "freezer truck should
+      // never deliver dry goods. and vice versa"). Only the first half existed,
+      // so a freezer truck could be booked for a sembako run — MA-197.
+      vehicleMustNotHaveFreezer:
+        'Kendaraan ini truk freezer — tidak boleh untuk pengiriman kering (sembako)',
+      vehicleHintFrozen: 'Hanya truk berfreezer yang ditampilkan untuk pengiriman beku/dingin.',
+      vehicleHintDry: 'Hanya truk non-freezer yang ditampilkan untuk pengiriman kering (sembako).',
+      missingAmbientTruck: 'pilih kendaraan non-freezer untuk pengiriman kering',
       plannedDate: 'Tanggal Rencana Kirim',
       // Why "Buat Surat Jalan" is still greyed out. The button has always been
       // `disabled` until every prerequisite is met, and it never said which one

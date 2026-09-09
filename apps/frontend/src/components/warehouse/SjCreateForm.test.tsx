@@ -169,7 +169,44 @@ describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
     expect(screen.queryByText(/Ayam Mentah Berbumbu/)).not.toBeInTheDocument();
   });
 
-  it('blocks submission when the selected vehicle has no freezer for a frozen shipment', () => {
+  /**
+   * A truck carries EXACTLY its own shipment type — owner, 2026-09-09: "freezer
+   * truck should never deliver dry goods. and vice versa." (MA-197).
+   *
+   * The picker therefore OFFERS only trucks that fit, so the wrong pairing is
+   * not something to be refused after the fact — it is not selectable. That is
+   * a stronger guarantee than the error message this test used to assert, and
+   * it is why the assertion changed shape: there is no longer a way to put
+   * `veh-plain` on a frozen run through this form at all.
+   */
+  it('offers only freezer trucks for a frozen shipment, and only ambient ones for dry', () => {
+    render(
+      <SjCreateForm
+        requests={[frozenRequest]}
+        drivers={drivers}
+        vehicles={vehicles}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const vehicleOptions = () =>
+      Array.from(screen.getAllByRole('combobox')[1]!.querySelectorAll('option'))
+        .map((o) => (o as HTMLOptionElement).value)
+        .filter(Boolean);
+
+    // Frozen is the default tab.
+    expect(vehicleOptions()).toEqual(['veh-freezer']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kering (Sembako)' }));
+    expect(vehicleOptions(), 'a freezer truck is still selectable for a dry run — MA-197').toEqual([
+      'veh-plain',
+    ]);
+  });
+
+  it('invalidates an already-chosen truck when the shipment type is switched under it', () => {
+    // The one case filtering cannot cover: pick a valid truck, THEN change the
+    // shipment type. The field is not re-touched, so the inline error and the
+    // disabled button are what stop it.
     render(
       <SjCreateForm
         requests={[frozenRequest]}
@@ -179,16 +216,18 @@ describe('SjCreateForm — FR-LOG-02 frozen/dry split rule', () => {
       />,
     );
     fireEvent.click(screen.getByLabelText(/REQ-001/));
-
     const selects = screen.getAllByRole('combobox');
-    const driverSelect = selects[0]!;
-    const vehicleSelect = selects[1]!;
-    fireEvent.change(driverSelect, { target: { value: 'drv-1' } });
-    fireEvent.change(vehicleSelect, { target: { value: 'veh-plain' } });
+    fireEvent.change(selects[0]!, { target: { value: 'drv-1' } });
+    fireEvent.change(selects[1]!, { target: { value: 'veh-freezer' } });
+    fireEvent.change(screen.getByLabelText('Tanggal Rencana Kirim'), {
+      target: { value: '2026-09-10' },
+    });
+    expect(screen.getByRole('button', { name: /Buat Surat Jalan/i })).toBeEnabled();
 
-    expect(screen.getByText(/tidak punya freezer/i)).toBeInTheDocument();
-    const createBtn = screen.getByRole('button', { name: /Buat Surat Jalan/i });
-    expect(createBtn).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Kering (Sembako)' }));
+
+    expect(screen.getByText(/truk freezer/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Buat Surat Jalan/i })).toBeDisabled();
   });
 
   it('enables submission once request, driver, freezer-capable vehicle and date are all set', () => {
@@ -258,7 +297,7 @@ describe('SjCreateForm — a disabled create button says what is missing', () =>
     expect(create).toBeDisabled();
   });
 
-  it('asks for a freezer truck by name once a non-freezer vehicle is chosen for a frozen run', () => {
+  it('names the truck the run needs, in whichever direction is wrong', () => {
     render(
       <SjCreateForm
         requests={[frozenRequest]}
@@ -270,18 +309,18 @@ describe('SjCreateForm — a disabled create button says what is missing', () =>
 
     fireEvent.click(screen.getByLabelText(/REQ-001/));
     fireEvent.change(screen.getByLabelText('Driver'), { target: { value: 'drv-1' } });
-    fireEvent.change(screen.getByLabelText('Kendaraan'), { target: { value: 'veh-plain' } });
+    fireEvent.change(screen.getByLabelText('Kendaraan'), { target: { value: 'veh-freezer' } });
     fireEvent.change(screen.getByLabelText('Tanggal Rencana Kirim'), {
       target: { value: '2026-09-10' },
     });
-
-    // "pick a vehicle" is satisfied; the freezer rule is what is left.
-    expect(screen.getByText(/pilih kendaraan berfreezer/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Buat Surat Jalan' })).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText('Kendaraan'), { target: { value: 'veh-freezer' } });
     expect(screen.queryByText(/Lengkapi dulu/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Buat Surat Jalan' })).toBeEnabled();
+
+    // Switch to dry with the cold truck still selected: the OTHER half of the
+    // rule, which had no message at all before MA-197.
+    fireEvent.click(screen.getByRole('button', { name: 'Kering (Sembako)' }));
+    expect(screen.getByText(/pilih kendaraan non-freezer/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buat Surat Jalan' })).toBeDisabled();
   });
 });
 

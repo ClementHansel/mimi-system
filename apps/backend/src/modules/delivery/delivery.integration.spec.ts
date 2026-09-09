@@ -1983,4 +1983,125 @@ describe('M10 delivery — live DB integration', () => {
       expect(row!.name).toBe(standaloneName);
     });
   });
+
+  /**
+   * A TRUCK CARRIES EXACTLY ITS OWN SHIPMENT TYPE — BOTH DIRECTIONS.
+   *
+   * Owner, 2026-09-09: "freezer truck should never deliver dry goods. and vice
+   * versa." The check was one-directional (MA-197, reported from production):
+   * `frozen` demanded a freezer, and `dry` accepted anything a depot cared to
+   * book, freezer trucks included. Only the first half had a test, which is
+   * exactly how the second half stayed missing.
+   *
+   * `update()` gets the same coverage because it is the path that would dodge
+   * `create()`: issue the Surat Jalan on a correct truck, then PATCH the wrong
+   * one in afterwards.
+   */
+  describe('create/update — the vehicle must match the shipment type both ways', () => {
+    /**
+     * A DISTINCT DATE PER CASE. `assertNoTruckTypeClash` enforces one truck type
+     * per driver per DAY (owner, 2026-08-24) and this block deliberately books
+     * the same driver on both types — so sharing a date makes that unrelated
+     * rule fire and hides whichever result this block is actually asserting.
+     * Days far enough out not to collide with the rest of the suite's routes.
+     */
+    let dayOffset = 40;
+    const plannedDate = () =>
+      new Date(Date.now() + (dayOffset += 1) * 86_400_000).toISOString().slice(0, 10);
+
+    const body = (shipmentType: 'frozen' | 'dry', vehicleId: string) => ({
+      shipmentType: shipmentType as never,
+      driverId: fixtures.driverId,
+      vehicleId,
+      plannedDate: plannedDate(),
+      drops: [
+        {
+          locationId: fixtures.outletId,
+          lines: [
+            {
+              itemId: shipmentType === 'frozen' ? fixtures.frozenItemId : fixtures.dryItemId,
+              qty: '2.000',
+              unitId:
+                shipmentType === 'frozen' ? fixtures.frozenItemUnitId : fixtures.dryItemUnitId,
+            },
+          ],
+        },
+      ],
+    });
+
+    it('refuses a FREEZER truck on a dry Surat Jalan', async () => {
+      await expect(
+        withRollback((client) =>
+          sjService.create(
+            client,
+            body('dry', fixtures.frozenVehicleId),
+            fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+          ),
+        ),
+        'a cold truck was booked for a sembako run',
+      ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+    });
+
+    it('refuses an AMBIENT truck on a frozen Surat Jalan', async () => {
+      await expect(
+        withRollback((client) =>
+          sjService.create(
+            client,
+            body('frozen', fixtures.dryVehicleId),
+            fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+          ),
+        ),
+        'frozen goods were booked onto an ambient truck',
+      ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+    });
+
+    it('accepts each type on its own truck', async () => {
+      const frozen = await withRollback((client) =>
+        sjService.create(
+          client,
+          body('frozen', fixtures.frozenVehicleId),
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      const dry = await withRollback((client) =>
+        sjService.create(
+          client,
+          body('dry', fixtures.dryVehicleId),
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      try {
+        expect(frozen.vehicle.hasFreezer).toBe(true);
+        expect(dry.vehicle.hasFreezer).toBe(false);
+      } finally {
+        await deleteSuratJalan(frozen.id);
+        await deleteSuratJalan(dry.id);
+      }
+    });
+
+    it('refuses a PATCH that swaps in the wrong truck after issue', async () => {
+      const sj = await withRollback((client) =>
+        sjService.create(
+          client,
+          body('dry', fixtures.dryVehicleId),
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      try {
+        await expect(
+          withRollback((client) =>
+            sjService.update(
+              client,
+              sj.id,
+              { vehicleId: fixtures.frozenVehicleId },
+              fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+            ),
+          ),
+          'the freezer truck was PATCHed onto a dry run — create was enforced and update was not',
+        ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+      } finally {
+        await deleteSuratJalan(sj.id);
+      }
+    });
+  });
 });

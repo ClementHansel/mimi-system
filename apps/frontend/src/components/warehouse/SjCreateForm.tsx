@@ -186,9 +186,27 @@ export function SjCreateForm({
     return Array.from(byLocation.values());
   }, [selectedRows]);
 
+  /**
+   * A truck carries EXACTLY its own shipment type. Owner, 2026-09-09: "freezer
+   * truck should never deliver dry goods. and vice versa."
+   *
+   * This used to be `!freezerRequired || hasFreezer` — a half-rule that demanded
+   * a freezer for `frozen` and accepted ANY truck for `dry`, so a cold truck
+   * could be booked for a sembako run (MA-197). Written as an equality because
+   * that is the only shape both halves fit in.
+   */
   const freezerRequired = shipmentType === 'frozen';
+  const vehicleFits = (v: Vehicle) => v.hasFreezer === freezerRequired;
+  /**
+   * The picker offers only the trucks that fit, the same way the request list
+   * above offers only compatible lines: a rule the form cannot express is a
+   * rule someone breaks and then reads a 400 about. The inline error below is
+   * still needed — a vehicle chosen before the shipment type was switched stops
+   * fitting without the user touching the field.
+   */
+  const eligibleVehicles = vehicles.filter(vehicleFits);
   const chosenVehicle = vehicles.find((v) => v.id === vehicleId);
-  const vehicleOk = !!chosenVehicle && (!freezerRequired || chosenVehicle.hasFreezer);
+  const vehicleOk = !!chosenVehicle && vehicleFits(chosenVehicle);
 
   /**
    * WHY the create button is greyed out, in the dispatcher's own words.
@@ -209,7 +227,10 @@ export function SjCreateForm({
   if (drops.length === 0) missing.push(t('warehouse.sj.missingRequest'));
   if (!driverId) missing.push(t('warehouse.sj.missingDriver'));
   if (!vehicleId) missing.push(t('warehouse.sj.missingVehicle'));
-  else if (!vehicleOk) missing.push(t('warehouse.sj.missingFreezer'));
+  else if (!vehicleOk)
+    missing.push(
+      t(freezerRequired ? 'warehouse.sj.missingFreezer' : 'warehouse.sj.missingAmbientTruck'),
+    );
   if (!plannedDate) missing.push(t('warehouse.sj.missingPlannedDate'));
 
   const canSubmit = missing.length === 0;
@@ -350,12 +371,23 @@ export function SjCreateForm({
           label={t('warehouse.sj.vehicle')}
           value={vehicleId}
           onValueChange={setVehicleId}
-          options={vehicles.map((v) => ({
+          options={eligibleVehicles.map((v) => ({
             value: v.id,
             label: `${v.plateNumber}${v.hasFreezer ? ' ❄' : ''}`,
           }))}
           placeholder={t('common.selectPlaceholder')}
-          error={vehicleId && !vehicleOk ? t('warehouse.sj.vehicleNeedsFreezer') : undefined}
+          hint={t(
+            freezerRequired ? 'warehouse.sj.vehicleHintFrozen' : 'warehouse.sj.vehicleHintDry',
+          )}
+          error={
+            vehicleId && !vehicleOk
+              ? t(
+                  freezerRequired
+                    ? 'warehouse.sj.vehicleNeedsFreezer'
+                    : 'warehouse.sj.vehicleMustNotHaveFreezer',
+                )
+              : undefined
+          }
           disabled={submitting}
         />
         <Input

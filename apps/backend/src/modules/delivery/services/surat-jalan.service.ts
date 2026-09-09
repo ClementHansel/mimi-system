@@ -95,6 +95,40 @@ const SJ_LINE_INSERT = `
 /** Hard ceiling on `my-jobs`. A driver never legitimately has this many open jobs; the cap exists so a data problem cannot turn one phone request into an unbounded fan-out. */
 const MY_JOBS_MAX_ROWS = 200;
 
+/**
+ * A truck carries EXACTLY its own shipment type — freezer trucks carry
+ * frozen/chilled, ambient trucks carry dry, and neither substitutes for the
+ * other. Owner's ruling, 2026-09-09: "freezer truck should never deliver dry
+ * goods. and vice versa."
+ *
+ * The check used to be one-directional — `frozen` demanded a freezer and `dry`
+ * accepted anything, freezer trucks included — so a cold truck could be booked
+ * for a sembako run and nothing anywhere refused it (MA-197, reported from
+ * production). Written as an equality rather than two `if`s precisely because
+ * that is the shape a half-rule cannot take: there is no way to express
+ * "frozen needs a freezer" here without also expressing "dry must not have one".
+ *
+ * Distinct from `assertLinesMatchShipmentType`, which polices the ITEMS on the
+ * truck (`ERR_SHIPMENT_TYPE_MIX`). That one was always correct; this is the
+ * vehicle↔shipment pairing, and it is also the per-VEHICLE half of the rule
+ * `assertNoTruckTypeClash` already enforces per driver per day.
+ */
+function assertVehicleMatchesShipmentType(
+  shipmentType: 'frozen' | 'dry',
+  hasFreezer: boolean,
+  vehicleId: string,
+): void {
+  if ((shipmentType === 'frozen') === hasFreezer) return;
+  throw new BadRequestException({
+    code: ERR_VALIDATION,
+    message:
+      shipmentType === 'frozen'
+        ? `Vehicle ${vehicleId} has no freezer — a 'frozen' Surat Jalan requires a cold-chain-capable vehicle (FR-LOG-02)`
+        : `Vehicle ${vehicleId} is a freezer truck — a 'dry' Surat Jalan must use an ambient vehicle (FR-LOG-02)`,
+    details: { field: 'vehicleId', shipmentType, hasFreezer },
+  });
+}
+
 @Injectable()
 export class SuratJalanService {
   constructor(
@@ -253,12 +287,7 @@ export class SuratJalanService {
           code: 'ERR_NOT_FOUND',
           message: `Vehicle ${dto.vehicleId} not found or inactive`,
         });
-      if (dto.shipmentType === 'frozen' && !vehicle.has_freezer) {
-        throw new BadRequestException({
-          code: ERR_VALIDATION,
-          message: `Vehicle ${dto.vehicleId} has no freezer — a 'frozen' Surat Jalan requires a cold-chain-capable vehicle (FR-LOG-02)`,
-        });
-      }
+      assertVehicleMatchesShipmentType(dto.shipmentType, vehicle.has_freezer, dto.vehicleId);
 
       const driverRes = await client.query<{ id: string }>(
         `SELECT id FROM drivers WHERE id = $1 AND is_active = true`,
@@ -406,12 +435,14 @@ export class SuratJalanService {
             code: 'ERR_NOT_FOUND',
             message: `Vehicle ${dto.vehicleId} not found or inactive`,
           });
-        if (header.shipment_type === 'frozen' && !vehicleRes.rows[0].has_freezer) {
-          throw new BadRequestException({
-            code: ERR_VALIDATION,
-            message: `Vehicle ${dto.vehicleId} has no freezer — required for a 'frozen' Surat Jalan`,
-          });
-        }
+        // The SAME rule as `create()`, and this is the path that would otherwise
+        // dodge it: issue the Surat Jalan on a correct truck, then PATCH the
+        // wrong one in afterwards.
+        assertVehicleMatchesShipmentType(
+          header.shipment_type as 'frozen' | 'dry',
+          vehicleRes.rows[0].has_freezer,
+          dto.vehicleId,
+        );
       }
       if (dto.driverId) {
         const driverRes = await client.query(

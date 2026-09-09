@@ -10,7 +10,7 @@ import {
 } from '@mimi/shared';
 import { SettingsRepository } from '../../modules/settings/settings.repository';
 import type { NotificationService } from '../notification/notification.service';
-import { ApprovalsRepository } from './approvals.repository';
+import { ApprovalsRepository, PENDING_CANDIDATE_CAP } from './approvals.repository';
 import { ApprovalService } from './approvals.service';
 import {
   buildApprovalServiceWithNotifications,
@@ -1672,5 +1672,56 @@ describe('ApprovalService × NotificationService — B-07 (live DB, real notify(
       });
       expect(decided.approvalState).toBe('rejected');
     });
+  });
+});
+
+/**
+ * THE PROBE ROW MUST NEVER REACH THE CALLER.
+ *
+ * `findPendingCandidates` asks for `PENDING_CANDIDATE_CAP + 1` rows so it can
+ * tell a full page from a truncated one without a second COUNT, and slices the
+ * extra row off before returning. That off-by-one is the kind that reads as
+ * correct and is not: leave it in and every inbox gains a phantom entry at the
+ * cap boundary, which would only ever be seen by whoever hit the cap — the
+ * least likely person to be believed.
+ *
+ * Live-DB, because the whole thing is one SQL LIMIT interacting with the real
+ * row count under the caller's real RLS. Asserted against a COUNT taken through
+ * the same client and the same predicates, so it holds at whatever volume this
+ * box happens to have rather than pinning a number that rots.
+ */
+describe('ApprovalsRepository.findPendingCandidates — cap accounting (live DB)', () => {
+  it('returns every in-scope pending step, reports truncated=false below the cap, and leaks no probe row', async () => {
+    const repo = new ApprovalsRepository();
+
+    const { rows, truncated, actual } = await withRollback(async (client) => {
+      const res = await repo.findPendingCandidates(client, { locationIds: null });
+      // The same predicates the fetch uses, counted independently.
+      const countRes = await client.query<{ count: string }>(
+        `SELECT COUNT(*) AS count
+           FROM approval_steps s
+           JOIN approvals a ON a.id = s.approval_id
+          WHERE s.state = 'pending' AND a.state = 'pending' AND s.step_no = a.current_step`,
+      );
+      return { ...res, actual: Number(countRes.rows[0]!.count) };
+    });
+
+    // This box is nowhere near the cap; if that ever stops being true the
+    // assertion below is the wrong one and this test says so rather than
+    // silently changing meaning.
+    expect(
+      actual,
+      `this database now holds ${actual} pending steps, at or past the ${PENDING_CANDIDATE_CAP} cap — the untruncated case can no longer be observed here`,
+    ).toBeLessThan(PENDING_CANDIDATE_CAP);
+
+    expect(truncated).toBe(false);
+    // Exactly the real count — one more would be the probe row leaking, one
+    // fewer would be the slice cutting a real row.
+    expect(rows).toHaveLength(actual);
+    expect(rows.length).toBeLessThanOrEqual(PENDING_CANDIDATE_CAP);
+
+    // And every returned row is a real, distinct step — a slice bug would show
+    // up here as a duplicate before it showed up as a wrong count.
+    expect(new Set(rows.map((r) => `${r.approvalId}:${r.stepNo}`)).size).toBe(rows.length);
   });
 });

@@ -428,12 +428,30 @@ export class ApprovalsRepository {
    * report for the scale assumption this rests on (dozens-to-low-hundreds
    * pending approvals system-wide, not millions — revisit at NFR-01 load
    * test, W6-05, if that assumption breaks).
+   *
+   * `truncated` is how that break becomes VISIBLE (2026-09-09). The cap was
+   * doing the right thing quietly and the wrong thing silently: rows come back
+   * `requested_at ASC`, so the 2001st pending step onwards — the NEWEST ones —
+   * were dropped before the service ever paginated, appearing on no page at
+   * all while `total` under-reported to match. An approver would simply never
+   * see the request that had just arrived, and nothing anywhere would say why.
+   * The comment above already names the assumption to revisit; this is what
+   * notices it has broken, by asking for one row more than the cap and
+   * reporting whether that row existed. It costs one extra row.
+   *
+   * Deliberately NOT a redesign. Paging the candidate fetch cannot fix this on
+   * its own — eligibility is resolved per row in the service, so the true total
+   * requires scanning every candidate regardless — and at the real scale (24
+   * pending on production the day this was written, against a cap of 2000) the
+   * bound is nowhere near binding. Making the breach loud is the proportionate
+   * change; raising or removing the cap is the decision this flag exists to
+   * inform.
    */
   async findPendingCandidates(
     client: DbClient,
     filter: { documentType?: ApprovalDocumentType; locationIds: readonly string[] | null },
-  ): Promise<
-    Array<{
+  ): Promise<{
+    rows: Array<{
       approvalId: string;
       documentType: string;
       documentId: string;
@@ -445,8 +463,10 @@ export class ApprovalsRepository {
       requestedAt: string;
       stepNo: number;
       approverRole: string;
-    }>
-  > {
+    }>;
+    /** True when more pending steps exist than the cap returns — see the doc comment. */
+    truncated: boolean;
+  }> {
     const params: unknown[] = [];
     const conditions: string[] = [
       `s.state = 'pending'`,
@@ -480,7 +500,10 @@ export class ApprovalsRepository {
     }
 
     const where = conditions.join(' AND ');
-    params.push(PENDING_CANDIDATE_CAP);
+    // CAP + 1: the extra row is never returned to the caller, it only answers
+    // "was there more?" — the cheapest way to tell a full page from a truncated
+    // one without a second COUNT query.
+    params.push(PENDING_CANDIDATE_CAP + 1);
 
     // NO join against `users` here — deliberately. `users_select` (migration 009) is
     // `app_is_central() OR app_is_self(id)`; Supervisor Cabang and Kepala Gudang are neither, so a
@@ -505,10 +528,16 @@ export class ApprovalsRepository {
       params,
     );
 
-    const requesterIds = [...new Set(rowsRes.rows.map((r) => r.requested_by as string))];
+    // Drop the probe row BEFORE anything else touches the set: it exists only to
+    // answer "was there more?", and resolving a display name for a row nobody
+    // will see would be both wasted work and one extra name disclosed.
+    const truncated = rowsRes.rows.length > PENDING_CANDIDATE_CAP;
+    const capped = truncated ? rowsRes.rows.slice(0, PENDING_CANDIDATE_CAP) : rowsRes.rows;
+
+    const requesterIds = [...new Set(capped.map((r) => r.requested_by as string))];
     const names = await this.loadUserDisplayNames(client, requesterIds);
 
-    return rowsRes.rows.map((r) => ({
+    const rows = capped.map((r) => ({
       approvalId: r.approval_id,
       documentType: r.document_type,
       documentId: r.document_id,
@@ -521,6 +550,8 @@ export class ApprovalsRepository {
       stepNo: r.step_no,
       approverRole: r.approver_role,
     }));
+
+    return { rows, truncated };
   }
 
   /**

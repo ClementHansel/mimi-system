@@ -27,7 +27,11 @@ import {
 } from '@mimi/shared';
 import { DATABASE_POOL } from '../../common/database/database-pool.provider';
 import { NotificationService } from '../notification/notification.service';
-import { ApprovalsRepository, type ChainStepConfigRow } from './approvals.repository';
+import {
+  ApprovalsRepository,
+  PENDING_CANDIDATE_CAP,
+  type ChainStepConfigRow,
+} from './approvals.repository';
 import {
   resolveDocumentContext,
   resolveDocumentContextsBatch,
@@ -621,10 +625,28 @@ export class ApprovalService {
     caller: CallerScope,
     query: PendingApprovalsQuery,
   ): Promise<Paginated<PendingApprovalRow>> {
-    const candidates = await this.repo.findPendingCandidates(client, {
+    const { rows: candidates, truncated } = await this.repo.findPendingCandidates(client, {
       documentType: query.documentType,
       locationIds: caller.locationIds,
     });
+
+    // The scale assumption in `findPendingCandidates`' doc comment has broken.
+    //
+    // Candidates come back oldest-first, so past the cap it is the NEWEST
+    // pending steps that are missing — the ones an approver is most likely to
+    // be waiting for — and they are absent from every page while `total` quietly
+    // agrees. Logged at ERROR because nothing else can notice: the response is
+    // well-formed and simply short, which is indistinguishable from a quiet day.
+    // This does not degrade the response; it is the signal that the cap now
+    // needs raising (or the fetch redesigning), which is a decision to take with
+    // the numbers in hand rather than pre-emptively.
+    if (truncated) {
+      this.logger.error(
+        `pending-approvals candidate cap (${PENDING_CANDIDATE_CAP}) reached${
+          query.documentType ? ` for ${query.documentType}` : ''
+        } — the newest pending approvals are being hidden from every inbox page. Raise PENDING_CANDIDATE_CAP or page the candidate fetch.`,
+      );
+    }
 
     const byType = new Map<string, typeof candidates>();
     for (const row of candidates) {

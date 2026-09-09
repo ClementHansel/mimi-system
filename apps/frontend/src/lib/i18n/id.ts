@@ -2362,6 +2362,10 @@ export const id = {
       confirm: 'Konfirmasi Terima',
       received: 'Barang berhasil diterima',
       queued: 'Penerimaan tersimpan — akan tersinkron otomatis saat koneksi tersedia',
+      // MA-199: a drop can only be received once the driver marks it arrived.
+      // Before that the goods are still in the warehouse, and a receipt committed
+      // against it was accepted by the outbox and silently discarded server-side.
+      notArrivedYet: 'Belum bisa diterima — driver belum menandai tiba di outlet',
       empty: 'Tidak ada pengiriman yang menunggu diterima',
     },
     stock: {

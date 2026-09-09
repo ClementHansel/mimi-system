@@ -13,7 +13,27 @@ import { useActorMeta, getOutletRuntime, mintId } from './lib/outlet-runtime';
 import { ReceiveDropForm, type ReceiveLineDraft } from './ReceiveDropForm';
 import type { SuratJalan, Drop, StorageArea } from './lib/types';
 
+/**
+ * What this screen SHOWS — everything still on its way, so the outlet can see
+ * what to expect.
+ */
 const OPEN_DROP_STATUSES = new Set(['pending', 'en_route', 'arrived']);
+
+/**
+ * What can actually be RECEIVED. Only a drop the driver has marked arrived.
+ *
+ * The distinction did not exist before 2026-09-09 (MA-199) and the consequence
+ * was silent data loss, not merely a premature button. Receiving commits
+ * through the offline outbox (`LocalRuntime.commitDropReceived`), so the outlet
+ * filled in the whole form — mandatory photo, signature, per-line quantities —
+ * got a green "queued" toast, and on the server `applyReceive` returned
+ * `wrong_status` because the drop was still `pending`. The projector treats
+ * `wrong_status` as an expected idempotent replay and returns without a word.
+ * So the receipt was accepted by the UI and then discarded in silence: no stock
+ * movement, no error, nothing in any log, for a Surat Jalan still sitting at
+ * *siap kirim* with the goods in the warehouse.
+ */
+const RECEIVABLE_DROP_STATUSES = new Set(['arrived']);
 
 /**
  * "Terima barang": receive a Surat Jalan drop. Photo wajib, signature
@@ -67,6 +87,10 @@ export function ReceivingPanel() {
   );
 
   function openReceive(drop: Drop) {
+    // Belt and braces: the card is not clickable unless the drop is receivable,
+    // but this is the only function that opens the form and it should not
+    // depend on its caller having checked.
+    if (!RECEIVABLE_DROP_STATUSES.has(drop.status)) return;
     setActiveDrop(drop);
     setPhotoFile(null);
     setSignature(null);
@@ -142,26 +166,38 @@ export function ReceivingPanel() {
         />
       </div>
 
-      {incomingDrops.map(({ sj, drop }) => (
-        <Card
-          key={drop.id}
-          className="cursor-pointer hover:bg-surface-sunken"
-          onClick={() => openReceive(drop)}
-        >
-          <CardContent className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="font-medium text-text-primary">{sj.sjNumber}</p>
-              <p className="text-sm text-text-muted">
-                {t('outlet.receiving.driver')}: {sj.driver.name} — {drop.lines.length} item
-              </p>
-              {drop.arrivedAt && (
-                <p className="text-xs text-text-muted">{fmtDateTime(drop.arrivedAt)}</p>
-              )}
-            </div>
-            <StatusBadge domain="drop" status={drop.status} />
-          </CardContent>
-        </Card>
-      ))}
+      {incomingDrops.map(({ sj, drop }) => {
+        const receivable = RECEIVABLE_DROP_STATUSES.has(drop.status);
+        return (
+          <Card
+            key={drop.id}
+            className={
+              receivable ? 'cursor-pointer hover:bg-surface-sunken' : 'cursor-default opacity-70'
+            }
+            onClick={receivable ? () => openReceive(drop) : undefined}
+          >
+            <CardContent className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-medium text-text-primary">{sj.sjNumber}</p>
+                <p className="text-sm text-text-muted">
+                  {t('outlet.receiving.driver')}: {sj.driver.name} — {drop.lines.length} item
+                </p>
+                {drop.arrivedAt && (
+                  <p className="text-xs text-text-muted">{fmtDateTime(drop.arrivedAt)}</p>
+                )}
+                {/* Say WHY it cannot be received yet. Greying the card without a
+                    reason just moves the confusion. */}
+                {!receivable && (
+                  <p className="mt-0.5 text-xs text-warning-700">
+                    {t('outlet.receiving.notArrivedYet')}
+                  </p>
+                )}
+              </div>
+              <StatusBadge domain="drop" status={drop.status} />
+            </CardContent>
+          </Card>
+        );
+      })}
 
       <Modal
         open={!!activeDrop}

@@ -310,8 +310,30 @@ export class DeliverySyncProjector implements SyncProjector {
         this.logger.warn(
           `sj_drops.received for unknown drop ${data.dropId} (event ${event.eventId}) — dropping silently`,
         );
+        return;
       }
-      // `wrong_status` / `duplicate_client_id` are expected, silent idempotent-replay outcomes.
+      // A REPLAY IS SILENT. A RECEIPT FOR GOODS THAT NEVER ARRIVED IS NOT.
+      //
+      // Both come back as `wrong_status`, and lumping them together is how
+      // MA-199 stayed invisible: an outlet committed a receipt against a drop
+      // still `pending` — its Surat Jalan sitting at *siap kirim*, the goods
+      // still in the warehouse — the UI reported it queued, and this branch
+      // discarded it without a word. No stock movement, no error, nothing in
+      // any log.
+      //
+      // `received` (and the terminal `failed`) genuinely ARE idempotent
+      // replays, which is what the original comment was about, and they stay
+      // quiet. Anything earlier in the drop's life is a fact that cannot be
+      // true, and it is logged at ERROR because the device believes it
+      // succeeded and only this line can say otherwise.
+      if (
+        result.reason === 'wrong_status' &&
+        !['received', 'failed'].includes(result.currentStatus ?? '')
+      ) {
+        this.logger.error(
+          `sj_drops.received rejected for drop ${data.dropId} (event ${event.eventId}): the drop is '${result.currentStatus}', not 'arrived' — a receipt was committed for goods that have not been delivered, and the device was told it was queued. The receipt is DISCARDED.`,
+        );
+      }
       return;
     }
   }

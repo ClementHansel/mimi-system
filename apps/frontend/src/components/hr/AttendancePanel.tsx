@@ -137,6 +137,20 @@ export function AttendancePanel() {
       <DataTable
         columns={[
           { key: 'employeeName', header: t('hr.attendance.columnEmployee') },
+          /**
+           * WHICH BRANCH the row belongs to. `locationName` has always been on
+           * the row and was never rendered, which only mattered once someone
+           * was assigned to more than one: a Supervisor Cabang covering three
+           * outlets saw all three branches' attendance merged into one list with
+           * nothing distinguishing the rows (MA-194).
+           *
+           * The rows themselves were never over-shared — `attendance_scope`
+           * (RLS) already limits a supervisor to `app_has_location`, verified
+           * against the live database: a single-branch supervisor sees only
+           * their own. What was missing was saying which branch you were
+           * looking at, and that is a column, not a scoping change.
+           */
+          { key: 'locationName', header: t('hr.attendance.columnLocation') },
           { key: 'date', header: t('hr.attendance.columnDate') },
           {
             key: 'checkInAt',

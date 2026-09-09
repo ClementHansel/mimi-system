@@ -2938,6 +2938,10 @@ export const id = {
       date: 'Tanggal',
       suspectFilter: 'Perlu Ditinjau (Jam Diragukan)',
       columnEmployee: 'Pegawai',
+      // MA-194: a Supervisor Cabang covering several outlets saw all of them
+      // merged with nothing naming the branch. The rows were correctly scoped by
+      // RLS all along; what was missing was saying which branch you were reading.
+      columnLocation: 'Cabang',
       columnDate: 'Tanggal',
       columnCheckIn: 'Masuk',
       columnCheckOut: 'Pulang',

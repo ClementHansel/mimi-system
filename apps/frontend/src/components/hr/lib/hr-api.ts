@@ -54,6 +54,38 @@ export function listEmployees(params: {
   return api.get<Paginated<Employee>>(`/hr/employees?${qs.toString()}`);
 }
 
+/**
+ * EVERY employee, for a picker — not the first page of them.
+ *
+ * `listEmployees` is a paginated TABLE read (`pageSize=50`, `ORDER BY name`).
+ * A `<Select>` fed straight from `{ page: 1 }` therefore offers the
+ * alphabetically-first 50 and silently omits the rest: with 295 employees on
+ * production, a newly added person was invisible in the contract form unless
+ * their name happened to sort early (MA-187). The same defect had already been
+ * found and fixed in `SalaryComponentsPanel` with an inline page walk; the
+ * contract picker was missed, which is the argument for the walk living here
+ * instead of being written out per screen.
+ *
+ * Bounded at 40 pages (2000 employees) on purpose: a server that ignored `page`
+ * would otherwise spin forever, and the loop also stops as soon as it has
+ * collected `total` or hits a short page. A tenant past that bound needs a
+ * searchable picker, not a higher ceiling.
+ */
+export async function loadAllEmployeesForPicker(): Promise<
+  { id: string; name: string; employeeNumber: string }[]
+> {
+  const all: { id: string; name: string; employeeNumber: string }[] = [];
+  for (let page = 1; page <= 40; page += 1) {
+    const res = await listEmployees({ page }).catch(() => null);
+    if (!res) break;
+    all.push(
+      ...res.rows.map((e) => ({ id: e.id, name: e.name, employeeNumber: e.employeeNumber })),
+    );
+    if (res.rows.length === 0 || all.length >= res.total) break;
+  }
+  return all;
+}
+
 export function getEmployee(id: string) {
   return api.get<EmployeeDetail>(`/hr/employees/${id}`);
 }

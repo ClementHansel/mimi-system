@@ -28,7 +28,7 @@ import { isoToday, sortByEffectiveFromDesc, windowState } from './lib/effective-
 import {
   createPayrollComponent,
   getEmployeeComponents,
-  listEmployees,
+  loadAllEmployeesForPicker,
   listPayrollComponents,
   putEmployeeComponents,
   updatePayrollComponent,
@@ -451,17 +451,10 @@ function EmployeeComponentsCard({
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      // Bounded page walk (same idiom as `EmployeesPanel.loadExportSnapshot`)
-      // so the picker offers every employee, not just the first 50, without
-      // firing an unbounded number of requests against a server that ignores
-      // `page`.
-      const all: { id: string; name: string; employeeNumber: string }[] = [];
-      for (let page = 1; page <= 40; page += 1) {
-        const res = await listEmployees({ page }).catch(() => null);
-        if (!res) break;
-        all.push(...res.rows);
-        if (res.rows.length === 0 || all.length >= res.total) break;
-      }
+      // The walk this used to spell out inline now lives in
+      // `loadAllEmployeesForPicker` — the contract form needed the identical
+      // thing and did not have it (MA-187), so it belongs in one place.
+      const all = await loadAllEmployeesForPicker();
       if (!cancelled) {
         setEmployeeOptions(
           all.map((e) => ({ value: e.id, label: e.name, hint: e.employeeNumber })),

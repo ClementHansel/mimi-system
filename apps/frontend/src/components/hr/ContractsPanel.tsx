@@ -22,7 +22,7 @@ import {
   toast,
 } from '@/components/ui';
 import { MasterDataIo } from '@/components/admin/MasterDataIo';
-import { listEmployees, listLocationCodesById } from './lib/hr-api';
+import { listLocationCodesById, loadAllEmployeesForPicker } from './lib/hr-api';
 import {
   createContract,
   deleteContract,
@@ -115,12 +115,11 @@ export function ContractsPanel() {
   useEffect(reload, [status, contractType, expiringWithinDays, data.page]);
 
   useEffect(() => {
-    listEmployees({ page: 1 })
-      .then((res) =>
-        setEmployees(
-          res.rows.map((e) => ({ id: e.id, name: e.name, employeeNumber: e.employeeNumber })),
-        ),
-      )
+    // EVERY employee, not the first page. `{ page: 1 }` here offered the
+    // alphabetically-first 50 of 295, so a newly added person simply was not in
+    // this picker (MA-187).
+    loadAllEmployeesForPicker()
+      .then(setEmployees)
       .catch(() => setEmployees([]));
     listLocationsForContractForm().then(setLocations);
     // Same endpoint, keyed by CODE this time — what the importer's `location`

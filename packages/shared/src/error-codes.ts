@@ -41,6 +41,20 @@ const ERROR_CODES = {
   ERR_APPROVAL_INVALID_TRANSITION: 'ERR_APPROVAL_INVALID_TRANSITION',
   ERR_APPROVAL_ALREADY_DECIDED: 'ERR_APPROVAL_ALREADY_DECIDED',
   /**
+   * A threshold-escalated step is still pending, so the action the caller
+   * asked for cannot complete yet — they are not being told "no", they are
+   * being told "not until someone senior decides". Distinct from
+   * `ERR_APPROVAL_STEP_ROLE` (this caller may never act on the step) and from
+   * `ERR_APPROVAL_ALREADY_DECIDED` (the step is closed).
+   *
+   * Currently raised by `POST /api/accounting/payments/:id/pay` for a PV at or
+   * above `approval.threshold.payment.ownerAboveIdr` (CONTRACTS §5.8 row 5).
+   * That gate was specified, seeded into `approval_chain_steps`, given a
+   * threshold setting, an admin UI field and a `'pay'` action in the state
+   * machine — and then never called, so any amount paid with no Owner step.
+   */
+  ERR_APPROVAL_REQUIRED: 'ERR_APPROVAL_REQUIRED',
+  /**
    * B-15 one-time approval codes. `INVALID` covers both a wrong code and a
    * code that exists but belongs to a different document or a different
    * redeemer — deliberately one code, because distinguishing them for the
@@ -211,6 +225,7 @@ export const {
   ERR_APPROVAL_STEP_ROLE,
   ERR_APPROVAL_INVALID_TRANSITION,
   ERR_APPROVAL_ALREADY_DECIDED,
+  ERR_APPROVAL_REQUIRED,
   ERR_APPROVAL_CODE_INVALID,
   ERR_APPROVAL_CODE_EXPIRED,
   ERR_APPROVAL_CODE_LOCKED,

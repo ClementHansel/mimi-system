@@ -128,6 +128,20 @@ const PROBES: readonly Probe[] = [
     dateColumn: 'dispatched_at',
   },
   {
+    refType: 'payment_verification',
+    scope: 'paid payment vouchers (§6.3 X2..X5 + supplier/maintenance/compensation payment)',
+    table: 'payment_verifications',
+    // Added 2026-09-09. Every `paid` PV should carry a journal entry, and
+    // until migration 267 five of the ten `ref_type` values posted NOTHING —
+    // `publishPaymentJournal`'s `default:` swallowed them. Supplier payments
+    // are the expensive case: 2000 Hutang Supplier was credited at PO receipt
+    // and never debited back, so the payable stands on the books for every
+    // supplier ever paid. This probe is how anyone can now size that before
+    // deciding whether to backfill.
+    terminal: `d.status = 'paid'`,
+    dateColumn: 'paid_at',
+  },
+  {
     refType: 'sj_drops',
     scope: 'received drops (JOUT-01)',
     table: 'sj_drops',

@@ -93,6 +93,18 @@ export const POSTING_RULES: readonly PostingRule[] = [
   // W1-C's migration 093 comment).
   { eventType: JournalSystemEventType.PETTY_CASH_TOPUP, ruleSeq: 1, condition: null, debitAccountCode: '1010', creditAccountCode: '1020', amountSource: 'top-up amount', note: 'petty cash float top-up, posted from its payment_verifications.paid event' },
   { eventType: JournalSystemEventType.EMPLOYEE_LOAN_DISBURSEMENT, ruleSeq: 1, condition: null, debitAccountCode: '1210', creditAccountCode: '1020', amountSource: 'loan principal', note: 'kasbon disbursement, posted from its payment_verifications.paid event; the recurring installment leg is separate, folded into PAYROLL_ACCRUAL (POUT-06)' },
+  // PV `paid` postings that §6 never named at all (migration 267). `paidVia`
+  // splits cash from bank exactly as JOUT-09's two rows already do; 'qris' is
+  // a bank movement here (money going OUT), never 1031 Piutang QRIS.
+  { eventType: JournalSystemEventType.SUPPLIER_PAYMENT, ruleSeq: 1, condition: { paidVia: 'bank_transfer' }, debitAccountCode: '2000', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'settles the 2000 Hutang Supplier leg JGUD-01 credited at PO receipt — nothing in §6.2/§6.3 ever debited it back except JGUD-04 (retur), so the payable stood forever' },
+  { eventType: JournalSystemEventType.SUPPLIER_PAYMENT, ruleSeq: 2, condition: { paidVia: 'cash' }, debitAccountCode: '2000', creditAccountCode: '1000', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid from outlet cash' },
+  { eventType: JournalSystemEventType.SUPPLIER_PAYMENT, ruleSeq: 3, condition: { paidVia: 'qris' }, debitAccountCode: '2000', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid by QRIS transfer (a bank debit, not 1031)' },
+  { eventType: JournalSystemEventType.MAINTENANCE_PAYMENT, ruleSeq: 1, condition: { paidVia: 'bank_transfer' }, debitAccountCode: '6200', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'asset/jobs.service posts NO journal at completion, so payment is the sole recognition point; 6200 was seeded in migration 090 and referenced by no rule at all' },
+  { eventType: JournalSystemEventType.MAINTENANCE_PAYMENT, ruleSeq: 2, condition: { paidVia: 'cash' }, debitAccountCode: '6200', creditAccountCode: '1000', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid from outlet cash' },
+  { eventType: JournalSystemEventType.MAINTENANCE_PAYMENT, ruleSeq: 3, condition: { paidVia: 'qris' }, debitAccountCode: '6200', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid by QRIS transfer' },
+  { eventType: JournalSystemEventType.EMPLOYEE_COMPENSATION_PAYMENT, ruleSeq: 1, condition: { paidVia: 'bank_transfer' }, debitAccountCode: '6000', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'insentif / THR — paid outside a payroll run, so no X1 accrual against 2100 exists to settle' },
+  { eventType: JournalSystemEventType.EMPLOYEE_COMPENSATION_PAYMENT, ruleSeq: 2, condition: { paidVia: 'cash' }, debitAccountCode: '6000', creditAccountCode: '1000', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid in cash' },
+  { eventType: JournalSystemEventType.EMPLOYEE_COMPENSATION_PAYMENT, ruleSeq: 3, condition: { paidVia: 'qris' }, debitAccountCode: '6000', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid by QRIS transfer' },
 ];
 
 export function postingRulesFor(

@@ -26,6 +26,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import {
   AccountType,
+  ERR_APPROVAL_REQUIRED,
   ERR_PROOF_REQUIRED,
   ERR_UNBALANCED_ENTRY,
   PayeeType,
@@ -37,6 +38,8 @@ vi.setConfig({ testTimeout: 20_000 });
 
 import { EventBus } from '../../kernel/events/event-bus.service';
 import { SyncEmitService } from '../../kernel/sync/sync-emit.service';
+import { ApprovalService } from '../../kernel/approvals/approvals.service';
+import { ApprovalsRepository } from '../../kernel/approvals/approvals.repository';
 import { SyncEventsRepository } from '../../kernel/sync/sync-events.repository';
 import { SyncConflictsRepository } from '../../kernel/sync/sync-conflicts.repository';
 import { ConflictDetectorService } from '../../kernel/sync/conflict-detector.service';
@@ -74,7 +77,17 @@ describe('M17 accounting — live DB integration', () => {
   // land it in the `events` slot and leave `conflicts` undefined.
   const conflictDetector = new ConflictDetectorService(syncEvents, syncConflicts);
   const syncEmit = new SyncEmitService(syncEvents, conflictDetector);
-  const payments = new PaymentVerificationsService(syncEmit, eventBus);
+  // `ApprovalService` came in when `pay()` started enforcing §5.8's Owner
+  // threshold step. The bare notification-less two-arg form is the same one
+  // every hand-built harness in this repo uses (see that service's own
+  // constructor doc); the chain steps and the live threshold both come from
+  // the REAL seeded database, so the gate is genuinely exercised here rather
+  // than stubbed past.
+  const payments = new PaymentVerificationsService(
+    syncEmit,
+    eventBus,
+    new ApprovalService(new ApprovalsRepository()),
+  );
   // `ExceptionsService` gained a StorageService dependency when the review
   // queue started presigning the offline-auth selfie. Constructed the same way
   // `product.integration.spec.ts` does — `onModuleInit` is never called, so
@@ -93,6 +106,52 @@ describe('M17 accounting — live DB integration', () => {
 
   function actor(roleKey: RoleKey, locationScope: readonly string[] | null = null): PaymentActor {
     return { userId: fixtures.usersByRole[roleKey], roleKey, locationScope };
+  }
+
+  /**
+   * Removes PVs a test COMMITTED, in FK order.
+   *
+   * Same SETTINGS-LEAK reasoning as the `chart_of_accounts` cleanup further
+   * down this file, and it has already cost something: the FR-ACCT-03 ladder
+   * test commits a paid Rp 500.000 voucher on every run and never removed it,
+   * so this database had accumulated 74 orphan paid PVs across prior runs
+   * (2026-08-28 → 2026-09-08, all identical). Harmless while nothing read
+   * them — but `gl-coverage.service.ts` now probes exactly "paid PVs with no
+   * journal entry", and test residue is indistinguishable from a real unposted
+   * payment in that report. A backfill report that cannot be trusted on a dev
+   * or staging box is worth less than no report, so tests that commit money
+   * rows have to clean up after themselves.
+   *
+   * `payment_verifications.approval_id` FKs to `approvals`, and `approvals`
+   * has no ON DELETE cascade to it, so the PV's pointer is nulled first, then
+   * the approval's steps, then the approval.
+   */
+  async function deleteCommittedPvs(ids: readonly string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await asCommittedRequest(
+      { role: RoleKey.OWNER, userId: fixtures.usersByRole[RoleKey.OWNER], locationIds: [] },
+      async (client) => {
+        const approvalIds = (
+          await client.query<{ approval_id: string }>(
+            `SELECT approval_id FROM payment_verifications
+              WHERE id = ANY($1::uuid[]) AND approval_id IS NOT NULL`,
+            [ids],
+          )
+        ).rows.map((r) => r.approval_id);
+        await client.query(
+          `UPDATE payment_verifications SET approval_id = NULL WHERE id = ANY($1::uuid[])`,
+          [ids],
+        );
+        await client.query(`DELETE FROM sync_events WHERE entity_id = ANY($1::uuid[])`, [ids]);
+        await client.query(`DELETE FROM payment_verifications WHERE id = ANY($1::uuid[])`, [ids]);
+        if (approvalIds.length > 0) {
+          await client.query(`DELETE FROM approval_steps WHERE approval_id = ANY($1::uuid[])`, [
+            approvalIds,
+          ]);
+          await client.query(`DELETE FROM approvals WHERE id = ANY($1::uuid[])`, [approvalIds]);
+        }
+      },
+    );
   }
 
   // ── chart of accounts (real 'finance' role) ─────────────────────────────
@@ -477,6 +536,189 @@ describe('M17 accounting — live DB integration', () => {
     const rereadPaid = await asRequest(finance, (client) => payments.getDetail(client, pv.id));
     expect(rereadPaid.status).toBe('paid');
     expect(rereadPaid.paidVia).toBe('cash');
+
+    // This paid voucher used to survive the run. 74 identical Rp 500.000 rows
+    // had piled up in this database from prior runs (2026-08-28 → 2026-09-08)
+    // before anyone looked — see `deleteCommittedPvs`. Nothing read them until
+    // `gl-coverage.service.ts` gained a `payment_verification` probe, which
+    // reports precisely "paid PVs with no journal entry" and cannot tell test
+    // residue from a real unposted payment.
+    await deleteCommittedPvs([pv.id]);
+  });
+
+  /**
+   * THE PAYABLE ACTUALLY CLEARS WHEN THE SUPPLIER IS PAID.
+   *
+   * JGUD-01 credits 2000 Hutang Supplier at PO receipt, and until migration
+   * 267 NOTHING in the system ever debited it back except JGUD-04 (retur ke
+   * supplier). `publishPaymentJournal` routed `ref_type='purchase_order'` into
+   * a `default:` that returned without publishing, on the stated grounds that
+   * the originating module already posts — it posts the ACCRUAL, which is the
+   * leg that has to be reversed here.
+   *
+   * The result was measurable on the dev database when this was found:
+   * `SUM(debit) = 0.00` against `SUM(credit) = 30185175.00` on account 2000.
+   * The payable had never been debited once, and the bank/cash outflow was
+   * never recorded at all.
+   *
+   * Asserted on the EVENT rather than by driving the whole engine: the leg
+   * resolution is covered by `posting-engine.property.test.ts` (which also
+   * asserts the DIRECTION — `gudang_purchase` credits 2000, `supplier_payment`
+   * debits it), and the defect pinned here is the DISPATCH, which is what was
+   * missing.
+   */
+  it('FR-ACCT-04 — paying a purchase_order PV publishes supplier_payment with paidVia, so the JGUD-01 payable is settled', async () => {
+    const finance = {
+      role: RoleKey.FINANCE,
+      userId: fixtures.usersByRole[RoleKey.FINANCE],
+      locationIds: [],
+    };
+    const financeActor = actor(RoleKey.FINANCE);
+
+    const pv = await asRequest(finance, (client) =>
+      payments.create(client, financeActor, {
+        refType: PaymentVerificationRefType.PURCHASE_ORDER,
+        payeeType: PayeeType.SUPPLIER,
+        amount: '1500000.00',
+        locationId: fixtures.outletId,
+      }),
+    );
+
+    const attachmentId = await asCommittedRequest(finance, async (client) => {
+      const res = await client.query<{ id: string }>(
+        `INSERT INTO attachments (object_key, file_name, mime_type, size_bytes, kind, uploaded_by)
+         VALUES ($1,'proof.jpg','image/jpeg',12345,'payment_proof',$2) RETURNING id`,
+        [`test/proof-supplier-${Date.now()}.jpg`, fixtures.usersByRole[RoleKey.FINANCE]],
+      );
+      return res.rows[0]!.id;
+    });
+    await asRequest(finance, (client) =>
+      payments.uploadProof(client, financeActor, pv.id, attachmentId),
+    );
+    await asRequest(finance, (client) => payments.verify(client, financeActor, pv.id, 'ok'));
+
+    let published: { eventType: string; context: Record<string, unknown> } | undefined;
+    const unsubscribe = eventBus.subscribe('journal.action', (e) => {
+      published = {
+        eventType: e.payload.eventType,
+        context: (e.payload.context ?? {}) as Record<string, unknown>,
+      };
+    });
+    try {
+      const paid = await asRequest(finance, (client) =>
+        payments.pay(client, financeActor, pv.id, { paidVia: 'bank_transfer' }),
+      );
+      expect(paid.status).toBe('paid');
+    } finally {
+      unsubscribe();
+    }
+
+    expect(published?.eventType).toBe('supplier_payment');
+    // `paidVia` MUST ride along: it is what picks 1020 Bank over 1000 Kas, and
+    // without it the credit leg silently defaults on every payment.
+    expect(published?.context.paidVia).toBe('bank_transfer');
+
+    await deleteCommittedPvs([pv.id]);
+  });
+
+  /**
+   * SECTION 5.8 ROW 5'S OWNER STEP IS ENFORCED, NOT MERELY SPECIFIED.
+   *
+   * Every part of this gate existed except the call: the threshold setting and
+   * its Rp 20.000.000 default, the admin UI field, the mapping in
+   * `threshold.resolver.ts`, the seeded chain step
+   * (`('payment_verification', 1, 'owner', 20000000.00, NULL)`, migration 069)
+   * and the `'pay'` edge in the state machine. `pay()` checked nothing but
+   * `status === 'verified'`, so Finance could pay any amount alone and
+   * `payment_verifications.approval_id` was read everywhere and written
+   * nowhere — 0 of 395 rows on the dev database had one.
+   *
+   * All three branches are asserted because any two are passable by an
+   * implementation that is still wrong: refusing everything satisfies the
+   * first, and paying everything satisfies the last.
+   */
+  it('section 5.8 — a PV at/above approval.threshold.payment cannot be paid by Finance alone, and the Owner completes it in the same action', async () => {
+    const finance = {
+      role: RoleKey.FINANCE,
+      userId: fixtures.usersByRole[RoleKey.FINANCE],
+      locationIds: [],
+    };
+    const financeActor = actor(RoleKey.FINANCE);
+
+    const committed: string[] = [];
+
+    async function verifiedPvOf(amount: string): Promise<string> {
+      const created = await asRequest(finance, (client) =>
+        payments.create(client, financeActor, {
+          refType: PaymentVerificationRefType.OTHER,
+          payeeType: PayeeType.OTHER,
+          amount,
+          locationId: fixtures.outletId,
+        }),
+      );
+      const attachmentId = await asCommittedRequest(finance, async (client) => {
+        const res = await client.query<{ id: string }>(
+          `INSERT INTO attachments (object_key, file_name, mime_type, size_bytes, kind, uploaded_by)
+           VALUES ($1,'proof.jpg','image/jpeg',12345,'payment_proof',$2) RETURNING id`,
+          [
+            `test/proof-threshold-${amount}-${Date.now()}.jpg`,
+            fixtures.usersByRole[RoleKey.FINANCE],
+          ],
+        );
+        return res.rows[0]!.id;
+      });
+      await asRequest(finance, (client) =>
+        payments.uploadProof(client, financeActor, created.id, attachmentId),
+      );
+      await asRequest(finance, (client) => payments.verify(client, financeActor, created.id, 'ok'));
+      committed.push(created.id);
+      return created.id;
+    }
+
+    // ── above the threshold: Finance is refused ─────────────────────────────
+    const bigPvId = await verifiedPvOf('45000000.00');
+    await asRequest(finance, (client) =>
+      expect(
+        payments.pay(client, financeActor, bigPvId, { paidVia: 'bank_transfer' }),
+      ).rejects.toMatchObject({ response: { code: ERR_APPROVAL_REQUIRED } }),
+    );
+
+    // The refusal is not a dead end. `verify()` already raised and COMMITTED
+    // the Owner step, so the approval outlives the refused payment and the
+    // Owner has been notified. This assertion is the one that caught the first
+    // implementation, which raised the chain inside `pay()` instead: on the
+    // refusal path `withWrite` rolled the approval back along with the
+    // payment, so Finance was told "needs Owner approval" while the Owner was
+    // told nothing and no pending approval existed anywhere.
+    const afterRefusal = await asRequest(finance, (client) => payments.getDetail(client, bigPvId));
+    expect(afterRefusal.status).toBe('verified');
+    const approvalRow = await asRequest(finance, (client) =>
+      client.query<{ approval_id: string | null }>(
+        `SELECT approval_id FROM payment_verifications WHERE id = $1`,
+        [bigPvId],
+      ),
+    );
+    expect(approvalRow.rows[0]!.approval_id).toBeTruthy();
+
+    // ── the Owner's own `pay` decides the step AND completes the payment ────
+    const owner = {
+      role: RoleKey.OWNER,
+      userId: fixtures.usersByRole[RoleKey.OWNER],
+      locationIds: [],
+    };
+    const paidByOwner = await asRequest(owner, (client) =>
+      payments.pay(client, actor(RoleKey.OWNER), bigPvId, { paidVia: 'bank_transfer' }),
+    );
+    expect(paidByOwner.status).toBe('paid');
+
+    // ── below the threshold: unchanged, Finance pays alone in one request ───
+    const smallPvId = await verifiedPvOf('500000.00');
+    const paidSmall = await asRequest(finance, (client) =>
+      payments.pay(client, financeActor, smallPvId, { paidVia: 'cash' }),
+    );
+    expect(paidSmall.status).toBe('paid');
+
+    await deleteCommittedPvs(committed);
   });
 
   it('write-then-read-back: reject() persists past its own request and never transitions to paid', async () => {
@@ -503,6 +745,11 @@ describe('M17 accounting — live DB integration', () => {
 
     const reread = await asRequest(finance, (client) => payments.getDetail(client, pv.id));
     expect(reread.status).toBe('rejected');
+
+    // A `rejected` PV is not counted by the GL-coverage probe (only `paid`
+    // ones are), so this leaked nothing measurable — but it is the same
+    // committed-durable-state leak and costs one line to not have.
+    await deleteCommittedPvs([pv.id]);
   });
 
   // ── the posting engine: every one of the 16 PRD + 7 system extension event
@@ -553,6 +800,25 @@ describe('M17 accounting — live DB integration', () => {
     },
     { eventType: 'petty_cash_topup', amount: '500000.00', context: {} },
     { eventType: 'employee_loan_disbursement', amount: '1000000.00', context: {} },
+    // The three PV-`paid` postings added with migration 267. Driven against
+    // the REAL seeded chart of accounts, which is the point: `resolvePureLegs`
+    // returning '6200' proves nothing on its own — `postSystemEntry` has to be
+    // able to resolve that code to a postable account row. 6200 Beban
+    // Maintenance was seeded in migration 090 and referenced by no posting
+    // rule at all before this, so it had never once been posted to.
+    { eventType: 'supplier_payment', amount: '7500000.00', context: { paidVia: 'bank_transfer' } },
+    { eventType: 'supplier_payment', amount: '250000.00', context: { paidVia: 'cash' } },
+    {
+      eventType: 'maintenance_payment',
+      amount: '1250000.00',
+      context: { paidVia: 'bank_transfer' },
+    },
+    { eventType: 'maintenance_payment', amount: '80000.00', context: { paidVia: 'cash' } },
+    {
+      eventType: 'employee_compensation_payment',
+      amount: '2000000.00',
+      context: { paidVia: 'bank_transfer' },
+    },
   ];
 
   it.each(cases)(

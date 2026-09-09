@@ -25,8 +25,79 @@ describe('posting-rule coverage — every journal event type has at least one ru
     }
   });
 
-  it('has exactly 9 JournalSystemEventType members after adding PETTY_CASH_TOPUP / EMPLOYEE_LOAN_DISBURSEMENT', () => {
-    expect(Object.values(JournalSystemEventType)).toHaveLength(9);
+  it('has exactly 12 JournalSystemEventType members after adding the three PV-paid postings', () => {
+    // 9 → 12: SUPPLIER_PAYMENT, MAINTENANCE_PAYMENT and
+    // EMPLOYEE_COMPENSATION_PAYMENT (migration 267). This assertion is the
+    // reason the gap got closed in BOTH tables rather than only in the
+    // migration — it failed the moment the enum members were added, which is
+    // exactly its job.
+    expect(Object.values(JournalSystemEventType)).toHaveLength(12);
+  });
+});
+
+describe('PV `paid` postings that §6 never named (migration 267)', () => {
+  /**
+   * These are the five `payment_verifications.ref_type` values that posted
+   * NOTHING when a voucher was marked paid, because
+   * `PaymentVerificationsService.publishPaymentJournal` let them fall into a
+   * `default:` that returned silently. Three needed brand-new rules; the other
+   * two (`petty_cash`, `employee_loan`) already had rules here and were
+   * unreachable behind a `notes` marker no code ever wrote.
+   *
+   * The supplier case is the one with a running cost: JGUD-01 credits 2000
+   * Hutang Supplier at PO receipt and nothing debited it back, so the payable
+   * grew monotonically and the bank outflow was never recorded.
+   */
+  it('SUPPLIER_PAYMENT debits 2000 Hutang Supplier on every paidVia', () => {
+    const rules = postingRulesFor(JournalSystemEventType.SUPPLIER_PAYMENT);
+    expect(rules).toHaveLength(3);
+    for (const rule of rules) {
+      expect(resolvePostingAccount(rule.debitAccountCode, undefined)).toBe('2000');
+    }
+  });
+
+  it('credits 1000 Kas only for paidVia cash, and 1020 Bank otherwise (QRIS included)', () => {
+    for (const eventType of [
+      JournalSystemEventType.SUPPLIER_PAYMENT,
+      JournalSystemEventType.MAINTENANCE_PAYMENT,
+      JournalSystemEventType.EMPLOYEE_COMPENSATION_PAYMENT,
+    ]) {
+      for (const rule of postingRulesFor(eventType)) {
+        const credit = resolvePostingAccount(rule.creditAccountCode, undefined);
+        expect(credit).toBe(rule.condition?.paidVia === 'cash' ? '1000' : '1020');
+      }
+    }
+  });
+
+  it('MAINTENANCE_PAYMENT debits 6200, which no other rule in the table touches', () => {
+    const rules = postingRulesFor(JournalSystemEventType.MAINTENANCE_PAYMENT);
+    expect(rules).toHaveLength(3);
+    for (const rule of rules) {
+      expect(resolvePostingAccount(rule.debitAccountCode, undefined)).toBe('6200');
+    }
+    // 6200 Beban Maintenance was seeded in migration 090 and referenced by NO
+    // posting rule, so maintenance cost never reached the P&L in any form.
+    // These are the only rules that use it — if that stops being true the
+    // duplication is worth a second look, not a silent pass.
+    const others = POSTING_RULES.filter(
+      (r) =>
+        r.eventType !== JournalSystemEventType.MAINTENANCE_PAYMENT &&
+        (r.debitAccountCode === '6200' || r.creditAccountCode === '6200'),
+    );
+    expect(others).toEqual([]);
+  });
+
+  it('EMPLOYEE_COMPENSATION_PAYMENT debits 6000 Beban Gaji, not 2100 Hutang Gaji', () => {
+    // Insentif/THR are paid outside a payroll run, so there is no X1 accrual
+    // against 2100 to settle — debiting the liability would create one that
+    // never existed. X2 (PAYROLL_PAYMENT) is the case that DOES debit 2100.
+    const rules = postingRulesFor(JournalSystemEventType.EMPLOYEE_COMPENSATION_PAYMENT);
+    expect(rules).toHaveLength(3);
+    for (const rule of rules) {
+      expect(resolvePostingAccount(rule.debitAccountCode, undefined)).toBe('6000');
+    }
+    const payrollPayment = postingRulesFor(JournalSystemEventType.PAYROLL_PAYMENT);
+    expect(resolvePostingAccount(payrollPayment[0]!.debitAccountCode, undefined)).toBe('2100');
   });
 });
 

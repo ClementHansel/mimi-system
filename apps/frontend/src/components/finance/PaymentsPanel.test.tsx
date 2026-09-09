@@ -167,3 +167,153 @@ describe('PaymentsPanel — payment verification queue', () => {
     expect(screen.queryByRole('button', { name: 'Tolak' })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * "CATAT PEMBAYARAN BARU" ASKS FOR THE FIELDS IT DISPLAYS.
+ *
+ * The form used to send `refType`, `payeeType`, `amount`, `referenceNumber`
+ * and `notes` — and nothing else. `CreatePaymentDto` accepted `payeeId` and
+ * `locationId` the whole time; the form never asked for either. Since
+ * "Penerima" is a JOIN on `payee_id` and "Lokasi" a JOIN on `location_id`,
+ * both columns rendered as a permanent em-dash on every hand-created voucher,
+ * with nothing the user could do about it. A client asked exactly that on
+ * 2026-09-09 ("ini field ini bakal keisinya drmn") and the honest answer was
+ * "from nowhere".
+ *
+ * It also offered ref types it cannot honour: picking "Purchase Order" made a
+ * voucher linked to no PO, which can never satisfy `PurchaseOrderService
+ * .close`'s payment check — an orphan that looks like a real supplier payment.
+ */
+describe('PaymentsPanel — Catat Pembayaran Baru', () => {
+  beforeEach(() => {
+    useSessionStore.setState({ accessToken: null, refreshToken: null, user: null });
+    vi.mocked(api.get).mockReset();
+    vi.mocked(api.post).mockReset();
+  });
+
+  /** Empty queue + the two lookups the modal fires on open. */
+  function mockCreateFormLookups(
+    suppliers: { id: string; code: string; name: string }[] = [
+      { id: 'sup-1', code: 'SUP001', name: 'CV Ayam Segar Kaltim' },
+    ],
+  ) {
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path.startsWith('/locations'))
+        return Promise.resolve({ rows: [{ id: 'loc-1', name: 'Outlet Sanur', code: 'SNR' }] });
+      if (path.startsWith('/suppliers/directory'))
+        return Promise.resolve({
+          rows: suppliers,
+          total: suppliers.length,
+          page: 1,
+          pageSize: 200,
+        });
+      if (path.startsWith('/hr/employees'))
+        return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 50 });
+      return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
+    });
+  }
+
+  async function openCreateModal() {
+    render(<PaymentsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Catat Pembayaran/ }));
+    return screen.findByText('Catat Pembayaran Baru');
+  }
+
+  /**
+   * `MoneyInput` strips non-digits on change and commits the canonical Money
+   * string on BLUR (see its own tests) — a bare `fireEvent.change` leaves the
+   * form's `amount` null, which keeps Simpan disabled and makes the assertion
+   * fail for a reason that has nothing to do with what is under test.
+   */
+  function fillAmount(digits: string) {
+    const input = screen.getByLabelText(/Jumlah/);
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: digits } });
+    fireEvent.blur(input);
+  }
+
+  it('offers only the source-less ref types, never Purchase Order or Penggajian', async () => {
+    setPermissions(['payment.read', 'payment.proof.upload']);
+    mockCreateFormLookups();
+
+    await openCreateModal();
+
+    const refTypeSelect = screen.getByLabelText(/Jenis Referensi/) as HTMLSelectElement;
+    const offered = Array.from(refTypeSelect.options).map((o) => o.value);
+    expect(offered).toEqual(
+      expect.arrayContaining(['other', 'sale_payment', 'online_order', 'incentive', 'thr']),
+    );
+    // The five created by their own flow, which pass refId/payeeId/locationId.
+    expect(offered).not.toContain('purchase_order');
+    expect(offered).not.toContain('payroll_run');
+    expect(offered).not.toContain('petty_cash');
+    expect(offered).not.toContain('maintenance_job');
+    expect(offered).not.toContain('employee_loan');
+  });
+
+  it('sends the chosen locationId, so Lokasi is no longer a permanent em-dash', async () => {
+    setPermissions(['payment.read', 'payment.proof.upload']);
+    mockCreateFormLookups();
+    vi.mocked(api.post).mockResolvedValue(pv());
+
+    await openCreateModal();
+
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Lokasi' }));
+    fireEvent.click(await screen.findByText('Outlet Sanur'));
+    fillAmount('250000');
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/accounting/payments',
+        expect.objectContaining({ locationId: 'loc-1' }),
+      ),
+    );
+  });
+
+  it('asks WHICH supplier once Jenis Penerima is supplier, and sends payeeId', async () => {
+    setPermissions(['payment.read', 'payment.proof.upload']);
+    mockCreateFormLookups();
+    vi.mocked(api.post).mockResolvedValue(pv());
+
+    await openCreateModal();
+
+    // No payee picker while the type has no table behind it.
+    expect(screen.queryByRole('combobox', { name: 'Penerima' })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Jenis Penerima/), { target: { value: 'supplier' } });
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Penerima' }));
+    fireEvent.click(await screen.findByText('CV Ayam Segar Kaltim'));
+    fillAmount('250000');
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/accounting/payments',
+        expect.objectContaining({ payeeType: 'supplier', payeeId: 'sup-1' }),
+      ),
+    );
+  });
+
+  it('drops a stale payeeId when Jenis Penerima changes, never submitting an id that joins to nothing', async () => {
+    setPermissions(['payment.read', 'payment.proof.upload']);
+    mockCreateFormLookups();
+    vi.mocked(api.post).mockResolvedValue(pv());
+
+    await openCreateModal();
+
+    fireEvent.change(screen.getByLabelText(/Jenis Penerima/), { target: { value: 'supplier' } });
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Penerima' }));
+    fireEvent.click(await screen.findByText('CV Ayam Segar Kaltim'));
+
+    // Switching to "Lainnya" has no picker at all — a supplier id left behind
+    // here would submit a payee_id that resolves to no name.
+    fireEvent.change(screen.getByLabelText(/Jenis Penerima/), { target: { value: 'other' } });
+    fillAmount('250000');
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    const body = vi.mocked(api.post).mock.calls[0]![1] as Record<string, unknown>;
+    expect(body.payeeId).toBeUndefined();
+  });
+});

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../kernel/storage/storage.module';
+import { ApprovalsModule } from '../../kernel/approvals/approvals.module';
 import { EventsModule } from '../../kernel/events/events.module';
 import { SyncEngineModule } from '../../kernel/sync/sync.module';
 import {
@@ -44,7 +45,7 @@ import { GlCoverageService } from './gl-coverage.service';
  * `modules/stock-opname` to consume.
  */
 @Module({
-  imports: [EventsModule, SyncEngineModule, StorageModule],
+  imports: [EventsModule, SyncEngineModule, StorageModule, ApprovalsModule],
   controllers: [
     AccountsController,
     PostingRulesController,

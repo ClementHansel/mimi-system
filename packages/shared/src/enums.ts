@@ -648,6 +648,41 @@ export enum JournalSystemEventType {
    * un-ambiguous name.
    */
   EMPLOYEE_LOAN_DISBURSEMENT = 'employee_loan_disbursement',
+  /**
+   * Dr 2000 Hutang Supplier / Cr 1020 Bank (or 1000 Kas, per `paid_via`) when
+   * a `ref_type='purchase_order'` PV reaches `paid`.
+   *
+   * MISSING FROM §6 ENTIRELY, not just from the code. JGUD-01 credits 2000 at
+   * PO receipt and §6.2/§6.3 name no rule that ever debits it back except
+   * JGUD-04 (retur ke supplier). Actually paying the supplier therefore left
+   * the payable standing forever: `Hutang Supplier` grew monotonically for the
+   * life of the deployment and the bank/cash outflow was never recorded at
+   * all. Found from a client question about why the fields on a paid PV stayed
+   * blank (2026-09-09); the answer turned out to be much larger than the UI.
+   */
+  SUPPLIER_PAYMENT = 'supplier_payment',
+  /**
+   * Dr 6200 Beban Maintenance / Cr 1020|1000 when a `ref_type='maintenance_job'`
+   * PV reaches `paid`.
+   *
+   * `6200` is seeded in migration 090's chart of accounts and, before this,
+   * was referenced by NO posting rule anywhere — maintenance cost never
+   * reached the P&L in any form. Unlike a PO there is no accrual leg to
+   * reverse: `jobs.service.ts` posts nothing at completion and only opens the
+   * PV (FR-ACCT-04), so payment is the single point the expense is recognized.
+   */
+  MAINTENANCE_PAYMENT = 'maintenance_payment',
+  /**
+   * Dr 6000 Beban Gaji / Cr 1020|1000 for a `ref_type='incentive'|'thr'` PV.
+   *
+   * Both are employee compensation paid OUTSIDE a payroll run, so neither has
+   * an X1 accrual against 2100 Hutang Gaji to settle — recognition happens at
+   * payment, same shape as MAINTENANCE_PAYMENT. Sharing one event type (rather
+   * than two identical ones) keeps `posting_rules` honest: the legs are
+   * genuinely the same and `ref_type` on the journal entry already preserves
+   * which of the two it was.
+   */
+  EMPLOYEE_COMPENSATION_PAYMENT = 'employee_compensation_payment',
 }
 
 export enum PaymentVerificationRefType {

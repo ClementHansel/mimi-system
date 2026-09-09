@@ -12,6 +12,7 @@ import { toast } from '@/components/ui/Toast';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { SearchableSelect, type SearchableSelectOption } from '@/components/ui/SearchableSelect';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Drawer } from '@/components/ui/Drawer';
@@ -26,6 +27,11 @@ import type { Paginated } from '@/lib/api';
 import { uploadAttachment } from './lib/attachments';
 import { paymentIoColumns } from './lib/io-columns';
 import {
+  loadEmployeeOptions,
+  loadLocationOptions,
+  loadSupplierOptions,
+} from './lib/payment-pickers';
+import {
   PaymentVerificationRefType,
   PayeeType,
   type PaymentVerification,
@@ -35,6 +41,35 @@ import { errMsg } from '@/lib/api-error';
 
 const REF_TYPE_OPTIONS = Object.values(PaymentVerificationRefType);
 const PAYEE_TYPE_OPTIONS = Object.values(PayeeType);
+
+/**
+ * The ref types "Catat Pembayaran Baru" may create — a SUBSET of
+ * `REF_TYPE_OPTIONS` (which the list FILTER above still needs in full, since it
+ * has to be able to filter vouchers this form cannot make).
+ *
+ * The other five (`purchase_order`, `payroll_run`, `petty_cash`,
+ * `maintenance_job`, `employee_loan`) are created by their own flow, which
+ * passes `refId`, `payeeId` and `locationId` and links the voucher back to the
+ * source document. Offering them here produced an ORPHAN: a voucher that says
+ * "Purchase Order" and points at no PO, so it can never satisfy
+ * `PurchaseOrderService.close`'s "PO has no payment verification yet" check and
+ * never appears against the PO it claims to pay. A client made exactly that
+ * mistake by hand (PV/202609/0002, 2026-09-09) and then reasonably asked why
+ * the fields stayed blank.
+ *
+ * What remains is the genuinely source-less set: settlements Finance records
+ * from a bank/platform statement, and compensation paid outside a payroll run.
+ * `createDescription` in `id.ts` already promised exactly this scope ("untuk
+ * pembayaran manual/lain-lain (THR, insentif, biaya lain) yang tidak berasal
+ * dari dokumen lain") — the form just did not enforce its own description.
+ */
+const MANUAL_REF_TYPE_OPTIONS: readonly string[] = [
+  PaymentVerificationRefType.OTHER,
+  PaymentVerificationRefType.SALE_PAYMENT,
+  PaymentVerificationRefType.ONLINE_ORDER,
+  PaymentVerificationRefType.INCENTIVE,
+  PaymentVerificationRefType.THR,
+];
 
 export function PaymentsPanel() {
   const { t } = useI18n();
@@ -206,11 +241,43 @@ function CreatePaymentModal({
   const { t } = useI18n();
   const [refType, setRefType] = useState<string>(PaymentVerificationRefType.OTHER);
   const [payeeType, setPayeeType] = useState<string>(PayeeType.OTHER);
+  const [payeeId, setPayeeId] = useState('');
+  const [locationId, setLocationId] = useState('');
   const [amount, setAmount] = useState<Money | null>(null);
   const [referenceNumber, setReferenceNumber] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const [locationOptions, setLocationOptions] = useState<SearchableSelectOption[]>([]);
+  const [payeeOptions, setPayeeOptions] = useState<SearchableSelectOption[]>([]);
+
+  /**
+   * `supplier` and `employee` are the only two payee types with a table behind
+   * them — `PV_SELECT` resolves "Penerima" from `suppliers`/`employees` only,
+   * so `platform` and `other` have no id to pick and correctly get no picker
+   * (their name belongs in Catatan). This drives both the fetch below and
+   * whether the field renders at all.
+   */
+  const payeeIsSelectable = payeeType === PayeeType.SUPPLIER || payeeType === PayeeType.EMPLOYEE;
+
+  useEffect(() => {
+    loadLocationOptions().then(setLocationOptions);
+  }, []);
+
+  useEffect(() => {
+    // Clear the id whenever the TYPE changes: a supplier id left behind after
+    // switching to "Karyawan" would submit a payee_id that joins to nothing,
+    // which is the em-dash bug this whole change exists to remove.
+    setPayeeId('');
+    if (payeeType === PayeeType.SUPPLIER) {
+      loadSupplierOptions().then(setPayeeOptions);
+    } else if (payeeType === PayeeType.EMPLOYEE) {
+      loadEmployeeOptions().then(setPayeeOptions);
+    } else {
+      setPayeeOptions([]);
+    }
+  }, [payeeType]);
 
   async function submit() {
     setSubmitting(true);
@@ -219,6 +286,9 @@ function CreatePaymentModal({
       await api.post('/accounting/payments', {
         refType,
         payeeType,
+        // Both are optional on `CreatePaymentDto` and were never sent before.
+        payeeId: payeeIsSelectable && payeeId ? payeeId : undefined,
+        locationId: locationId || undefined,
         amount: amount ?? '0.00',
         referenceNumber: referenceNumber || undefined,
         notes: notes || undefined,
@@ -254,7 +324,11 @@ function CreatePaymentModal({
           label={t('finance.payments.refType')}
           value={refType}
           onValueChange={setRefType}
-          options={REF_TYPE_OPTIONS.map((v) => ({ value: v, label: t(`finance.refType.${v}`) }))}
+          hint={t('finance.payments.refTypeManualHint')}
+          options={MANUAL_REF_TYPE_OPTIONS.map((v) => ({
+            value: v,
+            label: t(`finance.refType.${v}`),
+          }))}
         />
         <Select
           label={t('finance.payments.payeeType')}
@@ -264,6 +338,24 @@ function CreatePaymentModal({
             value: v,
             label: t(`finance.payeeType.${v}`),
           }))}
+        />
+        {payeeIsSelectable && (
+          <SearchableSelect
+            label={t('finance.payments.payee')}
+            value={payeeId}
+            onValueChange={setPayeeId}
+            options={payeeOptions}
+            placeholder={t('finance.payments.payeePlaceholder')}
+            hint={t('finance.payments.payeeHint')}
+          />
+        )}
+        <SearchableSelect
+          label={t('finance.payments.location')}
+          value={locationId}
+          onValueChange={setLocationId}
+          options={locationOptions}
+          placeholder={t('finance.payments.locationPlaceholder')}
+          hint={t('finance.payments.locationHint')}
         />
         <MoneyInput
           label={t('finance.payments.amount')}

@@ -141,6 +141,60 @@ describe('property: every posting-rule resolver produces a balanced entry', () =
     );
   });
 
+  /**
+   * The three PV-`paid` postings added with migration 267. `undefined` is in
+   * the generator on purpose: `creditCashAccount` has to produce a real
+   * account for a caller that passed no `paidVia` at all, and returning
+   * `undefined` there would build a leg crediting account "undefined" — an
+   * entry that balances arithmetically while pointing at nothing, which is
+   * precisely the failure `validateJournalEntry` alone would not catch.
+   */
+  const paidViaEventTypes = [
+    'supplier_payment',
+    'maintenance_payment',
+    'employee_compensation_payment',
+  ];
+
+  it.each(paidViaEventTypes)('%s balances for every paidVia (and for none)', (eventType) => {
+    fc.assert(
+      fc.property(
+        money,
+        fc.constantFrom(undefined, 'cash', 'bank_transfer', 'qris'),
+        (amount, paidVia) => assertBalances(eventType, amount, { paidVia }),
+      ),
+    );
+  });
+
+  it.each(paidViaEventTypes)('%s credits a real 4-digit account, never undefined', (eventType) => {
+    fc.assert(
+      fc.property(
+        money,
+        fc.constantFrom(undefined, 'cash', 'bank_transfer', 'qris'),
+        (amount, paidVia) => {
+          const legs = resolvePureLegs(eventType, amount, { paidVia });
+          expect(legs).not.toBeNull();
+          for (const leg of legs!) {
+            expect(leg.debit).toMatch(/^\d{4}$/);
+            expect(leg.credit).toMatch(/^\d{4}$/);
+          }
+        },
+      ),
+    );
+  });
+
+  it('supplier_payment debits 2000 so the JGUD-01 payable actually clears', () => {
+    // The whole point of the rule: `gudang_purchase` credits 2000 at receipt,
+    // and before this nothing debited it back, so Hutang Supplier only ever
+    // grew. Asserting the direction here — not just that it balances — is what
+    // makes this test about the bug rather than about arithmetic.
+    const accrual = resolvePureLegs('gudang_purchase', '1000000.00', {})!;
+    const payment = resolvePureLegs('supplier_payment', '1000000.00', {
+      paidVia: 'bank_transfer',
+    })!;
+    expect(accrual[0]!.credit).toBe('2000');
+    expect(payment[0]!.debit).toBe('2000');
+  });
+
   it('offline_auth_rejected (X7) balances for both refund/void and waste sources', () => {
     fc.assert(
       fc.property(money, fc.constantFrom('refund_or_void', 'waste'), (amount, source) =>

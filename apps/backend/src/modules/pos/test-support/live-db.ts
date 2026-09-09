@@ -304,9 +304,21 @@ export function buildApprovalCodeService(pool: Pool = getAppPool()): ApprovalCod
   );
 }
 
-/** `PosSaleService`'s escalated `payment_verifications` write for a bank-transfer sale (FR-ACCT-03). */
+/**
+ * `PosSaleService`'s escalated `payment_verifications` write for a bank-transfer sale (FR-ACCT-03).
+ *
+ * The `ApprovalService` dependency is here because `pay()` now enforces
+ * §5.8's Owner threshold step, which needs the engine. `buildApprovalService`
+ * above is the notification-less form (see `ApprovalService`'s own constructor
+ * doc) — fine here, since POS only ever calls `createSystemVerification`,
+ * which touches none of the approval path.
+ */
 export function buildPaymentVerificationsService(pool: Pool): PaymentVerificationsService {
-  return new PaymentVerificationsService(buildSyncEmitService(pool), buildEventBus());
+  return new PaymentVerificationsService(
+    buildSyncEmitService(pool),
+    buildEventBus(),
+    buildApprovalService(),
+  );
 }
 
 /**

@@ -164,6 +164,9 @@ const resolveEventTypes = new Set([
   'offline_auth_rejected',
   'petty_cash_topup',
   'employee_loan_disbursement',
+  'supplier_payment',
+  'maintenance_payment',
+  'employee_compensation_payment',
 ]);
 
 /**
@@ -290,9 +293,42 @@ export function resolvePureLegs(
     case 'employee_loan_disbursement':
       return [{ debit: '1210', credit: '1020', amount }];
 
+    // ── PV `paid` postings that had no rule at all (migration 267) ────────
+    // All three credit cash-or-bank by `paid_via`, the same shape JOUT-09
+    // already uses. QRIS lands on 1020 Bank, not 1031 Piutang QRIS: 1031 is
+    // for money OWED TO us by the QRIS acquirer on an inbound sale, whereas a
+    // PV is money going OUT — paying by QRIS debits our bank immediately, so
+    // treating it as a bank movement is correct, not a shortcut.
+    case 'supplier_payment':
+      // Settles the 2000 Hutang Supplier that JGUD-01 credited at PO receipt.
+      return [{ debit: '2000', credit: creditCashAccount(ctx), amount }];
+    case 'maintenance_payment':
+      // No accrual leg exists to reverse (see the migration's note) — payment
+      // is the recognition point, so this debits the expense directly.
+      return [{ debit: '6200', credit: creditCashAccount(ctx), amount }];
+    case 'employee_compensation_payment':
+      // Insentif / THR: paid outside a payroll run, so there is no X1 accrual
+      // against 2100 Hutang Gaji to settle — 6000 Beban Gaji direct.
+      return [{ debit: '6000', credit: creditCashAccount(ctx), amount }];
+
     default:
       return null;
   }
+}
+
+/**
+ * The credit side of an outgoing payment, from `context.paidVia`.
+ *
+ * `cash` is 1000 Kas Outlet; `bank_transfer` and `qris` are both 1020 Bank.
+ * Defaults to 1020 rather than 1000 when `paidVia` is absent or unrecognized:
+ * `payment_verifications.paid_via` is a NOT-NULL-on-pay column with a CHECK of
+ * exactly those three values, so an unknown value here means a caller that did
+ * not pass context at all, and a bank credit is the safer guess for a voucher
+ * (petty cash is the only routinely-cash path and it posts under its own
+ * `petty_cash_topup`/JOUT-08 rules, never here).
+ */
+function creditCashAccount(ctx: Record<string, unknown>): string {
+  return ctx.paidVia === 'cash' ? '1000' : '1020';
 }
 
 function resolveOutletSalesLegs(amount: Money, ctx: Record<string, unknown>): JournalLeg[] {

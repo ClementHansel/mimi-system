@@ -145,6 +145,10 @@ the button.
 
 ### 3a. A request already on a Surat Jalan is still offered for a second one
 
+**FIXED on 2026-09-09**, per-line rather than per-request — see the commit
+"Track Surat Jalan fulfilment per request LINE". The note below is kept because
+it records why the obvious fix was the wrong one.
+
 `create()` links the request (`replenishment_requests.sj_id`) but leaves its
 status at `approved`; only marking the SJ **ready** moves it to `processing`.
 Between those two steps the request is still in the picker, and `setSjLink` is
@@ -152,11 +156,34 @@ Between those two steps the request is still in the picker, and `setSjLink` is
 same goods. `RR/202608/0004` on this box is `approved` with
 `sjId = SJ/202609/0343`.
 
-Not fixed here because the obvious fix is wrong: filtering out `sjId != null`
-would make a request whose Surat Jalan was **cancelled** unshippable forever —
-`cancel()` does not clear `sj_id` — which is the very bug this report is about,
-reintroduced. The real fix is releasing the link on cancel, which needs a new
-`ReplenishmentFulfillmentPort` operation. Architect's call.
+Not fixed by filtering out `sjId != null`, because that is wrong twice over: a
+request whose Surat Jalan was **cancelled** would become unshippable forever
+(`cancel()` never clears `sj_id`) — the very bug this report is about,
+reintroduced — and a mixed frozen/dry request legitimately needs TWO Surat
+Jalan, so "this request already has one" is not an error at all. The unit that
+works is the LINE: `ReplenishmentLine.qtyCommitted` sums what live (non-
+cancelled) Surat Jalan already carry, the picker offers the remainder, and
+`create()`/`update()` refuse an over-commit.
+
+### 3a-bis. The pending-approvals inbox cap (CORRECTION)
+
+Reported here first as "the approvals inbox has the same defect as the SJ
+picker". **That was overstated, and the record is worth correcting.** The inbox
+paginates properly with an accurate total, and its oldest-first ordering is
+right for what it is — an approval queue is FIFO work, so the longest-waiting
+item belongs on page one. That is the opposite of the SJ picker, where the
+dispatcher wants the request they have just approved. A local test failure
+attributed to it turned out to have an unrelated cause (the request was still
+`submitted`, its step-1 approval never having landed).
+
+The one real sharp edge: `findPendingCandidates` caps the pre-filter fetch at
+`PENDING_CANDIDATE_CAP` (2000) rows, oldest-first, and past that the NEWEST
+pending steps are dropped before pagination — absent from every page while
+`total` quietly agrees. Production holds 24, so it is a distant condition; but
+it would have arrived invisibly. Fixed 2026-09-09 by fetching one row past the
+cap and logging at ERROR when it is hit. Not redesigned: eligibility is resolved
+per row in the service, so an exact total requires scanning every candidate
+anyway, and raising the cap is a decision to take with numbers in hand.
 
 ### 3b. `submitted` requests are invisible to everyone but the outlet
 

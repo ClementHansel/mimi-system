@@ -90,3 +90,12 @@ scratch/
 
 # Server-only production secrets (generated on the VPS, never committed)
 .env.vps
+
+# ─── Credentials handed out for UAT ───────────────────────────────
+# `*.local.md` is for documents that legitimately contain live logins —
+# the UAT account sheet is one. Production and test share one seeded
+# password, so committing that sheet would put a working Pemilik login in
+# the Git history of BOTH remotes, one of which the client owns, and
+# rewriting history is the only way back out. Keep it on the machine that
+# needs it and hand it over directly.
+*.local.md

@@ -23,6 +23,7 @@ import type {
   EmployeeDetail,
   AttendanceRow,
   AttendanceSummaryRow,
+  NoShowRow,
   WorkShift,
   RosterRow,
   Leave,
@@ -36,6 +37,7 @@ import type {
   PtkpRow,
   Article17BracketRow,
   TaxProfile,
+  TaxProfileRosterRow,
   LocationGeo,
 } from './types';
 
@@ -171,6 +173,37 @@ export function listAttendance(params: {
   if (params.employeeId) qs.set('employeeId', params.employeeId);
   if (params.status) qs.set('status', params.status);
   return api.get<Paginated<AttendanceRow>>(`/hr/attendance?${qs.toString()}`);
+}
+
+/**
+ * Rostered working days with no attendance record — the worklist that makes
+ * POUT-03's absence deduction possible at all (MA-200). Read-only
+ * (`hr.attendance.read`); `markAbsent` below is the write half.
+ */
+export function listNoShows(params: {
+  from: string;
+  to: string;
+  locationId?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const qs = new URLSearchParams({
+    from: params.from,
+    to: params.to,
+    page: String(params.page ?? 1),
+    pageSize: String(params.pageSize ?? 25),
+  });
+  if (params.locationId) qs.set('locationId', params.locationId);
+  return api.get<Paginated<NoShowRow>>(`/hr/attendance/no-shows?${qs.toString()}`);
+}
+
+/**
+ * Record that a rostered employee did not turn up — creates the `absent`
+ * attendance row a no-show never left behind. `correctionReason` is required
+ * server-side: this deducts a day's pay.
+ */
+export function markAbsent(body: { employeeId: string; date: string; correctionReason: string }) {
+  return api.post<AttendanceRow>('/hr/attendance/absences', body);
 }
 
 export function correctAttendance(
@@ -503,6 +536,27 @@ export function putStatutoryArticle17(
     effectiveFrom,
     rows,
   });
+}
+
+/**
+ * The active roster with each person's tax-profile state, defaulting to the
+ * ones that are MISSING — see `TaxProfileRosterRow`.
+ *
+ * `payroll.statutory.config` server-side, same as the rate tables above.
+ */
+export function listTaxProfiles(params: {
+  profile: 'missing' | 'present' | 'all';
+  q?: string;
+  page: number;
+  pageSize: number;
+}) {
+  const qs = new URLSearchParams({
+    profile: params.profile,
+    page: String(params.page),
+    pageSize: String(params.pageSize),
+  });
+  if (params.q) qs.set('q', params.q);
+  return api.get<Paginated<TaxProfileRosterRow>>(`/payroll/statutory/tax-profiles?${qs}`);
 }
 
 export function getTaxProfile(employeeId: string) {

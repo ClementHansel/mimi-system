@@ -22,6 +22,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { fmtDateTime } from '@/lib/dates';
 import { ExportButton } from '@/components/common/ExportButton';
 import { correctAttendance, listAttendance } from './lib/hr-api';
+import { NoShowWorklist } from './NoShowWorklist';
 import { ATTENDANCE_EXPORT_COLUMNS } from './lib/io-columns';
 import type { AttendanceRow } from './lib/types';
 import type { Paginated } from '@/lib/shared-types';
@@ -32,6 +33,12 @@ import { errMsg } from '@/lib/api-error';
  * `timeSuspect` rows (W3-09's device-clock-untrustworthy tag) are surfaced
  * with a dedicated toggle and a warning badge rather than buried in the
  * general list — HR has to actually work these, per the ticket brief.
+ *
+ * `NoShowWorklist` sits below the table and covers the days this table can
+ * never show: a no-show creates no `attendance` row at all, so it is absent
+ * from every filter here — which is why POUT-03's absence deduction was
+ * unreachable and payroll reported Rp0 of deductions (MA-200). See that
+ * component's header.
  */
 export function AttendancePanel() {
   const { t } = useI18n();
@@ -201,6 +208,8 @@ export function AttendancePanel() {
         onRowClick={can('hr.attendance.correct') ? (row) => setCorrecting(row) : undefined}
         emptyDescription={suspectOnly ? t('hr.attendance.noSuspectRows') : undefined}
       />
+
+      <NoShowWorklist />
 
       {correcting && (
         <PermissionGate permission="hr.attendance.correct">

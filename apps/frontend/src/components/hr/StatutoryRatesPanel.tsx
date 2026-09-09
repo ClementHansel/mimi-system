@@ -8,6 +8,7 @@ import { Button, Input, MoneyInput, Select } from '@/components/ui';
 import { formatMoney } from '@/lib/formatters';
 import { ExportButton } from '@/components/common/ExportButton';
 import { EffectiveWindowEditor } from './EffectiveWindowEditor';
+import { EmployeeTaxProfilesEditor } from './EmployeeTaxProfilesEditor';
 import {
   getStatutoryArticle17,
   getStatutoryBpjs,
@@ -37,6 +38,13 @@ const TER_CATEGORIES = ['A', 'B', 'C'] as const;
  * deliberately left for this ticket: the rate TABLES themselves, not the
  * enable/disable gate (that stays in F10, Owner/Manager-only).
  *
+ * `PayrollStatutoryCard` named FOUR things as belonging here: the three rate
+ * tables and "employee tax-profile editors". Only the tables got built, so the
+ * readiness check's fourth requirement — a profile for every active employee —
+ * had a working API and no screen, and "Aktifkan" could never go green once HR
+ * added anyone (MA-186). `EmployeeTaxProfilesEditor` is that fourth editor;
+ * see its header for why the profile cannot simply be defaulted.
+ *
  * Every PUT here is a full-vintage replace keyed by `effectiveFrom`
  * (CONTRACTS §4.15) — `EffectiveWindowEditor` supplies the shared
  * active/future/past labeling and the same-day duplicate/backdate guard;
@@ -49,6 +57,10 @@ export function StatutoryRatesPanel() {
       <TerEditor />
       <PtkpEditor />
       <Article17Editor />
+      {/* Last, because it depends on the PTKP table above it: the profile form
+          picks a `ptkpCode` from that table and the server rejects a code that
+          is not in it. */}
+      <EmployeeTaxProfilesEditor />
     </div>
   );
 }

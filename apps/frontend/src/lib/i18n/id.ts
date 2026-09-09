@@ -499,6 +499,8 @@ export const id = {
       ERR_SIGNATURE_REQUIRED: 'Tanda tangan wajib diisi.',
       ERR_PROOF_REQUIRED: 'Bukti wajib dilampirkan.',
       ERR_APPROVAL_STEP_ROLE: 'Tahap persetujuan ini bukan wewenang Anda.',
+      ERR_APPROVAL_REQUIRED:
+        'Jumlah ini melewati batas dan perlu persetujuan Owner dulu. Permintaan persetujuan sudah dikirim — pembayaran bisa dilanjutkan setelah disetujui.',
       ERR_APPROVAL_INVALID_TRANSITION: 'Status dokumen sudah berubah. Muat ulang halaman ini.',
       ERR_APPROVAL_ALREADY_DECIDED: 'Dokumen ini sudah diputuskan sebelumnya.',
       ERR_DISPUTES_OPEN: 'Masih ada selisih yang belum diselesaikan.',
@@ -1265,7 +1267,15 @@ export const id = {
         'Untuk pembayaran manual/lain-lain (THR, insentif, biaya lain) yang tidak berasal dari dokumen lain.',
       createSuccess: 'Pembayaran berhasil dicatat.',
       refType: 'Jenis Referensi',
+      refTypeManualHint:
+        'Pembayaran dari PO, penggajian, kas kecil, maintenance, dan kasbon dibuat otomatis oleh alurnya masing-masing — tidak perlu dicatat di sini.',
       payeeType: 'Jenis Penerima',
+      payee: 'Penerima',
+      payeePlaceholder: 'Pilih penerima',
+      payeeHint: 'Menentukan nama yang tampil di kolom Penerima.',
+      location: 'Lokasi',
+      locationPlaceholder: 'Pilih lokasi (opsional)',
+      locationHint: 'Kosongkan bila ini beban pusat, bukan beban satu outlet.',
       amount: 'Jumlah',
       referenceNumber: 'Nomor Referensi',
       notes: 'Catatan',
@@ -2297,7 +2307,7 @@ export const id = {
           employee_tax_profiles: 'Profil pajak pegawai belum lengkap',
         },
         configureHint:
-          'Tarif BPJS, tabel PPh21, dan profil pajak pegawai dikonfigurasi di modul SDM & Payroll.',
+          'Semuanya diatur di SDM → Payroll Statutori (termasuk Profil Pajak Pegawai di bagian bawah halaman itu). Perlu izin "payroll.statutory.config" — Finance atau HR Admin.',
         enableButton: 'Aktifkan Mode Statutori',
         disableButton: 'Nonaktifkan',
         confirmEnableTitle: 'Aktifkan Mode Payroll Statutori?',
@@ -2967,6 +2977,35 @@ export const id = {
       correctTitle: 'Koreksi Absensi — {{name}}',
       correctionReason: 'Alasan Koreksi',
       correctSuccess: 'Absensi berhasil dikoreksi.',
+
+      // MA-200 — the days this table can never show. A no-show creates no
+      // attendance row at all, so nothing in the product could record it and
+      // POUT-03's absence deduction was unreachable for everybody.
+      noShow: {
+        title: 'Hari Kerja Tanpa Absensi',
+        description:
+          'Hari yang sudah dijadwalkan kerja tetapi tidak ada catatan absensi sama sekali. Selama hari-hari ini belum ditandai, potongan alpha tidak muncul di payroll.',
+        fromLabel: 'Dari Tanggal',
+        toLabel: 'Sampai Tanggal',
+        toHint: 'Maksimal sampai kemarin — hari yang masih berjalan belum bisa dihitung alpha.',
+        columnShift: 'Shift',
+        count:
+          '{{n}} hari kerja tanpa catatan absensi. Periksa dulu sebelum menandai — data absensi yang belum tersinkron dari perangkat juga muncul di sini.',
+        none: 'Tidak ada hari kerja tanpa catatan absensi pada rentang ini.',
+        selectAllOnPage: 'Pilih semua di halaman ini ({{n}})',
+        selectedCount: '{{n}} dipilih',
+        selectRow: 'Pilih {{name}} tanggal {{date}}',
+        markButton: 'Tandai Alpha',
+        confirmTitle: 'Tandai {{n}} Hari sebagai Alpha?',
+        confirmWarning:
+          'Menandai {{n}} hari sebagai alpha akan memotong gaji sejumlah hari tersebut pada proses payroll berikutnya. Pastikan bukan karena absensi yang belum tersinkron dari perangkat karyawan.',
+        andMore: '…dan {{n}} hari lainnya',
+        reasonLabel: 'Alasan',
+        reasonPlaceholder: 'Contoh: tidak hadir tanpa keterangan, tidak dapat dihubungi',
+        reasonHint: 'Wajib — tersimpan bersama nama Anda pada setiap hari yang ditandai.',
+        markSuccess: '{{n}} hari berhasil ditandai alpha.',
+        markPartial: '{{n}} hari gagal ditandai — lihat detail.',
+      },
     },
     leaves: {
       filterStatus: 'Status',
@@ -3070,6 +3109,44 @@ export const id = {
       article17Title: 'Tarif Pasal 17',
       article17Description:
         'Lapisan tarif progresif tahunan untuk perhitungan ulang PPh21 Desember.',
+
+      // MA-186 — the fourth statutory editor. The readiness check demands a
+      // tax profile for every ACTIVE employee and nothing in the product could
+      // create one, so "Aktifkan" greyed out the moment HR added anybody.
+      taxProfileTitle: 'Profil Pajak Pegawai',
+      taxProfileDescription:
+        'Kode PTKP, NPWP, dan kepesertaan BPJS per pegawai. Mode Payroll Statutori baru bisa diaktifkan setelah semua pegawai aktif punya profil pajak.',
+      taxProfileFilterLabel: 'Tampilkan',
+      taxProfileFilter: {
+        missing: 'Belum punya profil',
+        present: 'Sudah punya profil',
+        all: 'Semua pegawai aktif',
+      },
+      taxProfileSearchLabel: 'Cari Pegawai',
+      taxProfileSearchPlaceholder: 'Nama atau NIP…',
+      taxProfileMissingCount:
+        '{{n}} pegawai aktif belum punya profil pajak — selama masih ada, Mode Payroll Statutori tidak bisa diaktifkan.',
+      taxProfileNoneMissing: 'Semua pegawai aktif sudah punya profil pajak.',
+      taxProfileColumnState: 'Profil Pajak',
+      taxProfileComplete: 'Lengkap',
+      taxProfileIncomplete: 'Belum Ada',
+      taxProfileEmptyTitle: 'Tidak ada pegawai yang cocok dengan filter ini.',
+      taxProfileModalTitle: 'Profil Pajak — {{name}}',
+      taxProfileModalDescription:
+        'Menentukan potongan PPh21 dan iuran BPJS pegawai ini saat Mode Payroll Statutori aktif.',
+      taxProfilePtkpPlaceholder: 'Pilih kode PTKP',
+      taxProfilePtkpHint: 'Jumlah tanggungan mengikuti kode PTKP: {{n}} tanggungan.',
+      taxProfileNoPtkpTable:
+        'Tabel PTKP belum diatur — isi Tabel PTKP di atas terlebih dahulu, karena kode di form ini diambil dari tabel tersebut.',
+      taxProfileNpwpLabel: 'NPWP',
+      taxProfileNpwpHint: 'Opsional — kosongkan bila pegawai belum punya NPWP.',
+      taxProfileBpjsLegend: 'Kepesertaan BPJS',
+      taxProfileEnrolledSinceLabel: 'Terdaftar Sejak',
+      taxProfileEnrolledSinceHint: 'Berlaku untuk program yang dicentang di atas.',
+      taxProfileBpjsBaseLabel: 'Dasar Upah BPJS',
+      taxProfileBpjsBaseHint:
+        'Opsional — kosongkan untuk memakai gaji pokok pegawai sebagai dasar perhitungan iuran.',
+      taxProfileSaveSuccess: 'Profil pajak berhasil disimpan.',
     },
     // `SalaryComponentsPanel` — the salary component master
     // (`payroll.component.manage`) plus per-employee assignment

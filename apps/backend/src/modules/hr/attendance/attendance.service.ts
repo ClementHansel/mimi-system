@@ -30,10 +30,32 @@ import {
 } from '../hr-settings.util';
 import { pgDateToIso } from '../pg-date.util';
 import { resolveDefensibility } from '../time-defensibility.util';
-import type { CheckAttendanceDto, CorrectAttendanceDto } from '../dto/attendance.dto';
+import type {
+  CheckAttendanceDto,
+  CorrectAttendanceDto,
+  MarkAbsentDto,
+} from '../dto/attendance.dto';
 import { StorageService } from '../../../kernel/storage/storage.service';
 import type { JwtAccessPayload } from '../../../common/jwt/jwt-payload.interface';
 import { withWrite } from '../db-tx';
+
+/**
+ * A rostered working day with no attendance record of any kind — see
+ * `AttendanceService.listNoShows`.
+ *
+ * Carries the roster side of the day (shift name, branch) rather than an
+ * attendance id, because there is no attendance row: that is the whole point.
+ */
+export interface NoShowRow {
+  employeeId: UUID;
+  employeeNumber: string;
+  employeeName: string;
+  locationId: UUID;
+  locationName: string;
+  date: string;
+  shiftName: string;
+  shiftAssignmentId: UUID;
+}
 
 export interface AttendanceSummaryRow {
   employeeId: UUID;
@@ -488,6 +510,183 @@ export class AttendanceService {
       page,
       pageSize,
     };
+  }
+
+  /**
+   * ROSTERED DAYS NOBODY EVER RECORDED — the gap MA-200 surfaced.
+   *
+   * An `attendance` row is created by a CHECK-IN and nothing else
+   * (`applyCheckIn`), and `correct` updates `WHERE attendance.id = $1`. So an
+   * employee who was rostered and did not turn up leaves no trace at all:
+   * there is no row to correct, and until `markAbsent` below there was no way
+   * anywhere in the product to record the fact. `attendance.status = 'absent'`
+   * was never written by any code path — the only two references to it in the
+   * backend were `COUNT(*) FILTER (WHERE a.status = 'absent')` here and the
+   * matching one in `RunsService.buildBaseInputs`, so `deduction_absence`
+   * (POUT-03) was unreachable and every payroll run showed Rp0 of
+   * attendance-driven deductions.
+   *
+   * This is the worklist that closes it. Deliberately a LIST and not an
+   * automatic deduction: a rostered day with no attendance row means "no
+   * evidence either way", and on this deployment the usual cause is that the
+   * offline outbox has not drained rather than that anyone stayed home.
+   * Deriving the deduction here instead was written and measured before being
+   * rejected — on the seeded database that rule turns 7,701 rostered working
+   * days holding 126 attendance records into a month's absence deduction for
+   * nearly the whole roster. A payroll that converts a sync failure into lost
+   * pay is much worse than one that shows a zero.
+   *
+   *  - `work_shift_id IS NOT NULL` — a NULL assignment is 'libur' (migration
+   *    061), a scheduled day off, not a day anybody failed to attend.
+   *  - `sa.date < CURRENT_DATE` — a day still in progress is not yet a
+   *    no-show.
+   *  - approved leave is excluded: a granted absence is not an unexplained one.
+   */
+  async listNoShows(
+    client: PoolClient,
+    query: {
+      locationId?: string;
+      from: string;
+      to: string;
+      page: number;
+      pageSize: number;
+    },
+  ): Promise<Paginated<NoShowRow>> {
+    const params: unknown[] = [query.from, query.to];
+    let where = `sa.work_shift_id IS NOT NULL
+          AND sa.date >= $1::date AND sa.date <= $2::date
+          AND sa.date < CURRENT_DATE
+          AND NOT EXISTS (
+                SELECT 1 FROM attendance a
+                 WHERE a.employee_id = sa.employee_id AND a.date = sa.date)
+          AND NOT EXISTS (
+                SELECT 1 FROM leave_requests lr
+                 WHERE lr.employee_id = sa.employee_id
+                   AND lr.status = 'approved'
+                   AND sa.date BETWEEN lr.start_date AND lr.end_date)`;
+    if (query.locationId) {
+      params.push(query.locationId);
+      where += ` AND sa.location_id = $${params.length}`;
+    }
+
+    const fromSql = `FROM shift_assignments sa
+         JOIN employees e ON e.id = sa.employee_id
+         JOIN locations l ON l.id = sa.location_id
+         JOIN work_shifts ws ON ws.id = sa.work_shift_id`;
+
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count ${fromSql} WHERE ${where}`,
+      params,
+    );
+    const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
+
+    params.push(query.pageSize, (query.page - 1) * query.pageSize);
+    const res = await client.query<Record<string, any>>(
+      `SELECT sa.id AS shift_assignment_id, sa.employee_id, sa.date, sa.location_id,
+              e.name AS employee_name, e.employee_number, l.name AS location_name,
+              ws.name AS shift_name
+         ${fromSql}
+        WHERE ${where}
+        ORDER BY sa.date DESC, e.name ASC
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    return {
+      rows: res.rows.map((r) => ({
+        employeeId: r.employee_id,
+        employeeNumber: r.employee_number,
+        employeeName: r.employee_name,
+        locationId: r.location_id,
+        locationName: r.location_name,
+        date: pgDateToIso(r.date),
+        shiftName: r.shift_name,
+        shiftAssignmentId: r.shift_assignment_id,
+      })),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
+  }
+
+  /**
+   * Record that a rostered employee did not turn up — the write half of
+   * `listNoShows`, and the only code path in this system that produces
+   * `attendance.status = 'absent'`.
+   *
+   * Creates the row a no-show never left behind, which is what makes POUT-03's
+   * `deduction_absence` computable at all. `correctionReason` is required for
+   * the same reason `correct` requires it: this costs the employee a day's
+   * pay, so FR-AUDIT-02 wants a named person and a stated reason, not a bare
+   * status.
+   *
+   * Every guard refuses rather than overwrites. `UNIQUE (employee_id, date)`
+   * already makes a second call an error, but somebody re-submitting a
+   * worklist deserves to be told which day was already handled, and how,
+   * rather than a constraint violation.
+   */
+  async markAbsent(
+    client: PoolClient,
+    user: JwtAccessPayload,
+    dto: MarkAbsentDto,
+  ): Promise<AttendanceRow> {
+    if (!dto.correctionReason?.trim()) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'correctionReason is required',
+      });
+    }
+
+    const rosterRes = await client.query<{ id: UUID; location_id: UUID }>(
+      `SELECT sa.id, sa.location_id
+         FROM shift_assignments sa
+        WHERE sa.employee_id = $1 AND sa.date = $2::date AND sa.work_shift_id IS NOT NULL`,
+      [dto.employeeId, dto.date],
+    );
+    const roster = rosterRes.rows[0];
+    if (!roster) {
+      // Not rostered at all, or rostered as 'libur'. Either way nobody was
+      // expected, so there is nothing to be absent from — and a deduction here
+      // would be for a day the employee was never asked to work.
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'That employee was not rostered to a working shift on that date',
+      });
+    }
+
+    const existing = await client.query<{ status: string }>(
+      'SELECT status FROM attendance WHERE employee_id = $1 AND date = $2::date',
+      [dto.employeeId, dto.date],
+    );
+    if (existing.rows[0]) {
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `That day already has an attendance record ('${existing.rows[0].status}') — correct that row instead`,
+      });
+    }
+
+    const leave = await client.query<{ type: string }>(
+      `SELECT type FROM leave_requests
+        WHERE employee_id = $1 AND status = 'approved' AND $2::date BETWEEN start_date AND end_date`,
+      [dto.employeeId, dto.date],
+    );
+    if (leave.rows[0]) {
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `That day is covered by approved leave ('${leave.rows[0].type}') — an authorised absence is not an unexplained one`,
+      });
+    }
+
+    return withWrite(client, async () => {
+      const res = await client.query<Record<string, any>>(
+        `INSERT INTO attendance
+           (employee_id, location_id, date, shift_assignment_id, status, corrected_by, correction_reason)
+         VALUES ($1,$2,$3::date,$4,'absent',$5,$6)
+         RETURNING *`,
+        [dto.employeeId, roster.location_id, dto.date, roster.id, user.sub, dto.correctionReason],
+      );
+      return this.toAttendanceRow(client, user, res.rows[0]!);
+    });
   }
 
   /**

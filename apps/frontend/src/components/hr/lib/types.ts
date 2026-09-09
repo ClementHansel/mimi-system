@@ -314,6 +314,26 @@ export interface Article17BracketRow extends EffectiveDatedRow {
   ratePct: string;
 }
 
+/**
+ * A rostered working day with no attendance record of any kind —
+ * `GET /hr/attendance/no-shows`.
+ *
+ * There is no attendance id because there is no attendance row: a no-show
+ * leaves nothing behind, which is exactly why `deduction_absence` (POUT-03)
+ * could never be computed for anyone (MA-200). The identity is the ROSTER
+ * side of the day.
+ */
+export interface NoShowRow {
+  employeeId: UUID;
+  employeeNumber: string;
+  employeeName: string;
+  locationId: UUID;
+  locationName: string;
+  date: ISODate;
+  shiftName: string;
+  shiftAssignmentId: UUID;
+}
+
 export interface TaxProfile {
   npwp: string | null;
   ptkpCode: string;
@@ -325,6 +345,25 @@ export interface TaxProfile {
     >
   >;
   bpjsSalaryBase: Money | null;
+}
+
+/**
+ * One active employee's tax-profile completeness — `GET
+ * /payroll/statutory/tax-profiles`.
+ *
+ * The readiness check behind "Mode Payroll Statutori" could only report a
+ * COUNT ("12 of 295 have a profile"), which with 295 employees is not
+ * something anyone can act on. This is the same population, per person, so the
+ * set that blocks enablement can be listed and worked through (MA-186).
+ */
+export interface TaxProfileRosterRow {
+  employeeId: UUID;
+  employeeNumber: string;
+  name: string;
+  locationName: string;
+  hasProfile: boolean;
+  ptkpCode: string | null;
+  npwp: string | null;
 }
 
 // ── §4.3 location — the geofence centre this surface reads (read-only here) ─

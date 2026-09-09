@@ -601,13 +601,42 @@ export class RunsService {
          COALESCE(SUM(a.overtime_minutes), 0) AS overtime_minutes,
          COUNT(*) FILTER (WHERE a.status = 'sick') AS sick_days,
          COUNT(*) FILTER (WHERE a.status = 'permission') AS permission_days,
-         COUNT(*) FILTER (WHERE a.status = 'absent') AS absent_days
+         COUNT(*) FILTER (WHERE a.status = 'absent') AS absent_days,
+         COUNT(*) FILTER (WHERE a.status IN ('present','late')) AS attended_days
        FROM attendance a
       WHERE a.employee_id = $1 AND a.date >= $2::date AND a.date <= $3::date`,
       [employee.id, period.startDate, period.endDate],
     );
     const s = summaryRes.rows[0] ?? {};
     const lateCount = parseInt(s.late_count ?? '0', 10);
+    const attendedDays = parseInt(s.attended_days ?? '0', 10);
+
+    /**
+     * A NO-SHOW LEAVES NO ROW, WHICH IS WHY THIS COUNT USED TO BE ZERO FOR
+     * EVERYONE — see `AttendanceService.markAbsent`.
+     *
+     * MA-200 ("hasil dari proses payroll tidak menampilkan angka untuk potongan
+     * gaji"). Nothing in this codebase wrote `attendance.status = 'absent'`:
+     * the only two references to that status in the entire backend were this
+     * FILTER and the identical one in `AttendanceService.summary`. An
+     * `attendance` row exists only because somebody CHECKED IN
+     * (`applyCheckIn`), and `AttendanceService.correct` updates
+     * `WHERE attendance.id = $1` — so for an employee who did not turn up
+     * there was no row to correct and no way, anywhere in the product, to
+     * record the fact. `deduction_absence` (POUT-03) was unreachable by
+     * construction.
+     *
+     * The gap is closed on the RECORDING side (`markAbsent`), deliberately not
+     * here. Deriving absence in this method — "a rostered working day with no
+     * attendance row" — was written, measured, and rejected: on the seeded
+     * database that rule turns 7,701 rostered working days with 126 attendance
+     * records into a month's absence deduction for nearly the whole roster.
+     * The reason those records are missing on this deployment is that the
+     * offline outbox does not drain, not that nobody came to work, and a
+     * payroll that converts a sync failure into a wage deduction is far worse
+     * than one that shows a zero. A deduction from someone's pay is now
+     * something a person marked, on a named day, with a reason.
+     */
     const absentDays = parseInt(s.absent_days ?? '0', 10);
 
     const overtime = await getOvertimeSettings(client);
@@ -661,7 +690,11 @@ export class RunsService {
         permissionDays: parseInt(s.permission_days ?? '0', 10),
         absentDays,
         lateMinutesTotal: parseInt(s.late_minutes ?? '0', 10),
-        hasPerfectAttendance: lateCount === 0 && absentDays === 0,
+        // `attendedDays > 0` is the third condition, not decoration: without
+        // it an employee with no attendance records whatsoever satisfies "no
+        // lateness, no absence" and is paid the perfect-attendance allowance.
+        // A bonus for turning up has to be evidenced by turning up.
+        hasPerfectAttendance: lateCount === 0 && absentDays === 0 && attendedDays > 0,
       },
       sickPaid: deductionRates.sickPaid,
       permissionPaid: deductionRates.permissionPaid,

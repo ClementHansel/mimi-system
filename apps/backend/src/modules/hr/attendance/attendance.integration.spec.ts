@@ -6,6 +6,7 @@ import { StorageService } from '../../../kernel/storage/storage.service';
 import type { CheckAttendanceDto } from '../dto/attendance.dto';
 import {
   assignShift,
+  asCommittedRequest,
   asRequest,
   closePool,
   createWorkShift,
@@ -489,6 +490,248 @@ describe('AttendanceService (integration, live Postgres)', () => {
           service.listMe(client, user, todayWita().slice(0, 7)),
         );
         expect(listed.some((r) => r.id === created.id)).toBe(true);
+      });
+    });
+  });
+
+  /**
+   * POUT-03 WAS UNREACHABLE: NOTHING COULD RECORD A NO-SHOW.
+   *
+   * MA-200, reported as "hasil dari proses payroll tidak menampilkan angka
+   * untuk potongan gaji". The payroll run reads absence as
+   * `COUNT(*) FILTER (WHERE a.status = 'absent')` — and before this ticket
+   * NOTHING in the backend ever wrote that status. The only two references to
+   * `'absent'` in the whole codebase were that FILTER and the matching one in
+   * `AttendanceService.summary`; an `attendance` row is created by a CHECK-IN
+   * and nothing else, and `correct` updates `WHERE attendance.id = $1`. An
+   * employee who did not turn up left no row, so there was nothing to correct
+   * and no way anywhere in the product to say so. `deduction_absence` could
+   * never be produced for anybody.
+   *
+   * These run against real SQL because that is the whole risk: `listNoShows`
+   * and `markAbsent` are hand-written queries whose correctness is entirely in
+   * the NOT EXISTS clauses and the roster join, none of which a typecheck sees.
+   */
+  describe('no-shows (MA-200) — the rostered days nobody recorded', () => {
+    /** Three days back in WITA: safely `< CURRENT_DATE` whatever time the suite runs. */
+    function pastDateWita(daysBack: number): string {
+      return new Date(Date.now() + 8 * 60 * 60_000 - daysBack * 24 * 60 * 60_000)
+        .toISOString()
+        .slice(0, 10);
+    }
+
+    /**
+     * A rostered working day for the test employee with the attendance slot
+     * genuinely empty, restored afterwards. `deleteWorkShift` cascades to its
+     * own `shift_assignments`, so the roster row needs no separate cleanup.
+     */
+    async function withRosteredDay<T>(
+      date: string,
+      fn: (ctx: { employeeId: string; workShiftId: string }) => Promise<T>,
+    ): Promise<T> {
+      const self = selfEmployee();
+      const owner = fixtures.usersByRole[RoleKey.OWNER] ?? self;
+      const snapshot = await deleteAttendanceForDate(self.employeeId, date);
+      const workShiftId = await createWorkShift(self.locationId, '08:00', '16:00', 60);
+      try {
+        await assignShift(self.employeeId, workShiftId, self.locationId, date, owner.userId);
+        return await fn({ employeeId: self.employeeId, workShiftId });
+      } finally {
+        await deleteAttendanceForDate(self.employeeId, date);
+        await deleteWorkShift(workShiftId);
+        if (snapshot) await restoreAttendanceRow(snapshot);
+      }
+    }
+
+    function hrRls() {
+      const hr = fixtures.usersByRole[RoleKey.HR_ADMIN] ?? fixtures.usersByRole[RoleKey.OWNER]!;
+      return { userId: hr.userId, roleKey: RoleKey.HR_ADMIN } as const;
+    }
+
+    it('lists a rostered day with no attendance, then stops listing it once it is marked', async () => {
+      if (!dbAvailable) return;
+      const date = pastDateWita(3);
+      await withRosteredDay(date, async ({ employeeId }) => {
+        const rls = hrRls();
+        const user = toJwtPayload(rls);
+
+        const before = await asRequest(rls, (client) =>
+          service.listNoShows(client, { from: date, to: date, page: 1, pageSize: 100 }),
+        );
+        const mine = before.rows.filter((r) => r.employeeId === employeeId && r.date === date);
+        expect(mine, 'a rostered day with no attendance row must appear as a no-show').toHaveLength(
+          1,
+        );
+        expect(mine[0]!.shiftName).toBeTruthy();
+
+        // One mutating call per connection — `markAbsent` goes through
+        // `withWrite`, whose real COMMIT ends the transaction `asRequest`
+        // opened and reverts `SET LOCAL ROLE` with it.
+        const marked = await asRequest(rls, (client) =>
+          service.markAbsent(client, user, {
+            employeeId,
+            date,
+            correctionReason: 'Tidak hadir tanpa keterangan (uji MA-200)',
+          }),
+        );
+        expect(marked.status).toBe('absent');
+
+        // A SEPARATE connection: proves the row really committed, which is
+        // also the only shape that catches a service that never commits.
+        const after = await asRequest(rls, (client) =>
+          service.listNoShows(client, { from: date, to: date, page: 1, pageSize: 100 }),
+        );
+        expect(
+          after.rows.filter((r) => r.employeeId === employeeId && r.date === date),
+          'the day now HAS an attendance row, so it is no longer unrecorded',
+        ).toHaveLength(0);
+
+        // And the run of payroll that reads this can finally see it.
+        const summary = await asRequest(rls, (client) =>
+          client.query<{ count: string }>(
+            `SELECT COUNT(*) AS count FROM attendance
+              WHERE employee_id = $1 AND date = $2::date AND status = 'absent'`,
+            [employeeId, date],
+          ),
+        );
+        expect(summary.rows[0]!.count).toBe('1');
+      });
+    });
+
+    it('refuses to mark the same day twice, naming what is already there', async () => {
+      if (!dbAvailable) return;
+      const date = pastDateWita(4);
+      await withRosteredDay(date, async ({ employeeId }) => {
+        const rls = hrRls();
+        const user = toJwtPayload(rls);
+        const body = { employeeId, date, correctionReason: 'Alpha (uji MA-200)' };
+
+        await asRequest(rls, (client) => service.markAbsent(client, user, body));
+
+        await expect(
+          asRequest(rls, (client) => service.markAbsent(client, user, body)),
+          'a re-submitted worklist must be told which day was already handled',
+        ).rejects.toMatchObject({ response: { code: 'ERR_CONFLICT' } });
+      });
+    });
+
+    it('refuses a day the employee was never rostered to work', async () => {
+      if (!dbAvailable) return;
+      // No roster row at all for this date — nobody was expected, so there is
+      // nothing to be absent from, and a deduction would be for a day the
+      // employee was never asked to work.
+      const rls = hrRls();
+      const user = toJwtPayload(rls);
+      await expect(
+        asRequest(rls, (client) =>
+          service.markAbsent(client, user, {
+            employeeId: selfEmployee().employeeId,
+            date: '2019-01-05',
+            correctionReason: 'Alpha (uji MA-200)',
+          }),
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+    });
+
+    it('will not mark a day without a reason — it costs the employee a day of pay', async () => {
+      if (!dbAvailable) return;
+      const date = pastDateWita(5);
+      await withRosteredDay(date, async ({ employeeId }) => {
+        const rls = hrRls();
+        const user = toJwtPayload(rls);
+        await expect(
+          asRequest(rls, (client) =>
+            service.markAbsent(client, user, { employeeId, date, correctionReason: '   ' }),
+          ),
+          'FR-AUDIT-02: a deduction needs a stated reason, not a bare status',
+        ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+      });
+    });
+
+    it('leaves APPROVED LEAVE alone — an authorised absence is not an unexplained one', async () => {
+      if (!dbAvailable) return;
+      const date = pastDateWita(6);
+      const self = selfEmployee();
+      const owner = fixtures.usersByRole[RoleKey.OWNER] ?? self;
+      let leaveId: string | undefined;
+      await withRosteredDay(date, async ({ employeeId }) => {
+        const rls = hrRls();
+        const user = toJwtPayload(rls);
+
+        // Fixture only — the leave itself is not the behaviour under test.
+        leaveId = await asCommittedRequest(
+          { userId: owner.userId, roleKey: RoleKey.OWNER },
+          async (client) => {
+            const res = await client.query<{ id: string }>(
+              `INSERT INTO leave_requests (employee_id, type, start_date, end_date, days, status, reason)
+             VALUES ($1,'annual',$2::date,$2::date,1,'approved','Cuti (uji MA-200)') RETURNING id`,
+              [employeeId, date],
+            );
+            return res.rows[0]!.id;
+          },
+        );
+
+        const listed = await asRequest(rls, (client) =>
+          service.listNoShows(client, { from: date, to: date, page: 1, pageSize: 100 }),
+        );
+        expect(
+          listed.rows.filter((r) => r.employeeId === employeeId && r.date === date),
+          'a day covered by approved leave is not an unrecorded no-show',
+        ).toHaveLength(0);
+
+        await expect(
+          asRequest(rls, (client) =>
+            service.markAbsent(client, user, {
+              employeeId,
+              date,
+              correctionReason: 'Alpha (uji MA-200)',
+            }),
+          ),
+          'marking granted leave as alpha would deduct for a day that was authorised',
+        ).rejects.toMatchObject({ response: { code: 'ERR_CONFLICT' } });
+      });
+      if (leaveId) {
+        await asCommittedRequest({ userId: owner.userId, roleKey: RoleKey.OWNER }, (client) =>
+          client.query('DELETE FROM leave_requests WHERE id = $1', [leaveId]),
+        );
+      }
+    });
+
+    it('ignores a LIBUR assignment — a scheduled day off is not a day anybody missed', async () => {
+      if (!dbAvailable) return;
+      const date = pastDateWita(7);
+      await withRosteredDay(date, async ({ employeeId }) => {
+        const rls = hrRls();
+        const owner = fixtures.usersByRole[RoleKey.OWNER] ?? selfEmployee();
+        // `work_shift_id IS NULL` is 'libur' (migration 061).
+        await asCommittedRequest({ userId: owner.userId, roleKey: RoleKey.OWNER }, (client) =>
+          client.query(
+            'UPDATE shift_assignments SET work_shift_id = NULL WHERE employee_id = $1 AND date = $2::date',
+            [employeeId, date],
+          ),
+        );
+
+        const listed = await asRequest(rls, (client) =>
+          service.listNoShows(client, { from: date, to: date, page: 1, pageSize: 100 }),
+        );
+        expect(
+          listed.rows.filter((r) => r.employeeId === employeeId && r.date === date),
+        ).toHaveLength(0);
+      });
+    });
+
+    it('does not treat TODAY as a no-show — the day is not over', async () => {
+      if (!dbAvailable) return;
+      const today = todayWita();
+      await withRosteredDay(today, async ({ employeeId }) => {
+        const rls = hrRls();
+        const listed = await asRequest(rls, (client) =>
+          service.listNoShows(client, { from: today, to: today, page: 1, pageSize: 100 }),
+        );
+        expect(
+          listed.rows.filter((r) => r.employeeId === employeeId && r.date === today),
+          'a shift still in progress is not yet a missed one',
+        ).toHaveLength(0);
       });
     });
   });

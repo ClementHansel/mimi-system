@@ -24,6 +24,33 @@ export class StatutoryController {
     return this.service.getStatus(req.dbClient!);
   }
 
+  /**
+   * The active roster with each person's tax-profile state — the list behind
+   * `GET statutory/status`'s `employee_tax_profiles` gap (MA-186).
+   *
+   * `payroll.statutory.config`, not `.read`: this exists to be edited, and it
+   * carries each person's PTKP code and NPWP. The Owner/Manager `.read`
+   * audience already gets the number they need from `status`'s
+   * `profileCoverage` — they are not the ones who fill these in.
+   */
+  @Get('statutory/tax-profiles')
+  @RequirePermission('payroll.statutory.config')
+  async listTaxProfiles(
+    @Req() req: RequestWithDbContext,
+    @Query('profile') profile?: 'missing' | 'present' | 'all',
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.service.listTaxProfiles(req.dbClient!, {
+      // Defaults to the set that actually blocks readiness — see the service.
+      profile: profile === 'present' || profile === 'all' ? profile : 'missing',
+      q,
+      page: page ? parseInt(page, 10) : 1,
+      pageSize: pageSize ? parseInt(pageSize, 10) : 25,
+    });
+  }
+
   @Get('statutory/bpjs')
   @RequirePermission('payroll.statutory.read')
   async getBpjs(

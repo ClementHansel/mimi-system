@@ -36,6 +36,25 @@ export interface StatutoryStatus {
 }
 
 /**
+ * One active employee's tax-profile completeness, for the editor that fills
+ * the gap `getStatus`'s `employee_tax_profiles` entry reports.
+ *
+ * The status endpoint could only ever say "12 of 295" — a count with no way to
+ * act on it. With 295 employees on production, finding the 283 without a
+ * profile by opening them one at a time is not a workflow, so the roster is
+ * filterable down to exactly the set that blocks readiness (MA-186).
+ */
+export interface TaxProfileRosterRow {
+  employeeId: UUID;
+  employeeNumber: string;
+  name: string;
+  locationName: string;
+  hasProfile: boolean;
+  ptkpCode: string | null;
+  npwp: string | null;
+}
+
+/**
  * M15 `payroll` — D-18/Amendment 1 statutory config wizard (CONTRACTS §4.15).
  * `bpjs_configs`/`pph21_ter_rates`/`pph21_ptkp`/`pph21_article17_brackets`/
  * `employee_tax_profiles` carry NO RLS (§1.14 "NONE" — migration 069's
@@ -77,6 +96,70 @@ export class StatutoryService {
       enabledBy: gate.enabledBy,
       missing,
       profileCoverage: { withProfile, total },
+    };
+  }
+
+  /**
+   * The active roster with each person's tax-profile state, filterable to the
+   * ones that are missing — see `TaxProfileRosterRow`.
+   *
+   * Scoped to `employment_status = 'active'` because that is exactly the
+   * population `getStatus`'s coverage check counts: a resigned employee
+   * without a profile does not block anything, and listing them would make the
+   * remaining work look larger than it is.
+   */
+  async listTaxProfiles(
+    client: PoolClient,
+    query: { profile: 'missing' | 'present' | 'all'; q?: string; page: number; pageSize: number },
+  ): Promise<{
+    rows: TaxProfileRosterRow[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
+    const params: unknown[] = [];
+    let where = `e.employment_status = 'active'`;
+    if (query.profile === 'missing') where += ' AND p.employee_id IS NULL';
+    if (query.profile === 'present') where += ' AND p.employee_id IS NOT NULL';
+    if (query.q) {
+      params.push(`%${query.q}%`);
+      where += ` AND (e.name ILIKE $${params.length} OR e.employee_number ILIKE $${params.length})`;
+    }
+
+    const from = `FROM employees e
+         JOIN locations l ON l.id = e.location_id
+         LEFT JOIN employee_tax_profiles p ON p.employee_id = e.id`;
+
+    const countRes = await client.query<{ count: string }>(
+      `SELECT COUNT(*) AS count ${from} WHERE ${where}`,
+      params,
+    );
+    const total = parseInt(countRes.rows[0]?.count ?? '0', 10);
+
+    params.push(query.pageSize, (query.page - 1) * query.pageSize);
+    const res = await client.query<Record<string, any>>(
+      `SELECT e.id, e.employee_number, e.name, l.name AS location_name,
+              (p.employee_id IS NOT NULL) AS has_profile, p.ptkp_code, p.npwp
+         ${from}
+        WHERE ${where}
+        ORDER BY e.name ASC
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    return {
+      rows: res.rows.map((r) => ({
+        employeeId: r.id,
+        employeeNumber: r.employee_number,
+        name: r.name,
+        locationName: r.location_name,
+        hasProfile: r.has_profile === true,
+        ptkpCode: r.ptkp_code ?? null,
+        npwp: r.npwp ?? null,
+      })),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
     };
   }
 

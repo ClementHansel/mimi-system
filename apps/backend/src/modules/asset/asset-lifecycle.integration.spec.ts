@@ -123,6 +123,152 @@ describe('asset lifecycle (integration, live Postgres)', () => {
     await closePool();
   });
 
+  /**
+   * MA-189 — `POST /assets/schedules/:scheduleId/job`.
+   *
+   * The Jatuh Tempo list shows every schedule due inside the chosen window
+   * (7-90 days), but `MaintenanceDueSweepService` only creates a schedule's
+   * job inside `reminder_days_before` and only when its 6-hour timer has
+   * fired — so a schedule legitimately appears there with `jobId: null`. The
+   * frontend filled that gap by calling `POST /assets/:id/jobs`, which can
+   * only ever produce a CORRECTIVE job (`@IsIn(['corrective'])`, by design:
+   * "scheduled jobs are scheduler-born"). Starting work on a PREVENTIVE
+   * schedule therefore minted a repair job with `schedule_id` NULL — wrong
+   * type, no link back, and indistinguishable in Tugas Maintenance from a
+   * genuine breakdown. Exactly what the client reported.
+   *
+   * `test/write-endpoint-inventory.spec.ts` is what forced this test to exist,
+   * and it was right to: I shipped the endpoint with frontend coverage only,
+   * and the two 500-on-every-call defects that guard was built for sat in
+   * precisely that state. The type and the link are the assertions that
+   * matter — they are the defect — and they live in raw SQL that a typecheck
+   * cannot see.
+   *
+   * Its own asset, not the shared `assetId`: the lifecycle chain above mutates
+   * that one through complete/verify, and a second schedule hanging off it
+   * would make the sweep's idempotency assertions ambiguous.
+   */
+  it('MA-189 — a due schedule materialises a SCHEDULED job linked to it, idempotently', async () => {
+    if (!dbAvailable) return;
+    const owner = fixtures.usersByRole[RoleKey.OWNER]!;
+    const ownerCtx = { role: RoleKey.OWNER, userId: owner, locationIds: [] };
+    const ownerJwt = {
+      sub: owner,
+      username: 'owner',
+      roleKey: RoleKey.OWNER,
+      locationIds: [] as string[],
+    };
+    const today = await serverToday();
+
+    let localAssetId: string | null = null;
+    try {
+      localAssetId = await createAsset(fixtures.outletId);
+
+      const schedule = await withRollbackAs(ownerCtx, (client) =>
+        schedulesService.create(
+          client,
+          owner,
+          fixtures.outletId,
+          localAssetId!,
+          {
+            name: 'Ganti Oli Kompresor (uji MA-189)',
+            intervalType: 'months',
+            intervalValue: 3,
+            nextDueAt: today,
+            reminderDaysBefore: 7,
+          },
+          ownerJwt,
+          null,
+        ),
+      );
+
+      // One mutating call per connection: `ensureDueJob` commits for real
+      // (`withWrite`), which ends the transaction `withRollbackAs` opened.
+      const first = await withRollbackAs(ownerCtx, (client) =>
+        schedulesService.ensureDueJob(
+          client,
+          schedule.id,
+          (id) => assetsService.getAssetLocationId(client, id),
+          ownerJwt,
+          null,
+          owner,
+        ),
+      );
+      expect(first.created).toBe(true);
+
+      // THE DEFECT, in one row: a preventive schedule's job must be
+      // `scheduled` and must carry `schedule_id`. The old path produced
+      // `corrective` with NULL.
+      const row = await withRollbackAs(ownerCtx, (client) =>
+        client.query<{
+          type: string;
+          schedule_id: string | null;
+          status: string;
+          due_date: unknown;
+        }>(`SELECT type, schedule_id, status, due_date FROM maintenance_jobs WHERE id = $1`, [
+          first.jobId,
+        ]),
+      );
+      expect(row.rows.length).toBe(1);
+      expect(row.rows[0]!.type, 'a maintenance schedule produced a repair job').toBe('scheduled');
+      expect(row.rows[0]!.schedule_id, 'the job lost its link back to the schedule').toBe(
+        schedule.id,
+      );
+      expect(row.rows[0]!.status).toBe('due');
+      // Dated from the schedule's own cycle, not "today" — same as the sweep.
+      expect(pgDateToIso(row.rows[0]!.due_date)).toBe(today);
+
+      // A second tap on "Mulai Kerjakan" must find that job, not open a
+      // second one for the same cycle.
+      const second = await withRollbackAs(ownerCtx, (client) =>
+        schedulesService.ensureDueJob(
+          client,
+          schedule.id,
+          (id) => assetsService.getAssetLocationId(client, id),
+          ownerJwt,
+          null,
+          owner,
+        ),
+      );
+      expect(second).toEqual({ jobId: first.jobId, created: false });
+
+      const count = await withRollbackAs(ownerCtx, (client) =>
+        client.query<{ count: string }>(
+          `SELECT COUNT(*) AS count FROM maintenance_jobs WHERE schedule_id = $1`,
+          [schedule.id],
+        ),
+      );
+      expect(count.rows[0]!.count).toBe('1');
+    } finally {
+      if (localAssetId) await deleteAsset(localAssetId);
+    }
+  });
+
+  it('MA-189 — refuses a schedule that does not exist', async () => {
+    if (!dbAvailable) return;
+    const owner = fixtures.usersByRole[RoleKey.OWNER]!;
+    const ownerCtx = { role: RoleKey.OWNER, userId: owner, locationIds: [] };
+    const ownerJwt = {
+      sub: owner,
+      username: 'owner',
+      roleKey: RoleKey.OWNER,
+      locationIds: [] as string[],
+    };
+
+    await expect(
+      withRollbackAs(ownerCtx, (client) =>
+        schedulesService.ensureDueJob(
+          client,
+          '00000000-0000-0000-0000-000000000000',
+          (id) => assetsService.getAssetLocationId(client, id),
+          ownerJwt,
+          null,
+          owner,
+        ),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ERR_NOT_FOUND' } });
+  });
+
   it('FR-PMS-01/FR-PMS-02/FR-PMS-03 — runs the full asset -> schedule -> due job -> complete -> verify chain', async () => {
     if (!dbAvailable || !assetId) return;
     const supervisor = fixtures.usersByRole[RoleKey.SUPERVISOR]!;

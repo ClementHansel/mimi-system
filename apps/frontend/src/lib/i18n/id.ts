@@ -3156,11 +3156,22 @@ export const id = {
       kontrak: 'Kontrak',
     },
     absen: {
+      title: 'Absen',
       noLocation: 'Akun Anda belum terhubung ke lokasi kerja manapun.',
       gettingLocation: 'Mengambil lokasi GPS…',
       geoUnavailable: 'Perangkat ini tidak mendukung GPS.',
       geoDenied: 'Izin lokasi ditolak — aktifkan GPS untuk absen.',
       refreshLocation: 'Perbarui Lokasi',
+      // MA-202: the retry button used to render only once a position had been
+      // obtained, so a denied permission left an error, a disabled clock-in
+      // button, and no way back.
+      retryLocation: 'Coba Ambil Lokasi Lagi',
+      // MA-201: attendance took `user.locations[0]` silently, so anyone covering
+      // more than one branch clocked in against whichever sorted first.
+      locationLabel: 'Lokasi Absen',
+      locationPlaceholder: 'Pilih outlet tempat Anda absen',
+      locationHint:
+        'Anda ditugaskan di lebih dari satu lokasi — pilih tempat Anda bekerja hari ini.',
       distanceUnknown: 'Jarak tidak dapat dihitung.',
       distanceValue: '{{distance}} m dari lokasi (radius {{radius}} m)',
       withinRadius: 'Dalam radius outlet',

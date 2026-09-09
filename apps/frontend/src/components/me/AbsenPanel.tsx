@@ -11,6 +11,7 @@ import {
   CardTitle,
   CardContent,
   PhotoCapture,
+  Select,
   Badge,
   StatusBadge,
   EmptyState,
@@ -43,8 +44,29 @@ import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 export function AbsenPanel() {
   const { t } = useI18n();
   const user = useSessionStore((s) => s.user);
-  const location = user?.locations[0] ?? null;
   const actor = useActorMeta();
+
+  /**
+   * WHICH OUTLET this clock-in belongs to.
+   *
+   * This was `user?.locations[0]` — the first of however many the person is
+   * assigned to, taken silently. A Supervisor Cabang covering three branches
+   * therefore clocked in against whichever one happened to sort first, with
+   * nothing on screen naming it and no way to change it (MA-201). The
+   * attendance row is the record of where someone actually worked, so guessing
+   * it is not a defensible default.
+   *
+   * One location: no choice to make, so no picker — it is shown as a plain
+   * label. More than one: an explicit pick, and clock-in stays disabled until
+   * it is made. That is deliberate friction. Defaulting to the first and merely
+   * DISPLAYING it would still let someone who never looks at the field record
+   * the wrong branch, which is the ambiguity this is meant to remove.
+   */
+  const assignedLocations = user?.locations ?? [];
+  const [selectedLocationId, setSelectedLocationId] = useState<string>(
+    assignedLocations.length === 1 ? (assignedLocations[0]?.id ?? '') : '',
+  );
+  const location = assignedLocations.find((l) => l.id === selectedLocationId) ?? null;
 
   const [runtime, setRuntime] = useState<LocalRuntime | null>(null);
   const [locationGeo, setLocationGeo] = useState<LocationGeo | null>(null);
@@ -71,7 +93,15 @@ export function AbsenPanel() {
   }, []);
 
   useEffect(() => {
-    if (!location) return;
+    // NOTHING PICKED YET IS A SETTLED STATE, NOT A LOADING ONE. This used to
+    // `return` while leaving `loading` true, which was harmless when `location`
+    // could never be null — and became a panel stuck on its spinner the moment a
+    // multi-branch user started with no selection, hiding the very picker that
+    // resolves it (MA-201).
+    if (!location) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     // Best-effort read: this GET is the online path (reads are never
     // queued, CONTRACTS-side there's nothing to reconcile), so it simply
@@ -166,7 +196,15 @@ export function AbsenPanel() {
     }
   }
 
-  if (!location) {
+  // NOT ASSIGNED ANYWHERE is the dead end. NOTHING PICKED YET is not.
+  //
+  // This read `if (!location)` and `location` is now the SELECTED branch, so a
+  // person covering several outlets — who deliberately starts with nothing
+  // selected — would have been sent straight to "no location" and never shown
+  // the picker that resolves it. Caught by the test for MA-201; worth keeping
+  // the distinction visible, because the two conditions read alike and mean
+  // opposite things.
+  if (assignedLocations.length === 0) {
     return <EmptyState title={t('me.absen.noLocation')} size="lg" />;
   }
 
@@ -174,7 +212,10 @@ export function AbsenPanel() {
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>{location.name}</CardTitle>
+          {/* The chosen branch, or the panel's own name until one is picked —
+              `location` is nullable now that a multi-branch user starts with
+              nothing selected. */}
+          <CardTitle>{location?.name ?? t('me.absen.title')}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {loading ? (
@@ -210,6 +251,28 @@ export function AbsenPanel() {
                 <p className="text-sm text-text-muted">{t('me.absen.doneToday')}</p>
               ) : (
                 <>
+                  {/* WHERE this clock-in is recorded. Named for everyone, and
+                      chosen by anyone assigned to more than one branch — see
+                      `selectedLocationId` for why it is not defaulted. */}
+                  {assignedLocations.length > 1 ? (
+                    <Select
+                      label={t('me.absen.locationLabel')}
+                      value={selectedLocationId}
+                      onValueChange={setSelectedLocationId}
+                      options={assignedLocations.map((l) => ({ value: l.id, label: l.name }))}
+                      placeholder={t('me.absen.locationPlaceholder')}
+                      hint={t('me.absen.locationHint')}
+                      required
+                    />
+                  ) : (
+                    location && (
+                      <p className="text-sm text-text-secondary">
+                        {t('me.absen.locationLabel')}:{' '}
+                        <span className="font-medium text-text-primary">{location.name}</span>
+                      </p>
+                    )
+                  )}
+
                   <div className="flex items-start gap-2 rounded-md border border-border-strong bg-surface-sunken p-3 text-sm">
                     <MapPin className="mt-0.5 size-4 flex-none text-text-muted" aria-hidden />
                     <div className="flex flex-col gap-1">
@@ -243,14 +306,22 @@ export function AbsenPanel() {
                           {t('me.absen.offlineGeofenceHint')}
                         </span>
                       )}
-                      {coords && (
+                      {/* AVAILABLE WHEN IT IS NEEDED. This was `{coords && …}`,
+                          so the retry button appeared only once a position had
+                          already been obtained — exactly when nobody needs it —
+                          and was absent when permission was denied or
+                          geolocation was unavailable. The user then saw an error,
+                          a disabled clock-in button, and no way back (MA-202).
+                          Rendered whenever the first attempt has settled either
+                          way. */}
+                      {(coords || geoError) && (
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={requestLocation}
                           className="w-fit"
                         >
-                          {t('me.absen.refreshLocation')}
+                          {t(geoError ? 'me.absen.retryLocation' : 'me.absen.refreshLocation')}
                         </Button>
                       )}
                     </div>
@@ -272,7 +343,7 @@ export function AbsenPanel() {
                       mode === 'in' ? <LogIn className="size-5" /> : <LogOut className="size-5" />
                     }
                     loading={busy}
-                    disabled={!coords || !selfie || !runtime || !actor}
+                    disabled={!location || !coords || !selfie || !runtime || !actor}
                     onClick={submit}
                   >
                     {t(mode === 'in' ? 'me.absen.checkInButton' : 'me.absen.checkOutButton')}

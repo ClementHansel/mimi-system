@@ -124,6 +124,28 @@ function batchOf(events: SyncEventEnvelope[]): SyncPushBatch {
 }
 
 /** Deletes exactly the rows this suite's REAL-INGEST test created, recomputing `stock_balances` from the remaining `stock_movements` for every key it touched — never a snapshot/restore (safe under concurrent activity from other agents on this shared dev database). */
+/**
+ * Document numbers nothing else can already be holding.
+ *
+ * These were hardcoded (LOCATIONCODE-SIMn-S1 for the shift, LOCATIONCODE-SIMn-1
+ * for the receipt), and that made the suite self-poisoning. Cleanup deletes by
+ * `shiftId`/`saleId` - fresh `randomUUID()`s every run - while the database
+ * enforces uniqueness on `pos_shifts.shift_number` and `sales.receipt_number`.
+ * Kill a run before its `finally` block (Ctrl+C, a crashed worker, a timeout)
+ * and the rows survive under ids no later run will ever reference again. Every
+ * subsequent run then collides on the NUMBER, the shift projector fails, and
+ * the sale fails behind it on the shift FK.
+ *
+ * One interrupted run broke this test permanently: BJM01-SIM1-S1 sat in the
+ * dev database from 2026-09-08 and made healthy code look broken for two days.
+ *
+ * Deriving each number from the same id cleanup already uses ties the two
+ * together, so a leftover row can never be in a later run's way.
+ */
+function uniqueDocNumber(locationCode: string, slot: string, id: string, suffix: string): string {
+  return `${locationCode}-${slot}-${id.slice(0, 8)}-${suffix}`;
+}
+
 async function cleanupRealIngestArtifacts(
   ownerPool: Pool,
   params: { originDeviceId: string; saleId: string; shiftId: string },
@@ -212,7 +234,7 @@ describe('PosSyncProjector — the domain-projection hook, real ingest, live dat
           locationId: fx.locationId,
           openingCash: '100000.00',
           openedAt: new Date().toISOString(),
-          shiftNumber: `${fx.locationCode}-SIM1-S1`,
+          shiftNumber: uniqueDocNumber(fx.locationCode, 'SIM1', shiftId, 'S1'),
         },
       });
       const saleEvent = mkEvent({
@@ -231,7 +253,7 @@ describe('PosSyncProjector — the domain-projection hook, real ingest, live dat
           lines: [{ productId: fx.productId, qty: '1.000', unitPrice: fx.productPrice }],
           // Bank transfer specifically — proves FR-ACCT-03's ladder survives the offline path.
           payments: [{ method: PaymentMethod.BANK_TRANSFER, amount: fx.productPrice }],
-          receiptNumber: `${fx.locationCode}-SIM1-1`,
+          receiptNumber: uniqueDocNumber(fx.locationCode, 'SIM1', saleId, '1'),
         },
       });
 
@@ -244,14 +266,18 @@ describe('PosSyncProjector — the domain-projection hook, real ingest, live dat
         [shiftId],
       );
       expect(shiftRow.rows[0]?.status).toBe('open');
-      expect(shiftRow.rows[0]?.shift_number).toBe(`${fx.locationCode}-SIM1-S1`);
+      expect(shiftRow.rows[0]?.shift_number).toBe(
+        uniqueDocNumber(fx.locationCode, 'SIM1', shiftId, 'S1'),
+      );
 
       const saleRow = await ownerPool.query(
         `SELECT id, status, receipt_number, client_id FROM sales WHERE id = $1`,
         [saleId],
       );
       expect(saleRow.rows[0]?.status).toBe('completed');
-      expect(saleRow.rows[0]?.receipt_number).toBe(`${fx.locationCode}-SIM1-1`);
+      expect(saleRow.rows[0]?.receipt_number).toBe(
+        uniqueDocNumber(fx.locationCode, 'SIM1', saleId, '1'),
+      );
       expect(saleRow.rows[0]?.client_id).toBe(saleClientId);
 
       const lineRows = await ownerPool.query(
@@ -333,7 +359,7 @@ describe('PosSyncProjector — direct-call guarantees (rolled back, no cleanup n
             locationId: fx.locationId,
             openingCash: '50000.00',
             openedAt: new Date().toISOString(),
-            shiftNumber: `${fx.locationCode}-SIM2-S1`,
+            shiftNumber: uniqueDocNumber(fx.locationCode, 'SIM2', shiftId, 'S1'),
           },
         });
         await svc.projector.project(client, shiftEvent, { isConflictLoser: false });
@@ -353,7 +379,7 @@ describe('PosSyncProjector — direct-call guarantees (rolled back, no cleanup n
             occurredAt: new Date().toISOString(),
             lines: [{ productId: fx.productId, qty: '1.000', unitPrice: fx.productPrice }],
             payments: [{ method: PaymentMethod.CASH, amount: fx.productPrice }],
-            receiptNumber: `${fx.locationCode}-SIM2-1`,
+            receiptNumber: uniqueDocNumber(fx.locationCode, 'SIM2', saleId, '1'),
           },
         });
 
@@ -413,7 +439,7 @@ describe('PosSyncProjector — direct-call guarantees (rolled back, no cleanup n
               locationId: fx.locationId,
               openingCash: '50000.00',
               openedAt: new Date().toISOString(),
-              shiftNumber: `${fx.locationCode}-SIM3-S1`,
+              shiftNumber: uniqueDocNumber(fx.locationCode, 'SIM3', shiftId, 'S1'),
             },
           }),
           { isConflictLoser: false },
@@ -456,7 +482,7 @@ describe('PosSyncProjector — direct-call guarantees (rolled back, no cleanup n
               occurredAt: new Date().toISOString(),
               lines: [{ productId: fx.productId, qty: '1.000', unitPrice: fx.productPrice }],
               payments: [{ method: PaymentMethod.CASH, amount: fx.productPrice }],
-              receiptNumber: `${fx.locationCode}-SIM3-1`,
+              receiptNumber: uniqueDocNumber(fx.locationCode, 'SIM3', saleId, '1'),
             },
           }),
           { isConflictLoser: false },
@@ -502,7 +528,7 @@ describe('PosSyncProjector — direct-call guarantees (rolled back, no cleanup n
               locationId: fx.locationId,
               openingCash: '50000.00',
               openedAt: new Date().toISOString(),
-              shiftNumber: `${fx.locationCode}-SIM4-S1`,
+              shiftNumber: uniqueDocNumber(fx.locationCode, 'SIM4', shiftId, 'S1'),
             },
           }),
           { isConflictLoser: false },
@@ -524,7 +550,7 @@ describe('PosSyncProjector — direct-call guarantees (rolled back, no cleanup n
               occurredAt: new Date().toISOString(),
               lines: [{ productId: fx.productId, qty: '1.000', unitPrice: fx.productPrice }],
               payments: [{ method: PaymentMethod.CASH, amount: fx.productPrice }],
-              receiptNumber: `${fx.locationCode}-SIM4-1`,
+              receiptNumber: uniqueDocNumber(fx.locationCode, 'SIM4', saleId, '1'),
             },
           }),
           { isConflictLoser: false },

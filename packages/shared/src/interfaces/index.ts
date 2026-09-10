@@ -1051,6 +1051,14 @@ export interface PaymentVerification {
   paidAt: ISODateTime | null;
   paidVia: string | null;
   locationName: string | null;
+  /**
+   * Migration 268 — a down payment (uang muka) raised against a purchase
+   * order before the goods arrived. Finance must be able to see this on the
+   * row: an advance debits 1130 rather than settling a payable, and it needs
+   * the Owner's approval at any amount, so it is NOT interchangeable with an
+   * ordinary supplier payment even though both read `refType: 'purchase_order'`.
+   */
+  isAdvance: boolean;
 }
 
 /** D-17 / SYNC-PROTOCOL §7.5 — the finance exception queue (`GET /api/accounting/exceptions`). */

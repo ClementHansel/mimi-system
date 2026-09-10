@@ -60,6 +60,26 @@ export class CreatePurchaseOrderDto {
   notes?: string;
 }
 
+/**
+ * Raises one payment voucher against a PO — a down payment before the goods
+ * ship, or an instalment after (migration 268).
+ *
+ * No `isAdvance` field on purpose: whether this is uang muka is decided by
+ * whether anything has been received yet, which the server knows and the
+ * client must not be able to assert. Letting the caller claim it would let a
+ * post-receipt payment route itself to 1130 Uang Muka and skip the payable
+ * entirely.
+ */
+export class CreatePoPaymentDto {
+  @IsString()
+  @Matches(MONEY_RE)
+  amount!: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 export class UpdatePurchaseOrderDto {
   @IsOptional()
   @IsDateString()

@@ -272,6 +272,19 @@ export function receivePurchaseOrder(
   return api.post<PurchaseOrderDetail>(`/purchasing/orders/${id}/receipts`, body);
 }
 
+/**
+ * Raises ONE payment voucher against a PO — the DP a supplier wants before it
+ * will process the order, or any instalment after (migration 268).
+ *
+ * Does not pay anything: it opens a `pending` voucher for Finance to attach
+ * proof to, verify and pay. Whether it counts as uang muka is decided by the
+ * SERVER from whether anything has been received yet — deliberately not a
+ * field here, since claiming it would route the money past the payable.
+ */
+export function payPurchaseOrder(id: string, body: { amount: string; notes?: string }) {
+  return api.post<PurchaseOrderDetail>(`/purchasing/orders/${id}/payments`, body);
+}
+
 export function cancelPurchaseOrder(id: string, body: { reason: string }) {
   return api.post<PurchaseOrderDetail>(`/purchasing/orders/${id}/cancel`, body);
 }

@@ -4,6 +4,7 @@ import { PurchaseOrdersPanel } from './PurchaseOrdersPanel';
 import { useSessionStore } from '@/stores/session-store';
 import { api } from '@/lib/api';
 import type { PurchaseOrderDetail, PurchaseOrderListRow } from './lib/types';
+import type { PoPaymentState } from '@/lib/shared-types';
 
 /**
  * FR-PO-01..04 — the draft -> pending_approval -> approved -> issued ->
@@ -46,6 +47,18 @@ function poRow(overrides: Partial<PurchaseOrderListRow> = {}): PurchaseOrderList
     total: '5000000.00',
     approval: null,
     paymentStatus: null,
+    // Migration 268 — the aggregate the drawer actually renders. Default is a
+    // wholly unpaid PO; the RLS-hidden case is `payment: null` and has its own
+    // test, as does a PO with a DP against it.
+    payment: {
+      state: 'unpaid' as PoPaymentState,
+      orderTotal: '5000000.00',
+      paidTotal: '0.00',
+      inFlightTotal: '0.00',
+      outstanding: '5000000.00',
+      advancePaid: '0.00',
+      advanceUnapplied: '0.00',
+    },
     ...overrides,
   };
 }
@@ -229,14 +242,19 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
     expect(screen.getByText('Manager Satu', { exact: false })).toBeInTheDocument();
   });
 
-  it('a null paymentStatus (e.g. the kepala_gudang RLS gap) renders as "unavailable", never a crash or a misleading unpaid badge', async () => {
+  it('a null payment summary (e.g. the kepala_gudang RLS gap) renders as "unavailable", never a crash or a misleading unpaid badge', async () => {
+    // Was written against `paymentStatus`; migration 268 moved the drawer onto
+    // the aggregate `payment` summary, and the invariant moved with it. The
+    // point has never been the field name: a role that cannot SEE the vouchers
+    // must not be shown a confident "Belum Dibayar" over an order that may be
+    // fully settled.
     setPermissions(['purchasing.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
       if (path.startsWith('/purchasing/orders/po-1'))
-        return Promise.resolve(poDetail({ paymentStatus: null }));
+        return Promise.resolve(poDetail({ payment: null }));
       if (path.startsWith('/purchasing/orders?'))
         return Promise.resolve({
-          rows: [poRow({ paymentStatus: null })],
+          rows: [poRow({ payment: null })],
           total: 1,
           page: 1,
           pageSize: 25,
@@ -249,21 +267,24 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
     fireEvent.click(await screen.findByText('PO-202608-00001'));
 
     expect(await screen.findByText('Status pembayaran belum tersedia')).toBeInTheDocument();
-    expect(screen.queryByText('Belum Terverifikasi')).not.toBeInTheDocument();
+    expect(screen.queryByText('Belum Dibayar')).not.toBeInTheDocument();
   });
 
-  it('a populated paymentStatus renders the real payment-status badge', async () => {
+  it('a payment summary the server omits entirely does not take the drawer down', async () => {
+    // A backend older than migration 268 sends no `payment` at all.
+    // `undefined.state` would throw inside render, and an exception in a
+    // drawer is the whole screen - the failure mode the app-level error
+    // boundary exists for, and one that should not be reachable from a field
+    // simply being absent.
     setPermissions(['purchasing.read']);
     vi.mocked(api.get).mockImplementation((path: string) => {
-      if (path.startsWith('/purchasing/orders/po-1'))
-        return Promise.resolve(poDetail({ paymentStatus: 'paid' }));
+      if (path.startsWith('/purchasing/orders/po-1')) {
+        const withoutPayment: Record<string, unknown> = { ...poDetail() };
+        delete withoutPayment.payment;
+        return Promise.resolve(withoutPayment);
+      }
       if (path.startsWith('/purchasing/orders?'))
-        return Promise.resolve({
-          rows: [poRow({ paymentStatus: 'paid' })],
-          total: 1,
-          page: 1,
-          pageSize: 25,
-        });
+        return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
       if (path.startsWith('/locations/')) return Promise.resolve([]);
       return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
     });
@@ -271,8 +292,144 @@ describe('PurchaseOrdersPanel — status ladder + D-20 price lock', () => {
     render(<PurchaseOrdersPanel />);
     fireEvent.click(await screen.findByText('PO-202608-00001'));
 
-    expect(await screen.findByText('Dibayar')).toBeInTheDocument();
+    expect(await screen.findByText('Status pembayaran belum tersedia')).toBeInTheDocument();
+  });
+
+  it('a fully paid order reads Lunas', async () => {
+    setPermissions(['purchasing.read']);
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path.startsWith('/purchasing/orders/po-1'))
+        return Promise.resolve(
+          poDetail({
+            payment: {
+              state: 'paid' as PoPaymentState,
+              orderTotal: '5000000.00',
+              paidTotal: '5000000.00',
+              inFlightTotal: '0.00',
+              outstanding: '0.00',
+              advancePaid: '0.00',
+              advanceUnapplied: '0.00',
+            },
+          }),
+        );
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/locations/')) return Promise.resolve([]);
+      return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
+    });
+
+    render(<PurchaseOrdersPanel />);
+    fireEvent.click(await screen.findByText('PO-202608-00001'));
+
+    expect(await screen.findByText('Lunas')).toBeInTheDocument();
     expect(screen.queryByText('Status pembayaran belum tersedia')).not.toBeInTheDocument();
+  });
+
+  it('a PO with a paid DP reads Dibayar Sebagian and shows what is still owed', async () => {
+    // The case a single voucher status could not express at all: a settled DP
+    // left the drawer reading "Dibayar" over an order 40% paid.
+    setPermissions(['purchasing.read', 'purchasing.po.create', 'supplier.price.read']);
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path.startsWith('/purchasing/orders/po-1'))
+        return Promise.resolve(
+          poDetail({
+            payment: {
+              state: 'partial' as PoPaymentState,
+              orderTotal: '5000000.00',
+              paidTotal: '2000000.00',
+              inFlightTotal: '0.00',
+              outstanding: '3000000.00',
+              advancePaid: '2000000.00',
+              advanceUnapplied: '2000000.00',
+            },
+          }),
+        );
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/locations/')) return Promise.resolve([]);
+      return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
+    });
+
+    render(<PurchaseOrdersPanel />);
+    fireEvent.click(await screen.findByText('PO-202608-00001'));
+
+    expect(await screen.findByText('Dibayar Sebagian')).toBeInTheDocument();
+    expect(screen.getByText('Sisa Belum Dibayar')).toBeInTheDocument();
+    // Money already out the door with nothing delivered against it.
+    expect(screen.getByText('Uang Muka Belum Diperhitungkan')).toBeInTheDocument();
+  });
+
+  it('offers the DP action on an issued PO and posts the amount to the payments endpoint', async () => {
+    setPermissions(['purchasing.read', 'purchasing.po.create', 'supplier.price.read']);
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path.startsWith('/purchasing/orders/po-1')) return Promise.resolve(poDetail());
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/locations/')) return Promise.resolve([]);
+      return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
+    });
+    vi.mocked(api.post).mockResolvedValue(poDetail());
+
+    render(<PurchaseOrdersPanel />);
+    fireEvent.click(await screen.findByText('PO-202608-00001'));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Catat Pembayaran / DP' }));
+    // Nothing received yet, so the form must say so before the user commits:
+    // this becomes uang muka, which needs the Owner at any amount, and that
+    // is not something they can undo from here.
+    expect(
+      await screen.findByText(
+        'Barang belum diterima, jadi ini dicatat sebagai UANG MUKA dan wajib disetujui Pemilik berapa pun nilainya.',
+      ),
+    ).toBeInTheDocument();
+
+    // MoneyInput only commits on BLUR (it keeps a digits-only draft while
+    // focused), so a bare `change` leaves the value null and the submit button
+    // disabled - which is exactly how this test first failed.
+    const amountInput = screen.getByLabelText(/Jumlah Dibayar/);
+    fireEvent.focus(amountInput);
+    fireEvent.change(amountInput, { target: { value: '2000000' } });
+    fireEvent.blur(amountInput);
+    fireEvent.click(screen.getByRole('button', { name: 'Ajukan' }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/purchasing/orders/po-1/payments',
+        expect.objectContaining({ amount: '2000000.00' }),
+      ),
+    );
+  });
+
+  it('hides the payment action once nothing is left to claim, so it cannot open a form that can only fail', async () => {
+    setPermissions(['purchasing.read', 'purchasing.po.create', 'supplier.price.read']);
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path.startsWith('/purchasing/orders/po-1'))
+        return Promise.resolve(
+          poDetail({
+            payment: {
+              state: 'partial' as PoPaymentState,
+              orderTotal: '5000000.00',
+              paidTotal: '2000000.00',
+              // The rest is already claimed by a voucher awaiting Finance.
+              // Raising another would ask the business to pay the order twice.
+              inFlightTotal: '3000000.00',
+              outstanding: '3000000.00',
+              advancePaid: '2000000.00',
+              advanceUnapplied: '2000000.00',
+            },
+          }),
+        );
+      if (path.startsWith('/purchasing/orders?'))
+        return Promise.resolve({ rows: [poRow()], total: 1, page: 1, pageSize: 25 });
+      if (path.startsWith('/locations/')) return Promise.resolve([]);
+      return Promise.resolve({ rows: [], total: 0, page: 1, pageSize: 25 });
+    });
+
+    render(<PurchaseOrdersPanel />);
+    fireEvent.click(await screen.findByText('PO-202608-00001'));
+
+    expect(await screen.findByText('Dibayar Sebagian')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Catat Pembayaran / DP' })).not.toBeInTheDocument();
   });
 
   it('never renders Setujui/Tolak on a pending_approval PO without purchasing.po.approve', async () => {

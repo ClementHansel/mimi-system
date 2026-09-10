@@ -62,6 +62,14 @@ export type StatusDomain =
   | 'shift'
   | 'sale'
   | 'payment'
+  /**
+   * Migration 268 — a PURCHASE ORDER's aggregate money position
+   * (unpaid/partial/paid), NOT one voucher's pending → verified → paid ladder.
+   * Separate from 'payment' because the two vocabularies collide on `paid`
+   * while meaning different things: 'payment'.paid is "this voucher is
+   * settled", 'poPayment'.paid is "the whole order is settled".
+   */
+  | 'poPayment'
   | 'voidRefund'
   | 'onlineOrder'
   | 'settlement'
@@ -117,6 +125,10 @@ const VOCAB: Record<string, { tone: Tone; icon: LucideIcon }> = {
   completed: { tone: 'success', icon: CheckCircle2 },
   done: { tone: 'success', icon: CheckCircle2 },
   paid: { tone: 'success', icon: CheckCircle2 },
+  // Migration 268's PoPaymentState. `paid` above is shared with the voucher
+  // vocabulary; these two are its own.
+  unpaid: { tone: 'neutral', icon: Circle },
+  partial: { tone: 'warning', icon: Clock },
   settled: { tone: 'success', icon: CheckCircle2 },
   closed: { tone: 'neutral', icon: Lock },
   converted: { tone: 'info', icon: ArrowRightCircle },

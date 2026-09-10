@@ -25,13 +25,17 @@ describe('posting-rule coverage — every journal event type has at least one ru
     }
   });
 
-  it('has exactly 12 JournalSystemEventType members after adding the three PV-paid postings', () => {
+  it('has exactly 14 JournalSystemEventType members after adding the PO advance postings', () => {
     // 9 → 12: SUPPLIER_PAYMENT, MAINTENANCE_PAYMENT and
     // EMPLOYEE_COMPENSATION_PAYMENT (migration 267). This assertion is the
     // reason the gap got closed in BOTH tables rather than only in the
     // migration — it failed the moment the enum members were added, which is
     // exactly its job.
-    expect(Object.values(JournalSystemEventType)).toHaveLength(12);
+    //
+    // 12 → 14: SUPPLIER_ADVANCE_PAYMENT and SUPPLIER_ADVANCE_OFFSET
+    // (migration 268, paying a PO before the goods arrive). It did its job a
+    // second time, the same way.
+    expect(Object.values(JournalSystemEventType)).toHaveLength(14);
   });
 });
 

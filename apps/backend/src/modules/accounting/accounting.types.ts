@@ -150,6 +150,8 @@ export interface PaymentVerificationRow {
   location_id: UUID | null;
   location_name: string | null;
   notes: string | null;
+  /** Migration 268 — raised before the obligation was accrued (uang muka to a supplier). Routes the journal to 1130 and the approval chain to `po_advance`. */
+  is_advance: boolean;
 }
 
 /**

@@ -17,9 +17,32 @@ export interface PoHeaderRow {
   tax: Money;
   total: Money;
   approval_id: string | null;
+  /**
+   * The FIRST voucher opened for this PO. Since migration 268 a PO may have
+   * MANY (a DP plus instalments), so this is no longer the answer to "is this
+   * PO paid" — `paid_total` below is. Kept because migration 220's RLS read
+   * path and every pre-268 row still reference it.
+   */
   payment_verification_id: string | null;
-  /** `payment_verifications.status` for `header.payment_verification_id` (LEFT JOIN — `null` until receiving creates one). CONTRACTS.md §4.11's `paymentStatus`. */
+  /** `payment_verifications.status` for `payment_verification_id` (LEFT JOIN — `null` until a voucher exists). CONTRACTS.md §4.11's `paymentStatus`. ONE voucher's ladder position, NOT the order's. */
   payment_status: string | null;
+  /** Σ of every PAID `ref_type='purchase_order'` voucher for this PO, advances included (migration 268). */
+  paid_total: Money;
+  /** Σ of vouchers still `pending` or `verified` — money committed but not yet out the door. */
+  in_flight_total: Money;
+  /** Σ of PAID `is_advance` vouchers. */
+  advance_paid: Money;
+  /** How much of `advance_paid` receiving has already reclassified into the payable. */
+  advance_applied: Money;
+  /**
+   * How many vouchers for this PO the CALLER can actually see. Zero while
+   * `payment_verification_id` is non-null means RLS hid them, not that none
+   * exist — the only way to tell "nothing to pay" apart from "not allowed to
+   * know", and the reason `payment_verification_id` is still selected. Without
+   * it the sums would read 0.00 for a kepala_gudang and the screen would show
+   * a confident "Belum Dibayar" over a PO that is fully settled.
+   */
+  voucher_count: number;
   created_by: string;
   cancel_reason: string | null;
   notes: string | null;
@@ -42,7 +65,34 @@ const HEADER_SELECT = `
   SELECT po.id, po.po_number, po.supplier_id, s.name AS supplier_name, po.location_id, po.pr_id, po.status,
          po.order_date, po.expected_date, po.payment_terms_days, po.subtotal, po.tax, po.total,
          po.approval_id, po.payment_verification_id, pv.status AS payment_status,
-         po.created_by, po.cancel_reason, po.notes
+         po.created_by, po.cancel_reason, po.notes, po.advance_applied,
+         -- Migration 268: a PO can hold many vouchers, so its payment position
+         -- is an AGGREGATE over ref_id, never one row's status. A correlated
+         -- subquery rather than a GROUP BY join so a PO with no vouchers still
+         -- returns its header (and reads 0.00, not NULL) — this SELECT backs
+         -- both the list and the detail, and a lost row would blank the list.
+         --
+         -- NO BACKTICKS IN THIS COMMENT: it lives inside a TEMPLATE LITERAL,
+         -- and one would close the string and break the build (the same trap
+         -- the payment-verifications SELECT documents).
+         --
+         -- The ::numeric(18,2) is not decoration. COALESCE(SUM(...), 0) over
+         -- zero rows returns the INTEGER literal, which pg hands back as the
+         -- string '0' — not '0.00'. Money here is a scale-2 string everywhere,
+         -- and an unscaled one flows into formatMoney and into the subMoney /
+         -- compareMoney helpers that parse by scale. Caught by
+         -- po-advance-payment.spec.ts on the very first unpaid PO.
+         COALESCE((SELECT SUM(x.amount) FROM payment_verifications x
+                    WHERE x.ref_type = 'purchase_order' AND x.ref_id = po.id
+                      AND x.status = 'paid')::numeric(18,2), 0.00) AS paid_total,
+         COALESCE((SELECT SUM(x.amount) FROM payment_verifications x
+                    WHERE x.ref_type = 'purchase_order' AND x.ref_id = po.id
+                      AND x.status IN ('pending','verified'))::numeric(18,2), 0.00) AS in_flight_total,
+         COALESCE((SELECT SUM(x.amount) FROM payment_verifications x
+                    WHERE x.ref_type = 'purchase_order' AND x.ref_id = po.id
+                      AND x.status = 'paid' AND x.is_advance)::numeric(18,2), 0.00) AS advance_paid,
+         (SELECT COUNT(*)::int FROM payment_verifications x
+            WHERE x.ref_type = 'purchase_order' AND x.ref_id = po.id) AS voucher_count
     FROM purchase_orders po
     JOIN suppliers s ON s.id = po.supplier_id
     LEFT JOIN payment_verifications pv ON pv.id = po.payment_verification_id
@@ -247,6 +297,20 @@ export class PurchaseOrderRepository {
       poId,
       pvId,
     ]);
+  }
+
+  /**
+   * Records that `amount` of already-paid uang muka has been reclassified into
+   * the payable by a receipt (migration 268). Additive rather than absolute so
+   * two receipts on the same PO cannot race to a stale total — the caller runs
+   * inside `receive`'s transaction, and the row is already locked by the
+   * status update in the same statement batch.
+   */
+  async applyAdvance(client: PoolClient, poId: string, amount: Money): Promise<void> {
+    await client.query(
+      `UPDATE purchase_orders SET advance_applied = advance_applied + $2 WHERE id = $1`,
+      [poId, amount],
+    );
   }
 
   async incrementLineReceived(client: PoolClient, lineId: string, qty: Qty): Promise<void> {

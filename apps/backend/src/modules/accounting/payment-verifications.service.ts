@@ -47,7 +47,7 @@ const PV_SELECT = `
          COALESCE(s.name, e.name) AS payee_name,
          pv.amount, pv.status, pv.proof_attachment_id, pv.reference_number,
          pv.submitted_by, pv.verified_by, pv.verified_at, pv.approval_id, pv.paid_by, pv.paid_at, pv.paid_via,
-         pv.rejection_reason, pv.location_id, l.name AS location_name, pv.notes
+         pv.rejection_reason, pv.location_id, l.name AS location_name, pv.notes, pv.is_advance
     FROM payment_verifications pv
     LEFT JOIN locations l ON l.id = pv.location_id
     LEFT JOIN suppliers s ON pv.payee_type = 'supplier' AND s.id = pv.payee_id
@@ -230,6 +230,13 @@ export class PaymentVerificationsService {
       locationId: UUID | null;
       submittedBy: UUID;
       notes?: string | null;
+      /**
+       * Migration 268 — a down payment raised BEFORE the payable exists.
+       * Changes the payment journal (1130 Uang Muka, not 2000 Hutang) AND the
+       * approval chain (owner at any amount). The DB CHECK
+       * `chk_pv_advance_needs_ref` refuses it without a purchase-order ref.
+       */
+      isAdvance?: boolean;
     },
   ): Promise<UUID> {
     const pvNumber = await this.nextPvNumber(client);
@@ -245,8 +252,8 @@ export class PaymentVerificationsService {
       async () =>
         (
           await client.query<{ id: UUID }>(
-            `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, submitted_by, location_id, notes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            `INSERT INTO payment_verifications (pv_number, ref_type, ref_id, payee_type, payee_id, amount, submitted_by, location_id, notes, is_advance)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
            RETURNING id`,
             [
               pvNumber,
@@ -258,6 +265,7 @@ export class PaymentVerificationsService {
               params.submittedBy,
               params.locationId,
               params.notes ?? null,
+              params.isAdvance ?? false,
             ],
           )
         ).rows[0]!.id,
@@ -393,7 +401,14 @@ export class PaymentVerificationsService {
   ): Promise<void> {
     if (row.approval_id) return;
     const submitted = await this.approvals.submit(client, {
-      documentType: ApprovalDocumentType.PAYMENT_VERIFICATION,
+      // Migration 268. An ordinary voucher escalates to the Owner only at Rp
+      // 20.000.000; an advance needs the Owner at ANY amount, because the cash
+      // leaves before anything is in hand. `approval_chain_steps` keys on
+      // `document_type` alone, so a second document type is the only place
+      // those two thresholds can coexist.
+      documentType: row.is_advance
+        ? ApprovalDocumentType.PO_ADVANCE
+        : ApprovalDocumentType.PAYMENT_VERIFICATION,
       documentId: row.id,
       requestedBy: actor.userId,
       requestedByRole: actor.roleKey as RoleKey,
@@ -651,6 +666,20 @@ export class PaymentVerificationsService {
         });
         return;
       case 'purchase_order':
+        if (row.is_advance) {
+          // Migration 268 — paid before the goods arrived, so there is no
+          // JGUD-01 payable to settle yet. Debiting 2000 here would push
+          // Hutang Supplier into a debit balance for the whole time the order
+          // is in transit; the money is an asset until then.
+          // `PurchaseOrderService.receive` posts the offset that turns it into
+          // settlement of the payable, once the payable exists.
+          await this.eventBus.publish('journal.action', {
+            ...base,
+            eventType: 'supplier_advance_payment',
+            context: { paidVia },
+          });
+          return;
+        }
         // Settles the 2000 Hutang Supplier leg JGUD-01 credited at PO receipt.
         // The old `default:` swallowed this on the stated grounds that "the
         // ORIGINATING module already posts" the entry — it posts the ACCRUAL,
@@ -842,6 +871,7 @@ function toPaymentVerification(row: PaymentVerificationRow): PaymentVerification
     paidAt: row.paid_at,
     paidVia: row.paid_via,
     locationName: row.location_name,
+    isAdvance: row.is_advance,
   };
 }
 

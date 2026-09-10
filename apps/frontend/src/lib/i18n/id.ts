@@ -884,6 +884,7 @@ export const id = {
       employee_loan: 'Pinjaman Karyawan',
       cash_variance_proposal: 'Selisih Kas',
       waste: 'Waste',
+      po_advance: 'Uang Muka Pembelian',
     },
   },
 
@@ -1022,6 +1023,14 @@ export const id = {
       verified: 'Terverifikasi',
       paid: 'Dibayar',
       rejected: 'Ditolak',
+    },
+    // Migration 268 — the ORDER's position, not one voucher's. Deliberately
+    // worded so it cannot be mistaken for `payment` above: "Lunas" is about
+    // the whole PO, "Dibayar" is about a single voucher.
+    poPayment: {
+      unpaid: 'Belum Dibayar',
+      partial: 'Dibayar Sebagian',
+      paid: 'Lunas',
     },
     voidRefund: { pending: 'Menunggu Persetujuan', approved: 'Disetujui', rejected: 'Ditolak' },
     onlineOrder: { completed: 'Selesai', cancelled: 'Dibatalkan' },
@@ -1747,6 +1756,24 @@ export const id = {
       approvalTitle: 'Riwayat Persetujuan',
       paymentStatusLabel: 'Status Pembayaran',
       paymentStatusUnavailable: 'Status pembayaran belum tersedia',
+      // Migration 268 — DP / termin.
+      paymentTitle: 'Pembayaran',
+      paymentPaid: 'Sudah Dibayar',
+      paymentInFlight: 'Diajukan (belum cair)',
+      paymentOutstanding: 'Sisa Belum Dibayar',
+      paymentAdvanceUnapplied: 'Uang Muka Belum Diperhitungkan',
+      payButton: 'Catat Pembayaran / DP',
+      payTitle: 'Ajukan Pembayaran PO',
+      payAmount: 'Jumlah Dibayar',
+      payNotes: 'Catatan',
+      payConfirm: 'Ajukan',
+      paySuccess: 'Pengajuan pembayaran dibuat — menunggu verifikasi Keuangan.',
+      payAdvanceHint:
+        'Barang belum diterima, jadi ini dicatat sebagai UANG MUKA dan wajib disetujui Pemilik berapa pun nilainya.',
+      payBalanceHint:
+        'Barang sudah diterima, jadi ini melunasi hutang supplier. Verifikasi Keuangan tetap diperlukan.',
+      payMaxHint: 'Maksimal {max} — sisa yang belum dibayar dan belum diajukan.',
+      payNoRoom: 'Seluruh nilai PO ini sudah dibayar atau sudah diajukan.',
     },
     priceHistory: {
       supplier: 'Supplier',

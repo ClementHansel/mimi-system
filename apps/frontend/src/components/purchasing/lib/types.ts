@@ -28,6 +28,7 @@ import type {
   ApprovalDetail,
   PaymentStatus,
 } from '@/lib/shared-types';
+import type { PoPaymentState } from '@/lib/shared-types';
 
 // ── shared lookups (kept local; see file-level doc for why not cross-module) ─
 
@@ -209,6 +210,31 @@ export interface PurchaseOrderListRow {
    * an RLS gap (file-level doc) — render it as "unavailable", never "unpaid".
    */
   paymentStatus: PaymentStatus | 'rejected' | null;
+  /**
+   * The ORDER's money position, aggregated over every voucher against it
+   * (migration 268). Since a PO can carry a DP plus instalments,
+   * `paymentStatus` above — one voucher's rung on the pending → verified →
+   * paid ladder — cannot answer "is this order paid": a settled DP leaves it
+   * reading `paid` over an order barely touched.
+   *
+   * `null` means the same thing it does there: the vouchers are not visible to
+   * this role. Render "belum tersedia", never a confident "Belum Dibayar".
+   */
+  payment: PoPaymentSummary | null;
+}
+
+/** Transcribed from `PoPaymentSummary` in `purchase-order.service.ts`, not guessed. All absolute amounts. */
+export interface PoPaymentSummary {
+  state: PoPaymentState;
+  orderTotal: Money;
+  paidTotal: Money;
+  /** Vouchers raised but not yet paid — money committed, not yet gone. */
+  inFlightTotal: Money;
+  /** `orderTotal - paidTotal`, floored at zero. */
+  outstanding: Money;
+  advancePaid: Money;
+  /** Paid uang muka that receiving has not yet offset against the payable. */
+  advanceUnapplied: Money;
 }
 
 export interface PurchaseOrderLine {

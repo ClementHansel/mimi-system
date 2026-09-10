@@ -5,6 +5,7 @@ import type { RequestWithDbContext } from '../../../common/guards/rls-context.gu
 import {
   ApprovePurchaseOrderDto,
   CancelPurchaseOrderDto,
+  CreatePoPaymentDto,
   CreatePoReceiptDto,
   CreatePurchaseOrderDto,
   ListPurchaseOrderQueryDto,
@@ -98,6 +99,24 @@ export class PurchaseOrderController {
     @Body() dto: CreatePoReceiptDto,
   ) {
     return this.service.receive(req.dbClient!, this.actor(req), id, dto);
+  }
+
+  /**
+   * Gated on `purchasing.po.create`, not a payment permission: this only ASKS
+   * for money by opening a `pending` voucher. Finance still has to attach
+   * proof, verify and pay it, and an advance additionally needs the Owner at
+   * any amount. The person who placed the order is the one who knows the
+   * supplier wants a DP.
+   */
+  @Post(':id/payments')
+  @RequirePermission('purchasing.po.create')
+  @Audited({ entityType: 'purchase_order', action: 'purchasing.po.create' })
+  payAdvance(
+    @Req() req: RequestWithDbContext,
+    @Param('id') id: string,
+    @Body() dto: CreatePoPaymentDto,
+  ) {
+    return this.service.payAdvance(req.dbClient!, this.actor(req), id, dto);
   }
 
   @Post(':id/cancel')

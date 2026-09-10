@@ -153,6 +153,10 @@ describe('property: every posting-rule resolver produces a balanced entry', () =
     'supplier_payment',
     'maintenance_payment',
     'employee_compensation_payment',
+    // Migration 268. `supplier_advance_offset` is deliberately NOT here: it
+    // moves no cash and takes no paidVia, so feeding it this generator would
+    // assert a property it does not have. It gets its own test below.
+    'supplier_advance_payment',
   ];
 
   it.each(paidViaEventTypes)('%s balances for every paidVia (and for none)', (eventType) => {
@@ -193,6 +197,40 @@ describe('property: every posting-rule resolver produces a balanced entry', () =
     })!;
     expect(accrual[0]!.credit).toBe('2000');
     expect(payment[0]!.debit).toBe('2000');
+  });
+
+  it('a PO advance debits 1130, never 2000 — the payable does not exist yet', () => {
+    // The reason SUPPLIER_PAYMENT could not simply be reused for a down
+    // payment. `gudang_purchase` is what CREATES the 2000 credit, and it has
+    // not run when a DP is paid; debiting 2000 here would drive Hutang
+    // Supplier to a debit balance for the whole time the order is in transit.
+    const advance = resolvePureLegs('supplier_advance_payment', '5000000.00', {
+      paidVia: 'bank_transfer',
+    })!;
+    expect(advance[0]!.debit).toBe('1130');
+    expect(advance[0]!.debit).not.toBe('2000');
+  });
+
+  it('the advance offset turns 1130 into the 2000 the receipt accrued, moving no cash', () => {
+    // Dr 2000 / Cr 1130. Paired with the accrual, a fully prepaid and fully
+    // received PO leaves 2000 and 1130 both flat: the receipt credits 2000,
+    // this debits it back, the advance debited 1130 and this credits it back.
+    const accrual = resolvePureLegs('gudang_purchase', '5000000.00', {})!;
+    const offset = resolvePureLegs('supplier_advance_offset', '5000000.00', {})!;
+    expect(accrual[0]!.credit).toBe('2000');
+    expect(offset[0]!.debit).toBe('2000');
+    expect(offset[0]!.credit).toBe('1130');
+    // No cash account on either leg — this is a reclassification, not a payment.
+    expect([offset[0]!.debit, offset[0]!.credit]).not.toContain('1020');
+    expect([offset[0]!.debit, offset[0]!.credit]).not.toContain('1000');
+  });
+
+  it('supplier_advance_offset balances regardless of a stray paidVia', () => {
+    fc.assert(
+      fc.property(money, fc.constantFrom(undefined, 'cash', 'bank_transfer', 'qris'), (amount, paidVia) =>
+        assertBalances('supplier_advance_offset', amount, { paidVia }),
+      ),
+    );
   });
 
   it('offline_auth_rejected (X7) balances for both refund/void and waste sources', () => {

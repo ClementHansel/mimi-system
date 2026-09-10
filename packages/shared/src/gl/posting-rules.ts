@@ -105,6 +105,16 @@ export const POSTING_RULES: readonly PostingRule[] = [
   { eventType: JournalSystemEventType.EMPLOYEE_COMPENSATION_PAYMENT, ruleSeq: 1, condition: { paidVia: 'bank_transfer' }, debitAccountCode: '6000', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'insentif / THR — paid outside a payroll run, so no X1 accrual against 2100 exists to settle' },
   { eventType: JournalSystemEventType.EMPLOYEE_COMPENSATION_PAYMENT, ruleSeq: 2, condition: { paidVia: 'cash' }, debitAccountCode: '6000', creditAccountCode: '1000', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid in cash' },
   { eventType: JournalSystemEventType.EMPLOYEE_COMPENSATION_PAYMENT, ruleSeq: 3, condition: { paidVia: 'qris' }, debitAccountCode: '6000', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid by QRIS transfer' },
+  // Migration 268 — a PO paid before the goods arrive. 1130, never 2000: the
+  // JGUD-01 payable does not exist yet, so debiting it would drive Hutang
+  // Supplier to a debit balance for the whole time the order is in transit.
+  { eventType: JournalSystemEventType.SUPPLIER_ADVANCE_PAYMENT, ruleSeq: 1, condition: { paidVia: 'bank_transfer' }, debitAccountCode: '1130', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'uang muka pembelian — an asset (a claim on undelivered goods) until the receipt offsets it' },
+  { eventType: JournalSystemEventType.SUPPLIER_ADVANCE_PAYMENT, ruleSeq: 2, condition: { paidVia: 'cash' }, debitAccountCode: '1130', creditAccountCode: '1000', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid from outlet cash' },
+  { eventType: JournalSystemEventType.SUPPLIER_ADVANCE_PAYMENT, ruleSeq: 3, condition: { paidVia: 'qris' }, debitAccountCode: '1130', creditAccountCode: '1020', amountSource: 'pv.amount', note: 'as ruleSeq 1, paid by QRIS transfer' },
+  // No paidVia split: this leg moves no cash. Posted per RECEIPT for
+  // min(nilai penerimaan, sisa uang muka), so a partial delivery only consumes
+  // the part of the DP it has earned.
+  { eventType: JournalSystemEventType.SUPPLIER_ADVANCE_OFFSET, ruleSeq: 1, condition: null, debitAccountCode: '2000', creditAccountCode: '1130', amountSource: 'min(receipt value, unapplied advance)', note: 'the moment a down payment stops being a claim on undelivered goods and becomes settlement of the payable the receipt just created' },
 ];
 
 export function postingRulesFor(

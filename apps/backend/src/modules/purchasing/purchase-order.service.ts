@@ -8,18 +8,26 @@ import type { PoolClient } from 'pg';
 import {
   addMoney,
   ApprovalDocumentType,
+  clampMoneyToZero,
+  compareMoney,
   compareQty,
   ERR_CONFLICT,
   ERR_NOT_FOUND,
   ERR_PHOTO_REQUIRED,
   ERR_VALIDATION,
   ERR_VARIANCE_REASON_REQUIRED,
+  isNegativeMoney,
   isNegativeQty,
+  isZeroMoney,
   isZeroQty,
   JournalEventType,
+  JournalSystemEventType,
   MovementType,
+  minMoney,
   mulMoneyByQty,
+  PoPaymentState,
   PurchaseOrderStatus,
+  subMoney,
   sumMoney,
   ZERO_MONEY,
   type ApprovalDetail,
@@ -37,6 +45,7 @@ import { StockLedgerService } from '../../kernel/stock-ledger/stock-ledger.servi
 import { PaymentVerificationsService } from '../accounting/payment-verifications.service';
 import { withWrite } from './db-tx';
 import type {
+  CreatePoPaymentDto,
   CreatePoReceiptDto,
   CreatePurchaseOrderDto,
   ListPurchaseOrderQueryDto,
@@ -81,6 +90,35 @@ export interface PurchaseOrderListRow {
    * `packages/shared/src/interfaces/index.ts`.
    */
   paymentStatus: PaymentStatus | 'rejected' | null;
+  /**
+   * Migration 268 — how much of THIS ORDER is paid, aggregated over every
+   * voucher pointing at it. `paymentStatus` above describes a single voucher's
+   * ladder position and cannot answer the question once a PO has a DP plus
+   * instalments: a paid DP and an untouched balance leaves the first voucher
+   * reading `paid` over an order that is nowhere near settled.
+   *
+   * `null` carries the same meaning it does on `paymentStatus`: the caller is
+   * not allowed to see this PO's vouchers, which is NOT the same as there
+   * being none. Rendering it as "Belum Dibayar" would state a falsehood.
+   */
+  payment: PoPaymentSummary | null;
+}
+
+/** The money position of one purchase order (migration 268). All fields are absolute, never deltas. */
+export interface PoPaymentSummary {
+  state: PoPaymentState;
+  /** The order's own total — what `paidTotal` is measured against. */
+  orderTotal: Money;
+  /** Σ of vouchers that reached `paid`, advances included. */
+  paidTotal: Money;
+  /** Σ of vouchers still `pending`/`verified`. Money committed, not yet gone. */
+  inFlightTotal: Money;
+  /** `orderTotal - paidTotal`, floored at zero — what may still be raised as a new voucher. */
+  outstanding: Money;
+  /** Σ of PAID down payments. */
+  advancePaid: Money;
+  /** The part of `advancePaid` that receiving has NOT yet reclassified into the payable. */
+  advanceUnapplied: Money;
 }
 
 export interface PurchaseOrderDetail extends PurchaseOrderListRow {
@@ -374,24 +412,112 @@ export class PurchaseOrderService {
         message: `PO ${id} is '${header.status}', not 'received'`,
       });
     }
-    if (!header.payment_verification_id) {
-      throw new BadRequestException({
-        code: ERR_VALIDATION,
-        message: `PO ${id} has no payment verification yet`,
-      });
-    }
-    const pvRes = await client.query<{ status: string }>(
-      `SELECT status FROM payment_verifications WHERE id = $1`,
-      [header.payment_verification_id],
-    );
-    if (pvRes.rows[0]?.status !== 'paid') {
-      throw new ConflictException({
-        code: ERR_CONFLICT,
-        message: `PO ${id}'s payment verification is not 'paid' yet`,
-      });
-    }
+    // NO payment gate (owner-decided 2026-09-10). Closing used to require the
+    // single linked voucher to read 'paid', which under instalment terms held
+    // a fully-received PO open for as long as the last termin took — the
+    // warehouse's record of "these goods are done" hostage to Finance's
+    // calendar. Any unpaid balance stays visible and collectable where it
+    // belongs: as 2000 Hutang Supplier, and as `payment.outstanding` on this
+    // PO, which `close` does not touch. A closed PO can still be paid.
     return withWrite(client, async () => {
       await this.repo.setStatus(client, id, PurchaseOrderStatus.CLOSED);
+      return this.getDetail(client, id);
+    });
+  }
+
+  /**
+   * Raises a voucher against a PO for `amount` — the down payment suppliers
+   * demand before they will process the order, and every instalment after it
+   * (migration 268).
+   *
+   * Only from `issued` onward (owner-decided 2026-09-10): an approved-but-
+   * unissued PO has not actually been placed with anyone, and money must not
+   * leave for an order the supplier has never seen. Cancelled/closed are
+   * excluded for the obvious reason; `received` is NOT — the last instalment
+   * of a fully-delivered order is the most ordinary case there is.
+   *
+   * The voucher is an ADVANCE exactly when nothing has been received yet, and
+   * that flag is what routes it to 1130 Uang Muka instead of 2000 Hutang and
+   * to the Owner-at-any-amount approval chain. Once goods are in, the payable
+   * exists and an ordinary `supplier_payment` settles it.
+   *
+   * This does NOT pay anything. It creates a `pending` voucher that Finance
+   * still has to attach proof to, verify, and pay — the same ladder every
+   * other payment climbs. Purchasing may ask for money; only Finance moves it.
+   */
+  async payAdvance(
+    client: PoolClient,
+    actor: ActorContext,
+    id: UUID,
+    dto: CreatePoPaymentDto,
+  ): Promise<PurchaseOrderDetail> {
+    const header = await this.requireHeader(client, id);
+    const payable: string[] = [
+      PurchaseOrderStatus.ISSUED,
+      PurchaseOrderStatus.PARTIALLY_RECEIVED,
+      PurchaseOrderStatus.RECEIVED,
+      PurchaseOrderStatus.CLOSED,
+    ];
+    if (!payable.includes(header.status)) {
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id} is '${header.status}' — a PO can only be paid once it is issued to the supplier`,
+      });
+    }
+
+    const summary = summarisePayment(header);
+    if (!summary) {
+      // Cannot see the existing vouchers, so cannot know what is still owed —
+      // and raising a voucher blind is how the PO gets paid twice.
+      throw new ConflictException({
+        code: ERR_CONFLICT,
+        message: `PO ${id}'s payment history is not visible to this role`,
+      });
+    }
+
+    if (isNegativeMoney(dto.amount) || isZeroMoney(dto.amount)) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'amount must be greater than zero',
+      });
+    }
+    // Guarded against the COMMITTED total, in-flight vouchers included: two
+    // instalments queued at 60% each must not both be raisable just because
+    // neither has been paid yet.
+    const room = clampMoneyToZero(
+      subMoney(subMoney(header.total, summary.paidTotal), summary.inFlightTotal),
+    );
+    if (compareMoney(dto.amount, room) > 0) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: `amount ${dto.amount} exceeds the ${room} still unpaid and unclaimed on PO ${header.po_number}`,
+      });
+    }
+
+    const isAdvance = header.status === PurchaseOrderStatus.ISSUED;
+
+    return withWrite(client, async () => {
+      const pvId = await this.payments.createSystemVerification(
+        client,
+        { role: actor.roleKey, userId: actor.userId, locationIds: actor.locationScope ?? [] },
+        {
+          refType: 'purchase_order',
+          refId: id,
+          payeeType: 'supplier',
+          payeeId: header.supplier_id,
+          amount: dto.amount,
+          locationId: header.location_id,
+          submittedBy: actor.userId,
+          notes: dto.notes ?? `PO ${header.po_number}`,
+          isAdvance,
+        },
+      );
+      // Only ever the FIRST voucher, so the pre-268 read paths (and migration
+      // 220's RLS discriminator) keep pointing somewhere real. Later vouchers
+      // are found through `ref_id`.
+      if (!header.payment_verification_id) {
+        await this.repo.setPaymentVerificationId(client, id, pvId);
+      }
       return this.getDetail(client, id);
     });
   }
@@ -538,22 +664,62 @@ export class PurchaseOrderService {
         fullyReceived ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED,
       );
 
-      if (!header.payment_verification_id) {
-        const pvId = await this.payments.createSystemVerification(
-          client,
-          { role: actor.roleKey, userId: actor.userId, locationIds: actor.locationScope ?? [] },
-          {
-            refType: 'purchase_order',
-            refId: id,
-            payeeType: 'supplier',
-            payeeId: header.supplier_id,
-            amount: header.total,
+      // ── What this receipt owes, and what a down payment already covers ──
+      //
+      // Two things were wrong here before migration 268, and they compound:
+      //
+      //   1. The voucher was raised for `header.total` — the WHOLE PO — on the
+      //      first receipt. JGUD-01 above credits 2000 Hutang Supplier for
+      //      THIS RECEIPT only, so a PO delivered in two halves asked Finance
+      //      to pay 100% against a 50% payable, and paying it drove Hutang
+      //      Supplier negative by the difference.
+      //   2. `if (!header.payment_verification_id)` made it write-once, so the
+      //      second half of that same PO never became payable at all.
+      //
+      // Both are replaced by: each receipt raises a voucher for exactly what
+      // that receipt accrued, less whatever paid uang muka is still sitting
+      // unapplied in 1130. The advance is consumed first and only up to what
+      // this receipt earned, which is what keeps a DP honest across partial
+      // deliveries.
+      const summary = summarisePayment(header);
+      if (receiptTotal !== ZERO_MONEY && receiptTotal !== '0.00' && summary) {
+        const offset = minMoney(receiptTotal, summary.advanceUnapplied);
+        if (!isZeroMoney(offset)) {
+          await this.repo.applyAdvance(client, id, offset);
+          // Dr 2000 / Cr 1130 — no cash moves. The down payment stops being a
+          // claim on undelivered goods and becomes settlement of the payable
+          // the JGUD-01 entry above just created.
+          await this.eventBus.publish('journal.action', {
+            eventType: JournalSystemEventType.SUPPLIER_ADVANCE_OFFSET,
+            documentType: 'po_receipt',
+            documentId: receiptId,
             locationId: header.location_id,
-            submittedBy: actor.userId,
-            notes: `PO ${header.po_number}`,
-          },
-        );
-        await this.repo.setPaymentVerificationId(client, id, pvId);
+            amount: offset,
+            context: {},
+            occurredAt: toWitaOccurredAt(),
+          });
+        }
+
+        const stillOwed = subMoney(receiptTotal, offset);
+        if (!isZeroMoney(stillOwed)) {
+          const pvId = await this.payments.createSystemVerification(
+            client,
+            { role: actor.roleKey, userId: actor.userId, locationIds: actor.locationScope ?? [] },
+            {
+              refType: 'purchase_order',
+              refId: id,
+              payeeType: 'supplier',
+              payeeId: header.supplier_id,
+              amount: stillOwed,
+              locationId: header.location_id,
+              submittedBy: actor.userId,
+              notes: `PO ${header.po_number} — ${receiptNumber}`,
+            },
+          );
+          if (!header.payment_verification_id) {
+            await this.repo.setPaymentVerificationId(client, id, pvId);
+          }
+        }
       }
 
       for (const attachmentId of dto.photoAttachmentIds) {
@@ -606,6 +772,7 @@ export class PurchaseOrderService {
       total: row.total,
       approval: null, // see field doc comment — real value populated only by `toDetail`.
       paymentStatus: (row.payment_status as PaymentStatus | 'rejected' | null) ?? null,
+      payment: summarisePayment(row),
     };
   }
 
@@ -685,4 +852,40 @@ export class PurchaseOrderService {
 function subMoneyLikeQty(a: Qty, b: Qty): Qty {
   const diff = Number(a) - Number(b);
   return (diff > 0 ? diff : 0).toFixed(3) as Qty;
+}
+
+/**
+ * The PO's money position, aggregated over every voucher pointing at it
+ * (migration 268).
+ *
+ * Returns `null` — "not available" rather than "nothing paid" — when the PO
+ * carries a `payment_verification_id` but the caller can see no vouchers.
+ * That combination can only mean RLS filtered them out (migration 220 grants
+ * fulfilment roles a narrow location-scoped read; other roles get none), and
+ * the sums would otherwise read 0.00 and render as a confident "Belum Dibayar"
+ * over an order that may be fully settled. `PurchaseOrdersPanel` already has
+ * the "belum tersedia" branch and a test guarding it; this keeps feeding it.
+ */
+function summarisePayment(row: PoHeaderRow): PoPaymentSummary | null {
+  if (row.payment_verification_id && row.voucher_count === 0) return null;
+
+  const paidTotal = row.paid_total;
+  const outstanding = clampMoneyToZero(subMoney(row.total, paidTotal));
+  const state = isZeroMoney(paidTotal)
+    ? PoPaymentState.UNPAID
+    : compareMoney(paidTotal, row.total) >= 0
+      ? PoPaymentState.PAID
+      : PoPaymentState.PARTIAL;
+
+  return {
+    state,
+    orderTotal: row.total,
+    paidTotal,
+    inFlightTotal: row.in_flight_total,
+    outstanding,
+    advancePaid: row.advance_paid,
+    // Floored: `advance_applied` should never exceed `advance_paid`, but a
+    // negative here would silently become an extra offset at the next receipt.
+    advanceUnapplied: clampMoneyToZero(subMoney(row.advance_paid, row.advance_applied)),
+  };
 }

@@ -97,6 +97,10 @@ export const DEFAULT_APPROVAL_MODES: Readonly<Record<ApprovalDocumentType, Appro
   [ApprovalDocumentType.WASTE]: ApprovalMode.MANUAL,
   [ApprovalDocumentType.PAYROLL_RUN]: ApprovalMode.MANUAL,
   [ApprovalDocumentType.PAYMENT_VERIFICATION]: ApprovalMode.MANUAL,
+  // Migration 268. MANUAL like the rest, but note this one has no threshold
+  // to fall below: `approval_chain_steps` seeds `po_advance` step 1 = owner
+  // with a NULL `min_amount`, so every down payment reaches the Owner.
+  [ApprovalDocumentType.PO_ADVANCE]: ApprovalMode.MANUAL,
   [ApprovalDocumentType.LEAVE_REQUEST]: ApprovalMode.MANUAL,
   [ApprovalDocumentType.EMPLOYEE_LOAN]: ApprovalMode.MANUAL,
   [ApprovalDocumentType.CASH_VARIANCE_PROPOSAL]: ApprovalMode.MANUAL,

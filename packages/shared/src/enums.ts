@@ -385,6 +385,19 @@ export enum ApprovalDocumentType {
   CASH_VARIANCE_PROPOSAL = 'cash_variance_proposal',
   /** Added per architect follow-up to the W1-B report's finding #2 (§5.10 waste chain had no enum member); W1-C adds the matching DB CHECK constraint value. */
   WASTE = 'waste',
+  /**
+   * A down payment to a supplier, raised against a purchase order before the
+   * goods arrive (migration 268). SEPARATE from PAYMENT_VERIFICATION because
+   * the two route differently: an ordinary voucher escalates to the Owner only
+   * at Rp 20.000.000, while an advance needs the Owner at ANY amount
+   * (owner-decided 2026-09-10 — the cash leaves before anything is in hand, so
+   * the size of the payment is not what makes it risky).
+   *
+   * `approval_chain_steps` keys on `document_type` alone with no sub-
+   * discriminator, so a second document type is the only way to give the same
+   * table two different thresholds for the same underlying row.
+   */
+  PO_ADVANCE = 'po_advance',
 }
 
 /** D-17, SYNC-PROTOCOL §7.4 — the three-valued outcome of re-verifying an offline approval. */
@@ -683,6 +696,49 @@ export enum JournalSystemEventType {
    * which of the two it was.
    */
   EMPLOYEE_COMPENSATION_PAYMENT = 'employee_compensation_payment',
+  /**
+   * Dr 1130 Uang Muka Pembelian / Cr 1020|1000 when an `is_advance` PV against
+   * a purchase order reaches `paid` (migration 268).
+   *
+   * SUPPLIER_PAYMENT cannot be reused for a down payment: it debits 2000
+   * Hutang Supplier, and before the goods arrive JGUD-01 has not credited that
+   * payable yet, so the entry would drive Hutang Supplier to a debit balance
+   * and overstate what the business still owes. The money is an ASSET while it
+   * sits with the supplier — a claim on goods not yet delivered — which is
+   * what 1130 holds until SUPPLIER_ADVANCE_OFFSET clears it.
+   */
+  SUPPLIER_ADVANCE_PAYMENT = 'supplier_advance_payment',
+  /**
+   * Dr 2000 Hutang Supplier / Cr 1130 Uang Muka Pembelian, posted by
+   * `PurchaseOrderService.receive` for `min(nilai penerimaan, sisa uang muka)`.
+   *
+   * Moves no cash. It is the moment a down payment stops being a claim on
+   * undelivered goods and becomes settlement of the payable the receipt just
+   * created, which is why it has no `paidVia` split. Posting it per RECEIPT
+   * rather than per PO is what keeps a partially-received PO honest: an
+   * advance is only consumed by the portion of the order it has actually
+   * earned.
+   */
+  SUPPLIER_ADVANCE_OFFSET = 'supplier_advance_offset',
+}
+
+/**
+ * How much of a purchase order has actually been PAID, aggregated over every
+ * `ref_type='purchase_order'` voucher pointing at it (migration 268).
+ *
+ * Distinct from `PaymentVerification.status`, which describes ONE voucher's
+ * trip through pending → verified → paid. A PO with a paid DP and an
+ * outstanding balance has no single voucher status that tells the truth, which
+ * is exactly why the PO detail used to show a lone voucher's state and call it
+ * the order's payment status.
+ */
+export enum PoPaymentState {
+  /** No voucher against this PO has reached `paid`. In-flight vouchers may still exist. */
+  UNPAID = 'unpaid',
+  /** Some money has landed, but less than the PO total — a DP, or a part-settled instalment plan. */
+  PARTIAL = 'partial',
+  /** Paid vouchers sum to at least the PO total. */
+  PAID = 'paid',
 }
 
 export enum PaymentVerificationRefType {

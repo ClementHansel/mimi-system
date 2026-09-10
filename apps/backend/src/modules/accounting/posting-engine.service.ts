@@ -167,6 +167,8 @@ const resolveEventTypes = new Set([
   'supplier_payment',
   'maintenance_payment',
   'employee_compensation_payment',
+  'supplier_advance_payment',
+  'supplier_advance_offset',
 ]);
 
 /**
@@ -310,6 +312,21 @@ export function resolvePureLegs(
       // Insentif / THR: paid outside a payroll run, so there is no X1 accrual
       // against 2100 Hutang Gaji to settle — 6000 Beban Gaji direct.
       return [{ debit: '6000', credit: creditCashAccount(ctx), amount }];
+
+    // ── PO paid before the goods arrive (migration 268) ───────────────────
+    case 'supplier_advance_payment':
+      // NOT 2000: JGUD-01 has not credited the payable yet, so debiting it
+      // here would push Hutang Supplier into a debit balance for as long as
+      // the goods are in transit. Until the receipt, the money is a claim on
+      // the supplier — an asset — which is what 1130 holds.
+      return [{ debit: '1130', credit: creditCashAccount(ctx), amount }];
+    case 'supplier_advance_offset':
+      // Moves no cash, so no `creditCashAccount`: this reclassifies an advance
+      // already paid into the payable the receipt just created. `amount` is
+      // `min(nilai penerimaan, sisa uang muka)`, computed by
+      // `PurchaseOrderService.receive` — a partial receipt must only consume
+      // the part of the DP it has earned.
+      return [{ debit: '2000', credit: '1130', amount }];
 
     default:
       return null;

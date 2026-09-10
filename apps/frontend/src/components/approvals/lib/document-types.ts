@@ -117,6 +117,22 @@ export const DOCUMENT_TYPE_CONFIG: Record<ApprovalDocumentType, DocumentTypeConf
     approveUnsupportedKey: 'approvalDetail.approveUnsupported.paymentVerification',
     rejectPermission: 'payment.reject',
   },
+  /**
+   * Migration 268 — a supplier down payment. Same underlying
+   * `payment_verifications` row as PAYMENT_VERIFICATION above and therefore
+   * the same base path and permission; it is a separate document type ONLY so
+   * `approval_chain_steps` can give it the Owner at any amount instead of the
+   * Rp 20.000.000 threshold. `approveSupported: false` for the same reason as
+   * the ordinary voucher: approving is decided at `pay()`, not from the inbox.
+   */
+  [ApprovalDocumentType.PO_ADVANCE]: {
+    documentType: ApprovalDocumentType.PO_ADVANCE,
+    basePath: '/accounting/payments',
+    labelKey: 'approvals.documentType.po_advance',
+    approveSupported: false,
+    approveUnsupportedKey: 'approvalDetail.approveUnsupported.paymentVerification',
+    rejectPermission: 'payment.reject',
+  },
   [ApprovalDocumentType.LEAVE_REQUEST]: {
     documentType: ApprovalDocumentType.LEAVE_REQUEST,
     basePath: '/hr/leaves',

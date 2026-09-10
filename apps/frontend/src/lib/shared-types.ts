@@ -45,6 +45,11 @@ export type { ApprovalDetail, ApprovalStepDetail } from '@mimi/shared';
 // its linked `payment_verifications.status` (e.g. `PurchaseOrder.paymentStatus`).
 export { PaymentStatus } from '@mimi/shared';
 
+// Migration 268 — how much of a PURCHASE ORDER is paid, aggregated over all
+// of its vouchers. Not interchangeable with PaymentStatus above, which is one
+// voucher's rung on the ladder.
+export { PoPaymentState } from '@mimi/shared';
+
 // Device / topology (CONTRACTS §2.9, D-13) — used by OfflineBanner / SyncStatusPill / F12
 export { DeviceStatus, DeviceCategory } from '@mimi/shared';
 

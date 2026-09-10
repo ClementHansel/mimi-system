@@ -46,6 +46,7 @@ import {
   approvePurchaseOrder,
   rejectPurchaseOrder,
   issuePurchaseOrder,
+  payPurchaseOrder,
   receivePurchaseOrder,
   cancelPurchaseOrder,
   closePurchaseOrder,
@@ -710,6 +711,11 @@ function OrderDrawer({
   const [cancelReason, setCancelReason] = useState('');
   const [note, setNote] = useState('');
 
+  const [payOpen, setPayOpen] = useState(false);
+  const [payAmount, setPayAmount] = useState<Money | null>(null);
+  const [payNotes, setPayNotes] = useState('');
+  const [paying, setPaying] = useState(false);
+
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [receiveLines, setReceiveLines] = useState<Record<string, ReceiveLineDraft>>({});
   const [receivePhotos, setReceivePhotos] = useState<File[]>([]);
@@ -763,6 +769,32 @@ function OrderDrawer({
     setReceivePhotos([]);
     setReceiveNotes('');
     setReceiveOpen(true);
+  }
+
+  /**
+   * Raises ONE voucher against this PO (migration 268). Deliberately does not
+   * decide whether it is uang muka — the server derives that from whether
+   * anything has been received, so the UI cannot route money past the payable
+   * by mislabelling it.
+   */
+  async function submitPay() {
+    if (!po || !payAmount) return;
+    setPaying(true);
+    setError(null);
+    try {
+      await payPurchaseOrder(po.id, {
+        amount: payAmount,
+        notes: payNotes || undefined,
+      });
+      toast({ title: t('purchasing.orders.paySuccess'), variant: 'success' });
+      setPayOpen(false);
+      load();
+      onChanged();
+    } catch (err) {
+      setError(errMsg(err, t('errors.generic')));
+    } finally {
+      setPaying(false);
+    }
   }
 
   async function submitReceive() {
@@ -845,15 +877,20 @@ function OrderDrawer({
               </dd>
               <dt className="text-text-muted">{t('purchasing.orders.paymentStatusLabel')}</dt>
               <dd className="text-text-primary">
-                {/* `paymentStatus` currently also reads back `null` for kepala_gudang because of an RLS
-                    gap being fixed in parallel (lib/types.ts doc) — either way, `null` renders as a
-                    genuine "not available" state here, never as a silently-wrong "unpaid" badge. */}
-                {po.paymentStatus === null ? (
+                {/* Migration 268: the ORDER's aggregate state, not one voucher's rung on the
+                    ladder — a PO with a settled DP and an untouched balance used to read
+                    "Dibayar" here off its first voucher. `null` still means "this role cannot
+                    see the vouchers", which is NOT "unpaid", so it keeps its own branch. */}
+                {/* Truthiness, not `=== null`: a PO served by a backend older than
+                    migration 268 omits the field entirely, and `undefined.state` would
+                    take the whole drawer down. "Unavailable" is the right answer for
+                    both "hidden by RLS" and "this server does not send it". */}
+                {!po.payment ? (
                   <span className="text-text-muted">
                     {t('purchasing.orders.paymentStatusUnavailable')}
                   </span>
                 ) : (
-                  <StatusBadge domain="payment" status={po.paymentStatus} size="sm" />
+                  <StatusBadge domain="poPayment" status={po.payment.state} size="sm" />
                 )}
               </dd>
               {po.cancelReason && (
@@ -864,6 +901,53 @@ function OrderDrawer({
               )}
             </dl>
           </section>
+
+          {/* Migration 268 — the money breakdown a DP/termin order needs. Hidden
+              entirely from roles that cannot see prices: the amounts here are
+              the same commercially sensitive figures `canSeePrice` guards on
+              the total above, and leaking them in a "payments" section would
+              defeat that gate. */}
+          {po.payment && canSeePrice && (
+            <section className="flex flex-col gap-2 border-t border-border pt-4">
+              <h3 className="text-sm font-semibold text-text-primary">
+                {t('purchasing.orders.paymentTitle')}
+              </h3>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                <dt className="text-text-muted">{t('purchasing.orders.paymentPaid')}</dt>
+                <dd className="tabular-nums text-text-primary">
+                  {formatMoney(po.payment.paidTotal)}
+                </dd>
+                {Number(po.payment.inFlightTotal) > 0 && (
+                  <>
+                    <dt className="text-text-muted">
+                      {t('purchasing.orders.paymentInFlight')}
+                    </dt>
+                    <dd className="tabular-nums text-warning-700">
+                      {formatMoney(po.payment.inFlightTotal)}
+                    </dd>
+                  </>
+                )}
+                <dt className="text-text-muted">{t('purchasing.orders.paymentOutstanding')}</dt>
+                <dd className="tabular-nums font-semibold text-text-primary">
+                  {formatMoney(po.payment.outstanding)}
+                </dd>
+                {/* Paid uang muka the warehouse has not yet earned by receiving
+                    goods. Surfaced because it is money already out the door
+                    with nothing delivered against it — the single number
+                    someone chasing a late supplier actually wants. */}
+                {Number(po.payment.advanceUnapplied) > 0 && (
+                  <>
+                    <dt className="text-text-muted">
+                      {t('purchasing.orders.paymentAdvanceUnapplied')}
+                    </dt>
+                    <dd className="tabular-nums text-info-700">
+                      {formatMoney(po.payment.advanceUnapplied)}
+                    </dd>
+                  </>
+                )}
+              </dl>
+            </section>
+          )}
 
           {po.approval && (
             <section className="flex flex-col gap-2 border-t border-border pt-4">
@@ -996,6 +1080,38 @@ function OrderDrawer({
                   {t('purchasing.orders.receiveButton')}
                 </Button>
               )}
+            {/* Migration 268 — DP before delivery, instalments after. Gated on
+                `canCreate` (`purchasing.po.create`) because this only ASKS for
+                money by opening a pending voucher; Finance still verifies and
+                pays it, and an advance additionally needs the Owner. Shown
+                from `issued` on, matching the server: an approved-but-unissued
+                PO has not been placed with anyone yet. Hidden once nothing is
+                left to claim, so the button never opens a form that can only
+                fail. */}
+            {canCreate &&
+              canSeePrice &&
+              po.payment &&
+              Number(po.payment.outstanding) - Number(po.payment.inFlightTotal) > 0 &&
+              (
+                [
+                  PurchaseOrderStatus.ISSUED,
+                  PurchaseOrderStatus.PARTIALLY_RECEIVED,
+                  PurchaseOrderStatus.RECEIVED,
+                  PurchaseOrderStatus.CLOSED,
+                ] as string[]
+              ).includes(po.status) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setPayAmount(null);
+                    setPayNotes('');
+                    setPayOpen(true);
+                  }}
+                >
+                  {t('purchasing.orders.payButton')}
+                </Button>
+              )}
             {po.status === PurchaseOrderStatus.RECEIVED && canClose && (
               <Button
                 size="sm"
@@ -1090,6 +1206,64 @@ function OrderDrawer({
             onChange={(e) => setCancelReason(e.target.value)}
             required
           />
+        </Modal>
+      )}
+
+      {payOpen && po && po.payment && (
+        <Modal
+          open
+          onClose={() => setPayOpen(false)}
+          title={t('purchasing.orders.payTitle')}
+          footer={
+            <>
+              <Button variant="outline" onClick={() => setPayOpen(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                loading={paying}
+                disabled={!payAmount || Number(payAmount) <= 0}
+                onClick={submitPay}
+              >
+                {t('purchasing.orders.payConfirm')}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            {/* Says which of the two this payment is BEFORE it is submitted,
+                because the consequences differ and are not reversible from
+                here: nothing received means uang muka, which needs the Owner
+                at any amount. The server derives the same thing from the same
+                fact, so this cannot drift into a promise the backend breaks. */}
+            <p className="text-sm text-text-muted">
+              {po.status === PurchaseOrderStatus.ISSUED
+                ? t('purchasing.orders.payAdvanceHint')
+                : t('purchasing.orders.payBalanceHint')}
+            </p>
+            <MoneyInput
+              label={t('purchasing.orders.payAmount')}
+              value={payAmount}
+              onChange={setPayAmount}
+              hint={t('purchasing.orders.payMaxHint').replace(
+                '{max}',
+                formatMoney(
+                  String(
+                    Math.max(
+                      0,
+                      Number(po.payment.outstanding) - Number(po.payment.inFlightTotal),
+                    ).toFixed(2),
+                  ) as Money,
+                ),
+              )}
+              required
+            />
+            <Textarea
+              label={t('purchasing.orders.payNotes')}
+              value={payNotes}
+              onChange={(e) => setPayNotes(e.target.value)}
+              rows={2}
+            />
+          </div>
         </Modal>
       )}
 

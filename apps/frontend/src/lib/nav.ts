@@ -258,6 +258,45 @@ const PURCHASING_ITEM: NavItem = {
 };
 
 /** The dashboard's sidebar — every head-office area, grouped as before. */
+/**
+ * Stok Gudang, in the office sidebar as well as gudang's.
+ *
+ * The office approves the purchase, holds the third Surat Jalan copy and
+ * answers "do we actually have any" — but the only screen showing warehouse
+ * balances lived in the gudang interface, so a manager had to leave the office
+ * sidebar (or ask) to see stock. Requested by the owner 2026-09-10: "add menu
+ * in the office to see the stocks in gudang too."
+ *
+ * DERIVED FROM `WAREHOUSE_PANELS`, never re-typed. Gudang's own sidebar builds
+ * its entry from that same row, so label, icon and permission cannot drift
+ * between the two sidebars — the file's existing rule that "an area cannot be
+ * added to the routes and go missing from the navigation, or the reverse".
+ * `warehouse.tabs.stock` already reads "Stok Gudang", which is the right label
+ * in the office too, so nothing needed retranslating.
+ *
+ * `/warehouse/stock` is declared SHARED (see `SHARED_ROUTES`) rather than added
+ * to the dashboard's `routes`, for the reason `/purchasing` was: an owned
+ * prefix would swap the whole sidebar under whoever tapped it. `StockPanel`
+ * itself already works for an office account — `useWarehouseLocation` looks the
+ * warehouse up over the API when the session carries no location of its own,
+ * which is the case for every central role.
+ */
+const WAREHOUSE_STOCK_PANEL = WAREHOUSE_PANELS.find((panel) => panel.slug === 'stock');
+if (!WAREHOUSE_STOCK_PANEL) {
+  // A build-time shout rather than a silently missing menu entry: the panel
+  // list is the source of truth and renaming that slug must not quietly drop
+  // the office's only view of warehouse stock.
+  throw new Error("nav.ts: WAREHOUSE_PANELS has no 'stock' panel to build the office entry from");
+}
+
+const WAREHOUSE_STOCK_ITEM: NavItem = {
+  id: `warehouse-${WAREHOUSE_STOCK_PANEL.slug}`,
+  labelKey: WAREHOUSE_STOCK_PANEL.labelKey,
+  href: `/warehouse/${WAREHOUSE_STOCK_PANEL.slug}`,
+  icon: WAREHOUSE_STOCK_PANEL.icon,
+  permission: WAREHOUSE_STOCK_PANEL.permission,
+};
+
 const DASHBOARD_SECTIONS: readonly NavSection[] = [
   {
     id: 'operasional',
@@ -302,6 +341,9 @@ const DASHBOARD_SECTIONS: readonly NavSection[] = [
     id: 'logistik',
     labelKey: 'nav.section.logistik',
     items: [
+      // Ordered as the question is actually asked: what is on hand, then what
+      // is leaving, then what is on order.
+      WAREHOUSE_STOCK_ITEM,
       // Surat Jalan (CONTRACTS §4.10) — here for OVERSIGHT: the office
       // approves the request and holds the third printed copy, so it must be
       // able to open the same document. Creating, printing and dispatching it
@@ -778,6 +820,17 @@ const SHARED_ROUTES: readonly { route: string; ownerId: string }[] = [
   // dashboard because purchasing is head-office work when we have nothing
   // better to go on (a direct link, a cold load).
   { route: '/purchasing', ownerId: 'dashboard' },
+  // Stok Gudang, now offered by the office sidebar too (`WAREHOUSE_STOCK_ITEM`).
+  // `ownerId` is gudang: the stock is theirs, they act on it, and a cold load
+  // or a pasted link belongs in the interface that does the work. An office
+  // user who opens it from their own sidebar keeps the office sidebar, exactly
+  // as with Pembelian.
+  //
+  // Only `/warehouse/stock` is shared, not `/warehouse` — the other six panels
+  // (receiving, opname, waste, retur, pengiriman, approvals) are gudang's work
+  // surfaces, not office reading, and `matches()` is prefix-based so a broader
+  // entry would have quietly pulled all of them into the office interface.
+  { route: '/warehouse/stock', ownerId: 'warehouse' },
 ];
 
 function matches(pathname: string, route: string): boolean {

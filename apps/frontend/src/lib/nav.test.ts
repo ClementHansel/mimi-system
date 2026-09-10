@@ -46,8 +46,66 @@ describe('interfaceForPath — shared surfaces keep you where you were', () => {
   });
 
   it('resolves an unshared route by its own interface regardless of history', () => {
-    expect(interfaceForPath('/warehouse/stock', 'dashboard')?.id).toBe('warehouse');
+    // Was `/warehouse/stock`, which is now deliberately SHARED (the office has
+    // its own Stok Gudang entry). `/warehouse/opname` replaces it as the
+    // exemplar: stock opname is gudang's work, offered by no other sidebar.
+    expect(interfaceForPath('/warehouse/opname', 'dashboard')?.id).toBe('warehouse');
     expect(interfaceForPath('/finance', 'warehouse')?.id).toBe('dashboard');
+  });
+});
+
+describe('Stok Gudang is readable from the office without leaving it', () => {
+  // Owner, 2026-09-10: "add menu in the office to see the stocks in gudang
+  // too." The screen already existed at `/warehouse/stock`; what was missing
+  // was a way into it that did not dump an office user into gudang's sidebar.
+
+  it('offers the entry in BOTH sidebars, from one panel definition', () => {
+    expect(hrefs('dashboard')).toContain('/warehouse/stock');
+    expect(hrefs('warehouse')).toContain('/warehouse/stock');
+  });
+
+  it('keeps an office user in the dashboard when they open it', () => {
+    expect(interfaceForPath('/warehouse/stock', 'dashboard')?.id).toBe('dashboard');
+  });
+
+  it('keeps a gudang user in gudang when they open it', () => {
+    expect(interfaceForPath('/warehouse/stock', 'warehouse')?.id).toBe('warehouse');
+  });
+
+  it('falls back to gudang on a cold load — the stock is theirs', () => {
+    expect(interfaceForPath('/warehouse/stock', null)?.id).toBe('warehouse');
+  });
+
+  it('shares ONLY the stock panel, never the rest of gudang', () => {
+    // `SHARED_ROUTES` matches on prefix, so a `/warehouse` entry would have
+    // pulled every gudang work surface into the office interface. Each of
+    // these must still resolve to gudang even for an office user.
+    for (const slug of ['opname', 'waste', 'retur', 'receiving', 'pengiriman', 'approvals']) {
+      expect(interfaceForPath(`/warehouse/${slug}`, 'dashboard')?.id).toBe('warehouse');
+    }
+    expect(interfaceForPath('/warehouse', 'dashboard')?.id).toBe('warehouse');
+  });
+
+  it("carries gudang's own label, icon and permission — no second definition to drift", () => {
+    const panel = WAREHOUSE_PANELS.find((entry) => entry.slug === 'stock');
+    const office = iface('dashboard')
+      .sections.flatMap((section) => section.items)
+      .find((item) => item.href === '/warehouse/stock');
+    expect(panel).toBeDefined();
+    expect(office).toBeDefined();
+    expect(office!.labelKey).toBe(panel!.labelKey);
+    expect(office!.icon).toBe(panel!.icon);
+    expect(office!.permission).toBe(panel!.permission);
+  });
+
+  it("sits in the office's Logistik & Gudang section, not a new one", () => {
+    const section = iface('dashboard').sections.find((entry) => entry.id === 'logistik');
+    expect(section).toBeDefined();
+    expect(section!.items.map((item) => item.href)).toEqual([
+      '/warehouse/stock',
+      '/delivery',
+      '/purchasing',
+    ]);
   });
 });
 

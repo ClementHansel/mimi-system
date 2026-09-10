@@ -16,6 +16,8 @@ import { NotificationOutboxRepository } from '../../kernel/notification/channels
 import { TokenService } from '../../common/jwt/token.service';
 import { EventBus } from '../../kernel/events/event-bus.service';
 import { PaymentVerificationsService } from '../accounting/payment-verifications.service';
+import { ApprovalService } from '../../kernel/approvals/approvals.service';
+import { ApprovalsRepository } from '../../kernel/approvals/approvals.repository';
 import { AssetsService } from './assets.service';
 import { pgDateToIso } from './pg-date.util';
 import { SchedulesService } from './schedules.service';
@@ -100,7 +102,16 @@ describe('asset lifecycle (integration, live Postgres)', () => {
       const notifications = new NotificationService(pool, inApp, email, whatsapp);
 
       const storage = new StorageService(stubConfig); // onModuleInit never called — no MinIO bucket check needed for presign-only use in this suite.
-      const paymentVerifications = new PaymentVerificationsService(syncEmit, new EventBus());
+      // `ece8c65` gave `PaymentVerificationsService` a third dependency
+      // (`ApprovalService`) and left the three specs that construct it by hand
+      // unbuilt. One-arg `ApprovalService` is the established spec idiom here —
+      // the class documents that its optional deps no-op when unsupplied — and
+      // is what `accounting.integration.spec.ts` already uses.
+      const paymentVerifications = new PaymentVerificationsService(
+        syncEmit,
+        new EventBus(),
+        new ApprovalService(new ApprovalsRepository()),
+      );
 
       assetsService = new AssetsService(storage, syncEmit);
       schedulesService = new SchedulesService(syncEmit);

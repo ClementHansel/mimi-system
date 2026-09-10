@@ -72,7 +72,11 @@ function buildKit() {
   const sync = new SyncEmitService(events, conflictDetector);
   const ledger = new StockLedgerService(new StockMovedEventEmitter(new EventBus()));
   const approvals = new ApprovalService(new ApprovalsRepository());
-  const payments = new PaymentVerificationsService(sync, new EventBus());
+  const payments = new PaymentVerificationsService(
+    sync,
+    new EventBus(),
+    new ApprovalService(new ApprovalsRepository()),
+  );
   const journalEventBus = new EventBus();
 
   const prRepo = new PurchaseRequestRepository();

@@ -58,7 +58,11 @@ function buildKit(eventBus: EventBus) {
   const sync = new SyncEmitService(events, conflictDetector);
   const ledger = new StockLedgerService(new StockMovedEventEmitter(new EventBus()));
   const approvals = new ApprovalService(new ApprovalsRepository());
-  const payments = new PaymentVerificationsService(sync, new EventBus());
+  const payments = new PaymentVerificationsService(
+    sync,
+    new EventBus(),
+    new ApprovalService(new ApprovalsRepository()),
+  );
   const prRepo = new PurchaseRequestRepository();
   const prService = new PurchaseRequestService(prRepo, approvals);
   const poRepo = new PurchaseOrderRepository();

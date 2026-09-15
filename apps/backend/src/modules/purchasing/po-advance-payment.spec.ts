@@ -389,10 +389,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const issued = await issuedPo(eventBus, mgr, [
         { qtyOrdered: '10.000', unitPrice: '10000.00' },
       ]);
-      await withRollbackAs(
-        { role: 'manager', userId: mgr.userId, locationIds: [] },
-        (client) =>
-          buildKit(eventBus).poService.payAdvance(client, mgr, issued.id, { amount: '30000.00' }),
+      await withRollbackAs({ role: 'manager', userId: mgr.userId, locationIds: [] }, (client) =>
+        buildKit(eventBus).poService.payAdvance(client, mgr, issued.id, { amount: '30000.00' }),
       );
 
       // Finance's own ladder (proof → verify → owner → pay) is exercised by

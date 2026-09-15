@@ -919,9 +919,7 @@ function OrderDrawer({
                 </dd>
                 {Number(po.payment.inFlightTotal) > 0 && (
                   <>
-                    <dt className="text-text-muted">
-                      {t('purchasing.orders.paymentInFlight')}
-                    </dt>
+                    <dt className="text-text-muted">{t('purchasing.orders.paymentInFlight')}</dt>
                     <dd className="tabular-nums text-warning-700">
                       {formatMoney(po.payment.inFlightTotal)}
                     </dd>

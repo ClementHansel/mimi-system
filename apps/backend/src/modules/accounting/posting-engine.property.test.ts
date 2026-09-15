@@ -227,8 +227,10 @@ describe('property: every posting-rule resolver produces a balanced entry', () =
 
   it('supplier_advance_offset balances regardless of a stray paidVia', () => {
     fc.assert(
-      fc.property(money, fc.constantFrom(undefined, 'cash', 'bank_transfer', 'qris'), (amount, paidVia) =>
-        assertBalances('supplier_advance_offset', amount, { paidVia }),
+      fc.property(
+        money,
+        fc.constantFrom(undefined, 'cash', 'bank_transfer', 'qris'),
+        (amount, paidVia) => assertBalances('supplier_advance_offset', amount, { paidVia }),
       ),
     );
   });

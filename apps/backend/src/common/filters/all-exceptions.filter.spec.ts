@@ -110,6 +110,44 @@ describe('AllExceptionsFilter', () => {
     });
   });
 
+  /**
+   * MA-206 — `StockInsufficientError` and `StockMovementValidationError` are plain
+   * `Error` subclasses carrying a real `ErrorCode`. Both have always documented
+   * themselves as mapping to 422 "via the exception filter"; the filter had no such
+   * branch, so a warehouse dispatching a Surat Jalan whose stock had gone short got
+   * `500 ERR_INTERNAL` -> "Server sedang bermasalah. Coba lagi beberapa saat.", i.e.
+   * retry advice for something that can never succeed.
+   */
+  it('maps a domain Error carrying a real ErrorCode to 422 with that code, not a 500', () => {
+    const { host, status, json } = makeHost();
+    const filter = new AllExceptionsFilter();
+    class StockInsufficientError extends Error {
+      readonly code = 'ERR_STOCK_INSUFFICIENT' as const;
+    }
+    filter.catch(new StockInsufficientError('Ayam Fillet would go to -2.000'), host);
+    expect(status).toHaveBeenCalledWith(422);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 422,
+      code: 'ERR_STOCK_INSUFFICIENT',
+      message: 'Ayam Fillet would go to -2.000',
+    });
+  });
+
+  it('leaves an Error whose `code` is NOT a real ErrorCode as a 500 — a stray `code` cannot mint a status', () => {
+    const { host, status, json } = makeHost();
+    const filter = new AllExceptionsFilter();
+    // Node puts `code` on plenty of its own errors (ENOENT, ECONNREFUSED...).
+    // Those are faults, not refusals, and must stay 500.
+    const nodeish = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+    filter.catch(nodeish, host);
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 500,
+      code: 'ERR_INTERNAL',
+      message: 'connect ECONNREFUSED',
+    });
+  });
+
   it('shapes a non-Error throw as a 500 ERR_INTERNAL with a generic message', () => {
     const { host, status, json } = makeHost();
     const filter = new AllExceptionsFilter();

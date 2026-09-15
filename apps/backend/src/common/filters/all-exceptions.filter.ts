@@ -110,6 +110,37 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
+    /**
+     * A DOMAIN error: a plain `Error` subclass carrying a real `ErrorCode`,
+     * thrown by a kernel that has no business importing `@nestjs/common` just
+     * to pick an HTTP status. `StockLedgerService.post(…, 'strict')` raises two
+     * of these (`StockInsufficientError`, `StockMovementValidationError`), and
+     * both classes have carried a doc comment since they were written saying
+     * they map "to HTTP 422 via `UnprocessableEntityException` — see the
+     * exception filter".
+     *
+     * The filter had no such branch. They fell through to the 500 below, so
+     * every dispatch of a Surat Jalan whose stock had gone short answered
+     * `500 ERR_INTERNAL` — which the frontend renders as "Server sedang
+     * bermasalah. Coba lagi beberapa saat.", telling the warehouse to retry
+     * something that can never succeed, and logging a business refusal as a
+     * server fault at `error` with a stack. A documented mapping that does not
+     * exist is worse than an undocumented one: it reads as verified.
+     *
+     * Duck-typed on the `code` rather than importing the two classes, so the
+     * kernel keeps its independence from `common/` and any future domain error
+     * that follows the same convention is covered on arrival. 422 (not 400)
+     * because the request was well-formed and the REFUSAL is semantic, which is
+     * exactly what those doc comments specify.
+     */
+    if (exception instanceof Error && isErrorCode((exception as { code?: unknown }).code)) {
+      return {
+        statusCode: 422,
+        code: (exception as unknown as { code: ErrorCode }).code,
+        message: exception.message,
+      };
+    }
+
     const message = exception instanceof Error ? exception.message : 'Internal server error';
     return { statusCode: 500, code: ERR_INTERNAL, message };
   }

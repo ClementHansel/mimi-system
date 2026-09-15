@@ -80,15 +80,26 @@ export function SuratJalanDetailDrawer({
   }
   useEffect(load, [id]);
 
-  async function run(fn: () => Promise<SuratJalan>, successKey?: string) {
+  /**
+   * Returns whether the action SUCCEEDED, so a caller holding a modal open can
+   * tell. It used to return nothing and swallow the error into a toast, and
+   * `submitLoad`/`submitCancel` then closed their modal unconditionally — so a
+   * refused load looked exactly like an accepted one: the dialog shut, the seal
+   * numbers the user had typed were gone, and the only difference was a toast
+   * that is easy to miss and impossible to get back. MA-205's new
+   * out-of-stock refusal at load would have landed in precisely that blind spot.
+   */
+  async function run(fn: () => Promise<SuratJalan>, successKey?: string): Promise<boolean> {
     setActing(true);
     try {
       const updated = await fn();
       setSj(updated);
       onChanged();
       if (successKey) toast({ title: t(successKey), variant: 'success' });
+      return true;
     } catch (err) {
       toast({ title: errMsg(err, t('table.error')), variant: 'danger' });
+      return false;
     } finally {
       setActing(false);
     }
@@ -110,7 +121,7 @@ export function SuratJalanDetailDrawer({
       toast({ title: t('warehouse.sj.tempRequired'), variant: 'warning' });
       return;
     }
-    await run(
+    const ok = await run(
       () =>
         loadSuratJalan(id, {
           seals: sealNumbers.map((sealNumber) => ({ sealNumber })),
@@ -118,16 +129,18 @@ export function SuratJalanDetailDrawer({
         }),
       'warehouse.sj.loaded',
     );
-    setLoadOpen(false);
+    // Only on success — a rejected load keeps the dialog and the typed seals so
+    // the refusal is visible and the work is not lost.
+    if (ok) setLoadOpen(false);
   }
 
   async function submitCancel() {
     if (cancelReason.trim() === '') return;
-    await run(
+    const ok = await run(
       () => cancelSuratJalan(id, { reason: cancelReason.trim() }),
       'warehouse.sj.cancelled',
     );
-    setCancelOpen(false);
+    if (ok) setCancelOpen(false);
   }
 
   const completion = sj ? routeCompletion(sj.drops) : { done: 0, total: 0 };

@@ -733,3 +733,82 @@ describe('InventoryService — GET /api/inventory/history/:itemId', () => {
     });
   }, 20_000);
 });
+
+/**
+ * MA-207 — "an item I just added does not appear in Gudang Pusat > Stock Gudang".
+ * The balances query was driven `FROM stock_balances`, so an item with no balance
+ * row produced no row at all and was invisible until its first receipt.
+ */
+describe('InventoryService — MA-207 items with no stock still appear in the warehouse list', () => {
+  it('lists a freshly created item at qty 0, in the storage area its storage_type requires', async () => {
+    await withRollback(async (client) => {
+      // Mints a `dry` item with NO `stock_balances` row anywhere — exactly the
+      // state a just-created item is in before anyone receives any of it.
+      const { itemId } = await pickUnusedItemInLocation(client, fx.warehouseId);
+
+      const page = await service().getBalances(
+        client,
+        CENTRAL,
+        { locationId: fx.warehouseId, itemId },
+        1,
+        50,
+      );
+
+      expect(page.rows).toHaveLength(1);
+      const row = page.rows[0]!;
+      expect(row.itemId).toBe(itemId);
+      expect(row.locationId).toBe(fx.warehouseId);
+      // Qty travels as a decimal STRING; zero is '0.000', never 0 or ''.
+      expect(Number(row.qtyOnHand)).toBe(0);
+      expect(typeof row.qtyOnHand).toBe('string');
+      // D-15: a 'dry' item belongs in dry store — the same area its stock will
+      // land in on receipt, so the row appears where the stock is about to.
+      expect(row.storageAreaType).toBe('dry_store');
+      expect(typeof row.storageAreaId).toBe('string');
+      expect(row.itemName).toBeTruthy();
+      expect(row.unitCode).toBeTruthy();
+    });
+  }, 20_000);
+
+  it('stops synthesising the row the moment the item actually has stock, rather than listing it twice', async () => {
+    const key = await withRollback(async (client) =>
+      pickUnusedItemInLocation(client, fx.warehouseId),
+    );
+
+    // A REAL receipt through the ledger (D-07: never insert stock_balances by hand).
+    await seedMovementCommitted((client) =>
+      realStockLedger().post(
+        client,
+        [
+          {
+            ...key,
+            movementType: MovementType.OPENING_BALANCE,
+            qty: '5.000',
+            unitCost: '1000.00',
+            refType: 'test',
+            refId: randomUUID(),
+            actorId: null,
+          },
+        ],
+        'fact',
+      ),
+    );
+    try {
+      await withRollback(async (client) => {
+        const page = await service().getBalances(
+          client,
+          CENTRAL,
+          { locationId: key.locationId, itemId: key.itemId },
+          1,
+          50,
+        );
+        // Exactly one row: the real balance. The zero-row branch must not also fire.
+        expect(page.rows).toHaveLength(1);
+        expect(Number(page.rows[0]!.qtyOnHand)).toBe(5);
+        expect(page.rows[0]!.storageAreaId).toBe(key.storageAreaId);
+      });
+    } finally {
+      await purgeTestResidue();
+    }
+  }, 20_000);
+});

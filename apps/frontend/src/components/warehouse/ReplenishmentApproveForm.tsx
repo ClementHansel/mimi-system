@@ -13,7 +13,7 @@ import {
   ApprovalTimeline,
 } from '@/components/ui';
 import { formatQty } from '@/lib/formatters';
-import type { Replenishment } from './lib/types';
+import type { Replenishment, ReplenishmentLine } from './lib/types';
 import type { Qty } from '@/lib/shared-types';
 
 export interface AmendmentInput {
@@ -36,17 +36,39 @@ export interface ReplenishmentApproveFormProps {
 }
 
 /**
+ * What the PREVIOUS approver in the chain actually decided for this line —
+ * `qtyApproved` once anyone upstream has ruled on it, the requested quantity
+ * until then.
+ *
+ * MA-204: this used to be `qtyRequested` everywhere, so a Supervisor Cabang
+ * who approved an outlet request WITH a quantity change handed the Kepala
+ * Gudang a form that silently showed the ORIGINAL request — the amendment was
+ * invisible, and approving the form as presented would have re-raised the
+ * quantity the supervisor had just cut. The backend has always returned
+ * `qtyApproved`/`amendReason` per line; nothing here read them.
+ */
+function upstreamQty(line: ReplenishmentLine): Qty {
+  return line.qtyApproved ?? line.qtyRequested;
+}
+
+/** `Qty` is a decimal STRING, so '10.000' and '10.00' are the same quantity and different strings. */
+function sameQty(a: Qty, b: Qty): boolean {
+  return Number(a) === Number(b);
+}
+
+/**
  * The Kepala Gudang approval step for a replenishment request — FR-LOG-13's
  * mandatory amend-reason gate lives here, pulled out of `ApprovalQueuePanel`
  * as its own component so the gate is unit-testable without mocking the
  * queue fetch (mirrors `ReceiveDropForm`'s split from `ReceivingPanel`).
  *
  * Amending a line's quantity is opt-in per line (`Checkbox` "Ubah jumlah"):
- * leaving it unchecked ships the requested quantity unchanged. The moment a
- * line IS amended, its reason field is required and the button that submits
- * the approval stays disabled until every amended line has a non-blank
- * reason — a silently reduced order is exactly the thing FR-LOG-13 exists to
- * prevent, so there is no path to approve an amendment without one.
+ * leaving it unchecked ships the quantity the chain has already settled on
+ * (`upstreamQty`) unchanged. The moment a line IS amended, its reason field is
+ * required and the button that submits the approval stays disabled until every
+ * amended line has a non-blank reason — a silently reduced order is exactly the
+ * thing FR-LOG-13 exists to prevent, so there is no path to approve an
+ * amendment without one.
  */
 export function ReplenishmentApproveForm({
   replenishment,
@@ -59,7 +81,7 @@ export function ReplenishmentApproveForm({
     Object.fromEntries(
       replenishment.lines.map((l) => [
         l.id,
-        { amend: false, qtyApproved: l.qtyRequested, reason: '' },
+        { amend: false, qtyApproved: upstreamQty(l), reason: '' },
       ]),
     ),
   );
@@ -111,6 +133,20 @@ export function ReplenishmentApproveForm({
                 <td className="px-3 py-2.5 font-medium text-text-primary">{l.itemName}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums">
                   {formatQty(l.qtyRequested, l.unitCode)}
+                  {/* MA-204 — an upstream approver already cut or raised this line. Showing
+                      only the new number would hide that a decision was made at all, so both
+                      quantities and the stated reason stay on screen. */}
+                  {l.qtyApproved !== null && !sameQty(l.qtyApproved, l.qtyRequested) && (
+                    <span className="mt-1 flex flex-col items-end gap-0.5 text-xs font-normal">
+                      <span className="inline-flex items-center gap-1 text-warning-700">
+                        <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+                        {t('warehouse.approvalQueue.supervisorAmendedTo', {
+                          qty: formatQty(l.qtyApproved, l.unitCode),
+                        })}
+                      </span>
+                      {l.amendReason && <span className="text-text-muted">“{l.amendReason}”</span>}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
                   <Checkbox
@@ -119,7 +155,7 @@ export function ReplenishmentApproveForm({
                     onCheckedChange={(checked) =>
                       updateLine(l.id, {
                         amend: checked,
-                        qtyApproved: checked ? d.qtyApproved : l.qtyRequested,
+                        qtyApproved: checked ? d.qtyApproved : upstreamQty(l),
                         reason: checked ? d.reason : '',
                       })
                     }
@@ -137,7 +173,7 @@ export function ReplenishmentApproveForm({
                     />
                   ) : (
                     <span className="block text-right tabular-nums">
-                      {formatQty(l.qtyRequested, l.unitCode)}
+                      {formatQty(upstreamQty(l), l.unitCode)}
                     </span>
                   )}
                 </td>

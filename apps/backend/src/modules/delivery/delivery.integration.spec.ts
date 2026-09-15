@@ -2104,4 +2104,88 @@ describe('M10 delivery — live DB integration', () => {
       }
     });
   });
+
+  /**
+   * MA-205 — "a Surat Jalan can be created, marked ready-to-ship and LOADED for an
+   * outlet request whose items have no stock". Stock was checked only at dispatch,
+   * so the paperwork said sealed-on-a-truck for goods that were never on a shelf.
+   */
+  describe('M10 delivery — MA-205 loading is refused for stock the warehouse does not have', () => {
+    let unstockedItemId: string;
+    let unstockedUnitId: string;
+    let sjId: string | undefined;
+
+    beforeAll(async () => {
+      // A dry item that exists but has NO stock_balances row anywhere — the state a
+      // just-created item is in. Minted, never borrowed from the seeded pool.
+      const created = await getOwnerPool().query<{ id: string; base_unit_id: string }>(
+        `INSERT INTO items (sku, name, base_unit_id, storage_type, is_sellable, is_active, avg_cost, last_purchase_cost)
+         SELECT $1, 'Test Fixture — Unstocked Item', i.base_unit_id, 'dry', false, true, 5000, 5000
+           FROM items i WHERE i.avg_cost > 0 ORDER BY i.sku LIMIT 1
+         RETURNING id, base_unit_id`,
+        [`TEST-UNSTOCKED-${randomUUID().slice(0, 8)}`],
+      );
+      unstockedItemId = created.rows[0]!.id;
+      unstockedUnitId = created.rows[0]!.base_unit_id;
+    }, 30_000);
+
+    afterAll(async () => {
+      if (sjId) await deleteSuratJalan(sjId);
+      await getOwnerPool().query(`DELETE FROM items WHERE id = $1`, [unstockedItemId]);
+    });
+
+    it('lets the paperwork be built and readied, then refuses at load and names the shortfall', async () => {
+      const sj = await withCommit((client) =>
+        sjService.create(
+          client,
+          {
+            shipmentType: 'dry' as never,
+            driverId: fixtures.driverId,
+            vehicleId: fixtures.dryVehicleId,
+            // TOMORROW, not today: the shared fixture driver already has this
+            // suite's frozen run booked for today, and one driver takes ONE truck
+            // type per day. This test is about stock, not that rule.
+            plannedDate: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
+            drops: [
+              {
+                locationId: fixtures.outletId,
+                lines: [{ itemId: unstockedItemId, qty: '3.000', unitId: unstockedUnitId }],
+              },
+            ],
+            notes: 'MA-205 regression',
+          } as never,
+          fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+        ),
+      );
+      sjId = sj.id;
+      expect(sj.status).toBe('draft');
+
+      // Pre-building paperwork for stock arriving later the same day stays allowed —
+      // the gate is deliberately at load, not at create/ready.
+      const readied = await withCommit((client) =>
+        sjService.ready(client, sj.id, fixtures.usersByRole[RoleKey.KEPALA_GUDANG]),
+      );
+      expect(readied.status).toBe('ready');
+
+      await expect(
+        withCommit((client) =>
+          sjService.load(
+            client,
+            sj.id,
+            { seals: [{ sealNumber: 'SEAL-MA205-0001' }] },
+            fixtures.usersByRole[RoleKey.KEPALA_GUDANG],
+          ),
+        ),
+      ).rejects.toThrow(/stock the warehouse does not have.*Unstocked Item.*needs 3\.000/s);
+
+      // And it really did not move — the refusal is not cosmetic.
+      const after = await getOwnerPool().query<{ status: string }>(
+        `SELECT status FROM surat_jalan WHERE id = $1`,
+        [sj.id],
+      );
+      expect(after.rows[0]!.status).toBe('ready');
+      const seals = await getOwnerPool().query(`SELECT 1 FROM sj_seals WHERE sj_id = $1`, [sj.id]);
+      expect(seals.rows).toHaveLength(0);
+    }, 30_000);
+  });
 });

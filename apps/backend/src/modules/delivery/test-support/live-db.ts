@@ -255,6 +255,42 @@ export async function loadFixtures(): Promise<Fixtures> {
     [chilledSku, frozenItem.rows[0].category_id, frozenItem.rows[0].base_unit_id],
   );
 
+  /**
+   * MA-205 — `load` now refuses a Surat Jalan for stock the warehouse does not
+   * have, and the chilled item above is INSERTED here rather than seeded, so
+   * nothing had ever given it any. The cold-chain suites are about temperature,
+   * not stock, and were loading against a quantity of zero without noticing.
+   *
+   * Stocked via a real `opening_balance` MOVEMENT, with the balance folded from
+   * the movements — movements are the source of truth and `stock_balances` is
+   * derived from them, which is the same direction `resetStockKey` reconciles.
+   * Guarded by `NOT EXISTS` so repeated runs against one live DB top up once
+   * rather than compounding.
+   */
+  const chilledItemId = chilledRes.rows[0]!.id;
+  const chillerArea = await areaFor(warehouseId, 'chiller');
+  await pool.query(
+    `INSERT INTO stock_movements
+       (location_id, storage_area_id, item_id, movement_type, qty, unit_cost, ref_type, ref_id)
+     SELECT $1, $2, $3, 'opening_balance', 1000, 15000, 'test_fixture', NULL
+      WHERE NOT EXISTS (
+        SELECT 1 FROM stock_movements
+         WHERE location_id = $1 AND storage_area_id = $2 AND item_id = $3
+           AND ref_type = 'test_fixture'
+      )`,
+    [warehouseId, chillerArea, chilledItemId],
+  );
+  await pool.query(
+    `INSERT INTO stock_balances (location_id, storage_area_id, item_id, qty_on_hand)
+     SELECT $1, $2, $3, COALESCE(
+              (SELECT SUM(CASE WHEN m.movement_type LIKE '%_out' THEN -m.qty ELSE m.qty END)
+                 FROM stock_movements m
+                WHERE m.location_id = $1 AND m.storage_area_id = $2 AND m.item_id = $3), 0)
+     ON CONFLICT (location_id, storage_area_id, item_id)
+       DO UPDATE SET qty_on_hand = EXCLUDED.qty_on_hand`,
+    [warehouseId, chillerArea, chilledItemId],
+  );
+
   const driver = { rows: [await pickOrMintFreeDriver(pool)] };
   if (!driver.rows[0])
     throw new Error(`Seed data is missing an active driver with a linked user_id`);

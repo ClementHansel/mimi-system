@@ -4,6 +4,14 @@ import type { Money, Movement, Qty, UUID } from '@mimi/shared';
 import { ZERO_QTY } from '@mimi/shared';
 
 import type { MinStockRuleRow } from './types';
+import { requiredAreaTypeFor, type ItemStorageType } from '../delivery/storage-type.util';
+
+/**
+ * Every value `items.storage_type` can take (the column's own CHECK). Paired with
+ * `requiredAreaTypeFor` it becomes the D-15 storage-type → area-type mapping the
+ * balances query needs as data — see `listBalances`.
+ */
+const ITEM_STORAGE_TYPES: readonly ItemStorageType[] = ['frozen', 'chilled', 'dry'];
 
 /** Raw row shape from the `balances` query — one row per `(location, storage_area, item)`, CONTRACTS.md §4.7's `Balance` minus the caller-conditional `value` field (computed in the service from `avgCost`). */
 export interface BalanceRow {
@@ -115,8 +123,71 @@ export class InventoryRepository {
     b.ilikeEither('item_name', 'sku', filters.q);
     if (filters.belowMin !== undefined) b.eq('below_min', filters.belowMin);
 
-    const limitIdx = b.nextParamIndex();
-    const offsetIdx = limitIdx + 1;
+    /**
+     * MA-207 — an item with no `stock_balances` row produced NO row at all, so a
+     * newly created item was invisible in Gudang Pusat > Stock Gudang until the
+     * first receipt put stock against it. "I added the item and it is not there"
+     * is indistinguishable from "the item was never saved", and the obvious next
+     * move is to add it a second time.
+     *
+     * A zero-stock item has no storage area of its own, so it is placed in the
+     * area its `storage_type` REQUIRES — the same D-15 putaway rule that decides
+     * where its stock will actually land on receipt, so the row appears where the
+     * stock is about to. The mapping is passed in from `requiredAreaTypeFor`
+     * rather than restated as SQL `CASE`, so D-15 keeps exactly one definition.
+     *
+     * Only synthesised when a location is in scope: with no `locationId` there is
+     * no defensible place to put an item that is nowhere, and every item would be
+     * multiplied by every location.
+     */
+    const synthesiseZeroRows = filters.locationId !== undefined;
+    const extraParams: unknown[] = [];
+    let nextIdx = b.nextParamIndex();
+    let zeroRowsSql = '';
+    if (synthesiseZeroRows) {
+      const locIdx = nextIdx++;
+      const storageTypeIdx = nextIdx++;
+      const areaTypeIdx = nextIdx++;
+      extraParams.push(
+        filters.locationId,
+        ITEM_STORAGE_TYPES,
+        ITEM_STORAGE_TYPES.map((s) => requiredAreaTypeFor(s)),
+      );
+      zeroRowsSql = `
+         UNION ALL
+         SELECT
+           $${locIdx}::uuid AS location_id,
+           sa.id AS storage_area_id, sa.name AS storage_area_name, sa.type AS storage_area_type,
+           i.id AS item_id, i.sku, i.name AS item_name, u.code AS unit_code,
+           0::numeric(14,3) AS qty_on_hand, i.avg_cost,
+           msr.min_qty,
+           (msr.min_qty IS NOT NULL AND msr.min_qty > 0) AS below_min
+         FROM items i
+         JOIN units u ON u.id = i.base_unit_id
+         JOIN unnest($${storageTypeIdx}::text[], $${areaTypeIdx}::text[]) AS m(storage_type, area_type)
+           ON m.storage_type = i.storage_type
+         -- The item's ONE required area at this location. A warehouse with no area
+         -- of that type simply cannot hold the item, so it is correctly absent.
+         JOIN LATERAL (
+           SELECT sa2.id, sa2.name, sa2.type
+             FROM storage_areas sa2
+            WHERE sa2.location_id = $${locIdx} AND sa2.is_active = true AND sa2.type = m.area_type
+            ORDER BY sa2.sort_order ASC
+            LIMIT 1
+         ) sa ON TRUE
+         LEFT JOIN min_stock_rules msr
+           ON msr.location_id = $${locIdx} AND msr.item_id = i.id AND msr.is_active = true
+        WHERE i.is_active = true
+          -- Any balance row anywhere in this location means the item is already
+          -- listed above; this branch is only for items with none at all.
+          AND NOT EXISTS (
+            SELECT 1 FROM stock_balances b2
+             WHERE b2.location_id = $${locIdx} AND b2.item_id = i.id
+          )`;
+    }
+
+    const limitIdx = nextIdx;
+    const offsetIdx = nextIdx + 1;
 
     const res = await client.query<{
       location_id: string;
@@ -151,13 +222,14 @@ export class InventoryRepository {
          LEFT JOIN min_stock_rules msr
            ON msr.location_id = b.location_id AND msr.item_id = b.item_id AND msr.is_active = true
          LEFT JOIN totals t ON t.location_id = b.location_id AND t.item_id = b.item_id
+         ${zeroRowsSql}
        )
        SELECT *, COUNT(*) OVER() AS full_count
          FROM calc
          ${b.where()}
         ORDER BY item_name, storage_area_type, storage_area_name
         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      [...b.params, ps, (p - 1) * ps],
+      [...b.params, ...extraParams, ps, (p - 1) * ps],
     );
 
     const total = res.rows.length > 0 ? Number(res.rows[0]!.full_count) : 0;

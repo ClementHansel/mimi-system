@@ -2547,6 +2547,10 @@ export const id = {
       amend: 'Ubah Jumlah',
       amendThisLine: 'Ubah baris ini',
       amendReason: 'Alasan Perubahan',
+      // MA-204 — the previous approver in the chain changed this line's quantity.
+      // Shown to the NEXT approver beside the original request, so the change is
+      // visible instead of silently replacing the number they are ruling on.
+      supervisorAmendedTo: 'Supervisor mengubah menjadi {{qty}}',
       amendWarning: '{{count}} baris jumlahnya diubah — alasan wajib diisi sebelum disetujui.',
       note: 'Catatan (opsional)',
       rejectReason: 'Alasan Penolakan',

@@ -171,3 +171,75 @@ describe('ReplenishmentApproveForm — FR-LOG-13 mandatory amend-reason gate', (
     expect(onReject).toHaveBeenCalledWith('Barang tidak tersedia');
   });
 });
+
+/**
+ * MA-204 — a Supervisor Cabang approves an outlet request WITH a quantity
+ * change, and the Kepala Gudang is the next approver in the chain. Before this
+ * suite the form read `qtyRequested` for both the seeded draft and the display,
+ * so the supervisor's decision was invisible AND approving the form as shown
+ * would have silently put the original quantity back.
+ */
+const amendedUpstream: Replenishment = {
+  ...replenishment,
+  lines: [
+    {
+      ...replenishment.lines[0]!,
+      qtyRequested: '10.000',
+      qtyApproved: '6.000',
+      amendReason: 'Stok gudang terbatas',
+    },
+    replenishment.lines[1]!,
+  ],
+};
+
+describe('ReplenishmentApproveForm — MA-204 upstream amendment is visible to the next approver', () => {
+  it("shows the supervisor's amended quantity and the reason they gave, alongside the original request", () => {
+    render(
+      <ReplenishmentApproveForm
+        replenishment={amendedUpstream}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Supervisor mengubah menjadi/)).toBeInTheDocument();
+    expect(screen.getByText(/Stok gudang terbatas/)).toBeInTheDocument();
+    // The original request stays on screen — the point is that a change happened.
+    expect(screen.getByText('10 kg')).toBeInTheDocument();
+  });
+
+  it('carries the upstream quantity into the approved column instead of re-raising the original', () => {
+    render(
+      <ReplenishmentApproveForm
+        replenishment={amendedUpstream}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+    // 6 kg (the supervisor's decision) is what this approver is ruling on.
+    expect(screen.getAllByText('6 kg').length).toBeGreaterThan(0);
+  });
+
+  it('un-amending restores the UPSTREAM quantity, never the original request', () => {
+    const onApprove = vi.fn();
+    render(
+      <ReplenishmentApproveForm
+        replenishment={amendedUpstream}
+        onApprove={onApprove}
+        onReject={vi.fn()}
+      />,
+    );
+
+    const toggle = screen.getAllByLabelText('Ubah baris ini')[0]!;
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByPlaceholderText('Tuliskan alasan…'), {
+      target: { value: 'sementara' },
+    });
+    fireEvent.click(toggle);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Setujui' }));
+    expect(onApprove).toHaveBeenCalledWith([], undefined);
+    // Back to the supervisor's 6 kg — a revert to 10 kg would undo their cut.
+    expect(screen.getAllByText('6 kg').length).toBeGreaterThan(0);
+  });
+});

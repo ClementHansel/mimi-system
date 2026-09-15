@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import {
   ERR_REQUEST_LINE_OVERCOMMITTED,
   ERR_SHIPMENT_TYPE_MIX,
+  ERR_STOCK_INSUFFICIENT,
   ERR_VALIDATION,
   JournalEventType,
   MovementType,
@@ -36,7 +37,11 @@ import { StockLedgerService } from '../../../kernel/stock-ledger/stock-ledger.se
 import type { PostMovementInput } from '../../../kernel/stock-ledger/stock-ledger.types';
 import { EventBus } from '../../../kernel/events/event-bus.service';
 import { withWrite } from '../db-tx';
-import { allowedStorageTypesForShipment, requiredAreaTypeFor } from '../storage-type.util';
+import {
+  allowedStorageTypesForShipment,
+  requiredAreaTypeFor,
+  type ItemStorageType,
+} from '../storage-type.util';
 import {
   buildSuratJalanFull,
   buildSuratJalanSummaryMany,
@@ -579,6 +584,8 @@ export class SuratJalanService {
         });
       }
 
+      await this.assertStockAvailable(client, id, header.origin_location_id);
+
       await client.query(`UPDATE surat_jalan SET status = 'loading' WHERE id = $1`, [id]);
 
       for (const seal of dto.seals) {
@@ -618,6 +625,95 @@ export class SuratJalanService {
 
       await this.emitUpdated(client, id, actorUserId, header);
       return this.getById(client, id);
+    });
+  }
+
+  /**
+   * MA-205 — stock was checked ONLY at dispatch, by `stockLedger.post(…, 'strict')`.
+   * `ready` and `load` were bare status writes, so a Surat Jalan for items the
+   * warehouse does not have walked all the way to "muat barang": the paperwork
+   * said the goods were sealed on a truck, the seals were real rows, and the
+   * whole thing only fell over at "Berangkatkan" — after the picker had gone
+   * looking for stock that was never there. That silent dead end is also the
+   * most likely cause of MA-206's "the button does nothing".
+   *
+   * The gate is at LOAD rather than at create/ready deliberately. Loading is the
+   * point goods physically leave the shelf; blocking earlier would stop the
+   * warehouse pre-building paperwork for a delivery whose stock arrives later the
+   * same day, which is ordinary practice here.
+   *
+   * This is an EARLY, legible gate, not the authority — `dispatch`'s strict ledger
+   * post remains the thing that cannot be bypassed, and still runs. Availability
+   * is measured against current on-hand in the one area D-15 puts the item in, so
+   * it answers the picker's actual question ("can I pick this now?").
+   */
+  private async assertStockAvailable(
+    client: PoolClient,
+    id: UUID,
+    originLocationId: string,
+  ): Promise<void> {
+    const storageTypes: ItemStorageType[] = ['frozen', 'chilled', 'dry'];
+    const shortfalls = await client.query<{
+      item_name: string;
+      unit_code: string;
+      qty_needed: string;
+      qty_available: string;
+    }>(
+      // One line per ITEM, not per sj_line: the same item can appear on several
+      // drops of one Surat Jalan and it is the TOTAL leaving the warehouse that
+      // has to exist.
+      `SELECT i.name AS item_name, u.code AS unit_code,
+              SUM(sl.qty) AS qty_needed,
+              COALESCE(MAX(bal.qty_on_hand), 0) AS qty_available
+         FROM sj_lines sl
+         JOIN items i ON i.id = sl.item_id
+         JOIN units u ON u.id = i.base_unit_id
+         JOIN unnest($2::text[], $3::text[]) AS m(storage_type, area_type)
+           ON m.storage_type = i.storage_type
+         LEFT JOIN LATERAL (
+           SELECT sa.id
+             FROM storage_areas sa
+            WHERE sa.location_id = $4 AND sa.is_active = true AND sa.type = m.area_type
+            ORDER BY sa.sort_order ASC
+            LIMIT 1
+         ) area ON TRUE
+         LEFT JOIN stock_balances bal
+           ON bal.location_id = $4 AND bal.storage_area_id = area.id AND bal.item_id = sl.item_id
+        WHERE sl.sj_id = $1
+        GROUP BY i.id, i.name, u.code
+       HAVING SUM(sl.qty) > COALESCE(MAX(bal.qty_on_hand), 0)
+        ORDER BY i.name ASC`,
+      [id, storageTypes, storageTypes.map((s) => requiredAreaTypeFor(s)), originLocationId],
+    );
+
+    if (shortfalls.rows.length === 0) return;
+
+    const detail = shortfalls.rows
+      .map((r) => `${r.item_name} (needs ${r.qty_needed} ${r.unit_code}, has ${r.qty_available})`)
+      .join('; ');
+    /**
+     * `ERR_STOCK_INSUFFICIENT`, not `ERR_VALIDATION`. `message` is a DEVELOPER
+     * string that the frontend's `errMsg` deliberately never shows (CONTRACTS §0)
+     * — it renders `errors.byCode.<CODE>` instead. Under `ERR_VALIDATION` the
+     * picker would get "Data yang dikirim tidak valid", which explains nothing
+     * about stock; this code already has the sentence "Stok tidak mencukupi."
+     * and the same code the stock ledger itself raises at dispatch, so both ends
+     * of the flow now refuse in the same words.
+     *
+     * `details.shortfalls` carries the per-item numbers for a screen that wants
+     * to list them — the message string cannot, and must not, be parsed for it.
+     */
+    throw new BadRequestException({
+      code: ERR_STOCK_INSUFFICIENT,
+      message: `Cannot load a Surat Jalan for stock the warehouse does not have — ${detail}`,
+      details: {
+        shortfalls: shortfalls.rows.map((r) => ({
+          itemName: r.item_name,
+          unitCode: r.unit_code,
+          qtyNeeded: r.qty_needed,
+          qtyAvailable: r.qty_available,
+        })),
+      },
     });
   }
 

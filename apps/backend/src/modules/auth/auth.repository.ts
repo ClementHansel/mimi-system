@@ -185,6 +185,11 @@ export class AuthRepository {
     await client.query(`UPDATE users SET pin_hash = $2 WHERE id = $1`, [userId, pinHash]);
   }
 
+  /** Self-service password change (`POST /api/auth/password`). Mirrors `users.repository.ts`'s admin `updatePasswordHash`, which writes the same column for the reset-someone-else path. */
+  async updatePasswordHash(client: PoolClient, userId: UUID, passwordHash: string): Promise<void> {
+    await client.query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [userId, passwordHash]);
+  }
+
   async getSettingValue<T>(client: PoolClient, key: string): Promise<T | undefined> {
     const res = await client.query<{ value: T }>(`SELECT value FROM settings WHERE key = $1`, [
       key,

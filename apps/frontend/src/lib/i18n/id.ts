@@ -3361,6 +3361,22 @@ export const id = {
     },
     // Data Pribadi — the employee's own HR record, read-only (corrections go
     // through Admin SDM, because these fields feed pay).
+    // Self-service password change. Until this shipped the system had no way for
+    // anyone to change their own password: `user.password.reset` is an admin
+    // acting on someone else and only owner/manager/superadmin hold it.
+    password: {
+      title: 'Ubah Kata Sandi',
+      subtitle:
+        'Setelah kata sandi diubah, semua sesi Anda akan keluar dan Anda perlu masuk kembali.',
+      current: 'Kata Sandi Saat Ini',
+      new: 'Kata Sandi Baru',
+      confirm: 'Ulangi Kata Sandi Baru',
+      tooShort: 'Kata sandi minimal {{min}} karakter.',
+      mismatch: 'Kata sandi tidak cocok.',
+      wrongCurrent: 'Kata sandi saat ini salah.',
+      submit: 'Simpan Kata Sandi',
+      success: 'Kata sandi berhasil diubah. Silakan masuk kembali.',
+    },
     profile: {
       location: 'Lokasi Kerja',
       joinDate: 'Tanggal Masuk',

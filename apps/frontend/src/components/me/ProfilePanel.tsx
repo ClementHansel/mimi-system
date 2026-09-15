@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useSessionStore } from '@/stores/session-store';
 import { getMyEmployee, type EmployeeDetail } from './lib/me-api';
+import { ChangePasswordCard } from './ChangePasswordCard';
 import { errMsg } from '@/lib/api-error';
 
 /**
@@ -51,19 +52,30 @@ export function ProfilePanel() {
 
   if (loading) return <p className="p-2 text-sm text-text-muted">{t('common.loading')}</p>;
 
+  // The password card renders on EVERY branch, this one included. A login with
+  // no `employees` row — a shared till account, a service user — has no personal
+  // data to show and still has a password it must be able to rotate.
   if (notAnEmployee) {
     return (
-      <EmptyState
-        icon={UserCircle}
-        title={t('me.profile.notEmployeeTitle')}
-        description={t('me.profile.notEmployeeDescription')}
-        size="sm"
-      />
+      <div className="flex flex-col gap-3">
+        <EmptyState
+          icon={UserCircle}
+          title={t('me.profile.notEmployeeTitle')}
+          description={t('me.profile.notEmployeeDescription')}
+          size="sm"
+        />
+        <ChangePasswordCard />
+      </div>
     );
   }
 
   if (error || !employee) {
-    return <EmptyState title={error ?? t('table.error')} size="sm" />;
+    return (
+      <div className="flex flex-col gap-3">
+        <EmptyState title={error ?? t('table.error')} size="sm" />
+        <ChangePasswordCard />
+      </div>
+    );
   }
 
   const current = employee.employments[0] ?? null;
@@ -140,6 +152,11 @@ export function ProfilePanel() {
       )}
 
       <p className="px-1 text-xs text-text-muted">{t('me.profile.correctionHint')}</p>
+
+      {/* The one thing on this surface that IS self-service. Everything above is
+          deliberately read-only because it feeds payroll; a password is the
+          opposite — it is the one credential that should never need an admin. */}
+      <ChangePasswordCard />
     </div>
   );
 }

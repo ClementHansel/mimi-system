@@ -96,6 +96,15 @@ const ALLOWED_UNGUARDED: Record<string, string> = {
   'AuthController.logout': 'ends the caller’s own session; holding a permission is not meaningful',
   'AuthController.me': 'returns the caller’s own identity — the JWT is the authorization',
   'AuthController.setPin': 'sets the caller’s OWN pin; scoped to `req.user.sub`',
+  // Same shape as `setPin`, and a permission key would be actively wrong here:
+  // EVERY role must be able to change its own password, and a permission every
+  // role holds is not a gate — while a role accidentally left off that row would
+  // be locked out of its own credential with no way back. The caller re-proves
+  // `currentPassword`, the row written is only ever `req.user.sub`, and the
+  // endpoint revokes every session on success. `user.password.reset` is the
+  // genuinely privileged one (an admin acting on SOMEBODY ELSE) and keeps its key.
+  'AuthController.changePassword':
+    'changes the caller’s OWN password; scoped to `req.user.sub` and re-proves `currentPassword`',
   // Branding is display-only and deliberately readable by anyone signed in:
   // kasir, koki, supervisor and driver hold no `settings.read`, so gating this
   // is what made every till and kitchen screen ignore the owner's palette,

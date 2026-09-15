@@ -39,6 +39,29 @@ export class SetPinDto {
 }
 
 /**
+ * `POST /api/auth/password` — a person changing their OWN password.
+ *
+ * Until this existed the system had no such path at all. `POST
+ * /users/:id/reset-password` is an ADMIN acting on someone else and is gated on
+ * `user.password.reset`, which only owner, manager and superadmin hold — so a
+ * cashier, cook, driver, supervisor, warehouse head, finance or HR user was
+ * issued a password by somebody else and could never change it, and the person
+ * who issued it went on knowing it forever.
+ *
+ * `MinLength(8)` matches `ResetPasswordDto` deliberately: one password policy,
+ * in two places that must not disagree about what is acceptable.
+ */
+export class ChangePasswordDto {
+  @IsString()
+  @MinLength(1)
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(8)
+  newPassword!: string;
+}
+
+/**
  * `VerifyPinDto` used to live here, for `POST /auth/pin/verify` — deleted with
  * that endpoint (B-15). Its `context: 'pos_override' | 'approval'` is now
  * expressed by WHICH document a one-time code is bound to, which is stronger:

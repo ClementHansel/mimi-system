@@ -35,7 +35,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool, PoolClient } from 'pg';
-import { compare } from 'bcrypt';
+import { compare, hash as bcryptHash } from 'bcrypt';
 import { randomUUID } from 'node:crypto';
 import { createHmac } from 'node:crypto';
 import {
@@ -73,6 +73,7 @@ import { hashPin } from './pin-hash.util';
 import { parseDurationMs } from './duration.util';
 import { hashRefreshToken, verifyRefreshTokenHash } from './token-hash.util';
 import type {
+  ChangePasswordDto,
   LoginDto,
   OfflineCredentialRefreshDto,
   RefreshDto,
@@ -87,6 +88,9 @@ export interface RequestMeta {
 }
 
 const REFRESH_DEFAULT_MS = 7 * 86_400_000;
+
+/** Same cost as `UsersService`'s admin reset — one password policy, one cost factor. */
+const PASSWORD_BCRYPT_ROUNDS = 10;
 
 @Injectable()
 export class AuthService {
@@ -394,6 +398,68 @@ export class AuthService {
 
     // Every read this response needs is already done, so it is safe to end the
     // transaction here — and mandatory, per the header above.
+    await client.query('COMMIT');
+
+    return { ok: true };
+  }
+
+  /**
+   * A person changing their OWN password.
+   *
+   * THE SYSTEM HAD NO SUCH PATH. `POST /users/:id/reset-password` is an admin
+   * acting on somebody else and is gated on `user.password.reset`, held only by
+   * owner, manager and superadmin. So a kasir, koki, driver, supervisor, kepala
+   * gudang, finance or HR user received a password from whoever created their
+   * account and could never change it — and that person kept knowing it, for as
+   * long as the account existed. Found 2026-09-15 while reading MA-190, whose
+   * title ("halaman untuk change password") describes a page that did not exist.
+   *
+   * Every session is revoked, the caller's included. That is the actual security
+   * action — a password change that leaves old sessions alive protects nobody,
+   * since the whole point is usually that someone else knows the old one. It
+   * mirrors `UsersService.resetPassword`, which revokes for the same reason.
+   * The client is expected to send the person back to `/login`.
+   *
+   * COMMIT is mandatory and the response must be built before it: the request
+   * client is rolled back unconditionally by `RlsCleanupInterceptor`, so a
+   * mutating handler that returns without committing answers 200 and saves
+   * nothing — the trap documented at length on `setPin` above, and the reason
+   * that method's own write was once silently discarded.
+   */
+  async changePassword(
+    dto: ChangePasswordDto,
+    caller: JwtAccessPayload,
+    client: PoolClient,
+  ): Promise<{ ok: true }> {
+    const row = await this.repo.findUserAuthById(client, caller.sub);
+    if (!row) throw new NotFoundException({ code: ERR_NOT_FOUND, message: 'User not found' });
+
+    const passwordOk = await compare(dto.currentPassword, row.password_hash);
+    if (!passwordOk) {
+      throw new UnauthorizedException({
+        code: ERR_AUTH_INVALID_CREDENTIALS,
+        message: 'Current password is incorrect',
+      });
+    }
+
+    // Re-submitting the same password is almost always a misread form rather
+    // than an intent, and silently accepting it would report success while
+    // leaving the very credential the person came here to retire in place.
+    if (await compare(dto.newPassword, row.password_hash)) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'The new password must be different from the current one',
+        details: { field: 'newPassword' },
+      });
+    }
+
+    const passwordHash = await bcryptHash(dto.newPassword, PASSWORD_BCRYPT_ROUNDS);
+    await this.repo.updatePasswordHash(client, caller.sub, passwordHash);
+    await this.repo.revokeAllSessionsForUser(client, caller.sub);
+
+    // `password_hash` is in no device pull projection (SYNC-PROTOCOL §3.2), so
+    // there is no sync event to emit — revoking the sessions is the effect that
+    // has to propagate, and it lives in the database the devices read.
     await client.query('COMMIT');
 
     return { ok: true };

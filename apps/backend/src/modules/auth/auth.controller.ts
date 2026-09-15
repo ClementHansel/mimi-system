@@ -25,6 +25,7 @@ import {
   OfflineUnlockCodeDto,
   RefreshDto,
   RevokeCredentialDto,
+  ChangePasswordDto,
   SetPinDto,
 } from './auth.dto';
 
@@ -73,6 +74,28 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: JwtAccessPayload, @Req() req: RequestWithDbContext): Promise<Me> {
     return this.service.me(user, req.dbClient!);
+  }
+
+  /**
+   * Changing your OWN password. No `@RequirePermission`: like `logout` and
+   * `me`, being signed in IS the authority — the caller proves themselves again
+   * with `currentPassword`, and the row touched is only ever `caller.sub`.
+   *
+   * Adding a permission key would have been the wrong instinct: every role would
+   * need it (a permission everyone holds is not a gate), and any role left off
+   * the row would be locked out of its own credential. `user.password.reset`
+   * stays as it is — that one is an admin acting on SOMEBODY ELSE, which is a
+   * real privilege and is why only owner/manager/superadmin hold it.
+   */
+  @Post('password')
+  @HttpCode(HttpStatus.OK)
+  @Audited({ entityType: 'users', action: 'auth.password.change' })
+  changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: JwtAccessPayload,
+    @Req() req: RequestWithDbContext,
+  ): Promise<{ ok: true }> {
+    return this.service.changePassword(dto, user, req.dbClient!);
   }
 
   @Post('pin')

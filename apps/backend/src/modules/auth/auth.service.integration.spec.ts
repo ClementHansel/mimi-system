@@ -6,7 +6,7 @@
  * to a prepared row: a passing test here means the query actually executed
  * under real Postgres privileges and real RLS policies.
  */
-import { hash as bcryptHash } from 'bcrypt';
+import { compare, hash as bcryptHash } from 'bcrypt';
 import { afterAll, describe, expect, it } from 'vitest';
 import {
   assertSystemContext,
@@ -440,3 +440,165 @@ async function withUsername(userId: string): Promise<string> {
   );
   return res.rows[0]!.username;
 }
+
+/**
+ * SELF-SERVICE PASSWORD CHANGE — the capability the system did not have.
+ *
+ * `POST /users/:id/reset-password` is an ADMIN acting on someone else, gated on
+ * `user.password.reset`, which only owner, manager and superadmin hold. So a
+ * kasir, koki, driver, supervisor, kepala gudang, finance or HR user was issued
+ * a password by whoever created their account and could never change it — and
+ * that person went on knowing it for the life of the account.
+ *
+ * These run on a REAL connection for the same reason `setPin`'s do: the write
+ * has to survive the request, and with a mock client a missing COMMIT is
+ * invisible (`RlsCleanupInterceptor` rolls the request client back
+ * unconditionally).
+ */
+describe('changePassword — a person can change their own password', () => {
+  const NEW_PASSWORD = 'AnEntirelyDifferent7!';
+
+  it('persists the new hash for a later, separate connection, and the old password stops working', async () => {
+    const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
+    const userId = await insertTestUser({
+      username: `chpw-ok-${Date.now()}`,
+      name: 'Test Change Password',
+      roleKey: 'kasir',
+      passwordHash,
+    });
+    try {
+      const service = buildAuthService(getAppPool());
+      const username = await withUsername(userId);
+
+      const result = await asRequest(
+        (client) =>
+          service.changePassword(
+            { currentPassword: TEST_PASSWORD, newPassword: NEW_PASSWORD },
+            { sub: userId, username, roleKey: 'kasir', locationIds: [] } as never,
+            client,
+          ),
+        { userId, roleKey: 'kasir' },
+      );
+      expect(result).toEqual({ ok: true });
+
+      // A DIFFERENT connection, after the request ended. `asRequest` rolls back
+      // on the way out, so the row is only changed here if the service
+      // committed it itself — the trap that silently ate `setPin`'s write.
+      const after = await getOwnerPool().query<{ password_hash: string }>(
+        'SELECT password_hash FROM users WHERE id = $1',
+        [userId],
+      );
+      expect(await compare(NEW_PASSWORD, after.rows[0]!.password_hash)).toBe(true);
+      // And the OLD one is genuinely gone, which is the entire point.
+      expect(await compare(TEST_PASSWORD, after.rows[0]!.password_hash)).toBe(false);
+    } finally {
+      await deleteTestUser(userId);
+    }
+  });
+
+  it('refuses a wrong current password and leaves the hash untouched', async () => {
+    const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
+    const userId = await insertTestUser({
+      username: `chpw-wrong-${Date.now()}`,
+      name: 'Test Wrong Current',
+      roleKey: 'kasir',
+      passwordHash,
+    });
+    try {
+      const service = buildAuthService(getAppPool());
+      const username = await withUsername(userId);
+
+      await expect(
+        asRequest(
+          (client) =>
+            service.changePassword(
+              { currentPassword: 'not-the-password', newPassword: NEW_PASSWORD },
+              { sub: userId, username, roleKey: 'kasir', locationIds: [] } as never,
+              client,
+            ),
+          { userId, roleKey: 'kasir' },
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ERR_AUTH_INVALID_CREDENTIALS' } });
+
+      // Knowing the session is not enough; the credential still has to be proven.
+      const after = await getOwnerPool().query<{ password_hash: string }>(
+        'SELECT password_hash FROM users WHERE id = $1',
+        [userId],
+      );
+      expect(await compare(TEST_PASSWORD, after.rows[0]!.password_hash)).toBe(true);
+    } finally {
+      await deleteTestUser(userId);
+    }
+  });
+
+  it('refuses re-submitting the SAME password rather than reporting a change that did not happen', async () => {
+    const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
+    const userId = await insertTestUser({
+      username: `chpw-same-${Date.now()}`,
+      name: 'Test Same Password',
+      roleKey: 'kasir',
+      passwordHash,
+    });
+    try {
+      const service = buildAuthService(getAppPool());
+      const username = await withUsername(userId);
+
+      await expect(
+        asRequest(
+          (client) =>
+            service.changePassword(
+              { currentPassword: TEST_PASSWORD, newPassword: TEST_PASSWORD },
+              { sub: userId, username, roleKey: 'kasir', locationIds: [] } as never,
+              client,
+            ),
+          { userId, roleKey: 'kasir' },
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ERR_VALIDATION' } });
+    } finally {
+      await deleteTestUser(userId);
+    }
+  });
+
+  it('revokes every session, because a change that leaves old sessions alive protects nobody', async () => {
+    const passwordHash = await bcryptHash(TEST_PASSWORD, 10);
+    const userId = await insertTestUser({
+      username: `chpw-sessions-${Date.now()}`,
+      name: 'Test Session Revocation',
+      roleKey: 'kasir',
+      passwordHash,
+    });
+    try {
+      const service = buildAuthService(getAppPool());
+      const username = await withUsername(userId);
+
+      // A real login, so there is a real session row to revoke.
+      await service.login(
+        { username, password: TEST_PASSWORD },
+        { ipAddress: null, userAgent: null },
+      );
+      const live = await getOwnerPool().query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM sessions WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+      );
+      expect(Number(live.rows[0]!.n)).toBeGreaterThan(0);
+
+      await asRequest(
+        (client) =>
+          service.changePassword(
+            { currentPassword: TEST_PASSWORD, newPassword: NEW_PASSWORD },
+            { sub: userId, username, roleKey: 'kasir', locationIds: [] } as never,
+            client,
+          ),
+        { userId, roleKey: 'kasir' },
+      );
+
+      const afterChange = await getOwnerPool().query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM sessions WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+      );
+      expect(Number(afterChange.rows[0]!.n)).toBe(0);
+    } finally {
+      await deleteTestUser(userId);
+    }
+  });
+});

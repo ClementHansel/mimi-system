@@ -71,13 +71,33 @@ const VARIANT_META: Record<ToastVariant, { icon: typeof Info; classes: string }>
   info: { icon: Info, classes: 'border-info-600/30 bg-info-50 text-info-700' },
 };
 
-/** Mount once, at the root of the app shell. Renders the live toast queue. */
+/**
+ * Mount once, at the root of the app shell. Renders the live toast queue.
+ *
+ * MA-206 — this was `z-50`, and so are `Drawer` and `Modal` (`fixed inset-0
+ * z-50`). Equal z-index means DOM order decides the winner, and an overlay
+ * mounted later paints OVER the viewport — so every toast raised by an action
+ * taken inside a drawer or modal was drawn UNDERNEATH it. Confirmed in a real
+ * browser: after clicking "Berangkatkan" on a Surat Jalan with no stock, the
+ * request returned, the toast existed and `isVisible()` reported true (it does
+ * not test occlusion), and `document.elementFromPoint` at the toast's own
+ * centre returned the drawer's "Surat Jalan" button. The user saw nothing.
+ *
+ * That is the literal complaint — "tidak ada response" — and it applied to
+ * EVERY toast over a drawer or modal: successes, failures and warnings alike,
+ * across every screen, not just this one.
+ *
+ * `z-[60]` rather than another `z-50`: a toast reports the outcome of an action
+ * usually taken INSIDE an overlay, so it has to outrank every overlay by
+ * construction. If a new overlay is ever added above this, it must stay below
+ * the toast viewport or this bug returns silently.
+ */
 export function ToastViewport() {
   const toasts = useToastStore((s) => s.toasts);
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-end gap-2 p-4 sm:inset-x-auto sm:right-0"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-end gap-2 p-4 sm:inset-x-auto sm:right-0"
       role="region"
       aria-live="polite"
       aria-label="Notifikasi"

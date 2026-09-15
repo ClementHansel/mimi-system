@@ -321,6 +321,31 @@ describe.skipIf(!hasDb)('a permission denial must not leak a pooled connection',
     return Number(res.rows[0]!.n);
   }
 
+  /**
+   * `idleInTransactionCount` is DATABASE-WIDE, so it also sees transactions that
+   * belong to nobody in this test — most of all `AuditInterceptor`'s row, which
+   * is written fire-and-forget on its own connection AFTER the response is
+   * returned. A fixed `sleep(500)` was enough only while few audited requests
+   * ran nearby; it reads whatever happens to be in flight at that instant.
+   *
+   * Observed as `before = 2, after = 0` — the count went DOWN, which is the
+   * opposite of the leak this guards, and the assertion is an equality, so the
+   * test failed on someone else's finished work. Waiting for the number to stop
+   * MOVING instead of waiting a fixed time removes that, and costs the
+   * regression nothing: a genuine leak is +10 that never settles, so this
+   * returns the elevated value and the equality still fails, which is the point.
+   */
+  async function settledIdleInTransactionCount(): Promise<number> {
+    let last = await idleInTransactionCount();
+    for (let i = 0; i < 40; i += 1) {
+      await new Promise((r) => setTimeout(r, 100));
+      const next = await idleInTransactionCount();
+      if (next === last) return next; // two consecutive equal reads — quiet
+      last = next;
+    }
+    return last;
+  }
+
   it('ten 403s leave the pool exactly as they found it', async () => {
     // `payment.read` is owner/manager/finance only, so a kasir is denied it —
     // and `PermissionsGuard` is what denies, which is the path under test.
@@ -332,16 +357,14 @@ describe.skipIf(!hasDb)('a permission denial must not leak a pooled connection',
 
     // Settle first: the login itself uses a connection, and an assertion taken
     // mid-release would report a leak that is really just timing.
-    await new Promise((r) => setTimeout(r, 500));
-    const before = await idleInTransactionCount();
+    const before = await settledIdleInTransactionCount();
 
     for (let i = 0; i < 10; i += 1) {
       const denied = await api('/api/accounting/payments', { token: login.body.accessToken });
       expect(denied.status, 'kasir must be refused payment.read').toBe(403);
     }
 
-    await new Promise((r) => setTimeout(r, 500));
-    const after = await idleInTransactionCount();
+    const after = await settledIdleInTransactionCount();
 
     // Equality, not a threshold. Before the fix this was before + 10 — one
     // abandoned transaction per denial, never reclaimed.

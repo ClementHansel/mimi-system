@@ -222,7 +222,7 @@ export class AuditInterceptor implements NestInterceptor {
     const module = options.module ?? this.deriveModule(request) ?? 'unknown';
     const action = options.action ?? this.deriveAction(request, permissionKeys);
     const reason = typeof request.body?.reason === 'string' ? request.body.reason : null;
-    const locationId = this.extractLocationId(request);
+    const locationId = this.extractLocationId(request, beforeValue, afterValue);
     const ip = request.ip ?? null;
     const deviceIdHeader = request.headers['x-device-id'];
     const deviceId =
@@ -282,22 +282,61 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   /**
-   * Best-effort `audit_log.location_id`: an explicit `locationId` in the
-   * body/params wins (most mutations carry one — `locationId` on a create,
-   * or a location-scoped route param); otherwise, a caller scoped to
-   * exactly one location (the common case for Kepala Gudang/Supervisor/
-   * Leader Outlet/Kasir/Driver — CONTRACTS.md §1.14) is unambiguous. A
-   * central role's multi-location scope has no single answer, so it stays
-   * null rather than guessing.
+   * Best-effort `audit_log.location_id`, in descending order of authority:
+   * an explicit `locationId` in the body/params; then the LOCATION OF THE
+   * DOCUMENT ITSELF; then a caller scoped to exactly one location (the common
+   * case for Kepala Gudang/Supervisor/Kasir/Driver — CONTRACTS.md §1.14). A
+   * central role's multi-location scope has no single answer, so it stays null
+   * rather than guessing.
+   *
+   * MA-208 — the document step was missing, and `location_id` is not decoration:
+   * `audit_log_select` (migration 235) reads
+   *
+   *     role IN ('owner','finance') OR (role = 'manager' AND app_has_location(location_id))
+   *
+   * and `app_has_location(NULL)` is never true. So a null here does not merely
+   * lose a detail — it makes the row PERMANENTLY INVISIBLE to every manager.
+   *
+   * That is what the bug report shows. A PR's "Riwayat Perubahan" listed only
+   * "PR dibuat" while the database held three rows: create (locationId in the
+   * body, so populated), submit and approve (bodies of `{}` and `{note?}`,
+   * actor a multi-location manager, so both null). Two thirds of the trail was
+   * written correctly and then hidden from the only people who look at it — and
+   * silently, because the row exists and the query is right.
+   *
+   * Taking it from the document is also more correct than taking it from the
+   * actor: "where did this happen" is a property of the thing acted on, not of
+   * who happened to act. It keeps a manager's audit view scoped to their own
+   * branches rather than widening the policy, which would have been the other
+   * way to make these rows visible and would have leaked every other branch's.
    */
-  private extractLocationId(request: AuditableRequest): string | null {
+  private extractLocationId(
+    request: AuditableRequest,
+    beforeValue: unknown,
+    afterValue: unknown,
+  ): string | null {
     const explicit =
       (request.body?.locationId as string | undefined) ??
       (request.params?.locationId as string | undefined);
     if (typeof explicit === 'string' && UUID_RE.test(explicit)) return explicit;
+
+    // `beforeValue` is a raw DB row (`location_id`); `afterValue` is the
+    // handler's JSON response (`locationId`). Before wins: on a delete or a
+    // move it is the state the action was actually performed against.
+    const fromDocument = this.locationIdOf(beforeValue) ?? this.locationIdOf(afterValue);
+    if (fromDocument) return fromDocument;
+
     const scope = request.locationScope;
     if (scope && scope.length === 1) return scope[0]!;
     return null;
+  }
+
+  /** A `location_id`/`locationId` off an entity row or a response body, in either casing, only if it is really a UUID. */
+  private locationIdOf(value: unknown): string | null {
+    if (!value || typeof value !== 'object') return null;
+    const row = value as Record<string, unknown>;
+    const candidate = row.location_id ?? row.locationId;
+    return typeof candidate === 'string' && UUID_RE.test(candidate) ? candidate : null;
   }
 
   private safeJson(value: unknown): string | null {

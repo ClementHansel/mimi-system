@@ -39,6 +39,13 @@ async function withRequestContext<T>(
     await c.query('SET LOCAL ROLE app_user');
     await c.query(`SELECT set_config('app.role', 'owner', true)`);
     await c.query(`SELECT set_config('app.user_id', '00000000-0000-0000-0000-000000000000', true)`);
+    // `app.tenant_id` is NOT optional, and leaving it out is why this entire
+    // file went quiet. Migration 263 put a tenant predicate on these tables, so
+    // without it every SELECT here returns ZERO ROWS — which `beforeAll` read as
+    // "no fixtures", set `dbAvailable = false`, and every test in the file then
+    // returned early and reported PASS in about a millisecond. FR-AUDIT-01's
+    // only integration coverage had not actually executed since 2026-08-30.
+    await c.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
     await c.query(`SELECT set_config('app.location_ids', '', true)`);
     const result = await fn(c);
     await c.query('COMMIT');
@@ -79,26 +86,72 @@ describe('AuditInterceptor (integration, live Postgres)', () => {
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: DATABASE_URL });
+
+    let user: { rows: { id: string }[] };
+    let location: { rows: { id: string; name: string }[] };
     try {
-      const user = await withRequestContext(pool, (c) =>
+      user = await withRequestContext(pool, (c) =>
         c.query(`SELECT id FROM users WHERE username = 'manager1' LIMIT 1`),
       );
-      const location = await withRequestContext(pool, (c) =>
+      location = await withRequestContext(pool, (c) =>
         c.query(`SELECT id, name FROM locations WHERE code = 'GDG' LIMIT 1`),
       );
-      if (user.rows.length === 0 || location.rows.length === 0) {
-        dbAvailable = false;
-        return;
-      }
-      managerId = user.rows[0].id;
-      locationId = location.rows[0].id;
-      originalName = location.rows[0].name;
     } catch {
+      // ONLY an unreachable server skips. The try block is deliberately narrow:
+      // it previously wrapped the fixture check too, so any failure at all —
+      // including "the query succeeded and returned nothing" — became a silent
+      // skip.
       dbAvailable = false;
+      return;
     }
+
+    // A REACHABLE database that cannot produce the fixtures is NOT "no
+    // database", and conflating the two is what let this file report green
+    // while executing nothing for two weeks. A server that answers but has no
+    // `manager1` / no `GDG` means the seed or the RLS session context changed
+    // underneath this suite, and that has to be loud.
+    if (user.rows.length === 0 || location.rows.length === 0) {
+      throw new Error(
+        `audit.interceptor.integration: Postgres is reachable but the fixtures are missing ` +
+          `(manager1=${user.rows.length}, GDG=${location.rows.length}). This suite must not ` +
+          `silently skip — check the seed and the RLS session context (app.tenant_id).`,
+      );
+    }
+    managerId = user.rows[0]!.id;
+    locationId = location.rows[0]!.id;
+    originalName = location.rows[0]!.name;
   });
 
   afterAll(async () => {
+    /**
+     * Drain before handing the database to the next serialized suite.
+     *
+     * `AuditInterceptor` writes its row FIRE-AND-FORGET on its own connection
+     * (BEGIN / set_config / INSERT / COMMIT) after the response has already been
+     * returned, so a write can still be in flight when the last test here ends.
+     * `test/audit-http.e2e.spec.ts` runs next in the serialized live-DB project
+     * and asserts an EXACT database-wide `idle in transaction` count, so an
+     * in-flight audit write of ours is counted against it and fails a test about
+     * connection leaks with a leak that is really ours and really transient.
+     *
+     * This only became reachable when the tenant-context bug above was fixed:
+     * while the whole file was silently skipping it issued no writes at all, so
+     * there was nothing to drain. Verified against a `107b2a1` worktree — the
+     * suite is 1544/1544 there and the failure appears only with these tests
+     * actually running.
+     */
+    if (pool && dbAvailable) {
+      for (let i = 0; i < 40; i += 1) {
+        const res = await pool
+          .query<{ n: string }>(
+            `SELECT COUNT(*)::text AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND state = 'idle in transaction'`,
+          )
+          .catch(() => null);
+        if (!res || Number(res.rows[0]!.n) === 0) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
     await pool?.end();
   });
 
@@ -215,6 +268,108 @@ describe('AuditInterceptor (integration, live Postgres)', () => {
     // behaves in production).
     await client.query('UPDATE locations SET name = $1 WHERE id = $2', [originalName, locationId]);
     await client.query('COMMIT');
+    client.release();
+  });
+
+  /**
+   * MA-208 — a PR's "Riwayat Perubahan" showed only "PR dibuat" while the
+   * database held three rows. `audit_log_select` (migration 235) is
+   *
+   *   role IN ('owner','finance') OR (role = 'manager' AND app_has_location(location_id))
+   *
+   * and `app_has_location(NULL)` is never true, so a null `location_id` does not
+   * lose a detail — it makes the row permanently invisible to every manager.
+   *
+   * `POST /purchasing/requests/:id/approve` carries a `{note?}` body and no
+   * `:locationId`, and a manager is multi-location, so the old
+   * "body/params, else single-location scope, else null" rule produced null on
+   * every approve. The location has to come from the DOCUMENT.
+   */
+  it('MA-208 — an approve with no locationId in body or params takes it from the document, not from the actor', async () => {
+    if (!dbAvailable) return;
+    const MARKER = `ma208-${Date.now()}`;
+
+    // Through `withRequestContext`, never a bare `pool.query`: `mimi_app` holds
+    // no table grants of its own (D-21/D-22 — the very thing the last test in
+    // this file asserts), so a raw SELECT here is `permission denied`.
+    const pr = await withRequestContext(pool, (c) =>
+      c.query<{ id: string; location_id: string }>(
+        `SELECT id, location_id FROM purchase_requests WHERE location_id IS NOT NULL LIMIT 1`,
+      ),
+    );
+    const prRow = pr.rows[0];
+    if (!prRow) {
+      console.warn('Skipping: seed has no purchase_requests with a location');
+      return;
+    }
+
+    client = await pool.connect();
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [managerId]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, ['manager']);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, ['']);
+
+    const request: RequestWithDbContext & Record<string, unknown> = {
+      user: { sub: managerId, username: 'manager1', roleKey: 'manager', locationIds: [] },
+      dbClient: client,
+      // Multi-location (central) manager: the old rule had no single answer here
+      // and fell through to null. This is the reported reporter's situation.
+      locationScope: null,
+      method: 'POST',
+      params: { id: prRow.id },
+      // `reason` is what the interceptor persists, so it doubles as this row's
+      // unique marker for read-back and cleanup.
+      body: { note: 'approved in the integration test', reason: MARKER },
+      headers: {},
+      ip: '127.0.0.1',
+      originalUrl: `/api/purchasing/requests/${prRow.id}/approve`,
+      url: `/api/purchasing/requests/${prRow.id}/approve`,
+    };
+
+    const reflector = {
+      getAllAndOverride: (key: string) => {
+        if (key === AUDITED_KEY)
+          return { entityType: 'purchase_request', action: 'purchasing.pr.approve' };
+        if (key === REQUIRE_PERMISSION_KEY) return ['purchasing.pr.approve'];
+        return undefined;
+      },
+    };
+
+    const interceptor = new AuditInterceptor(pool, reflector as never);
+    const callHandler: CallHandler = {
+      handle: () => defer(() => from(Promise.resolve({ id: prRow.id, status: 'approved' }))),
+    };
+
+    const observable = await interceptor.intercept(makeContext(request), callHandler);
+    await new Promise<void>((resolve, reject) => {
+      observable.subscribe({ next: () => {}, error: reject, complete: () => resolve() });
+    });
+    // The audit row is written on its own connection after the response, so give
+    // that fire-and-forget write a moment to land before reading it back.
+    await new Promise((r) => setTimeout(r, 300));
+
+    const written = await withRequestContext(pool, (c) =>
+      c.query<{ location_id: string | null }>(
+        `SELECT location_id FROM audit_log
+          WHERE entity_type = 'purchase_request' AND entity_id = $1
+            AND action = 'purchasing.pr.approve' AND reason = $2
+          ORDER BY occurred_at DESC LIMIT 1`,
+        [prRow.id, MARKER],
+      ),
+    );
+    expect(written.rows[0]).toBeDefined();
+    // The PR's own location — NOT null, which is what made it invisible.
+    expect(written.rows[0]!.location_id).toBe(prRow.location_id);
+
+    // NO cleanup, deliberately. `audit_log` is append-only by design — D-09
+    // revokes UPDATE and DELETE from `app_user` and defines no policy for
+    // either, so a tidy-up here would fail with `permission denied` and, worse,
+    // asking for one at all is the wrong instinct about an audit log. The row
+    // stays; `MARKER` is unique per run, so it can neither collide with nor be
+    // mistaken for real history.
+    await client.query('ROLLBACK');
     client.release();
   });
 

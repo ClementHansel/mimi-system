@@ -99,18 +99,26 @@ export function TrendPanel({ from, to, locationId }: TrendPanelProps) {
           aria-label={t('dashboard.trend.title')}
         >
           {points.map((p, i) => (
+            // The bar's % height needs a DEFINITE parent: the column fills the
+            // chart's height (h-full) and the bar sits in a flex-1 area above
+            // the label. Without that the % resolved against an auto height
+            // and every bar rendered 0px tall.
             <div
               key={p.t}
-              className="group relative flex flex-1 flex-col items-center justify-end gap-1"
+              className="group relative flex h-full flex-1 flex-col items-center gap-1"
             >
               <div className="pointer-events-none absolute -top-8 hidden whitespace-nowrap rounded bg-stone-900 px-1.5 py-0.5 text-xs text-white group-hover:block">
                 {formatTrendValue(metric, p.value)}
               </div>
-              <div
-                className="w-full rounded-t bg-brand-400 transition-colors group-hover:bg-brand-500"
-                style={{ height: `${Math.max(2, ratios[i]! * 100)}%` }}
-              />
-              <span className="text-[10px] text-text-muted">{fmtDate(p.t).slice(0, 6)}</span>
+              <div className="flex w-full flex-1 items-end">
+                <div
+                  className="w-full rounded-t bg-brand-400 transition-colors group-hover:bg-brand-500"
+                  style={{ height: `${Math.max(2, ratios[i]! * 100)}%` }}
+                />
+              </div>
+              <span className="whitespace-nowrap text-[10px] text-text-muted">
+                {fmtDate(p.t).slice(0, 6)}
+              </span>
             </div>
           ))}
         </div>

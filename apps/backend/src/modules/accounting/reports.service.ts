@@ -49,12 +49,18 @@ export class ReportsService {
       debit: Money;
       credit: Money;
     }>(
+      // The period filter must decide which LINES are summed. It used to sit
+      // on a LEFT JOIN to journal_entries while SUM ran over every
+      // journal_line regardless of whether its entry matched, so every period
+      // returned the all-time totals. The inner join inside the parentheses
+      // keeps only lines whose entry is posted in the period.
       `SELECT coa.code, coa.name, coa.type,
               COALESCE(SUM(jl.debit), 0)::text AS debit,
               COALESCE(SUM(jl.credit), 0)::text AS credit
          FROM chart_of_accounts coa
-         LEFT JOIN journal_lines jl ON jl.account_id = coa.id
-         LEFT JOIN journal_entries je ON je.id = jl.entry_id AND je.fiscal_period_id = $1 AND je.status = 'posted'
+         LEFT JOIN (journal_lines jl
+                    JOIN journal_entries je ON je.id = jl.entry_id AND je.fiscal_period_id = $1 AND je.status = 'posted')
+                ON jl.account_id = coa.id
         WHERE coa.is_postable = true
         GROUP BY coa.code, coa.name, coa.type, coa.id
        HAVING COALESCE(SUM(jl.debit), 0) <> 0 OR COALESCE(SUM(jl.credit), 0) <> 0
@@ -151,8 +157,9 @@ export class ReportsService {
               CASE WHEN coa.normal_balance = 'debit' THEN COALESCE(SUM(jl.debit - jl.credit), 0)
                    ELSE COALESCE(SUM(jl.credit - jl.debit), 0) END::text AS balance
          FROM chart_of_accounts coa
-         LEFT JOIN journal_lines jl ON jl.account_id = coa.id
-         LEFT JOIN journal_entries je ON je.id = jl.entry_id AND je.status = 'posted' AND je.entry_date <= $1
+         LEFT JOIN (journal_lines jl
+                    JOIN journal_entries je ON je.id = jl.entry_id AND je.status = 'posted' AND je.entry_date <= $1)
+                ON jl.account_id = coa.id
         WHERE coa.type IN ('asset','liability','equity') AND coa.is_postable = true
         GROUP BY coa.code, coa.name, coa.type, coa.normal_balance
        HAVING COALESCE(SUM(jl.debit), 0) <> 0 OR COALESCE(SUM(jl.credit), 0) <> 0
@@ -177,6 +184,27 @@ export class ReportsService {
         equity.push(line);
         totalLiabEquity = addMoney(totalLiabEquity, r.balance);
       }
+    }
+
+    // Nothing ever closes revenue/expense into 3100 Laba Ditahan, so the
+    // profit earned up to `asOf` lives only in the P&L accounts. Without this
+    // line the balance sheet was off by exactly the net profit and read
+    // "Tidak Seimbang" as soon as a single sale was posted.
+    const earnings = await client.query<{ amount: Money }>(
+      `SELECT COALESCE(SUM(jl.credit - jl.debit), 0)::text AS amount
+         FROM journal_lines jl
+         JOIN journal_entries je ON je.id = jl.entry_id AND je.status = 'posted' AND je.entry_date <= $1
+         JOIN chart_of_accounts coa ON coa.id = jl.account_id AND coa.type IN ('revenue','expense')`,
+      [asOf],
+    );
+    const currentEarnings = earnings.rows[0]?.amount ?? ZERO_MONEY;
+    if (Number(currentEarnings) !== 0) {
+      equity.push({
+        accountCode: 'CURRENT_EARNINGS',
+        name: 'Laba (Rugi) Berjalan',
+        amount: currentEarnings,
+      });
+      totalLiabEquity = addMoney(totalLiabEquity, currentEarnings);
     }
     return { assets, liabilities, equity, balanced: totalAssets === totalLiabEquity };
   }

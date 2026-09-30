@@ -100,15 +100,18 @@ export function OutletDrilldownContent({ locationId, date }: OutletDrilldownCont
             {data.hourlyTrend.map((h, i) => (
               <div
                 key={h.hour}
-                className="group relative flex flex-1 flex-col items-center justify-end gap-0.5"
+                className="group relative flex h-full flex-1 flex-col items-center gap-0.5"
               >
                 <div className="pointer-events-none absolute -top-7 hidden whitespace-nowrap rounded bg-stone-900 px-1.5 py-0.5 text-xs text-white group-hover:block">
                   {formatMoney(h.revenue)}
                 </div>
-                <div
-                  className="w-full rounded-t bg-brand-400"
-                  style={{ height: `${Math.max(2, hourlyRatios[i]! * 100)}%` }}
-                />
+                {/* definite-height area for the % bar — see TrendPanel */}
+                <div className="flex w-full flex-1 items-end">
+                  <div
+                    className="w-full rounded-t bg-brand-400"
+                    style={{ height: `${Math.max(2, hourlyRatios[i]! * 100)}%` }}
+                  />
+                </div>
                 <span className="text-[9px] text-text-muted">{h.hour}</span>
               </div>
             ))}

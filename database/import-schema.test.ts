@@ -138,4 +138,15 @@ describe('validate', () => {
     expect(result.errors).toEqual([]);
     expect(result.rows[0]!.values.phone).toBeNull();
   });
+
+  it("accepts every location type the schema allows, including migration 242's office", () => {
+    const result = validate(
+      entity('locations'),
+      parseCsv(
+        'code,name,type,city\nG,Gudang,warehouse,Samarinda\nM1,Outlet,outlet,Balikpapan\nHO,Kantor,office,Samarinda\n',
+      ),
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.rows.map((r) => r.values.type)).toEqual(['warehouse', 'outlet', 'office']);
+  });
 });

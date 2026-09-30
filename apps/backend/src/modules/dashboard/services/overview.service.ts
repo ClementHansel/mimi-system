@@ -151,8 +151,12 @@ export class OverviewService {
     // costed here (see class header) — a per-conversion-path join is out of scope
     // for a report-level aggregate query; `recipe-usage.util.ts` does the full,
     // per-sale conversion for the REAL ledger posting.
+    //
+    // `rl.qty` is per ONE execution of the recipe, which makes `r.yield_qty`
+    // portions — the same `sold / yield` scaling `recipe-usage.util.ts` posts.
+    // Without the division a recipe written per 10 portions was costed 10x.
     const res = await client.query<{ cogs: string }>(
-      `SELECT ROUND(COALESCE(SUM(sl.qty * rl.qty * i.avg_cost), 0), 2)::text AS cogs
+      `SELECT ROUND(COALESCE(SUM(sl.qty * rl.qty / NULLIF(r.yield_qty, 0) * i.avg_cost), 0), 2)::text AS cogs
          FROM sales s
          JOIN sale_lines sl ON sl.sale_id = s.id
          JOIN recipes r ON r.product_id = sl.product_id AND r.is_active

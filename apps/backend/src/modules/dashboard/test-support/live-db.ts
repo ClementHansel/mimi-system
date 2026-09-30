@@ -69,6 +69,22 @@ export async function withRollbackAs<T>(
   }
 }
 
+/**
+ * OWNER connection inside a transaction that is always rolled back — for a
+ * spec that must plant its own rows (a recipe with a given yield, a sale)
+ * rather than read the seed. Nothing it writes survives the call.
+ */
+export async function withOwnerRollback<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await getOwnerPool().connect();
+  try {
+    await client.query('BEGIN');
+    return await fn(client);
+  } finally {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+  }
+}
+
 export interface DashboardFixtures {
   ownerUserId: string;
   /** A real Supervisor with a real `user_locations` assignment to exactly one outlet that has seeded sales. */

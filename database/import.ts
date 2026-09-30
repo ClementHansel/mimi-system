@@ -229,6 +229,14 @@ async function applyEntity(
       values.category_id = category.rows[0].id;
     }
 
+    // `locations.tenant_id` is NOT NULL with no default since migration 263, so
+    // an insert that omits it fails for every NEW outlet — only re-imports of
+    // existing codes ever worked. Same resolver the seed uses.
+    if (entity.name === 'locations') {
+      const tenant = await client.query<{ id: string }>(`SELECT app_the_only_tenant() AS id`);
+      values.tenant_id = tenant.rows[0]!.id;
+    }
+
     const { sql, params } = upsertFor(entity, values);
     const res = await client.query<{ inserted: boolean }>(sql, params);
     if (res.rows[0]?.inserted) inserts++;
@@ -260,6 +268,7 @@ function upsertFor(
       'latitude',
       'longitude',
       'geofence_radius_m',
+      'tenant_id',
     ],
     items: [
       'sku',

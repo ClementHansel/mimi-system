@@ -126,7 +126,7 @@ export interface EntityDef {
 }
 
 const STORAGE_TYPES = ['frozen', 'chilled', 'dry'] as const;
-const LOCATION_TYPES = ['warehouse', 'outlet'] as const;
+const LOCATION_TYPES = ['warehouse', 'outlet', 'office'] as const;
 
 /**
  * Entities in DEPENDENCY ORDER. The importer processes them in this sequence so
@@ -160,7 +160,7 @@ export const ENTITIES: EntityDef[] = [
     name: 'locations',
     table: 'locations',
     naturalKey: 'code',
-    note: 'code,name,type,city,address,phone,latitude,longitude,geofence_radius_m — type: warehouse|outlet. Leave geofence_radius_m empty to inherit the system default (migration 229)',
+    note: 'code,name,type,city,address,phone,latitude,longitude,geofence_radius_m — type: warehouse|outlet|office. Leave geofence_radius_m empty to inherit the system default (migration 229)',
     columns: [
       { name: 'code', kind: 'text', required: true },
       { name: 'name', kind: 'text', required: true },

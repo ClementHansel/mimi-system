@@ -99,3 +99,6 @@ scratch/
 # rewriting history is the only way back out. Keep it on the machine that
 # needs it and hand it over directly.
 *.local.md
+
+# personal Claude Code permissions (never commit)
+.claude/settings.local.json

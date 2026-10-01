@@ -183,6 +183,8 @@ const WIPE = [
   'sessions',
   'attachments',
   'document_counters',
+  // "reviewed" marks on dashboard anomalies (migration 271) — about the rows being wiped
+  'anomaly_reviews',
   // Designer overrides point at `attachments` (RESTRICT); the resolver falls
   // back to the shipped defaults, so an empty table is a working state.
   'document_templates',

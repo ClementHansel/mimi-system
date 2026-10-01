@@ -22,8 +22,11 @@ import { StaffKpiPanel } from './StaffKpiPanel';
 import { OutletDrilldownContent } from './OutletDrilldownContent';
 import { SalesReportPanel } from './SalesReportPanel';
 import { MarketingReportPanel } from './MarketingReportPanel';
+import { AnomalyPanel } from './AnomalyPanel';
+import { AnomalyStrip } from './AnomalyStrip';
 import { dashboardApi } from './lib/dashboard-api';
 import { useOverview } from './lib/use-overview';
+import { useAnomalies } from './lib/use-anomalies';
 import { errMsg } from '@/lib/api-error';
 
 function addDays(base: Date, days: number): string {
@@ -192,6 +195,11 @@ function CompanyDashboard({
   const from = range.from ?? addDays(new Date(), -6);
   const to = range.to ?? addDays(new Date(), 0);
   const { data: overview, loading: overviewLoading, reload } = useOverview(from, to);
+  // The Anomali tab's data is fetched here, not in the panel, so the tab badge
+  // and the overview strip read the same response the panel renders.
+  const [tab, setTab] = useState('overview');
+  const [showReviewed, setShowReviewed] = useState(false);
+  const anomalies = useAnomalies(from, to, showReviewed);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -229,7 +237,7 @@ function CompanyDashboard({
         </Button>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="overview">{t('dashboard.tabs.overview')}</TabsTrigger>
           {canSalesReport && <TabsTrigger value="sales">{t('dashboard.tabs.sales')}</TabsTrigger>}
@@ -244,6 +252,17 @@ function CompanyDashboard({
               see a single location at a time. owner, superadmin and supervisor
               all hold inventory.* permissions with nowhere here to spend them. */}
           <TabsTrigger value="inventory">{t('dashboard.tabs.inventory')}</TabsTrigger>
+          <TabsTrigger value="anomaly">
+            {t('dashboard.tabs.anomaly')}
+            {(anomalies.data?.openCount ?? 0) > 0 && (
+              <span
+                data-testid="anomaly-tab-badge"
+                className="ml-1.5 rounded-full bg-warning-100 px-1.5 py-0.5 text-xs font-medium text-warning-800"
+              >
+                {anomalies.data!.openCount}
+              </span>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -256,6 +275,11 @@ function CompanyDashboard({
                 {t('dashboard.tabs.opsStatus')}
               </h3>
               <OpsStatusPanel />
+              <AnomalyStrip
+                data={anomalies.data}
+                loading={anomalies.loading}
+                onOpen={() => setTab('anomaly')}
+              />
             </div>
           </div>
         </TabsContent>
@@ -295,6 +319,22 @@ function CompanyDashboard({
 
         <TabsContent value="inventory">
           <InventoryPanel />
+        </TabsContent>
+
+        <TabsContent value="anomaly">
+          <div className="flex flex-col gap-4">
+            <DateRangePicker label={t('dateRange.label')} value={range} onChange={onRangeChange} />
+            <AnomalyPanel
+              from={from}
+              to={to}
+              data={anomalies.data}
+              loading={anomalies.loading}
+              error={anomalies.error}
+              showReviewed={showReviewed}
+              onShowReviewedChange={setShowReviewed}
+              onChanged={anomalies.reload}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="topProducts">

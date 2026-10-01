@@ -32,7 +32,7 @@ export const pemilikManajerManual: DocManual = {
         },
         {
           type: 'p',
-          text: 'Ada empat tab:',
+          text: 'Tab utama:',
         },
         {
           type: 'list',
@@ -41,6 +41,7 @@ export const pemilikManajerManual: DocManual = {
             '**Outlet** — tabel seluruh outlet (pendapatan, transaksi, shift terbuka, item stok menipis, perangkat offline); klik satu baris untuk membuka rincian per outlet (tren per jam, produk terlaris, staf yang sedang bertugas).',
             '**Produk Terlaris** — 10 produk dengan penjualan tertinggi pada rentang tanggal yang dipilih.',
             '**KPI Staf** — jumlah transaksi, total penjualan, tingkat kehadiran, dan jumlah keterlambatan per pegawai.',
+            '**Anomali** — temuan otomatis yang janggal dibanding kebiasaan outlet: penjualan satu hari yang jauh di atas/bawah biasanya, produk yang terjual jauh melebihi kebiasaan, selisih pemakaian stok antar stock opname, harga jual yang menyimpang, gaji bersih yang terlalu kecil, saldo pembukuan yang janggal, dan selisih penyelesaian pembayaran. Klik satu temuan untuk melihat outlet, tanggal, nilai seharusnya vs aktual, dan baris datanya; tekan **Tandai sudah ditinjau** agar temuan itu disembunyikan (centang **Tampilkan yang sudah ditinjau** untuk melihatnya lagi). Pemilik dapat mengubah ambang batas tiap pemeriksaan lewat **Atur Ambang Batas**.',
           ],
         },
       ],

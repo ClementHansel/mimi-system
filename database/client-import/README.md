@@ -60,13 +60,24 @@ every run. They list everything the data forced a decision on.
 
 ## Decisions baked in
 
-- **Sales are daily recaps, not receipts.** The files only have per-day product mix and
-  per-day payment totals. Inventing individual transactions would be fabricated data, so the
-  dashboards show 1 transaction per outlet per day.
-- **Payment split.** Finance filled the per-method sheet only up to 8 Apr. Later days use
-  that outlet's own April mix, and those payment rows are marked `ESTIMASI` in their reference.
-- **Online platforms have no payment method.** GoFood, GrabFood, ShopeeFood, GoPay and
-  ShopeePay are recorded as `qris` with the platform name in the reference.
+- **Sales are daily recaps per channel, not receipts.** No file holds individual
+  transactions or receipt counts, and inventing them would be fabricated data. Each
+  outlet-day therefore has up to four sales:
+  - walk-in
+  - GoFood, GrabFood and ShopeeFood (`sales.channel`)
+- **Channel and payment amounts come from the outlets' own omset reports**
+  (`extract_omset.py`). Rows are matched to the day by their total, because the date cells
+  are unreliable (M20 typed 2025, M24's April sheet still carries January dates). 676 of 682
+  outlet-days match. The other 6 use that outlet's own April mix and are marked `ESTIMASI`.
+- **Product mix inside an online sale is estimated.** Each platform gets whole take-away
+  portions sized to its amount. Platform totals land within 0.2% of the omset figures, and
+  the gap stays in walk-in cash.
+- **Payments:**
+  - Walk-in payments are cash, `qris` or `bank_transfer`. GoPay, ShopeePay and QRIS BTN are
+    `qris`, with the wallet named in `reference`.
+  - Online sales carry one `bank_transfer` row naming the platform. They post Dr 1030
+    Piutang Platform, owed until the platform pays out.
+  - Platform commission is not in the files; the omset amounts are at menu price.
 - **Line value is qty × price.** The sheet's amount column has 7 formula errors (M5
   Chicken Fire 6 Apr reads Rp 492 million), so it is not used.
 - **Dine-in and take-away rows merge into one product.** The recipe is the sales-weighted

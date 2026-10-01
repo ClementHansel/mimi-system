@@ -75,7 +75,6 @@ sin = sin.dropna(subset=["sku"])
 pm = pd.read_csv(f"{OUT}/pmix.csv"); pm["code"] = [pmap.get((o, n)) for o, n in zip(pm.outlet, pm.raw_name)]
 dropped = pm[pm.code.isna()]; pm = pm[pm.code.notna()]
 note(f"pmix rows kept {len(pm)}, dropped (add-ons/unpriced) {len(dropped)} worth Rp {dropped.qty.mul(dropped.price).sum():,.0f}")
-pay = pd.read_csv(f"{OUT}/sales_payments.csv")
 avg = {s: float(item_costs.loc[s, "avg_cost"]) for s in item_costs.index}
 
 # ------------------------------------------------------------------ helpers
@@ -195,64 +194,123 @@ for (o, d), g in rec.groupby(["outlet","date"]):
     je(d, "outlet_direct_purchase", "import_receipt", ref, o, f"Stok masuk {o} {d} (impor S.O)",
        [(acct["1110"], total, 0, "Persediaan outlet"), (acct["2000"], 0, total, "Hutang pemasok / gudang")])
 
-# ================================================================== 6. sales (one recap receipt per outlet-day)
-METHODS = ["cash","shopeepay","shopeefood","grabfood","gofood","gopay","transfer","qris","voucher"]
-SYS_METHOD = {"cash":"cash","shopeepay":"qris","gopay":"qris","qris":"qris","gofood":"qris","grabfood":"qris","shopeefood":"qris","transfer":"bank_transfer","voucher":"cash"}
-REF = {"shopeepay":"ShopeePay","gopay":"GoPay","qris":"QRIS BTN","gofood":"GoFood","grabfood":"GrabFood","shopeefood":"ShopeeFood","transfer":"Transfer","voucher":"Voucher"}
-known = pay[pay.total > 0].set_index(["outlet","date"])
-shares = {o: (g[METHODS].sum() / g[METHODS].sum().sum()) for o, g in pay[pay.total > 0].groupby("outlet")}
+# ================================================================== 6. sales: per outlet-day, one sale per channel
+# Amounts per channel come from the outlets' own omset reports (extract_omset.py, matched to the day by
+# total). The product mix inside each ONLINE sale is not in any file: each platform gets whole portions
+# of the day's take-away lines, sized to its amount (largest remainder), and walk-in keeps the rest.
+# Walk-in payments: cash / QRIS (GoPay, ShopeePay, QRIS BTN — the wallet is kept in `reference`) /
+# bank transfer. Online sales are owed by the platform until it settles: Dr 1030 Piutang Platform.
+ONLINE = ["gofood", "grabfood", "shopeefood"]
+WALKIN_METHOD = {"cash": "cash", "qris": "qris", "gopay": "qris", "shopeepay": "qris", "transfer": "bank_transfer", "voucher": "cash"}
+REF = {"qris": "QRIS BTN", "gopay": "GoPay", "shopeepay": "ShopeePay", "transfer": "Transfer", "voucher": "Voucher",
+       "gofood": "GoFood", "grabfood": "GrabFood", "shopeefood": "ShopeeFood"}
+ONLINE_METHOD = "bank_transfer"   # sale_payments.method has no platform value; sales.channel carries the platform
+ALL_M = list(WALKIN_METHOD) + ONLINE
+om_all = pd.read_csv(f"{OUT}/omset.csv")
+om = om_all.set_index(["outlet", "date"])
+omix = {o: (g[ALL_M].sum() / g[ALL_M].sum().sum()) for o, g in om_all.groupby("outlet")}
 shifts, sales, lines, pays = [], [], [], []
-usage_cost_day = collections.Counter(); estimated_days = 0
-pm["line_total"] = (pm.qty.map(qty3) * pm.price.map(money))
-for (o, d), g in pm.groupby(["outlet","date"]):
+estimated_days = 0; online_gap = Decimal(0); online_target = Decimal(0)
+for (o, d), g in pm.groupby(["outlet", "date"]):
     kasir = staff(o, "kasir", "supervisor")
-    sid, shid = uid("sale", o, d), uid("shift", o, d)
-    agg = g.groupby("code").agg(qty=("qty","sum"), price=("price", lambda s: s.value_counts().index[0]), line_total=("line_total","sum")).reset_index()
-    agg = agg[agg.qty > 0]
-    total = Decimal(0)
-    for i, r in enumerate(agg.sort_values("code").itertuples()):
-        lt = money(r.line_total); qy = qty3(r.qty)
-        unit_price = (lt / qy).quantize(Decimal("0.01")) if qy else money(r.price)
-        lines.append((uid("line", sid, r.code), sid, prod[r.code], qy, unit_price, Decimal(0), lt, i))
-        total += lt
-    # payments: the finance sheet's split where it exists, else this outlet's own April mix (estimated)
-    if (o, d) in known.index:
-        split = {m: Decimal(str(known.loc[(o, d), m])) for m in METHODS}; est = False
+    shid = uid("shift", o, d)
+    # the day's lines at (product, take-away?) grain; line value = qty x price
+    L = g.groupby(["code", "tw"]).agg(qty=("qty", "sum"), price=("price", lambda x: x.value_counts().index[0])).reset_index()
+    L["qty"] = L.qty.map(lambda v: float(qty3(v)))
+    L = L[L.qty > 0].reset_index(drop=True)
+    day_total = sum((qty3(q) * money(pr)).quantize(Decimal("0.01")) for q, pr in zip(L.qty, L.price))
+    if (o, d) in om.index:
+        src = {m: float(om.loc[(o, d), m]) for m in ALL_M}; est = False
     else:
-        split = {m: money(float(total) * float(shares[o][m])) for m in METHODS}; est = True; estimated_days += 1
-    stot = sum(split.values())
-    grouped = collections.defaultdict(lambda: Decimal(0)); refs = collections.defaultdict(list)
-    for m, v in split.items():
-        if v <= 0: continue
-        v = money(float(v) * float(total) / float(stot)) if stot else Decimal(0)  # scale to the line total
-        grouped[SYS_METHOD[m]] += v;
-        if m in REF: refs[SYS_METHOD[m]].append(REF[m])
-    diff = total - sum(grouped.values()); grouped["cash"] += diff   # rounding lands on cash
-    for m, v in grouped.items():
-        if v <= 0: continue
-        pays.append((uid("pay", sid, m), sid, m, v, ("ESTIMASI · " if est else "") + ", ".join(refs[m]) if (refs[m] or est) else None,
-                     {"cash":"paid","qris":"verified","bank_transfer":"verified"}[m]))
-    when = ts(d, 21)
-    shifts.append((shid, f"{o}-REKAP-{d.replace('-','')}", loc[o], kasir, ts(d, 8), Decimal(0), kasir, ts(d, 23),
-                   grouped.get("cash", Decimal(0)), grouped.get("cash", Decimal(0)), Decimal(0), "closed", 1, total, uid("shiftclient", o, d),
-                   "Rekap harian impor April 2026"))
-    sales.append((sid, f"{o}-{d.replace('-','')}-REKAP", uid("saleclient", o, d), loc[o], shid, kasir, "completed", total, Decimal(0), total, total, Decimal(0),
-                  when, "walk_in", "Rekap penjualan harian (impor PM-WASTE April 2026)" + (" · metode bayar estimasi" if est else "")))
-    # usage from the SAME recipes the system holds, so COGS and the ledger agree with what POS would post
+        src = {m: float(day_total) * float(omix[o][m]) for m in ALL_M}; est = True; estimated_days += 1
+    scale = float(day_total) / (sum(src.values()) or 1.0)
+    src = {m: v * scale for m, v in src.items()}
+    remaining = {i: L.at[i, "qty"] for i in L.index}
+    pool = [i for i in L.index if L.at[i, "tw"] == 1]
+    pool_val = sum(L.at[i, "qty"] * L.at[i, "price"] for i in pool)
+    if pool_val < sum(src[m] for m in ONLINE):
+        pool = list(L.index); pool_val = float(day_total)
+    channel_lines = {}
+    for ch in ONLINE:
+        target = src[ch]
+        if target <= 0: continue
+        share = target / pool_val if pool_val else 0.0
+        alloc = {i: min(remaining[i], math.floor(L.at[i, "qty"] * share)) for i in pool}
+        val = sum(alloc[i] * L.at[i, "price"] for i in pool)
+        # top up whole portions, largest fractional remainder first, while that brings the value closer to target
+        order = sorted(pool, key=lambda i: (L.at[i, "qty"] * share) % 1, reverse=True)
+        changed = True
+        while changed:
+            changed = False
+            for i in order:
+                pr = L.at[i, "price"]
+                if remaining[i] - alloc[i] >= 1 and abs(target - (val + pr)) < abs(target - val):
+                    alloc[i] += 1; val += pr; changed = True
+        for i, n_ in alloc.items(): remaining[i] -= n_
+        channel_lines[ch] = {i: n_ for i, n_ in alloc.items() if n_ > 0}
+        online_target += money(target); online_gap += abs(money(target) - money(val))
+    channel_lines["walk_in"] = {i: n_ for i, n_ in remaining.items() if n_ > 1e-9}
+    n_sales = 0; cash_total = Decimal(0); by_method = collections.defaultdict(lambda: Decimal(0)); day_sum = Decimal(0)
     use = collections.Counter()
-    for r in agg.itertuples():
-        for sku, per in per_portion.get(r.code, {}).items(): use[sku] += per * float(r.qty)
-    ucost = Decimal(0)
-    for sku, qy in use.items():
+    for ch in ["walk_in"] + ONLINE:
+        cl = channel_lines.get(ch)
+        if not cl: continue
+        sid = uid("sale", o, d) if ch == "walk_in" else uid("sale", o, d, ch)
+        agg = collections.defaultdict(lambda: [Decimal(0), Decimal(0)])   # code -> [qty, value]
+        for i, n_ in cl.items():
+            code, pr = L.at[i, "code"], L.at[i, "price"]
+            qd = qty3(n_); agg[code][0] += qd; agg[code][1] += (qd * money(pr)).quantize(Decimal("0.01"))
+            for sku, per in per_portion.get(code, {}).items(): use[(sid, sku)] += per * float(qd)
+        total = Decimal(0)
+        for k, (code, (qy, lt)) in enumerate(sorted(agg.items())):
+            if qy <= 0: continue
+            lines.append((uid("line", sid, code), sid, prod[code], qy, (lt / qy).quantize(Decimal("0.01")), Decimal(0), lt, k))
+            total += lt
+        if total <= 0: continue
+        if ch == "walk_in":
+            wsrc = {m: src[m] for m in WALKIN_METHOD}; ws_ = sum(wsrc.values()) or 1.0
+            grouped = collections.defaultdict(lambda: Decimal(0)); refs = collections.defaultdict(list)
+            for m, v in wsrc.items():
+                if v <= 0: continue
+                grouped[WALKIN_METHOD[m]] += money(v * float(total) / ws_)
+                if m in REF: refs[WALKIN_METHOD[m]].append(REF[m])
+            grouped["cash"] += total - sum(grouped.values())   # rounding (and online over/under-allocation) lands on cash
+            if grouped["cash"] < 0:   # never a negative cash payment: take it from the largest other method
+                big = max((m for m in grouped if m != "cash"), key=lambda m: grouped[m])
+                grouped[big] += grouped["cash"]; grouped["cash"] = Decimal(0)
+            for m, v in grouped.items():
+                if v <= 0: continue
+                ref = (("ESTIMASI · " if est else "") + ", ".join(refs[m])) if (refs[m] or est) else None
+                pays.append((uid("pay", sid, m), sid, m, v, ref, {"cash": "paid", "qris": "verified", "bank_transfer": "verified"}[m]))
+                by_method[m] += v
+            cash_total += grouped.get("cash", Decimal(0))
+        else:
+            pays.append((uid("pay", sid, ch), sid, ONLINE_METHOD, total, ("ESTIMASI · " if est else "") + REF[ch], "verified"))
+            by_method["online"] += total
+        when = ts(d, 21, 0 if ch == "walk_in" else 1 + ONLINE.index(ch))
+        rcpt = f"{o}-{d.replace('-', '')}-" + {"walk_in": "REKAP", "gofood": "GOFOOD", "grabfood": "GRABFOOD", "shopeefood": "SHOPEEFOOD"}[ch]
+        note_ = {"walk_in": "Rekap penjualan harian kasir", "gofood": "Rekap pesanan GoFood", "grabfood": "Rekap pesanan GrabFood",
+                 "shopeefood": "Rekap pesanan ShopeeFood"}[ch]
+        note_ += " (impor April 2026)" + ("" if ch == "walk_in" else " · isi produk diperkirakan dari porsi take-away") + (" · metode bayar estimasi" if est else "")
+        sales.append((sid, rcpt, uid("saleclient", o, d, ch), loc[o], shid, kasir, "completed", total, Decimal(0), total, total, Decimal(0),
+                      when, ch, note_))
+        n_sales += 1; day_sum += total
+    assert day_sum == day_total, (o, d, day_sum, day_total)
+    shifts.append((shid, f"{o}-REKAP-{d.replace('-', '')}", loc[o], kasir, ts(d, 8), Decimal(0), kasir, ts(d, 23),
+                   cash_total, cash_total, Decimal(0), "closed", n_sales, day_total, uid("shiftclient", o, d), "Rekap harian impor April 2026"))
+    ucost = Decimal(0); when = ts(d, 21)
+    for (sid, sku), qy in use.items():
         move(o, sku, "usage_out", qy, avg[sku], "sale", sid, when, "Pemakaian resep (rekap harian)", kasir)
         ucost += qty3(qy) * money(avg[sku])
     sday = str(uuid.uuid5(SALE_DAY_NS, f"{loc[o]}:{d}"))
-    DR = {"cash": "1000", "qris": "1031", "bank_transfer": "1032"}
+    DR = {"cash": "1000", "qris": "1031", "bank_transfer": "1032", "online": "1030"}
     je(d, "outlet_sales", "sale_day", sday, o, f"Penjualan {o} {d}",
-       [(acct[DR[m]], v, 0, m) for m, v in grouped.items() if v > 0] + [(acct["4000"], 0, total, "Pendapatan penjualan")])
+       [(acct[DR[m]], v, 0, "Penjualan " + m) for m, v in by_method.items() if v > 0] + [(acct["4000"], 0, day_total, "Pendapatan penjualan")])
     je(d, "outlet_ingredient_usage", "usage_day", sday, o, f"HPP pemakaian bahan {o} {d}",
        [(acct["5000"], ucost, 0, "HPP"), (acct["1110"], 0, ucost, "Persediaan outlet")])
-note(f"sales days {len(sales)}, lines {len(lines)}, payment rows {len(pays)}, days with ESTIMATED payment split {estimated_days}")
+note(f"sales {len(sales)} over {len(shifts)} outlet-days, lines {len(lines)}, payment rows {len(pays)}, outlet-days with ESTIMATED channel split {estimated_days}")
+note(f"online allocation: target Rp {online_target:,.0f}, sum |allocated - target| Rp {online_gap:,.0f} "
+     f"({(online_gap / online_target * 100 if online_target else 0):.2f}%) — the difference stays in walk-in cash")
 
 # ================================================================== 7. waste, staff meals, Jumat Berkah (product units -> items via recipe)
 WASTE_KIND = [("waste", ["waste_before","waste_after"], "production_error", "Waste produksi (sebelum/sesudah)"),

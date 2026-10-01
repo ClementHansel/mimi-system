@@ -11,7 +11,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; OUT="$1"; DB="$2"
 : "${CLIENT_DATA_DIR:?set CLIENT_DATA_DIR}"; : "${DATABASE_MIGRATION_URL:?set DATABASE_MIGRATION_URL}"
 export PYTHONIOENCODING=utf-8
 mkdir -p "$OUT"
-echo "== extract"; python "$HERE/extract_so.py" "$OUT" 2>/dev/null; python "$HERE/extract_misc.py" "$OUT"; python "$HERE/extract_rincian.py" "$OUT"
+echo "== extract"; python "$HERE/extract_so.py" "$OUT" 2>/dev/null; python "$HERE/extract_misc.py" "$OUT"; python "$HERE/extract_rincian.py" "$OUT"; python "$HERE/extract_omset.py" "$OUT"
 echo "== build master data"; python "$HERE/build_locations.py" "$OUT"; python "$HERE/build_master.py" "$OUT"
 cd "$HERE/.."
 echo "== migrate"; npx tsx migrate.ts | tail -1

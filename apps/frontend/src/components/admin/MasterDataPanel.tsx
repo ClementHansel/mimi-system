@@ -939,6 +939,7 @@ function ProductFormModal({
   // human types a different channel price on purpose.
   const [priceGofood, setPriceGofood] = useState(product?.priceGofood ?? null);
   const [priceShopeefood, setPriceShopeefood] = useState(product?.priceShopeefood ?? null);
+  const [priceGrabfood, setPriceGrabfood] = useState(product?.priceGrabfood ?? null);
   const [photo, setPhoto] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -974,6 +975,7 @@ function ProductFormModal({
         // PATCH.
         priceGofood,
         priceShopeefood,
+        priceGrabfood,
         ...(photoAttachmentId ? { photoAttachmentId } : {}),
       };
       if (product) await api.patch(`/products/${product.id}`, body);
@@ -1039,11 +1041,11 @@ function ProductFormModal({
           value={price}
           onChange={setPrice}
         />
-        {/* F-POS-3 — one interface, three prices (owner). Grouped visually
+        {/* F-POS-3 — one interface, four prices (owner). Grouped visually
             under the walk-in price with an explicit "leave empty = same as
             walk-in" hint on each — the nullable-fallback contract stated
             as plainly in the form as it is in the type. */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <MoneyInput
             label={t('admin.masterData.products.priceGofood')}
             hint={t('admin.masterData.products.priceChannelHint')}
@@ -1055,6 +1057,12 @@ function ProductFormModal({
             hint={t('admin.masterData.products.priceChannelHint')}
             value={priceShopeefood}
             onChange={setPriceShopeefood}
+          />
+          <MoneyInput
+            label={t('admin.masterData.products.priceGrabfood')}
+            hint={t('admin.masterData.products.priceChannelHint')}
+            value={priceGrabfood}
+            onChange={setPriceGrabfood}
           />
         </div>
         {product?.photoUrl && photo.length === 0 && (

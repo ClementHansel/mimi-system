@@ -8,7 +8,7 @@ import { MasterDataPanel } from './MasterDataPanel';
  * F-POS-3 — "Product form in Data Master → Produk & Resep gains the two
  * channel prices, clearly labelled and clearly optional." This drives the
  * real create-product flow (tab -> "Tambah Produk" -> fill required fields
- * -> save) and asserts the POST body sends `priceGofood`/`priceShopeefood`
+ * -> save) and asserts the POST body sends `priceGofood`/`priceShopeefood`/`priceGrabfood`
  * as explicit `null` when left empty — the form-level half of the
  * null->walk-in fallback contract (`channel-pricing.test.ts` pins the
  * pricing-function half).
@@ -50,7 +50,7 @@ describe('MasterDataPanel — product form channel prices (F-POS-3)', () => {
     });
   });
 
-  it('creates a product with priceGofood/priceShopeefood explicitly null when left empty ("same as walk-in")', async () => {
+  it('creates a product with priceGofood/priceShopeefood/priceGrabfood explicitly null when left empty ("same as walk-in")', async () => {
     render(<MasterDataPanel />);
 
     fireEvent.click(await screen.findByText('Produk & Resep'));
@@ -70,6 +70,7 @@ describe('MasterDataPanel — product form channel prices (F-POS-3)', () => {
     // = same as walk-in" case this test exists to pin.
     expect(within(dialog).getByLabelText('Harga GoFood')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Harga ShopeeFood')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Harga GrabFood')).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByText('Simpan'));
 
@@ -82,6 +83,7 @@ describe('MasterDataPanel — product form channel prices (F-POS-3)', () => {
       price: '15000.00',
       priceGofood: null,
       priceShopeefood: null,
+      priceGrabfood: null,
     });
   });
 });

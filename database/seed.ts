@@ -1031,6 +1031,8 @@ async function main(): Promise<void> {
       /** GoFood/ShopeeFood price (migration 249, three-tier channel pricing) — `undefined` on most products, which is exactly the "falls back to price" case the API contract promises. */
       priceGofood?: number;
       priceShopeefood?: number;
+      /** GrabFood price (migration 270) — same fall-back-to-price rule. */
+      priceGrabfood?: number;
       ingredients: string[];
     }
     const productDefs: ProductDef[] = [];
@@ -1056,7 +1058,7 @@ async function main(): Promise<void> {
       price: number,
       ingredients: string[],
       yieldQty = 1,
-      channelPrices?: { gofood?: number; shopeefood?: number },
+      channelPrices?: { gofood?: number; shopeefood?: number; grabfood?: number },
     ) {
       productDefs.push({
         code: `PRD${String(prodSeq++).padStart(3, '0')}`,
@@ -1065,13 +1067,14 @@ async function main(): Promise<void> {
         price,
         priceGofood: channelPrices?.gofood,
         priceShopeefood: channelPrices?.shopeefood,
+        priceGrabfood: channelPrices?.grabfood,
         ingredients,
         yieldQty,
       });
     }
     const fillet = 'Ayam Fillet Berbumbu Original';
     // Three-tier channel pricing (migration 249, owner decision 2026-08-27): a handful of the
-    // best-sellers get an explicit GoFood/ShopeeFood markup here so the till's channel toggle is
+    // best-sellers get an explicit GoFood/ShopeeFood/GrabFood markup here so the till's channel toggle is
     // demonstrable in dev — every other product deliberately keeps `priceGofood`/`priceShopeefood`
     // unset, exercising the "falls back to `price`" contract path just as much as the override path.
     addProduct(
@@ -1080,7 +1083,7 @@ async function main(): Promise<void> {
       12000,
       ['Ayam Potong Utuh', 'Tepung Bumbu Original', 'Minyak Goreng Kemasan'],
       1,
-      { gofood: 15000, shopeefood: 15000 },
+      { gofood: 15000, shopeefood: 15000, grabfood: 15500 },
     );
     addProduct('Ayam Goreng Pedas 1pc', 'Ayam', 13000, [
       'Ayam Potong Utuh',
@@ -1093,7 +1096,7 @@ async function main(): Promise<void> {
       15000,
       [fillet, 'Sambal Bawang', 'Minyak Goreng Kemasan'],
       1,
-      { gofood: 18500, shopeefood: 18000 },
+      { gofood: 18500, shopeefood: 18000, grabfood: 18500 },
     );
     addProduct('Ayam Geprek Keju', 'Ayam', 18000, [fillet, 'Sambal Bawang', 'Mentega']);
     addProduct('Ayam Crispy Extra', 'Ayam', 16000, [
@@ -1116,7 +1119,7 @@ async function main(): Promise<void> {
       20000,
       ['Beras Premium', 'Ayam Potong Utuh', 'Tepung Bumbu Original', 'Box Nasi Sedang'],
       1,
-      { gofood: 24000, shopeefood: 23500 },
+      { gofood: 24000, shopeefood: 23500, grabfood: 24000 },
     );
     addProduct('Paket Nasi + Ayam Geprek', 'Paket', 23000, [
       'Beras Premium',
@@ -1157,7 +1160,7 @@ async function main(): Promise<void> {
       5000,
       ['Teh Celup', 'Gula Pasir', 'Es Batu Kristal', 'Cup Minuman 12oz'],
       1,
-      { gofood: 7000, shopeefood: 6500 },
+      { gofood: 7000, shopeefood: 6500, grabfood: 7000 },
     );
     addProduct('Es Jeruk', 'Minuman', 6000, ['Sirup Jeruk', 'Es Batu Kristal', 'Cup Minuman 12oz']);
     addProduct('Es Cocopandan', 'Minuman', 6000, [
@@ -1246,8 +1249,8 @@ async function main(): Promise<void> {
     const productId: Record<string, string> = {};
     for (const p of productDefs) {
       const res = await client.query(
-        `INSERT INTO products (code, name, category_id, price, price_gofood, price_shopeefood, sort_order)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `INSERT INTO products (code, name, category_id, price, price_gofood, price_shopeefood, price_grabfood, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
          ON CONFLICT (code) DO NOTHING RETURNING id`,
         [
           p.code,
@@ -1256,6 +1259,7 @@ async function main(): Promise<void> {
           p.price,
           p.priceGofood ?? null,
           p.priceShopeefood ?? null,
+          p.priceGrabfood ?? null,
           0,
         ],
       );

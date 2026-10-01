@@ -6,7 +6,7 @@
  * and orange in another — which would defeat the entire point of colour-
  * coding the channel for at-a-glance recognition.
  */
-import { Store, Bike, ShoppingBag, type LucideIcon } from 'lucide-react';
+import { Store, Bike, ShoppingBag, Car, type LucideIcon } from 'lucide-react';
 import type { PosChannel } from './types';
 
 export interface ChannelMeta {
@@ -35,12 +35,23 @@ export const CHANNEL_META: Record<PosChannel, ChannelMeta> = {
     badgeClass: 'bg-success-50 text-success-700',
   },
   // Orange/amber — close to ShopeeFood's own brand colour and visually
-  // distinct from both walk-in and GoFood, so the three states can never be
+  // distinct from both walk-in and GoFood, so the states can never be
   // confused for one another from across the counter.
   shopeefood: {
     icon: ShoppingBag,
     labelKey: 'pos.channelShopeefood',
     activeClass: 'border-warning-600 bg-warning-50 text-warning-700',
     badgeClass: 'bg-warning-50 text-warning-700',
+  },
+  // Blue (`info`) — GrabFood's own brand green is already spoken for by
+  // GoFood's slot above, and a second green would make the two delivery
+  // channels indistinguishable from across the counter. `info` is the one
+  // remaining hue that is distinct from walk-in (brand rust), GoFood (green)
+  // and ShopeeFood (amber) and is not an error/alarm colour.
+  grabfood: {
+    icon: Car,
+    labelKey: 'pos.channelGrabfood',
+    activeClass: 'border-info-600 bg-info-50 text-info-700',
+    badgeClass: 'bg-info-50 text-info-700',
   },
 };

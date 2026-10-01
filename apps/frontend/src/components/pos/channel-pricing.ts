@@ -1,6 +1,6 @@
 /**
  * F-POS-3 — the ONE place the null->walk-in fallback is implemented
- * (owner's contract: "priceGofood/priceShopeefood are nullable, and when
+ * (owner's contract: "priceGofood/priceShopeefood/priceGrabfood are nullable, and when
  * null the walk-in price applies — never zero"). The product grid, the cart
  * repricing on channel switch, and the product form's live preview all call
  * this instead of re-deriving the fallback independently, which is exactly
@@ -14,11 +14,13 @@ export interface ChannelPriceable {
   price: Money;
   priceGofood?: Money | null;
   priceShopeefood?: Money | null;
+  priceGrabfood?: Money | null;
 }
 
 /** The price a cashier should see/charge for `product` under `channel` — never `0.00` for "no channel price set". */
 export function priceForChannel(product: ChannelPriceable, channel: PosChannel): Money {
   if (channel === 'gofood') return product.priceGofood ?? product.price;
   if (channel === 'shopeefood') return product.priceShopeefood ?? product.price;
+  if (channel === 'grabfood') return product.priceGrabfood ?? product.price;
   return product.price;
 }

@@ -535,6 +535,27 @@ describe('POS — full shift, live database', () => {
         expect(shopeefoodSale.lines[0]!.unitPrice).toBe(shopeefoodPrice);
         expect(await usageOutCount()).toBe(before + perSaleUsageRows * 2);
 
+        // GrabFood (migration 270) behaves identically: caller's channel price stored verbatim,
+        // recipe explosion still runs.
+        const grabfoodPrice = (Number(fx.productPrice) + 3500).toFixed(2);
+        const grabfoodSale = await svc.sales.create(
+          client,
+          fx.kasirId,
+          {
+            clientId: randomUUID(),
+            shiftId: shift.id,
+            locationId: fx.locationId,
+            occurredAt: new Date().toISOString(),
+            lines: [{ productId: fx.productId, qty: '1.000', unitPrice: grabfoodPrice }],
+            payments: [{ method: PaymentMethod.CASH, amount: grabfoodPrice }],
+            channel: 'grabfood',
+          },
+          { roleKey: 'kasir', locationIds: [fx.locationId] },
+        );
+        expect(grabfoodSale.channel).toBe('grabfood');
+        expect(grabfoodSale.lines[0]!.unitPrice).toBe(grabfoodPrice);
+        expect(await usageOutCount()).toBe(before + perSaleUsageRows * 3);
+
         // `channel` omitted entirely (older app build / plain walk-in cart) defaults to 'walk_in' —
         // matches `sales.channel`'s own DB DEFAULT, never left NULL or rejected.
         const walkInSale = await svc.sales.create(
@@ -551,7 +572,7 @@ describe('POS — full shift, live database', () => {
           { roleKey: 'kasir', locationIds: [fx.locationId] },
         );
         expect(walkInSale.channel).toBe('walk_in');
-        expect(await usageOutCount()).toBe(before + perSaleUsageRows * 3);
+        expect(await usageOutCount()).toBe(before + perSaleUsageRows * 4);
       },
     );
   }, 30_000);

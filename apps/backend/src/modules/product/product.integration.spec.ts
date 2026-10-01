@@ -171,7 +171,7 @@ describe('ProductService / RecipeService (live database)', () => {
     }
   });
 
-  it('priceGofood/priceShopeefood default to null (fallback to price) and round-trip when set, cleared, and re-set (migration 249)', async () => {
+  it('priceGofood/priceShopeefood/priceGrabfood default to null (fallback to price) and round-trip when set, cleared, and re-set (migrations 249, 270)', async () => {
     const created = await withRollback(async (client) =>
       productService.create(
         client,
@@ -190,12 +190,13 @@ describe('ProductService / RecipeService (live database)', () => {
     // Unset at creation — the wire contract is "falls back to price", never a silent 0.
     expect(created.priceGofood).toBeNull();
     expect(created.priceShopeefood).toBeNull();
+    expect(created.priceGrabfood).toBeNull();
 
     const withChannelPrices = await withRollback(async (client) =>
       productService.update(
         client,
         created.id,
-        { priceGofood: '18000.00', priceShopeefood: '17500.00' },
+        { priceGofood: '18000.00', priceShopeefood: '17500.00', priceGrabfood: '19000.00' },
         ACTOR,
         SYSTEM_USER,
         null,
@@ -203,6 +204,7 @@ describe('ProductService / RecipeService (live database)', () => {
     );
     expect(withChannelPrices.priceGofood).toBe('18000.00');
     expect(withChannelPrices.priceShopeefood).toBe('17500.00');
+    expect(withChannelPrices.priceGrabfood).toBe('19000.00');
     expect(withChannelPrices.price).toBe('15000.00'); // walk-in price untouched by the channel-price update
 
     // Explicit `null` clears an override back to falling through to `price` — distinct from omitting
@@ -212,6 +214,13 @@ describe('ProductService / RecipeService (live database)', () => {
     );
     expect(clearedGofoodOnly.priceGofood).toBeNull();
     expect(clearedGofoodOnly.priceShopeefood).toBe('17500.00'); // untouched — the field was omitted, not nulled
+    expect(clearedGofoodOnly.priceGrabfood).toBe('19000.00');
+
+    const clearedGrabfood = await withRollback(async (client) =>
+      productService.update(client, created.id, { priceGrabfood: null }, ACTOR, SYSTEM_USER, null),
+    );
+    expect(clearedGrabfood.priceGrabfood).toBeNull(); // back to falling through to `price`
+    expect(clearedGrabfood.priceShopeefood).toBe('17500.00');
   });
 
   it('deactivates a product', async () => {

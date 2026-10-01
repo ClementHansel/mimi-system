@@ -15,6 +15,7 @@ const PRODUCTS: PosProduct[] = [
     price: '15000.00',
     priceGofood: '18000.00',
     priceShopeefood: '17000.00',
+    priceGrabfood: '19000.00',
     photoUrl: null,
     photoPath: null,
     sortOrder: 0,
@@ -73,6 +74,20 @@ describe('ChannelToggle', () => {
     // reflects it too, not just the raw line field.
     const summary = summarizeCart(usePosCartStore.getState().lines, '0.00');
     expect(summary.total).toBe('18000.00');
+  });
+
+  it('re-prices to the GrabFood price on confirm, and the toggle offers GrabFood as a fourth button', () => {
+    usePosCartStore
+      .getState()
+      .addProduct({ productId: 'p1', productName: 'Ayam Goreng', unitPrice: '15000.00' });
+
+    render(<ChannelToggle products={PRODUCTS} />);
+    expect(screen.getAllByRole('button')).toHaveLength(4);
+    fireEvent.click(screen.getByText('GrabFood'));
+    fireEvent.click(screen.getByText('Ganti & Perbarui Harga'));
+
+    expect(usePosChannelStore.getState().channel).toBe('grabfood');
+    expect(usePosCartStore.getState().lines[0]!.unitPrice).toBe('19000.00');
   });
 
   it('leaves a line at its current price when its product is not in the (possibly stale/offline) catalog, rather than dropping it', () => {

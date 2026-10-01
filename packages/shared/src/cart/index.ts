@@ -1,6 +1,6 @@
 /**
  * Cart / sale total calculator (FR-POS-01/04/05/07) — line totals, sale-level
- * discount, and the GoFood/ShopeeFood net-received walk. All money math is
+ * discount, and the GoFood/ShopeeFood/GrabFood net-received walk. All money math is
  * decimal-safe via `../money`; nothing here touches a JS `number` for an
  * amount.
  */
@@ -61,7 +61,7 @@ export function calculateChange(totalPaid: Money, saleTotal: Money): Money {
   return clampMoneyToZero(subMoney(totalPaid, saleTotal));
 }
 
-// ── GoFood / ShopeeFood net-received math (FR-POS-05/07) ─────────────────────
+// ── GoFood / ShopeeFood / GrabFood net-received math (FR-POS-05/07) ─────────────────────
 
 export interface OnlineOrderAmounts {
   grossAmount: Money;

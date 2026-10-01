@@ -69,7 +69,7 @@ export interface OnlineOrderReportRow {
  * are omitted from the product breakdown rather than guessed at.
  *
  * `groupBy=channel` (added post-249/251): `sales.channel` (walk_in/gofood/
- * shopeefood) and PAYMENT METHOD (`sale_payments.method` — cash/qris/
+ * shopeefood/grabfood — grabfood from migration 270) and PAYMENT METHOD (`sale_payments.method` — cash/qris/
  * bank_transfer) are genuinely different dimensions — a GoFood order still
  * has a payment method. `groupBy=method`'s existing online arm predates
  * `channel` and conflates the two by presenting `online_orders.platform` as
@@ -296,7 +296,7 @@ export class SalesReportService {
    * So the dimensions are now separate and each is clean:
    *   `groupBy=method`  — cash / qris / bank_transfer, for EVERY sale
    *                       including channel sales.
-   *   `groupBy=channel` — walk_in / gofood / shopeefood, continuous across the
+   *   `groupBy=channel` — walk_in / gofood / shopeefood / grabfood, continuous across the
    *                       cutover (`sales.channel` UNION `online_orders`).
    *
    * WHAT THIS COSTS, stated plainly: pre-cutover `online_orders` rows have no
@@ -356,7 +356,7 @@ export class SalesReportService {
   }
 
   /**
-   * `groupBy=channel` — walk_in/gofood/shopeefood, continuous across the 249
+   * `groupBy=channel` — walk_in/gofood/shopeefood/grabfood, continuous across the 249
    * cutover: `sales.channel` (every sale, all three values, NOT just
    * post-cutover ones — walk_in sales have always lived here) UNIONed with
    * `online_orders.platform` (only ever gofood/shopeefood, pre-cutover

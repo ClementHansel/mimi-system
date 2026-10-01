@@ -4,7 +4,7 @@ import type { PosChannel } from './types';
 
 /**
  * F-POS-3 — which channel the till is currently ringing into: walk-in,
- * GoFood, or ShopeeFood (owner: "need only 1 interface for 3 of them").
+ * GoFood, ShopeeFood, or GrabFood (owner: "need only 1 interface for all of them").
  * Global, not per-component state, because BOTH the top bar (the toggle)
  * and the page (grid/cart/payment pricing) need to read the same value —
  * same reasoning as `shift-store.ts`.

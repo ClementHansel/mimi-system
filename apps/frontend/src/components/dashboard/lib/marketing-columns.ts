@@ -19,11 +19,12 @@ import type { OnlineOrderReportRow, SalesReportRow } from './report-types';
 
 type T = (key: string, params?: Record<string, string | number>) => string;
 
-/** `groupKey` -> i18n key, for the three channels the POS actually tags. */
+/** `groupKey` -> i18n key, for the four channels the POS actually tags. */
 const CHANNEL_LABEL_KEYS: Record<string, string> = {
   walk_in: 'dashboard.marketing.channelWalkIn',
   gofood: 'dashboard.marketing.channelGofood',
   shopeefood: 'dashboard.marketing.channelShopeefood',
+  grabfood: 'dashboard.marketing.channelGrabfood',
 };
 
 /**

@@ -118,6 +118,7 @@ describe('report module (integration, live Postgres)', () => {
           // the narrowing these two DID show up here.
           expect(keys).not.toContain('gofood');
           expect(keys).not.toContain('shopeefood');
+          expect(keys).not.toContain('grabfood');
           expect(keys).not.toContain('walk_in');
           // Every key must be a payment method the POS can actually record.
           for (const key of keys) {
@@ -127,7 +128,7 @@ describe('report module (integration, live Postgres)', () => {
       );
     });
 
-    it('GET /reports/sales groupBy=channel returns walk_in/gofood/shopeefood rows, continuous across the 249 cutover (migration 251 regression guard)', async () => {
+    it('GET /reports/sales groupBy=channel returns walk_in/gofood/shopeefood/grabfood rows, continuous across the 249 cutover (migration 251 regression guard)', async () => {
       if (!dbAvailable) return;
       await withRollbackAs(
         { role: 'owner', userId: ownerContext().userId, locationIds: [] },

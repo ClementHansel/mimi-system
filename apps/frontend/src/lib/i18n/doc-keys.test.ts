@@ -94,7 +94,7 @@ describe('doc.* covers the enum labels the resolvers name', () => {
   });
 
   it('names every POS channel, payment method and payment status', () => {
-    for (const channel of ['walk_in', 'gofood', 'shopeefood']) {
+    for (const channel of ['walk_in', 'gofood', 'shopeefood', 'grabfood']) {
       expectResolves(`doc.channel.${channel}`);
     }
     for (const method of ['cash', 'qris', 'bank_transfer']) {

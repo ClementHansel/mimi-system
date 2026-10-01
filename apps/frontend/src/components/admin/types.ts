@@ -125,6 +125,8 @@ export interface Product {
   priceGofood: Money | null;
   /** F-POS-3 — ShopeeFood menu price (absorbs the platform commission). `null` = same as `price` (walk-in), never `0`. */
   priceShopeefood: Money | null;
+  /** GrabFood menu price (migration 270) — same null-means-`price` rule. */
+  priceGrabfood: Money | null;
   /** Presigned and EXPIRING (10 min) — fine to render now, never to cache. */
   photoUrl: string | null;
   /** Stable api-relative path to a cached thumbnail, or null when there is no photo. */

@@ -130,7 +130,7 @@ describe('MarketingReportPanel', () => {
 
     expect(
       await screen.findByText(
-        /Pesanan GoFood\/ShopeeFood kini dicatat sebagai penjualan kasir berkanal/,
+        /Pesanan GoFood\/ShopeeFood\/GrabFood kini dicatat sebagai penjualan kasir berkanal/,
       ),
     ).toBeInTheDocument();
   });

@@ -171,6 +171,22 @@ describe('PaymentPanel — channel (F-POS-3)', () => {
     expect(screen.getByText('Transaksi ini: ShopeeFood')).toBeInTheDocument();
   });
 
+  it('badges the active channel on screen — GrabFood', () => {
+    render(
+      <PaymentPanel
+        runtime={makeRuntime()}
+        actor={actor}
+        shift={shift}
+        locationId="loc1"
+        locationName="Outlet A"
+        summary={summary}
+        channel="grabfood"
+        onCompleted={() => {}}
+      />,
+    );
+    expect(screen.getByText('Transaksi ini: GrabFood')).toBeInTheDocument();
+  });
+
   it('commits the sale fact with the active channel, not just showing it in the UI', async () => {
     const runtime = makeRuntime();
     render(

@@ -12,6 +12,7 @@ const PRODUCT: PosProduct = {
   price: '15000.00',
   priceGofood: '18000.00',
   priceShopeefood: null, // no ShopeeFood price set -> must show the walk-in price, never Rp0
+  priceGrabfood: '19000.00',
   photoUrl: null,
   photoPath: null,
   sortOrder: 0,
@@ -39,6 +40,14 @@ describe('ProductGrid — channel-aware pricing (F-POS-3)', () => {
       <ProductGrid products={[PRODUCT]} categories={['Ayam']} channel="gofood" onAdd={vi.fn()} />,
     );
     expect(screen.getByText('Rp18.000')).toBeInTheDocument();
+    expect(screen.queryByText('Rp15.000')).not.toBeInTheDocument();
+  });
+
+  it('shows the GrabFood price under the grabfood channel', () => {
+    render(
+      <ProductGrid products={[PRODUCT]} categories={['Ayam']} channel="grabfood" onAdd={vi.fn()} />,
+    );
+    expect(screen.getByText('Rp19.000')).toBeInTheDocument();
     expect(screen.queryByText('Rp15.000')).not.toBeInTheDocument();
   });
 

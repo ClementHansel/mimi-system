@@ -263,13 +263,14 @@ export const id = {
     tabKasir: 'Kasir',
     tabShift: 'Shift',
 
-    // F-POS-3 — one POS interface, three prices (owner: "need only 1
-    // interface for 3 of them"). GoFood/ShopeeFood used to be their own
+    // F-POS-3 — one POS interface, per-channel prices (owner: "need only 1
+    // interface for all of them"). GoFood/ShopeeFood used to be their own
     // tab/form; they're now a CHANNEL of the same till, toggled here.
     channelToggleLabel: 'Pilih channel penjualan',
     channelWalkIn: 'Kasir',
     channelGofood: 'GoFood',
     channelShopeefood: 'ShopeeFood',
+    channelGrabfood: 'GrabFood',
     channelActiveLabel: 'Transaksi ini: {{channel}}',
     channelBannerActive: 'Mode channel aktif: {{channel}} — harga berbeda dari Kasir (walk-in).',
     channelSwitchConfirmTitle: 'Ganti Channel Penjualan?',
@@ -1974,6 +1975,7 @@ export const id = {
         // null->walk-in fallback in the same words the toggle/receipt use.
         priceGofood: 'Harga GoFood',
         priceShopeefood: 'Harga ShopeeFood',
+        priceGrabfood: 'Harga GrabFood',
         priceChannelHint: 'Kosongkan jika sama dengan harga Kasir (walk-in).',
         editRecipe: 'Ubah Resep',
         categoryAll: 'Semua Kategori',
@@ -3867,13 +3869,14 @@ export const id = {
       noBasisHint: 'Tidak ada penjualan pada periode ini, jadi persentase tidak dapat dihitung.',
       channelTitle: 'Kinerja per Kanal',
       channelDescription:
-        'Walk-in (kasir) dibanding GoFood dan ShopeeFood. Komisi platform GoFood/ShopeeFood sejak Agustus 2026 sudah termasuk di harga jual kanal tersebut, sehingga Biaya Platform hanya terisi untuk pesanan online lama.',
+        'Walk-in (kasir) dibanding GoFood, ShopeeFood dan GrabFood. Komisi platform GoFood/ShopeeFood/GrabFood sejak Agustus 2026 sudah termasuk di harga jual kanal tersebut, sehingga Biaya Platform hanya terisi untuk pesanan online lama.',
       columnChannel: 'Kanal',
       columnShare: 'Kontribusi Bruto',
       columnDiscountPct: '% Diskon',
       channelWalkIn: 'Walk-in (Kasir)',
       channelGofood: 'GoFood',
       channelShopeefood: 'ShopeeFood',
+      channelGrabfood: 'GrabFood',
       productsTitle: 'Produk Terlaris & Diskonnya',
       productsDescription:
         'Produk dengan bruto tertinggi pada periode ini, beserta diskon yang menempel padanya. Hanya penjualan kasir — item pesanan online tidak menyimpan harga per produk.',
@@ -3884,7 +3887,7 @@ export const id = {
         'Rincian bruto → neto per pesanan untuk pesanan online: diskon, komisi platform, biaya lain, dan status penyelesaian.',
       reconEmpty: 'Tidak ada pesanan online pada periode ini.',
       reconEmptyHint:
-        'Pesanan GoFood/ShopeeFood kini dicatat sebagai penjualan kasir berkanal, bukan pesanan online terpisah — lihat Kinerja per Kanal di atas. Tabel ini hanya memuat riwayat sebelum perubahan tersebut.',
+        'Pesanan GoFood/ShopeeFood/GrabFood kini dicatat sebagai penjualan kasir berkanal, bukan pesanan online terpisah — lihat Kinerja per Kanal di atas. Tabel ini hanya memuat riwayat sebelum perubahan tersebut.',
       columnOrderRef: 'No. Pesanan',
       columnOrderDate: 'Tanggal',
       columnPlatform: 'Platform',
@@ -4329,6 +4332,7 @@ export const id = {
       walk_in: 'Kasir',
       gofood: 'GoFood',
       shopeefood: 'ShopeeFood',
+      grabfood: 'GrabFood',
     },
 
     /** `shipment_type_label` on a Surat Jalan. */

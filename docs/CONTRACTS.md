@@ -964,12 +964,12 @@ CREATE TABLE void_refunds (
 );
 -- Approval applied ⇒ sales.status flips, payments reversed, usage_out reversed (usage 'return_in' to kitchen_line), journal reversal (§6).
 
--- 053: manual GoFood/ShopeeFood records (FR-POS-05, FR-POS-07)
+-- 053: manual GoFood/ShopeeFood/GrabFood records (FR-POS-05, FR-POS-07; GrabFood added by migration 270)
 CREATE TABLE online_orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id UUID UNIQUE NOT NULL,
   location_id UUID NOT NULL REFERENCES locations(id),
-  platform VARCHAR(20) NOT NULL CHECK (platform IN ('gofood','shopeefood')),
+  platform VARCHAR(20) NOT NULL CHECK (platform IN ('gofood','shopeefood','grabfood')),
   order_ref VARCHAR(100) NOT NULL,               -- nomor order ID platform
   order_date DATE NOT NULL,                      -- tanggal transaksi
   gross_amount NUMERIC(18,2) NOT NULL,           -- nilai pesanan
@@ -2135,6 +2135,7 @@ export enum VoidRefundStatus {
 export enum OnlinePlatform {
   GOFOOD = 'gofood',
   SHOPEEFOOD = 'shopeefood',
+  GRABFOOD = 'grabfood',
 } // FR-POS-05/07
 export enum OnlineOrderStatus {
   COMPLETED = 'completed',
@@ -3805,15 +3806,15 @@ All exports honor `?format=json|csv|xlsx` (xlsx via server-side generation; resp
 
 **`groupBy` dimensions — `method` and `channel` are NOT interchangeable (changed 2026-08-27).**
 
-| `groupBy` | Answers                       | `groupKey` values                 | Safe to sum for total revenue? |
-| --------- | ----------------------------- | --------------------------------- | ------------------------------ |
-| `day`     | when                          | `YYYY-MM-DD`                      | yes                            |
-| `outlet`  | where                         | location id                       | yes                            |
-| `product` | what                          | product id                        | yes (line revenue)             |
-| `method`  | **how the money arrived**     | `cash`, `qris`, `bank_transfer`   | **no** — see below             |
-| `channel` | **where the order came from** | `walk_in`, `gofood`, `shopeefood` | yes                            |
+| `groupBy` | Answers                       | `groupKey` values                             | Safe to sum for total revenue? |
+| --------- | ----------------------------- | --------------------------------------------- | ------------------------------ |
+| `day`     | when                          | `YYYY-MM-DD`                                  | yes                            |
+| `outlet`  | where                         | location id                                   | yes                            |
+| `product` | what                          | product id                                    | yes (line revenue)             |
+| `method`  | **how the money arrived**     | `cash`, `qris`, `bank_transfer`               | **no** — see below             |
+| `channel` | **where the order came from** | `walk_in`, `gofood`, `shopeefood`, `grabfood` | yes                            |
 
-`channel` was added with migration 251. Migration 249 made GoFood/ShopeeFood ordinary `sales` rows carrying `sales.channel`, retiring the `online_orders` write path.
+`channel` was added with migration 251. Migration 249 made GoFood/ShopeeFood ordinary `sales` rows carrying `sales.channel`, retiring the `online_orders` write path. `grabfood` joined the domain with migration 270 (`sales.channel` / `online_orders.platform` CHECKs widened, `products.price_grabfood NUMERIC(18,2) NULL` added with the same null-means-`price` rule as `price_gofood`/`price_shopeefood`; `Product.priceGrabfood` on the wire). GL posting is unchanged: `outlet_sales` posts from `sale_payments.method`, never from `channel`.
 
 `method` used to append one row per `online_orders.platform` alongside the payment-method rows, so a single response mixed both dimensions under the same `groupKey`. Once channel sales became real `sales` rows with real `sale_payments`, that arm either double-counted them or — as shipped — silently **flatlined** after the cutover. So `method` is now payment methods only, for every sale including channel sales.
 

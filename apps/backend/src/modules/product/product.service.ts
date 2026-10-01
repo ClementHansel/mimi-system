@@ -26,6 +26,7 @@ export interface ProductRow {
   price: string;
   price_gofood: string | null;
   price_shopeefood: string | null;
+  price_grabfood: string | null;
   photo_attachment_id: string | null;
   sort_order: number;
   is_active: boolean;
@@ -65,7 +66,7 @@ export class ProductService {
    */
   private readonly baseSelect = `
     SELECT p.id, p.code, p.name, pc.name AS category, p.category_id, p.price,
-           p.price_gofood, p.price_shopeefood,
+           p.price_gofood, p.price_shopeefood, p.price_grabfood,
            p.photo_attachment_id, p.sort_order, p.is_active, p.kind,
            EXISTS (SELECT 1 FROM recipes r WHERE r.product_id = p.id AND r.is_active = true) AS has_recipe
     FROM products p
@@ -109,6 +110,7 @@ export class ProductService {
       price: row.price,
       priceGofood: row.price_gofood,
       priceShopeefood: row.price_shopeefood,
+      priceGrabfood: row.price_grabfood,
       photoUrl: await this.resolvePhotoUrl(client, user, locationScope, row.photo_attachment_id),
       // The stable, non-expiring address for the same image (see the field's
       // doc). Both are sent on this surface: a back-office form renders the
@@ -232,8 +234,8 @@ export class ProductService {
   ): Promise<Product> {
     return withWrite(client, async () => {
       const res = await client.query<{ id: string }>(
-        `INSERT INTO products (code, name, category_id, price, price_gofood, price_shopeefood, photo_attachment_id, sort_order)
-         VALUES ($1,$2,$3,$4,$5,$6,$7, COALESCE($8,0))
+        `INSERT INTO products (code, name, category_id, price, price_gofood, price_shopeefood, price_grabfood, photo_attachment_id, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, COALESCE($9,0))
          RETURNING id`,
         [
           dto.code,
@@ -242,6 +244,7 @@ export class ProductService {
           dto.price,
           dto.priceGofood ?? null,
           dto.priceShopeefood ?? null,
+          dto.priceGrabfood ?? null,
           dto.photoAttachmentId ?? null,
           dto.sortOrder ?? null,
         ],
@@ -285,6 +288,7 @@ export class ProductService {
       // (the field omitted) leaves it untouched — same three-state convention as `photoAttachmentId`.
       if (dto.priceGofood !== undefined) set('price_gofood', dto.priceGofood);
       if (dto.priceShopeefood !== undefined) set('price_shopeefood', dto.priceShopeefood);
+      if (dto.priceGrabfood !== undefined) set('price_grabfood', dto.priceGrabfood);
       if (dto.photoAttachmentId !== undefined) set('photo_attachment_id', dto.photoAttachmentId);
       if (dto.sortOrder !== undefined) set('sort_order', dto.sortOrder);
       // Takes a product off the POS menu, or puts it back. `products.is_active`

@@ -7,6 +7,7 @@ import {
   calculateOnlineOrderNet,
   validateOnlineOrderNet,
 } from './index';
+import { OnlinePlatform } from '../enums';
 
 describe('calculateLineTotal', () => {
   it('multiplies qty by unit price and subtracts the line discount', () => {
@@ -73,7 +74,7 @@ describe('calculateChange', () => {
   });
 });
 
-describe('GoFood/ShopeeFood net-received math (FR-POS-05/07)', () => {
+describe('GoFood/ShopeeFood/GrabFood net-received math (FR-POS-05/07)', () => {
   const amounts = {
     grossAmount: '100000.00',
     discountAmount: '5000.00',
@@ -98,5 +99,9 @@ describe('GoFood/ShopeeFood net-received math (FR-POS-05/07)', () => {
     const split = calculateOnlineOrderJournalSplit(amounts);
     expect(split.netLeg).toBe('80000.00');
     expect(split.feeLeg).toBe('20000.00');
+  });
+
+  it('the platform domain is exactly gofood/shopeefood/grabfood — the same three values migration 270 puts in the CHECKs', () => {
+    expect(Object.values(OnlinePlatform).sort()).toEqual(['gofood', 'grabfood', 'shopeefood']);
   });
 });

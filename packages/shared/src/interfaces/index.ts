@@ -303,6 +303,8 @@ export interface Product {
   priceGofood: Money | null;
   /** ShopeeFood price, IDR — same fallback-to-`price` rule as `priceGofood`. */
   priceShopeefood: Money | null;
+  /** GrabFood price, IDR — same fallback-to-`price` rule as `priceGofood` (migration 270). */
+  priceGrabfood: Money | null;
   /**
    * A PRESIGNED, EXPIRING url (10 min, `StorageService.getUrl`) — fine for a
    * back-office form the user is looking at right now, useless for the till.
@@ -788,11 +790,11 @@ export interface Shift {
 /**
  * Which counter a sale was rung up under (migration 249, owner decision
  * 2026-08-27). `'walk_in'` is the till default; a cashier ringing up a
- * phoned-in/app-relayed GoFood or ShopeeFood order picks the other two —
+ * phoned-in/app-relayed GoFood, ShopeeFood or GrabFood order picks one of the other three —
  * there is no separate online-order flow any more (see `Sale.channel`'s
  * doc). String values match `sales`'s CHECK constraint character-for-character.
  */
-export type SaleChannel = 'walk_in' | 'gofood' | 'shopeefood';
+export type SaleChannel = 'walk_in' | 'gofood' | 'shopeefood' | 'grabfood';
 
 export interface Sale {
   id: UUID;
@@ -803,7 +805,7 @@ export interface Sale {
   status: SaleStatus;
   /**
    * Which channel this sale was rung up under — drives which of a product's
-   * three prices `lines[].unitPrice` was taken from at the time of sale
+   * four prices `lines[].unitPrice` was taken from at the time of sale
    * (never re-derived from `Product.price` after the fact). Replaces the
    * separate GoFood/ShopeeFood online-order flow: retired 2026-08-27, see
    * `OnlineOrder`'s doc.

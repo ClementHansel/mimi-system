@@ -83,8 +83,8 @@ interface SalePaymentPayload {
   reference?: string;
   proofAttachmentId?: UUID;
 }
-/** `sales.channel`'s CHECK constraint values, verbatim (migration 249) — same list `sale.dto.ts`'s `SALE_CHANNELS` validates against on the REST path. */
-const SALE_CHANNELS: readonly SaleChannel[] = ['walk_in', 'gofood', 'shopeefood'];
+/** `sales.channel`'s CHECK constraint values, verbatim (migrations 249, 270) — same list `sale.dto.ts`'s `SALE_CHANNELS` validates against on the REST path. */
+const SALE_CHANNELS: readonly SaleChannel[] = ['walk_in', 'gofood', 'shopeefood', 'grabfood'];
 
 interface SaleCompletedPayload {
   clientId: UUID;

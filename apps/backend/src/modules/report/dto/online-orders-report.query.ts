@@ -12,8 +12,8 @@ export class OnlineOrdersReportQueryDto extends FormatQueryDto {
   to?: string;
 
   @IsOptional()
-  @IsIn(['gofood', 'shopeefood'])
-  platform?: 'gofood' | 'shopeefood';
+  @IsIn(['gofood', 'shopeefood', 'grabfood'])
+  platform?: 'gofood' | 'shopeefood' | 'grabfood';
 
   @IsOptional()
   @IsUUID()

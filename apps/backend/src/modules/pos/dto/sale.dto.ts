@@ -18,8 +18,8 @@ import {
 import { PaymentMethod, SaleStatus, type SaleChannel } from '@mimi/shared';
 import { IsMoneyString, IsQtyString } from './common.dto';
 
-/** `sales.channel`'s CHECK constraint values, verbatim (migration 249). */
-const SALE_CHANNELS: SaleChannel[] = ['walk_in', 'gofood', 'shopeefood'];
+/** `sales.channel`'s CHECK constraint values, verbatim (migrations 249, 270). */
+const SALE_CHANNELS: SaleChannel[] = ['walk_in', 'gofood', 'shopeefood', 'grabfood'];
 
 export class SaleLineDto {
   @IsUUID()

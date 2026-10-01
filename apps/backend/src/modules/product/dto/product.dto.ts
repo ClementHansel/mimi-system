@@ -80,6 +80,12 @@ export class CreateProductDto {
   @Matches(MONEY_RE)
   priceShopeefood?: string;
 
+  /** GrabFood price (migration 270). Omit to fall back to `price`. */
+  @IsOptional()
+  @IsString()
+  @Matches(MONEY_RE)
+  priceGrabfood?: string;
+
   @IsOptional()
   @IsUUID()
   photoAttachmentId?: string;
@@ -126,6 +132,12 @@ export class UpdateProductDto {
   @IsString()
   @Matches(MONEY_RE)
   priceShopeefood?: string | null;
+
+  /** GrabFood price (migration 270) — same three-state convention as `priceGofood`. */
+  @IsOptional()
+  @IsString()
+  @Matches(MONEY_RE)
+  priceGrabfood?: string | null;
 
   @IsOptional()
   @IsUUID()

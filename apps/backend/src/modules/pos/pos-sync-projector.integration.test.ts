@@ -416,6 +416,72 @@ describe('PosSyncProjector — direct-call guarantees (rolled back, no cleanup n
     );
   }, 30_000);
 
+  it('an offline sale queued with channel "grabfood" projects into a sales row carrying that channel (migration 270) — it used to be dropped as an unknown channel', async () => {
+    await withRollback(
+      { userId: fx.kasirId, roleKey: 'owner', locationIds: [] },
+      async (client) => {
+        const svc = services(getAppPool());
+        const shiftId = randomUUID();
+        const saleId = randomUUID();
+        const originDeviceId = randomUUID();
+
+        await svc.projector.project(
+          client,
+          mkEvent({
+            originDeviceId,
+            clientSeq: 1,
+            locationId: fx.locationId,
+            entity: 'pos_shifts',
+            entityId: shiftId,
+            op: 'opened',
+            actorUserId: fx.kasirId,
+            data: {
+              clientId: randomUUID(),
+              locationId: fx.locationId,
+              openingCash: '50000.00',
+              openedAt: new Date().toISOString(),
+              shiftNumber: uniqueDocNumber(fx.locationCode, 'GRB', shiftId, 'S1'),
+            },
+          }),
+          { isConflictLoser: false },
+        );
+
+        const grabPrice = (Number(fx.productPrice) + 3500).toFixed(2);
+        await svc.projector.project(
+          client,
+          mkEvent({
+            originDeviceId,
+            clientSeq: 2,
+            locationId: fx.locationId,
+            entity: 'sales',
+            entityId: saleId,
+            op: 'completed',
+            actorUserId: fx.kasirId,
+            data: {
+              clientId: randomUUID(),
+              locationId: fx.locationId,
+              shiftId,
+              occurredAt: new Date().toISOString(),
+              lines: [{ productId: fx.productId, qty: '1.000', unitPrice: grabPrice }],
+              payments: [{ method: PaymentMethod.QRIS, amount: grabPrice }],
+              receiptNumber: uniqueDocNumber(fx.locationCode, 'GRB', saleId, '1'),
+              channel: 'grabfood',
+            },
+          }),
+          { isConflictLoser: false },
+        );
+
+        const row = await client.query<{ channel: string; total: string }>(
+          `SELECT channel, total FROM sales WHERE id = $1`,
+          [saleId],
+        );
+        expect(row.rows).toHaveLength(1);
+        expect(row.rows[0]!.channel).toBe('grabfood');
+        expect(row.rows[0]!.total).toBe(grabPrice);
+      },
+    );
+  }, 30_000);
+
   it('"fact" mode: a replayed sale drives a balance negative rather than being rejected, and opens a stock_reconciliations exception', async () => {
     await withRollback(
       { userId: fx.kasirId, roleKey: 'owner', locationIds: [] },

@@ -326,6 +326,7 @@ export enum VoidRefundStatus {
 export enum OnlinePlatform {
   GOFOOD = 'gofood',
   SHOPEEFOOD = 'shopeefood',
+  GRABFOOD = 'grabfood',
 }
 
 export enum OnlineOrderStatus {

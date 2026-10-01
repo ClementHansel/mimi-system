@@ -3762,6 +3762,7 @@ export const id = {
       staffKpi: 'KPI Staf',
       inventory: 'Inventaris',
       opsStatus: 'Status Operasional',
+      anomaly: 'Anomali',
     },
     overview: {
       revenue: 'Pendapatan',
@@ -3814,6 +3815,197 @@ export const id = {
       columnAttendanceRate: 'Tingkat Kehadiran',
       columnLateCount: 'Jumlah Terlambat',
       empty: 'Belum ada data KPI pegawai untuk periode ini.',
+    },
+
+    // Anomali tab — `GET /api/dashboard/anomalies` and friends. Data the
+    // spreadsheets never flagged, found by seven detectors with owner-tunable
+    // thresholds. Every `metric`, `cols` and `params` key below is emitted by
+    // the backend (`anomalies/`); `anomaly-i18n.test.ts` fails if one is missing.
+    anomaly: {
+      title: 'Anomali Data',
+      description:
+        'Temuan otomatis yang janggal dibanding kebiasaan outlet — penjualan, stok, harga, gaji, dan pembukuan — pada rentang tanggal di atas.',
+      showReviewed: 'Tampilkan yang sudah ditinjau',
+      noneOpen: 'Tidak ada anomali yang perlu ditinjau',
+      noneOpenHint: 'Semua pemeriksaan bersih untuk {{from}} s/d {{to}}.',
+      countBadge: '{{count}} temuan',
+      failedBadge: 'Gagal dijalankan',
+      failed:
+        'Pemeriksaan ini gagal dijalankan. Pemeriksaan lainnya tidak terpengaruh; hubungi admin bila berulang.',
+      sectionEmpty: 'Tidak ada temuan pada periode ini.',
+      truncated:
+        'Menampilkan {{shown}} dari {{total}} temuan — persempit rentang tanggal atau pilih satu outlet.',
+      companyLevel: 'Tingkat perusahaan',
+      metricLabel: 'Yang diukur',
+      expected: 'Seharusnya',
+      actual: 'Aktual',
+      ratio: '(×{{ratio}})',
+      showRows: 'Lihat baris terkait',
+      hideRows: 'Sembunyikan baris',
+      noRows: 'Tidak ada baris untuk ditampilkan.',
+      review: 'Tandai sudah ditinjau',
+      unreview: 'Batalkan tinjauan',
+      reviewedBadge: 'Sudah ditinjau',
+      reviewedBy: 'Ditinjau oleh {{name}} pada {{at}}',
+      reviewedToast: 'Ditandai sudah ditinjau.',
+      unreviewedToast: 'Tinjauan dibatalkan.',
+      reviewFailed: 'Gagal menyimpan tinjauan',
+      openRecord: 'Buka data terkait',
+      severity: { high: 'Tinggi', medium: 'Sedang', low: 'Rendah' },
+      notice: {
+        no_settlement_recorded:
+          'Belum ada penyelesaian (settlement) pembayaran yang tercatat pada periode ini, jadi tidak ada hari yang dibandingkan. Catat verifikasi pembayaran agar pemeriksaan ini berjalan.',
+      },
+      strip: {
+        open: '{{count}} anomali data belum ditinjau',
+        none: 'Tidak ada anomali data yang perlu ditinjau',
+        view: 'Lihat',
+      },
+      detectors: {
+        sales_day_outlier: {
+          label: 'Penjualan harian janggal',
+          hint: 'Pendapatan satu outlet pada satu hari dibanding median 28 hari sebelumnya.',
+        },
+        product_qty_outlier: {
+          label: 'Qty produk janggal',
+          hint: 'Jumlah terjual satu produk pada satu hari jauh di atas kebiasaannya di outlet itu.',
+        },
+        usage_variance: {
+          label: 'Selisih pemakaian stok',
+          hint: 'Pemakaian menurut resep dibanding pemakaian aktual di antara dua stock opname.',
+        },
+        price_deviation: {
+          label: 'Harga jual menyimpang',
+          hint: 'Baris penjualan yang harganya berbeda dari harga produk saat ini untuk kanalnya.',
+        },
+        payroll_outlier: {
+          label: 'Gaji janggal',
+          hint: 'Gaji bersih sangat kecil dibanding gaji pokok, atau potongan terlalu besar.',
+        },
+        gl_sanity: {
+          label: 'Pembukuan janggal',
+          hint: 'Akun bersaldo di sisi yang berlawanan, atau kas outlet terus bertambah tanpa setoran.',
+        },
+        settlement_gap: {
+          label: 'Selisih penyelesaian pembayaran',
+          hint: 'Penerimaan QRIS/transfer per outlet-hari dibanding penyelesaian yang tercatat.',
+        },
+      },
+      metric: {
+        revenue: 'Pendapatan harian',
+        qty: 'Qty terjual',
+        usage: 'Pemakaian bahan',
+        stock_variance: 'Selisih stok periode',
+        unit_price: 'Harga satuan',
+        net_pay: 'Gaji bersih',
+        deductions: 'Total potongan',
+        balance: 'Saldo akun',
+        cash_growth_days: 'Hari kas tanpa setoran',
+        settlement: 'Penyelesaian pembayaran',
+      },
+      detail: {
+        revenue: {
+          high: '{{txCount}} transaksi. Pendapatan hari itu jauh di atas median harian outlet ini ({{expected}}).',
+          low: '{{txCount}} transaksi. Pendapatan hari itu jauh di bawah median harian outlet ini ({{expected}}).',
+        },
+        qty: '{{product}} terjual {{actual}} dalam sehari, padahal median hariannya {{expected}} (dihitung dari {{spanDays}} hari terakhir).',
+        usage:
+          '{{item}} ({{unit}}), hitung stok {{opname}}: resep memperkirakan pemakaian {{expected}}, hitungan menunjukkan pemakaian {{actual}} — selisih {{variancePct}}% senilai {{value}}.',
+        stock_variance: {
+          share:
+            'Hitung stok {{opname}}: total selisih stok {{actual}}, yaitu {{pctOfSales}}% dari penjualan outlet pada periode ini ({{sales}}).',
+          over: 'Hitung stok {{opname}}: total selisih stok {{actual}} — lebih besar dari nilai stok akhir outlet ({{closingStockValue}}).',
+        },
+        unit_price:
+          '{{product}}: {{deviating}} dari {{lines}} baris ({{sharePct}}%) dijual tidak sesuai harga saat ini. Seharusnya rata-rata {{expected}}, terjual {{actual}}.',
+        net_pay:
+          '{{employee}} ({{run}}): gaji bersih {{net}} dari gaji pokok {{base}}; potongan {{deductions}} dari pendapatan {{gross}}.',
+        deductions:
+          '{{employee}} ({{run}}): potongan {{deductions}} melebihi batas dari pendapatan kotor {{gross}}.',
+        balance:
+          'Akun {{account}} ({{accountType}}) bersaldo di sisi yang tidak normal — seharusnya sisi {{normalSide}}.',
+        cash_growth_days:
+          'Kas outlet bertambah selama {{actual}} hari tanpa satu pun pengeluaran/setoran bank (batas {{expected}} hari). Saldo kas {{balance}}.',
+        settlement:
+          'Penerimaan QRIS {{qris}} + transfer {{transfer}}; belum tercatat penyelesaiannya {{gap}} ({{gapPct}}%).',
+      },
+      cols: {
+        receipt: 'No. Struk',
+        at: 'Waktu',
+        channel: 'Kanal',
+        lines: 'Baris',
+        total: 'Total',
+        qty: 'Qty',
+        unit_price: 'Harga Satuan',
+        line_total: 'Total Baris',
+        item: 'Barang',
+        area: 'Area',
+        system_qty: 'Qty Sistem',
+        counted_qty: 'Qty Hitung',
+        diff_qty: 'Selisih Qty',
+        value: 'Nilai',
+        reason: 'Alasan',
+        expected: 'Seharusnya',
+        diff: 'Selisih',
+        component: 'Komponen',
+        kind: 'Jenis',
+        amount: 'Jumlah',
+        source: 'Sumber',
+        entry: 'No. Jurnal',
+        date: 'Tanggal',
+        description: 'Keterangan',
+        debit: 'Debit',
+        credit: 'Kredit',
+        method: 'Metode',
+        status: 'Status Bayar',
+        settlement: 'Penyelesaian',
+      },
+      params: {
+        sales_day_outlier: {
+          hi: 'Batas atas (× median)',
+          lo: 'Batas bawah (× median)',
+          baselineDays: 'Hari riwayat pembanding',
+          minHistoryDays: 'Minimal hari riwayat',
+        },
+        product_qty_outlier: {
+          multiple: 'Kelipatan dari median harian',
+          minQty: 'Qty minimal sehari',
+        },
+        usage_variance: {
+          variancePct: 'Selisih pemakaian (%)',
+          minValue: 'Nilai selisih minimal (Rp)',
+          periodPctOfSales: 'Selisih stok periode (% dari penjualan)',
+        },
+        price_deviation: {
+          sharePct: 'Porsi baris menyimpang (%)',
+          minLines: 'Minimal jumlah baris',
+        },
+        payroll_outlier: {
+          netBelowBasePct: 'Gaji bersih di bawah (% gaji pokok)',
+          deductionsAboveGrossPct: 'Potongan di atas (% pendapatan kotor)',
+        },
+        gl_sanity: {
+          cashGrowthDays: 'Kas naik tanpa setoran (hari)',
+          minAbsBalance: 'Saldo janggal minimal (Rp)',
+        },
+        settlement_gap: {
+          gapPct: 'Selisih penyelesaian (%)',
+          minGapAmount: 'Selisih minimal (Rp)',
+        },
+      },
+      thresholds: {
+        open: 'Atur Ambang Batas',
+        title: 'Ambang Batas Anomali',
+        description:
+          'Angka yang menentukan kapan sebuah temuan dianggap janggal. Hanya pemilik yang dapat mengubahnya; berlaku untuk semua orang.',
+        default: 'Bawaan: {{value}}',
+        reset: 'Pulihkan Bawaan',
+        saved: 'Ambang batas disimpan.',
+        saveFailed: 'Gagal menyimpan ambang batas',
+        invalid: 'Isi dengan angka.',
+        range: 'Harus antara {{min}} dan {{max}}.',
+        integer: 'Harus bilangan bulat.',
+      },
     },
 
     // Sales tab — `GET /api/reports/sales` (CONTRACTS §4.19), all outlets or

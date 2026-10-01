@@ -85,6 +85,44 @@ export async function withOwnerRollback<T>(fn: (client: PoolClient) => Promise<T
   }
 }
 
+/**
+ * A request as `RlsContextGuard` sets it up, but WITHOUT the rollback — for a
+ * handler that commits (`withWrite`). The COMMIT inside `fn` is real and ends
+ * this transaction, so whatever it wrote is durable and the caller must clean
+ * up in `finally` (and must verify on a SEPARATE connection: a read on the
+ * writing connection sees its own uncommitted rows and passes against code
+ * that never committed). See `payroll/test-support/live-db.ts`'s `asRequest`.
+ */
+export async function runAsRequestCommitting<T>(
+  ctx: RlsSessionContext,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await getAppPool().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL ROLE app_user');
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [ctx.userId]);
+    await client.query(`SELECT set_config('app.role', $1, true)`, [ctx.role]);
+    await client.query(`SELECT set_config('app.tenant_id', app_the_only_tenant()::text, true)`);
+    await client.query(`SELECT set_config('app.location_ids', $1, true)`, [
+      ctx.locationIds.join(','),
+    ]);
+    return await fn(client);
+  } finally {
+    // What RlsCleanupInterceptor does after every request: nothing that was not committed survives.
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+  }
+}
+
+/** One-off read/write on the OWNER pool — a connection other than the one under test. */
+export async function ownerQuery<R extends Record<string, unknown> = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = [],
+): Promise<R[]> {
+  return (await getOwnerPool().query<R>(sql, params)).rows;
+}
+
 export interface DashboardFixtures {
   ownerUserId: string;
   /** A real Supervisor with a real `user_locations` assignment to exactly one outlet that has seeded sales. */

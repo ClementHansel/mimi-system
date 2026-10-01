@@ -8,6 +8,7 @@ import { TopProductsService } from './services/top-products.service';
 import { StaffKpiService } from './services/staff-kpi.service';
 import { TrendService } from './services/trend.service';
 import { OpsStatusService } from './services/ops-status.service';
+import { AnomalyService } from './anomalies/anomaly.service';
 
 /**
  * M18 `dashboard` — owned by Wave 4, agent W4-04.
@@ -36,6 +37,7 @@ import { OpsStatusService } from './services/ops-status.service';
     StaffKpiService,
     TrendService,
     OpsStatusService,
+    AnomalyService,
     DashboardGateway,
     MatviewRefreshService,
   ],

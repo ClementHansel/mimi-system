@@ -12,6 +12,13 @@ import type {
   TrendMetric,
   TrendPoint,
 } from './types';
+import type {
+  AnomalyDetectorKey,
+  AnomalyResponse,
+  DrillResult,
+  ReviewResult,
+  ThresholdsResponse,
+} from './anomaly-types';
 
 /**
  * Thin, typed wrappers over `/api/dashboard/*` (CONTRACTS.md §4.18). Every
@@ -58,4 +65,36 @@ export const dashboardApi = {
   getOpsStatus: () => api.get<OpsStatusResponse>('/dashboard/ops-status'),
 
   refresh: () => api.post<RefreshResult[]>('/dashboard/refresh'),
+
+  // ── Anomali panel ──────────────────────────────────────────────────────────
+
+  getAnomalies: (from: ISODate, to: ISODate, includeReviewed = false, locationId?: string) =>
+    api.get<AnomalyResponse>(
+      `/dashboard/anomalies${qs({ from, to, locationId, includeReviewed: includeReviewed ? 'true' : undefined })}`,
+    ),
+
+  /** `ref` is the finding's own `ref` map (outlet, date, product, …) plus the window. */
+  getAnomalyDrilldown: (
+    detector: AnomalyDetectorKey,
+    from: ISODate,
+    to: ISODate,
+    ref: Record<string, string>,
+  ) => api.get<DrillResult>(`/dashboard/anomalies/drilldown${qs({ detector, from, to, ...ref })}`),
+
+  reviewAnomaly: (input: {
+    detector: AnomalyDetectorKey;
+    fingerprint: string;
+    locationId?: string | null;
+    note?: string;
+    reviewed?: boolean;
+  }) =>
+    api.post<ReviewResult>('/dashboard/anomalies/review', {
+      ...input,
+      locationId: input.locationId ?? undefined,
+    }),
+
+  getAnomalyThresholds: () => api.get<ThresholdsResponse>('/dashboard/anomalies/thresholds'),
+
+  putAnomalyThresholds: (thresholds: Record<string, Record<string, number>>) =>
+    api.put<ThresholdsResponse>('/dashboard/anomalies/thresholds', { thresholds }),
 };

@@ -1,5 +1,7 @@
-import { Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { Audited, CurrentUser } from '../../common/decorators';
+import type { JwtAccessPayload } from '../../common/jwt/jwt-payload.interface';
 import type { RequestWithDbContext } from '../../common/guards/rls-context.guard';
 import { businessDateOf } from '@mimi/shared';
 import { DateRangeQueryDto } from './dto/date-range.query';
@@ -13,6 +15,18 @@ import { StaffKpiService, type StaffKpiRow } from './services/staff-kpi.service'
 import { TrendService, type TrendPoint } from './services/trend.service';
 import { OpsStatusService, type OpsStatusResponse } from './services/ops-status.service';
 import { MatviewRefreshService } from './matview-refresh.service';
+import {
+  AnomalyService,
+  type ReviewResult,
+  type ThresholdsResponse,
+} from './anomalies/anomaly.service';
+import type { AnomalyResponse, DrillResult } from './anomalies/anomaly.types';
+import {
+  AnomaliesQueryDto,
+  AnomalyDrillQueryDto,
+  AnomalyReviewDto,
+  PutAnomalyThresholdsDto,
+} from './dto/anomaly.dto';
 
 /**
  * M18 `dashboard` — CONTRACTS.md §4.18. All reads; every dashboard query explicitly applies `req.locationScope` (matviews carry no RLS of their own — see ticket header / `scope.util.ts`).
@@ -36,6 +50,7 @@ export class DashboardController {
     private readonly trend: TrendService,
     private readonly opsStatus: OpsStatusService,
     private readonly matviewRefresh: MatviewRefreshService,
+    private readonly anomalies: AnomalyService,
   ) {}
 
   @Get('overview')
@@ -150,5 +165,73 @@ export class DashboardController {
   @RequirePermission('dashboard.view')
   async refresh(): Promise<{ view: string; ok: boolean; error?: string }[]> {
     return this.matviewRefresh.refreshAll();
+  }
+
+  // ── Anomali panel ────────────────────────────────────────────────────────────
+  //
+  // Data anomalies found by SQL over the live tables (see `anomalies/`). Every
+  // read applies `req.locationScope` like the endpoints above. Declared as
+  // fixed sub-paths of `anomalies`, so none of them can be swallowed by a
+  // parameterised route.
+
+  @Get('anomalies')
+  @RequirePermission('dashboard.view')
+  async getAnomalies(
+    @Req() req: RequestWithDbContext,
+    @Query() query: AnomaliesQueryDto,
+  ): Promise<AnomalyResponse> {
+    return this.anomalies.getAnomalies(
+      req.dbClient!,
+      req.locationScope!,
+      query.from,
+      query.to,
+      query.locationId,
+      query.includeReviewed ?? false,
+    );
+  }
+
+  @Get('anomalies/drilldown')
+  @RequirePermission('dashboard.view')
+  async getAnomalyDrilldown(
+    @Req() req: RequestWithDbContext,
+    @Query() query: AnomalyDrillQueryDto,
+  ): Promise<DrillResult> {
+    return this.anomalies.drillDown(req.dbClient!, req.locationScope!, query);
+  }
+
+  /**
+   * Mark a finding reviewed (hidden from the panel by default), or take that
+   * back with `reviewed: false`. `dashboard.view` is the only key the matrix
+   * has for this surface (the matrix is frozen, no `dashboard.manage`); RLS on
+   * `anomaly_reviews` limits it to owner/manager/superadmin and to the
+   * caller's own locations.
+   */
+  @Post('anomalies/review')
+  @RequirePermission('dashboard.view')
+  @Audited({ entityType: 'anomaly_review', action: 'dashboard.view' })
+  async reviewAnomaly(
+    @Req() req: RequestWithDbContext,
+    @CurrentUser() user: JwtAccessPayload,
+    @Body() dto: AnomalyReviewDto,
+  ): Promise<ReviewResult> {
+    return this.anomalies.review(req.dbClient!, user.sub, dto);
+  }
+
+  @Get('anomalies/thresholds')
+  @RequirePermission('dashboard.view')
+  async getAnomalyThresholds(@Req() req: RequestWithDbContext): Promise<ThresholdsResponse> {
+    return this.anomalies.getThresholds(req.dbClient!);
+  }
+
+  /** Owner (and superadmin) only — enforced in the service, because `settings.manage` also admits a manager. */
+  @Put('anomalies/thresholds')
+  @RequirePermission('settings.manage')
+  @Audited({ entityType: 'settings', action: 'settings.manage' })
+  async putAnomalyThresholds(
+    @Req() req: RequestWithDbContext,
+    @CurrentUser() user: JwtAccessPayload,
+    @Body() dto: PutAnomalyThresholdsDto,
+  ): Promise<ThresholdsResponse> {
+    return this.anomalies.putThresholds(req.dbClient!, user, dto.thresholds);
   }
 }

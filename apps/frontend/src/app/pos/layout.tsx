@@ -88,7 +88,11 @@ function PosChrome({ children }: { children: React.ReactNode }) {
         <div className="flex-1 overflow-y-auto p-4">{children}</div>
       </div>
       {runtime && needsPairing && (
-        <DevicePairingModal open={pairingOpen} onClose={() => setPairingOpen(false)} runtime={runtime} />
+        <DevicePairingModal
+          open={pairingOpen}
+          onClose={() => setPairingOpen(false)}
+          runtime={runtime}
+        />
       )}
     </Tabs>
   );

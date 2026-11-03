@@ -128,7 +128,10 @@ describe('Device + node pairing/register/heartbeat lifecycle — live database',
     );
 
     // Lowercase, grouped with dashes — exactly how a cashier might read it aloud.
-    const typedCode = minted.displayCode.toLowerCase().match(/.{1,3}/g)!.join('-');
+    const typedCode = minted.displayCode
+      .toLowerCase()
+      .match(/.{1,3}/g)!
+      .join('-');
     const redeemed = await withSystemContext(pool, (client) =>
       pairingTokens.redeem(client, typedCode, PairingTargetType.DEVICE),
     );

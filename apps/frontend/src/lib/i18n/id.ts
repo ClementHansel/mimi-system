@@ -212,8 +212,7 @@ export const id = {
       invalid: 'Kode tidak valid atau sudah dipakai. Coba lagi.',
       sessionExpired: 'Sesi Anda berakhir. Muat ulang halaman lalu sambungkan lagi.',
       lengthHint: 'Kode harus 12 karakter.',
-      runtimeError:
-        'Penyimpanan perangkat tidak bisa dibuka. Muat ulang halaman lalu coba lagi.',
+      runtimeError: 'Penyimpanan perangkat tidak bisa dibuka. Muat ulang halaman lalu coba lagi.',
     },
 
     // F-POS-2 — standalone POS top bar (`PosTopBar`/`app/pos/layout.tsx`):

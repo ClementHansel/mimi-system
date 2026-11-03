@@ -1,11 +1,16 @@
 'use client';
 
-import { Tabs } from '@/components/ui';
+import { useEffect, useState } from 'react';
+import { Button, Tabs } from '@/components/ui';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { useI18n } from '@/lib/i18n';
 import { PosShellProvider, usePosShell } from '@/components/pos/PosShellContext';
 import { PosTopBar } from '@/components/pos/PosTopBar';
 import { PosStatusBar } from '@/components/pos/PosStatusBar';
 import { ChannelBanner } from '@/components/pos/ChannelBanner';
+import { DevicePairingModal } from '@/components/pos/DevicePairingModal';
+import { getBrowserLocalRuntime } from '@/lib/local/browser';
+import type { LocalRuntime } from '@/lib/local/api/local-runtime';
 
 /**
  * F-POS-2 — POS is its own application, not a page inside the admin shell.
@@ -29,10 +34,33 @@ import { ChannelBanner } from '@/components/pos/ChannelBanner';
  * a second store. See `Tabs` in `components/ui/Tabs.tsx`.
  */
 function PosChrome({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
   const { posLocation } = usePosShell();
   const locationName = posLocation.status === 'ready' ? posLocation.location.name : null;
   const onChangeLocation =
     posLocation.status === 'ready' && posLocation.canChange ? posLocation.change : undefined;
+
+  const [runtime, setRuntime] = useState<LocalRuntime | null>(null);
+  const [needsPairing, setNeedsPairing] = useState(false);
+  const [pairingOpen, setPairingOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    getBrowserLocalRuntime()
+      .then(async (rt) => {
+        if (!mounted) return;
+        setRuntime(rt);
+        const identity = await rt.getIdentity();
+        if (mounted) setNeedsPairing(!identity?.deviceToken);
+      })
+      .catch(() => {
+        // If the runtime cannot bootstrap, the page already shows a fatal
+        // offline message elsewhere; pairing is not the primary failure here.
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <Tabs defaultValue="kasir">
@@ -42,11 +70,30 @@ function PosChrome({ children }: { children: React.ReactNode }) {
         <OfflineBanner />
         {locationName && (
           <div className="px-4 pt-3">
-            <PosStatusBar locationName={locationName} onChangeLocation={onChangeLocation} />
+            <PosStatusBar
+              locationName={locationName}
+              onChangeLocation={onChangeLocation}
+              onConnectDevice={needsPairing ? () => setPairingOpen(true) : undefined}
+            />
+          </div>
+        )}
+        {needsPairing && !locationName && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-raised px-4 py-2 text-sm text-text-primary">
+            <span>{t('pos.pairing.unpairedBanner')}</span>
+            <Button variant="outline" size="sm" onClick={() => setPairingOpen(true)}>
+              {t('pos.pairing.button')}
+            </Button>
           </div>
         )}
         <div className="flex-1 overflow-y-auto p-4">{children}</div>
       </div>
+      {runtime && needsPairing && (
+        <DevicePairingModal
+          open={pairingOpen}
+          onClose={() => setPairingOpen(false)}
+          runtime={runtime}
+        />
+      )}
     </Tabs>
   );
 }

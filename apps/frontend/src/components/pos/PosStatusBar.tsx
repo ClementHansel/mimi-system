@@ -37,9 +37,11 @@ import { useConnectivityStore } from '@/stores/connectivity-store';
 export function PosStatusBar({
   locationName,
   onChangeLocation,
+  onConnectDevice,
 }: {
   locationName: string | null;
   onChangeLocation?: () => void;
+  onConnectDevice?: () => void;
 }) {
   const { t } = useI18n();
   const tier = useConnectivityStore((s) => s.tier);
@@ -64,6 +66,11 @@ export function PosStatusBar({
       <div className="flex items-center gap-3">
         {tier !== 'online' && (
           <span className="text-xs text-warning-700">{t('pos.notCrossVisible')}</span>
+        )}
+        {onConnectDevice && (
+          <Button variant="ghost" size="sm" onClick={onConnectDevice}>
+            {t('pos.pairing.button')}
+          </Button>
         )}
         <SyncStatusPill />
       </div>

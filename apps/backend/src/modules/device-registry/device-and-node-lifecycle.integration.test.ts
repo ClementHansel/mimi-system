@@ -115,6 +115,69 @@ describe('Device + node pairing/register/heartbeat lifecycle — live database',
     expect(row.rows[0].device_token_hash).toBe(deviceTokenHash);
   });
 
+  it('display code redeems a minted device token regardless of case or separators, and is single-use', async () => {
+    const locationId = await fetchOneLocationId();
+    const ownerId = await fetchOneUserId('owner');
+
+    const minted = await withSystemContext(pool, (client) =>
+      pairingTokens.mint(client, {
+        targetType: PairingTargetType.DEVICE,
+        locationId,
+        createdBy: ownerId,
+      }),
+    );
+
+    // Lowercase, grouped with dashes — exactly how a cashier might read it aloud.
+    const typedCode = minted.displayCode
+      .toLowerCase()
+      .match(/.{1,3}/g)!
+      .join('-');
+    const redeemed = await withSystemContext(pool, (client) =>
+      pairingTokens.redeem(client, typedCode, PairingTargetType.DEVICE),
+    );
+    expect(redeemed?.locationId).toBe(locationId);
+    expect(redeemed?.createdBy).toBe(ownerId);
+
+    // Replay of the same formatted code must fail.
+    const replay = await withSystemContext(pool, (client) =>
+      pairingTokens.redeem(client, typedCode, PairingTargetType.DEVICE),
+    );
+    expect(replay).toBeUndefined();
+
+    // A random 12-char string must also fail with the same undefined result.
+    const unknownCode = 'ZZZ-ZZZ-ZZZ-ZZZ';
+    const unknown = await withSystemContext(pool, (client) =>
+      pairingTokens.redeem(client, unknownCode, PairingTargetType.DEVICE),
+    );
+    expect(unknown).toBeUndefined();
+
+    // Raw-token-first: both identifier branches must share the SAME single
+    // claim (`used_at`), not two independent lookups.
+    const tokenFirst = await withSystemContext(pool, (client) =>
+      pairingTokens.mint(client, {
+        targetType: PairingTargetType.DEVICE,
+        locationId,
+        createdBy: ownerId,
+      }),
+    );
+    const rawRedeemed = await withSystemContext(pool, (client) =>
+      pairingTokens.redeem(client, tokenFirst.token, PairingTargetType.DEVICE),
+    );
+    expect(rawRedeemed?.locationId).toBe(locationId);
+
+    const used = await assertPool.query<{ used_at: string | null }>(
+      `SELECT used_at FROM pairing_tokens WHERE id = $1`,
+      [tokenFirst.tokenId],
+    );
+    expect(used.rows[0]!.used_at).not.toBeNull();
+
+    // The display code for the raw-token-redemption is now dead.
+    const codeAfterRaw = await withSystemContext(pool, (client) =>
+      pairingTokens.redeem(client, tokenFirst.displayCode, PairingTargetType.DEVICE),
+    );
+    expect(codeAfterRaw).toBeUndefined();
+  });
+
   it('heartbeat ingest updates devices bookkeeping and appends device_heartbeats', async () => {
     const locationId = await fetchOneLocationId();
     const created = await withSystemContext(pool, (client) =>

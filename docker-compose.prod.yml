@@ -65,6 +65,8 @@ services:
       WA_ENABLED: ${WA_ENABLED:-false}
       # Never leave this open in prod (main.ts allows any origin when unset).
       CORS_ORIGIN: https://${DOMAIN}
+      # Browser-reachable origin returned as `syncConfig.cloudUrl`; empty means the client keeps its own origin.
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
       # The origin a BROWSER OR PHONE uses for presigned upload/download URLs.
       #
       # Without it the backend signs URLs for `http://minio:9000` — the internal

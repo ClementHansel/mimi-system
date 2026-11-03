@@ -199,6 +199,23 @@ export const id = {
     notCrossVisible:
       'Transaksi belum terlihat di tablet lain — akan muncul setelah tersambung kembali.',
 
+    // Device pairing: the one screen a cashier uses to turn an unpaired tablet
+    // into a registered POS device (CONTRACTS §4.21 / SYNC-PROTOCOL §1.5).
+    pairing: {
+      button: 'Sambungkan Perangkat',
+      title: 'Sambungkan Kasir ke Outlet',
+      description:
+        'Masukkan kode 12 karakter dari admin untuk menyambungkan perangkat ini ke outlet.',
+      hint: 'Kode 12 karakter',
+      submit: 'Sambungkan',
+      unpairedBanner: 'Perangkat ini belum tersambung ke outlet — transaksi belum tersinkron.',
+      invalid: 'Kode tidak valid atau sudah dipakai. Coba lagi.',
+      sessionExpired: 'Sesi Anda berakhir. Muat ulang halaman lalu sambungkan lagi.',
+      lengthHint: 'Kode harus 12 karakter.',
+      runtimeError:
+        'Penyimpanan perangkat tidak bisa dibuka. Muat ulang halaman lalu coba lagi.',
+    },
+
     // F-POS-2 — standalone POS top bar (`PosTopBar`/`app/pos/layout.tsx`):
     // the compact "Cabang: X" under the brand mark, and the two reasons
     // `PosStatusBar`'s secondary line gives for why the till is operating as

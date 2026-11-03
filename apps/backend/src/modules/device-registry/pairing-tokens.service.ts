@@ -48,6 +48,17 @@ function randomDisplayCode(): string {
   return out;
 }
 
+/**
+ * The human side of `randomDisplayCode()`: an admin reads the 12 characters
+ * out loud, the operator types them back with spaces, dashes or lowercase.
+ * Uppercase and strip everything outside `A-Z0-9` so `abc-def-ghi-jk` and
+ * `ABC DEF GHI JK` both become the stored code. Callers pass the result as a
+ * `display_code` candidate only when it is 1..12 chars — that bound is what
+ * stops a 48-char raw token from ever being compared as a `display_code`.
+ */
+export function normalizeDisplayCode(input: string): string {
+  return input.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 @Injectable()
 export class PairingTokensService {
   /** Mint — runs on the caller's OWN RLS transaction (`req.dbClient`); `pairing_tokens` carries no RLS policy (API-gated), so any authenticated actor holding the right permission key may write it for a location within their scope (enforced by the controller, not this service). */
@@ -92,17 +103,30 @@ export class PairingTokensService {
    * expires_at > NOW()`), so two concurrent redemption attempts for the same
    * token can never both succeed — the `UPDATE ... RETURNING` is the single
    * source of truth for "was this token still valid," not a separate
-   * SELECT-then-UPDATE that would race. Returns `undefined` on an
-   * unknown/expired/already-used/revoked/wrong-target-type token; the caller
-   * (register endpoint) treats all of those identically (§4.21/§4.22: opaque
-   * "invalid or expired token" — never leaks WHICH reason to a public,
-   * unauthenticated caller).
+   * SELECT-then-UPDATE that would race.
+   *
+   * The submitted identifier may be EITHER the raw 48-char token (machine
+   * callers: `/api/nodes/register`, `/api/devices/register` with `token`) OR
+   * the 12-char human display code an admin reads out loud and an operator
+   * types into the POS pairing screen — the display code is redeemable by a
+   * human. Both are matched in the same statement (`token_hash = $1 OR
+   * display_code = $2`), so single-use semantics are unchanged and there is no
+   * read-then-write window between the two lookups. `$2` is `null` whenever
+   * the normalized candidate is not 1..12 chars, which makes it impossible for
+   * a raw token to accidentally match some display code.
+   *
+   * Returns `undefined` on an unknown/expired/already-used/revoked/wrong-target-
+   * type identifier; the caller (register endpoint) treats all of those
+   * identically (§4.21/§4.22: opaque "invalid or expired token" — never leaks
+   * WHICH reason to a public, unauthenticated caller).
    */
   async redeem(
     client: PoolClient,
-    token: string,
+    identifier: string,
     targetType: `${PairingTargetType}`,
   ): Promise<RedeemedPairingToken | undefined> {
+    const normalized = normalizeDisplayCode(identifier);
+    const displayCode = normalized.length >= 1 && normalized.length <= 12 ? normalized : null;
     const res = await client.query<{
       id: UUID;
       location_id: UUID;
@@ -112,10 +136,10 @@ export class PairingTokensService {
     }>(
       `UPDATE pairing_tokens
           SET used_at = NOW()
-        WHERE token_hash = $1 AND target_type = $2
+        WHERE (token_hash = $1 OR display_code = $2) AND target_type = $3
           AND used_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
         RETURNING id, location_id, target_type, suggested_category, created_by`,
-      [hashDeviceToken(token), targetType],
+      [hashDeviceToken(identifier), displayCode, targetType],
     );
     const row = res.rows[0];
     if (!row) return undefined;

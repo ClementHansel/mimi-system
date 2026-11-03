@@ -136,6 +136,8 @@ services:
       # which is fine for local dev but should always be set explicitly in
       # prod — see docker-compose.prod.yml, which pins it to ${DOMAIN}.
       CORS_ORIGIN: ${CORS_ORIGIN:-}
+      # Browser-reachable origin returned as `syncConfig.cloudUrl` (BACKEND_ORIGIN is internal-only).
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
       # RUNTIME connection — mimi_app, NOT the superuser (D-21/D-22). Never
       # point this at ${POSTGRES_USER}; that role bypasses RLS regardless of
       # FORCE ROW LEVEL SECURITY. Migrations/seed use DATABASE_MIGRATION_URL

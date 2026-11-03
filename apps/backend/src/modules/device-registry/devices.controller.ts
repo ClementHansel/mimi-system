@@ -136,7 +136,10 @@ export class DevicesController {
   async register(
     @Body()
     body: {
-      token: string;
+      /** Raw 48-char pairing token — machine callers (nodes, scripted devices). */
+      token?: string;
+      /** The 12-char human code an admin reads out loud (POS pairing screen). */
+      displayCode?: string;
       fingerprint: string;
       name?: string;
       category: string;
@@ -145,10 +148,21 @@ export class DevicesController {
       replacesDeviceId?: UUID;
     },
   ) {
-    if (!body?.token || !body?.fingerprint || !body?.category || !body?.appVersion) {
+    // No DTO classes in this module (see the file header) — both fields are
+    // type-checked explicitly because there is no DTO on this public route.
+    const tokenInput = typeof body?.token === 'string' ? body.token.trim() : '';
+    const codeInput = typeof body?.displayCode === 'string' ? body.displayCode.trim() : '';
+    const identifier = tokenInput || codeInput;
+    if (!identifier) {
       throw new BadRequestException({
         code: ERR_VALIDATION,
-        message: 'token, fingerprint, category and appVersion are required',
+        message: 'token or displayCode is required',
+      });
+    }
+    if (!body?.fingerprint || !body?.category || !body?.appVersion) {
+      throw new BadRequestException({
+        code: ERR_VALIDATION,
+        message: 'fingerprint, category and appVersion are required',
       });
     }
     if (!Object.values(DeviceCategory).includes(body.category as DeviceCategory)) {
@@ -164,7 +178,7 @@ export class DevicesController {
     const result = await withSystemContext(this.pool, async (client) => {
       const redeemed = await this.pairingTokens.redeem(
         client,
-        body.token,
+        identifier,
         PairingTargetType.DEVICE,
       );
       if (!redeemed) return undefined;
@@ -239,7 +253,11 @@ export class DevicesController {
       location: result.location,
       nodeLanUrl: result.nodeLanUrl,
       syncConfig: {
-        cloudUrl: this.config.get<string>('BACKEND_ORIGIN', 'http://localhost:4000'),
+        // The browser-reachable public origin — NEVER localhost or an internal
+        // compose hostname. BACKEND_ORIGIN is an internal compose hostname and
+        // must never be handed to a tablet; empty means the client keeps its
+        // own `window.location.origin`.
+        cloudUrl: this.config.get<string>('PUBLIC_ORIGIN') || '',
         protocolV: PROTOCOL_V,
       },
     };
